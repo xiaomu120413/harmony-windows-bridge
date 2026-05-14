@@ -2,11 +2,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <functional>
@@ -19,6 +21,7 @@
 #include <string>
 #include <sys/socket.h>
 #include <thread>
+#include <unordered_map>
 #include <unistd.h>
 #include <vector>
 
@@ -509,6 +512,147 @@ bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error)
     return api.Load(error);
 }
 
+enum class CertificatePolicy {
+    Tofu,
+    Strict,
+    Ignore,
+};
+
+const char* CertificatePolicyName(CertificatePolicy policy)
+{
+    switch (policy) {
+        case CertificatePolicy::Strict:
+            return "strict";
+        case CertificatePolicy::Ignore:
+            return "ignore";
+        case CertificatePolicy::Tofu:
+        default:
+            return "tofu";
+    }
+}
+
+std::string ToLowerAscii(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+std::string TrimAscii(const std::string& value)
+{
+    size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+
+    size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(start, end - start);
+}
+
+CertificatePolicy ParseCertificatePolicy(const std::string& value)
+{
+    const std::string normalized = ToLowerAscii(TrimAscii(value));
+    if (normalized == "strict" || normalized == "verify" || normalized == "valid-ca") {
+        return CertificatePolicy::Strict;
+    }
+    if (normalized == "ignore" || normalized == "accept" || normalized == "insecure") {
+        return CertificatePolicy::Ignore;
+    }
+    if (normalized == "deny" || normalized == "reject") {
+        return CertificatePolicy::Strict;
+    }
+    return CertificatePolicy::Tofu;
+}
+
+std::string SafeCString(const char* value)
+{
+    return value == nullptr ? "" : value;
+}
+
+std::mutex g_certificatePolicyMutex;
+std::unordered_map<freerdp*, CertificatePolicy> g_certificatePolicies;
+
+void RegisterCertificatePolicy(freerdp* instance, CertificatePolicy policy)
+{
+    std::lock_guard<std::mutex> lock(g_certificatePolicyMutex);
+    if (instance == nullptr) {
+        return;
+    }
+    g_certificatePolicies[instance] = policy;
+}
+
+void UnregisterCertificatePolicy(freerdp* instance)
+{
+    std::lock_guard<std::mutex> lock(g_certificatePolicyMutex);
+    g_certificatePolicies.erase(instance);
+}
+
+CertificatePolicy LookupCertificatePolicy(freerdp* instance)
+{
+    std::lock_guard<std::mutex> lock(g_certificatePolicyMutex);
+    auto it = g_certificatePolicies.find(instance);
+    if (it == g_certificatePolicies.end()) {
+        return CertificatePolicy::Tofu;
+    }
+    return it->second;
+}
+
+DWORD HarmonyVerifyCertificateEx(freerdp* instance, const char* host, UINT16 port,
+    const char* commonName, const char* subject, const char* issuer, const char* fingerprint,
+    DWORD)
+{
+    CertificatePolicy policy = LookupCertificatePolicy(instance);
+    const std::string target = SafeCString(host) + ":" + std::to_string(port);
+    if (policy == CertificatePolicy::Ignore) {
+        EmitNativeLog("Certificate accepted for current session by ignore policy: " + target);
+        return 2;
+    }
+    if (policy == CertificatePolicy::Tofu) {
+        EmitNativeLog("Certificate accepted by TOFU policy and requested for FreeRDP store: " + target +
+            " cn=" + SafeCString(commonName));
+        return 1;
+    }
+
+    EmitNativeLog("Certificate rejected by strict policy: " + target +
+        " cn=" + SafeCString(commonName) + " issuer=" + SafeCString(issuer));
+    if (fingerprint != nullptr && fingerprint[0] != '\0') {
+        EmitNativeLog("Rejected certificate fingerprint/pem is available in native callback");
+    }
+    return 0;
+}
+
+DWORD HarmonyVerifyChangedCertificateEx(freerdp* instance, const char* host, UINT16 port,
+    const char* commonName, const char* subject, const char* issuer, const char* fingerprint,
+    const char* oldSubject, const char* oldIssuer, const char* oldFingerprint, DWORD)
+{
+    CertificatePolicy policy = LookupCertificatePolicy(instance);
+    const std::string target = SafeCString(host) + ":" + std::to_string(port);
+    if (policy == CertificatePolicy::Ignore) {
+        EmitNativeLog("Changed certificate accepted for current session by ignore policy: " + target);
+        return 2;
+    }
+
+    EmitNativeLog("Changed certificate rejected by " + std::string(CertificatePolicyName(policy)) +
+        " policy: " + target + " cn=" + SafeCString(commonName));
+    if ((subject != nullptr && subject[0] != '\0') || (oldSubject != nullptr && oldSubject[0] != '\0')) {
+        EmitNativeLog("Certificate subject changed from [" + SafeCString(oldSubject) + "] to [" +
+            SafeCString(subject) + "]");
+    }
+    if ((issuer != nullptr && issuer[0] != '\0') || (oldIssuer != nullptr && oldIssuer[0] != '\0')) {
+        EmitNativeLog("Certificate issuer changed from [" + SafeCString(oldIssuer) + "] to [" +
+            SafeCString(issuer) + "]");
+    }
+    if ((fingerprint != nullptr && fingerprint[0] != '\0') ||
+        (oldFingerprint != nullptr && oldFingerprint[0] != '\0')) {
+        EmitNativeLog("Changed certificate fingerprint/pem is available in native callback");
+    }
+    return 0;
+}
+
 std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
 std::atomic_uint32_t g_freerdpRenderSkipCount{0};
 std::atomic_uint32_t g_rdpDesktopWidth{0};
@@ -655,10 +799,12 @@ using FreerdpSetActiveFn = std::function<void(FreerdpRuntimeApi*, freerdp*, rdpC
 using FreerdpClearActiveFn = std::function<void(freerdp*)>;
 using FreerdpLogFn = std::function<void(const std::string&)>;
 using FreerdpConnectedFn = std::function<void()>;
+using FreerdpInputPumpFn = std::function<void(FreerdpRuntimeApi*, rdpContext*)>;
 
 RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
     const FreerdpSetActiveFn& setActive, const FreerdpClearActiveFn& clearActive,
-    const FreerdpLogFn& log, const FreerdpConnectedFn& onConnected)
+    const FreerdpLogFn& log, const FreerdpConnectedFn& onConnected,
+    const FreerdpInputPumpFn& pumpInput)
 {
     RdpSessionRunResult result;
     result.available = true;
@@ -700,6 +846,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     auto cleanup = [&]() {
         ClearRdpDesktopSize();
         clearActive(instance);
+        UnregisterCertificatePolicy(instance);
         if (contextCreated && instance->context != nullptr) {
             api.abortConnectContext(instance->context);
             api.disconnect(instance);
@@ -726,7 +873,8 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     UserParts user = SplitDomainUsername(params.username);
-    const bool acceptCertificate = params.certPolicy != "deny";
+    const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);
+    const bool ignoreCertificate = certificatePolicy == CertificatePolicy::Ignore;
 
     if (!SetFreerdpString(api, settings, FreeRDP_ServerHostname, params.host, "ServerHostname", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_ServerPort, port, "ServerPort", error) ||
@@ -743,8 +891,9 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         !SetFreerdpBool(api, settings, FreeRDP_SoftwareGdi, true, "SoftwareGdi", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_NegotiateSecurityLayer, true, "NegotiateSecurityLayer", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_CertificateCallbackPreferPEM, true, "CertificateCallbackPreferPEM", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, acceptCertificate, "IgnoreCertificate", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AutoAcceptCertificate, acceptCertificate, "AutoAcceptCertificate", error)) {
+        !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, ignoreCertificate, "IgnoreCertificate", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AutoAcceptCertificate, false, "AutoAcceptCertificate", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AutoDenyCertificate, false, "AutoDenyCertificate", error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -761,11 +910,15 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
 
     instance->PostConnect = HarmonyPostConnect;
     instance->PostDisconnect = HarmonyPostDisconnect;
+    instance->VerifyCertificateEx = HarmonyVerifyCertificateEx;
+    instance->VerifyChangedCertificateEx = HarmonyVerifyChangedCertificateEx;
+    RegisterCertificatePolicy(instance, certificatePolicy);
     ClearRdpDesktopSize();
 
     log("FreeRDP target configured");
     log("FreeRDP mode=PersistentSession");
     log("FreeRDP GDI renderer configured");
+    log(std::string("FreeRDP certificate policy=") + CertificatePolicyName(certificatePolicy));
     if (!user.domain.empty()) {
         log("FreeRDP domain parsed from username");
     }
@@ -794,6 +947,8 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     log("FreeRDP event loop started");
 
     while (running.load() && !api.shallDisconnectContext(instance->context)) {
+        pumpInput(&api, instance->context);
+
         HANDLE handles[MAXIMUM_WAIT_OBJECTS] = {};
         DWORD count = api.getEventHandles(instance->context, handles, MAXIMUM_WAIT_OBJECTS);
         if (count == 0) {
@@ -803,7 +958,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
             break;
         }
 
-        DWORD waitStatus = api.waitForMultipleObjects(count, handles, FALSE, 250);
+        DWORD waitStatus = api.waitForMultipleObjects(count, handles, FALSE, 25);
         if (!running.load()) {
             result.cancelled = true;
             result.message = "FreeRDP session cancelled";
@@ -830,6 +985,8 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
             }
             break;
         }
+
+        pumpInput(&api, instance->context);
     }
 
     if (!result.cancelled && !result.failed && result.message == "FreeRDP session connected") {
@@ -1618,6 +1775,24 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
 }
 
 class RdpSession {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    enum class QueuedInputType {
+        Pointer,
+        Key,
+        Unicode,
+    };
+
+    struct QueuedInputEvent {
+        QueuedInputType type = QueuedInputType::Pointer;
+        uint16_t flags = 0;
+        uint16_t x = 0;
+        uint16_t y = 0;
+        uint32_t scancode = 0;
+        uint32_t code = 0;
+        bool down = false;
+    };
+#endif
+
 public:
     ~RdpSession()
     {
@@ -1636,6 +1811,7 @@ public:
 
         running_.store(true);
         connected_.store(false);
+        ResetInputState();
         message = "native worker started";
         worker_ = std::thread([this, params]() {
             WorkerMain(params);
@@ -1647,6 +1823,7 @@ public:
     {
         running_.store(false);
         connected_.store(false);
+        ClearInputQueue();
         ClearRdpDesktopSize();
         RequestNativeDisconnect();
         if (worker_.joinable()) {
@@ -1686,23 +1863,12 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->input == nullptr) {
-            message = "FreeRDP input channel is not ready";
-            return false;
-        }
-        if (activeApi_->inputSendMouseEvent == nullptr) {
-            message = "FreeRDP mouse input symbol is not loaded";
-            return false;
-        }
-
-        if (!activeApi_->inputSendMouseEvent(activeContext_->input, flags, x, y)) {
-            message = "freerdp_input_send_mouse_event failed";
-            return false;
-        }
-        message = "pointer event sent";
-        return true;
+        QueuedInputEvent event;
+        event.type = QueuedInputType::Pointer;
+        event.flags = flags;
+        event.x = x;
+        event.y = y;
+        return EnqueueInput(event, "pointer event queued", message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -1716,23 +1882,11 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->input == nullptr) {
-            message = "FreeRDP input channel is not ready";
-            return false;
-        }
-        if (activeApi_->inputSendKeyboardEventEx == nullptr) {
-            message = "FreeRDP keyboard input symbol is not loaded";
-            return false;
-        }
-
-        if (!activeApi_->inputSendKeyboardEventEx(activeContext_->input, down ? TRUE : FALSE, FALSE, rdpScancode)) {
-            message = "freerdp_input_send_keyboard_event_ex failed";
-            return false;
-        }
-        message = down ? "key down sent" : "key up sent";
-        return true;
+        QueuedInputEvent event;
+        event.type = QueuedInputType::Key;
+        event.scancode = rdpScancode;
+        event.down = down;
+        return EnqueueInput(event, down ? "key down queued" : "key up queued", message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -1750,28 +1904,35 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->input == nullptr) {
-            message = "FreeRDP input channel is not ready";
-            return false;
-        }
-        if (activeApi_->inputSendUnicodeKeyboardEvent == nullptr) {
-            message = "FreeRDP unicode keyboard input symbol is not loaded";
-            return false;
-        }
-
-        const UINT16 flags = down ? 0 : KBD_FLAGS_RELEASE;
-        if (!activeApi_->inputSendUnicodeKeyboardEvent(activeContext_->input, flags, static_cast<UINT16>(code))) {
-            message = "freerdp_input_send_unicode_keyboard_event failed";
-            return false;
-        }
-        message = down ? "unicode key down sent" : "unicode key up sent";
-        return true;
+        QueuedInputEvent event;
+        event.type = QueuedInputType::Unicode;
+        event.code = code;
+        event.down = down;
+        return EnqueueInput(event, down ? "unicode key down queued" : "unicode key up queued", message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
 #endif
+    }
+
+    uint32_t InputQueueDepth() const
+    {
+        return inputQueueDepth_.load();
+    }
+
+    uint32_t InputQueuedCount() const
+    {
+        return inputQueuedCount_.load();
+    }
+
+    uint32_t InputSentCount() const
+    {
+        return inputSentCount_.load();
+    }
+
+    uint32_t InputDroppedCount() const
+    {
+        return inputDroppedCount_.load();
     }
 
 private:
@@ -1799,7 +1960,125 @@ private:
         return running_.load();
     }
 
+    void ClearInputQueue()
+    {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        inputQueue_.clear();
+        inputQueueDepth_.store(0);
+#else
+        inputQueueDepth_.store(0);
+#endif
+    }
+
+    void ResetInputState()
+    {
+        ClearInputQueue();
+        inputQueuedCount_.store(0);
+        inputSentCount_.store(0);
+        inputDroppedCount_.store(0);
+        inputDispatchLogCount_.store(0);
+        inputFailureLogCount_.store(0);
+    }
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    bool IsCoalesciblePointerMove(const QueuedInputEvent& event) const
+    {
+        return event.type == QueuedInputType::Pointer && event.flags == PTR_FLAGS_MOVE;
+    }
+
+    bool EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message)
+    {
+        constexpr size_t maxInputQueue = 1024;
+        std::lock_guard<std::mutex> lock(inputMutex_);
+
+        if (IsCoalesciblePointerMove(event) && !inputQueue_.empty() &&
+            IsCoalesciblePointerMove(inputQueue_.back())) {
+            inputQueue_.back() = event;
+            inputQueuedCount_.fetch_add(1);
+            message = okMessage;
+            return true;
+        }
+
+        if (inputQueue_.size() >= maxInputQueue) {
+            inputDroppedCount_.fetch_add(1);
+            message = "FreeRDP input queue is full";
+            return false;
+        }
+
+        inputQueue_.push_back(event);
+        inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
+        inputQueuedCount_.fetch_add(1);
+        message = okMessage;
+        return true;
+    }
+
+    void DrainInputQueue(FreerdpRuntimeApi* api, rdpContext* context)
+    {
+        std::deque<QueuedInputEvent> pending;
+        {
+            std::lock_guard<std::mutex> lock(inputMutex_);
+            if (inputQueue_.empty()) {
+                inputQueueDepth_.store(0);
+                return;
+            }
+            pending.swap(inputQueue_);
+            inputQueueDepth_.store(0);
+        }
+
+        if (api == nullptr || context == nullptr || context->input == nullptr) {
+            inputDroppedCount_.fetch_add(static_cast<uint32_t>(pending.size()));
+            LogInputFailure("FreeRDP input context is not ready; queued input dropped");
+            return;
+        }
+
+        uint32_t sent = 0;
+        for (const QueuedInputEvent& event : pending) {
+            BOOL ok = FALSE;
+            if (event.type == QueuedInputType::Pointer) {
+                if (api->inputSendMouseEvent != nullptr) {
+                    ok = api->inputSendMouseEvent(context->input, event.flags, event.x, event.y);
+                }
+            } else if (event.type == QueuedInputType::Key) {
+                if (api->inputSendKeyboardEventEx != nullptr) {
+                    ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE, FALSE,
+                        event.scancode);
+                }
+            } else {
+                if (api->inputSendUnicodeKeyboardEvent != nullptr) {
+                    const UINT16 flags = event.down ? 0 : KBD_FLAGS_RELEASE;
+                    ok = api->inputSendUnicodeKeyboardEvent(context->input, flags, static_cast<UINT16>(event.code));
+                }
+            }
+
+            if (ok) {
+                ++sent;
+            } else {
+                inputDroppedCount_.fetch_add(1);
+                LogInputFailure("FreeRDP input dispatch failed on worker thread");
+            }
+        }
+
+        if (sent == 0) {
+            return;
+        }
+
+        const uint32_t totalSent = inputSentCount_.fetch_add(sent) + sent;
+        const uint32_t logIndex = inputDispatchLogCount_.fetch_add(1);
+        if (logIndex < 5 || totalSent % 200 == 0) {
+            EmitLog("FreeRDP input dispatched on worker thread: " + std::to_string(sent) +
+                " event(s), total=" + std::to_string(totalSent));
+        }
+    }
+
+    void LogInputFailure(const std::string& message)
+    {
+        const uint32_t logIndex = inputFailureLogCount_.fetch_add(1);
+        if (logIndex < 5 || logIndex % 100 == 0) {
+            EmitLog(message);
+        }
+    }
+
     void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
@@ -1898,10 +2177,15 @@ private:
                 EmitState("Connected");
                 EmitLog("state=Connected");
                 EmitLog("FreeRDP persistent session loop is active");
+                EmitLog("FreeRDP input bridge is using worker-thread dispatch");
+            },
+            [this](FreerdpRuntimeApi* api, rdpContext* context) {
+                DrainInputQueue(api, context);
             });
 #else
         session = RunFreerdpSessionUnavailable();
 #endif
+        ClearInputQueue();
 
         if (session.cancelled || !running_.load()) {
             connected_.store(false);
@@ -1929,11 +2213,19 @@ private:
     std::atomic_bool running_ = false;
     std::atomic_bool connected_ = false;
     std::thread worker_;
+    std::atomic_uint32_t inputQueueDepth_{0};
+    std::atomic_uint32_t inputQueuedCount_{0};
+    std::atomic_uint32_t inputSentCount_{0};
+    std::atomic_uint32_t inputDroppedCount_{0};
+    std::atomic_uint32_t inputDispatchLogCount_{0};
+    std::atomic_uint32_t inputFailureLogCount_{0};
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::mutex activeMutex_;
     FreerdpRuntimeApi* activeApi_ = nullptr;
     freerdp* activeInstance_ = nullptr;
     rdpContext* activeContext_ = nullptr;
+    std::mutex inputMutex_;
+    std::deque<QueuedInputEvent> inputQueue_;
 #endif
 };
 
@@ -2180,13 +2472,18 @@ napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
     SurfaceSnapshot surface = g_surface.Snapshot();
+    const std::string featureSummary =
+        "core RDP/TLS/NLA + software GDI; channels off; H264/FFmpeg/OpenH264 off; "
+        "clipboard/audio/drive/printer/smartcard/RD Gateway off";
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.4");
+    SetString(env, result, "bridgeVersion", "0.6.5");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
     SetString(env, result, "opensslVersion", freerdp.opensslVersion);
+    SetString(env, result, "featureSummary", featureSummary);
+    SetString(env, result, "inputDispatchMode", "worker-thread-queue");
     SetString(env, result, "probeJson", freerdp.json);
     SetString(env, result, "probeError", freerdp.error);
     SetBool(env, result, "freeRdpLinked", freerdp.linked);
@@ -2208,10 +2505,17 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetBool(env, result, "sessionConnected", g_session.IsConnected());
     SetUint32(env, result, "desktopWidth", g_rdpDesktopWidth.load());
     SetUint32(env, result, "desktopHeight", g_rdpDesktopHeight.load());
+    SetUint32(env, result, "inputQueueDepth", g_session.InputQueueDepth());
+    SetUint32(env, result, "inputQueuedCount", g_session.InputQueuedCount());
+    SetUint32(env, result, "inputSentCount", g_session.InputSentCount());
+    SetUint32(env, result, "inputDroppedCount", g_session.InputDroppedCount());
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, sendPointer, sendKey, sendUnicode"
+        "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, sendPointer, sendKey, sendUnicode",
+        "FreeRDP input dispatch: worker-thread queue",
+        "FreeRDP build features: " + featureSummary,
+        "Certificate policy: tofu stores first untrusted certificate through FreeRDP, strict rejects untrusted certificates"
     };
     if (freerdp.linked) {
         logs.push_back("FreeRDP probe library loaded");

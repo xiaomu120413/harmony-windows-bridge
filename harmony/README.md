@@ -28,7 +28,8 @@ Current milestone:
 - M6.7 exposes the native FreeRDP desktop size through `probe()` and uses it for pointer coordinate mapping when available.
 - M6.8 maps two-finger horizontal drags on the remote surface to RDP horizontal wheel events.
 - M6.9 adds the `resize(width, height)` N-API surface and reports that dynamic resize is blocked by the current no-channel FreeRDP build.
-- End-to-end verification with a live Windows desktop frame is still pending.
+- M6.10 queues pointer/key/Unicode input on the FreeRDP worker thread, adds TOFU/strict/ignore certificate policies, and reports the disabled channel/codec feature set through `probe()`.
+- A live Windows desktop frame has been verified on device; current follow-up validation is focused on reliable remote operation and lifecycle stress.
 
 ## Native bridge
 
@@ -41,9 +42,9 @@ Current exported calls:
 - `disconnect()` returns a native disconnect result.
 - `resize(input)` validates a target size and returns an explicit unsupported message until the FreeRDP display-control channel is enabled.
 - `paintTestPattern()` writes a CPU-generated test frame into the current `XComponent` surface.
-- `sendPointer(input)` sends RDP pointer, button, and wheel events when a FreeRDP session is connected.
-- `sendKey(input)` sends RDP scancode key events when a FreeRDP session is connected.
-- `sendUnicode(input)` sends BMP UTF-16 Unicode keyboard events when a FreeRDP session is connected.
+- `sendPointer(input)` queues RDP pointer, button, and wheel events for dispatch on the FreeRDP worker thread.
+- `sendKey(input)` queues RDP scancode key events for dispatch on the FreeRDP worker thread.
+- `sendUnicode(input)` queues BMP UTF-16 Unicode keyboard events for dispatch on the FreeRDP worker thread.
 - `onState(callback)` receives session states: `Resolving`, `TCP connected`, `Negotiating`, `Authenticating`, `Connected`, `Disconnected`, or `Failed`.
 - `onLog(callback)` receives native session log lines.
 - `onError(callback)` receives validation or worker errors.
@@ -56,9 +57,9 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- M4.4 can hold a connected FreeRDP session loop, but FreeRDP desktop pixels are not rendered yet.
-- M5.2 only proves NativeWindow buffer writes with a synthetic frame; FreeRDP frame callbacks are not wired to render yet.
-- Callback lifecycle is only smoke-tested for one connect/disconnect path; reconnect, page teardown, and app backgrounding still need stress testing.
+- The current FreeRDP build still disables channels and advanced codecs, so clipboard, audio, drive redirection, printer, smartcard, RD Gateway, live display-control resize, and H.264/FFmpeg/OpenH264 paths are unavailable.
+- IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
+- Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 
 M4.2 notes:
 
@@ -177,6 +178,16 @@ M6.9 notes:
 - The native method validates size bounds and active-session state, but returns unsupported for live resize because the current FreeRDP build has display-control channels disabled.
 - Real dynamic resolution requires enabling the FreeRDP display-control channel and wiring monitor layout PDUs in a later build step.
 - IME composition handling and finer gesture conflict tuning are still pending.
+
+M6.10 notes:
+
+- `sendPointer()`, `sendKey()`, and `sendUnicode()` now enqueue input from the ArkTS/N-API thread and dispatch it from the FreeRDP session loop, avoiding direct cross-thread calls into `rdpContext::input`.
+- Pointer move events are coalesced at the tail of the queue to reduce backlog; non-move input is bounded and reports dropped events through `probe()`.
+- Certificate policy is now explicit: `tofu` accepts first untrusted certificates through the FreeRDP certificate callback and asks FreeRDP to store them, `strict` rejects untrusted certificates, and `ignore` accepts for the current session only.
+- The connect page uses fixed TOFU/Strict/Ignore controls instead of a free-text certificate policy field.
+- The diagnostics probe reports worker-thread input mode, input queued/sent/dropped counters, and the current minimal FreeRDP feature set.
+- Touch/mouse conflict handling now suppresses duplicate mouse events shortly after touch input, and two-finger scroll suppresses the remaining single-finger gesture until fingers are lifted.
+- `aboutToDisappear()` releases active pointer buttons and latched Ctrl/Alt/Win modifiers to reduce stuck input during page teardown.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

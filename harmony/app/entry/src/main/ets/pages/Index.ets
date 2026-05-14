@@ -73,6 +73,8 @@ interface NativeProbeResult {
   freeRdpVersion: string
   winprVersion: string
   opensslVersion: string
+  featureSummary: string
+  inputDispatchMode: string
   freeRdpLinked: boolean
   surfaceRegistered: boolean
   surfaceReady: boolean
@@ -92,6 +94,10 @@ interface NativeProbeResult {
   sessionConnected: boolean
   desktopWidth: number
   desktopHeight: number
+  inputQueueDepth: number
+  inputQueuedCount: number
+  inputSentCount: number
+  inputDroppedCount: number
   probeJson: string
   probeError: string
   logs: string[]
@@ -134,6 +140,12 @@ struct Index {
   @State private surfaceViewportHeight: number = 0
   @State private desktopPixelWidth: number = 0
   @State private desktopPixelHeight: number = 0
+  @State private inputQueueDepth: number = 0
+  @State private inputQueuedCount: number = 0
+  @State private inputSentCount: number = 0
+  @State private inputDroppedCount: number = 0
+  @State private nativeFeatureSummary: string = ''
+  @State private nativeInputDispatchMode: string = ''
   @State private remoteTextInput: string = ''
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
@@ -145,6 +157,8 @@ struct Index {
   private lastTouchX: number = 0
   private lastTouchY: number = 0
   private twoFingerScrollActive: boolean = false
+  private touchGestureSuppressed: boolean = false
+  private lastTouchEventAtMs: number = 0
   private twoFingerLastX: number = 0
   private twoFingerLastY: number = 0
   private mouseButtonFlags: number = 0
@@ -169,6 +183,11 @@ struct Index {
   aboutToAppear(): void {
     this.registerNativeCallbacks()
     this.probeNative()
+  }
+
+  aboutToDisappear(): void {
+    this.releasePointerButtons()
+    this.releaseActiveModifiers()
   }
 
   private registerNativeCallbacks(): void {
@@ -219,6 +238,12 @@ struct Index {
       this.surfaceViewportHeight = result.surfaceViewportHeight
       this.desktopPixelWidth = result.desktopWidth
       this.desktopPixelHeight = result.desktopHeight
+      this.inputQueueDepth = result.inputQueueDepth
+      this.inputQueuedCount = result.inputQueuedCount
+      this.inputSentCount = result.inputSentCount
+      this.inputDroppedCount = result.inputDroppedCount
+      this.nativeFeatureSummary = result.featureSummary
+      this.nativeInputDispatchMode = result.inputDispatchMode
       const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
       const surfaceText = result.surfaceReady ? `surface ${result.surfaceWidth}x${result.surfaceHeight}` : 'surface pending'
       const viewportText = result.surfaceViewportWidth > 0 && result.surfaceViewportHeight > 0 ?
@@ -227,7 +252,8 @@ struct Index {
       const desktopText = result.desktopWidth > 0 && result.desktopHeight > 0 ?
         `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${viewportText} | ${desktopText} | ${paintText}`
+      const inputText = `input ${result.inputDispatchMode} q=${result.inputQueueDepth} sent=${result.inputSentCount} drop=${result.inputDroppedCount}`
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${viewportText} | ${desktopText} | ${paintText} | ${inputText}`
       this.appendNativeLogs(result.logs)
     } catch (error) {
       this.nativeProbeText = 'Native bridge probe failed'
@@ -252,6 +278,18 @@ struct Index {
       this.connectionState === 'Disconnected' || this.connectionState === 'Failed'
   }
 
+  private normalizeCertPolicy(value: string): string {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'strict' || normalized === 'verify' || normalized === 'valid-ca' ||
+      normalized === 'deny' || normalized === 'reject') {
+      return 'strict'
+    }
+    if (normalized === 'ignore' || normalized === 'accept' || normalized === 'insecure') {
+      return 'ignore'
+    }
+    return 'tofu'
+  }
+
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connectionState = 'Idle'
@@ -260,6 +298,8 @@ struct Index {
     }
 
     try {
+      const policy = this.normalizeCertPolicy(this.certPolicy)
+      this.certPolicy = policy
       this.connectionState = 'Resolving'
       this.currentTab = 'session'
       this.appendLog(`Calling native connect for ${this.host}:${this.port}`)
@@ -269,7 +309,7 @@ struct Index {
         username: this.username,
         password: this.password,
         resolution: this.resolution,
-        certPolicy: this.certPolicy
+        certPolicy: policy
       })
       this.connectionState = this.toConnectionState(result.state)
       this.appendLog(result.message)
@@ -546,6 +586,7 @@ struct Index {
     this.longPressTriggered = false
     this.pointerDown = false
     this.twoFingerScrollActive = false
+    this.touchGestureSuppressed = false
     this.mouseButtonFlags = 0
   }
 
@@ -691,6 +732,9 @@ struct Index {
     if (!this.isConnected()) {
       return
     }
+    if (Date.now() - this.lastTouchEventAtMs < 350) {
+      return
+    }
     this.lastTouchX = event.x
     this.lastTouchY = event.y
     const buttonFlag = this.mouseButtonToPointerFlag(event.button)
@@ -815,8 +859,18 @@ struct Index {
   }
 
   private handleSurfaceTouch(event: TouchEvent): void {
+    this.lastTouchEventAtMs = Date.now()
+    if (this.touchGestureSuppressed && event.touches.length < 2) {
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel || event.touches.length === 0) {
+        this.touchGestureSuppressed = false
+      }
+      this.cancelPendingTouch()
+      return
+    }
+
     if (this.twoFingerScrollActive && event.touches.length < 2) {
       this.twoFingerScrollActive = false
+      this.touchGestureSuppressed = true
       return
     }
 
@@ -886,6 +940,7 @@ struct Index {
 
     if (event.type === TouchType.Down || !this.twoFingerScrollActive) {
       this.twoFingerScrollActive = true
+      this.touchGestureSuppressed = true
       this.twoFingerLastX = centerX
       this.twoFingerLastY = centerY
       return true
@@ -1004,9 +1059,14 @@ struct Index {
         this.inputField('Resolution', this.resolution, (value: string) => {
           this.resolution = value
         })
-        this.inputField('Certificate policy', this.certPolicy, (value: string) => {
-          this.certPolicy = value
-        })
+        Row() {
+          this.certPolicyButton('tofu', 'TOFU')
+          this.certPolicyButton('strict', 'Strict')
+          this.certPolicyButton('ignore', 'Ignore')
+        }
+        .height(40)
+        .width('100%')
+        .margin({ bottom: 12 })
 
         Button('Native Probe')
           .height(40)
@@ -1051,6 +1111,19 @@ struct Index {
       .width('100%')
       .margin({ bottom: 12 })
       .onChange(onChange)
+  }
+
+  @Builder
+  private certPolicyButton(value: string, label: string) {
+    Button(label)
+      .height(36)
+      .layoutWeight(1)
+      .fontSize(13)
+      .backgroundColor(this.certPolicy === value ? '#0A84FF' : '#E8EEF7')
+      .fontColor(this.certPolicy === value ? Color.White : '#1D2433')
+      .onClick(() => {
+        this.certPolicy = value
+      })
   }
 
   @Builder
