@@ -54,6 +54,27 @@ HarmonyOS App
 
 它不是鸿蒙最终实现方案。鸿蒙版本不应依赖外部桌面客户端进程，而应直接链接 FreeRDP native library。
 
+## 开发和构建环境分工
+
+当前方案调整为 Windows + WSL 双环境：
+
+- Windows：保留现有 demo、连接参数验证、RDP 环境排查、DevEco 工程管理、HAP 签名和产物归档。
+- WSL Ubuntu：负责 OpenSSL、zlib、cJSON、WinPR、FreeRDP 的鸿蒙 native 交叉编译。
+- HarmonyOS 工程：消费 WSL 编译出的 `.so`、头文件和 CMake package，不在 Windows 上直接编 FreeRDP 三方库。
+
+边界要求：
+
+- Windows 上不再尝试直接交叉编译 FreeRDP 及其依赖。
+- WSL 里必须使用 Linux 版 OpenHarmony / HarmonyOS NDK toolchain；不能直接拿 Windows 版 DevEco SDK 里的 Windows 可执行文件当作 WSL 编译器。
+- WSL 通过 `/mnt/c/Users/mu/Desktop/code/demo` 访问当前仓库，编译产物落到 `harmony/out/ohos-arm64/` 或等价本地输出目录。
+- HAP 签名仍在 Windows 侧使用 `tools/hapsigner/Sign-NormalApp.ps1`，签名产物不提交。
+
+WSL 当前入口：
+
+```powershell
+wsl.exe -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/mu/Desktop/code/demo && ./harmony/scripts/wsl/build-freerdp-ohos.sh"
+```
+
 ## UI 范围
 
 ArkUI 负责业务界面和输入事件采集：
@@ -97,6 +118,8 @@ Native 侧职责：
 - 处理 ArkUI 生命周期中的暂停、恢复、销毁。
 
 ## FreeRDP 编译策略
+
+FreeRDP 交叉编译统一放在 WSL Ubuntu 内执行。Windows 只做脚本触发、DevEco 工程管理和签名，不作为 FreeRDP 编译 host。
 
 第一阶段只启用最小能力：
 
@@ -179,7 +202,7 @@ Native 侧职责：
 
 ### M3：FreeRDP 交叉编译
 
-- 用鸿蒙 NDK / CMake 编译 FreeRDP 和依赖。
+- 在 WSL Ubuntu 内用 Linux 版鸿蒙 NDK / CMake 编译 FreeRDP 和依赖。
 - 先实现 native probe：
   - FreeRDP version OK。
   - OpenSSL OK。
@@ -517,13 +540,18 @@ napi_value Probe(napi_env env, napi_callback_info info) {
 
 ### M3 执行拆解：FreeRDP 交叉编译
 
-目标：证明 FreeRDP、WinPR、OpenSSL、zlib、cJSON 能以鸿蒙 native library 形式被编译、链接、加载和调用。
+目标：在 WSL Ubuntu 内证明 FreeRDP、WinPR、OpenSSL、zlib、cJSON 能以鸿蒙 native library 形式被编译、链接、加载和调用。
 
 修改范围：
 
 - `harmony/third_party/README.md`：记录依赖来源、版本、构建方式。
-- `harmony/scripts/build-openssl-ohos.ps1` 或对应 shell 脚本。
-- `harmony/scripts/build-freerdp-ohos.ps1` 或对应 shell 脚本。
+- `harmony/scripts/wsl/bootstrap-build-env.sh`：检查 WSL 内构建依赖和 OHOS NDK。
+- `harmony/scripts/wsl/build-openssl-ohos.sh`
+- `harmony/scripts/wsl/build-zlib-ohos.sh`
+- `harmony/scripts/wsl/build-cjson-ohos.sh`
+- `harmony/scripts/wsl/build-freerdp-ohos.sh`
+- `harmony/scripts/wsl/package-native-libs.sh`
+- `harmony/scripts/windows/run-wsl-freerdp-build.ps1`：可选，只负责从 Windows 调 WSL。
 - `harmony/entry/src/main/cpp/CMakeLists.txt`
 - `harmony/entry/src/main/cpp/freerdp_probe.cpp`
 - `harmony/entry/src/main/cpp/freerdp_probe.h`
@@ -531,13 +559,79 @@ napi_value Probe(napi_env env, napi_callback_info info) {
 
 执行步骤：
 
-1. 固定依赖版本：FreeRDP、WinPR、OpenSSL、zlib、cJSON。
-2. 编译 OpenSSL for OHOS `arm64-v8a` 或鸿蒙 NDK 对应 ABI。
-3. 编译 zlib 和 cJSON。
-4. 编译 FreeRDP，关闭不需要的 client channels 和复杂模块。
-5. 在 `native_rdp` 中链接 FreeRDP / WinPR。
-6. 扩展 `probe()`，返回 FreeRDP、OpenSSL、WinPR 版本。
-7. 在真机或模拟器加载 `.so`，确认无动态库缺失。
+1. 在 WSL 内确认基础工具：`cmake`、`ninja`、`pkg-config`、`perl`、`python3`、`git`。
+2. 在 WSL 内配置 Linux 版 OHOS NDK 路径，例如 `OHOS_NDK_HOME=$HOME/ohos-sdk/native`。
+3. 固定依赖版本：FreeRDP、WinPR、OpenSSL、zlib、cJSON。
+4. 编译 OpenSSL for OHOS `arm64-v8a`。
+5. 编译 zlib 和 cJSON。
+6. 编译 FreeRDP，关闭不需要的 client channels 和复杂模块。
+7. 将头文件、`.so` 和 CMake config 归档到 `harmony/out/ohos-arm64/`。
+8. 在 `native_rdp` 中链接 WSL 产出的 FreeRDP / WinPR。
+9. 扩展 `probe()`，返回 FreeRDP、OpenSSL、WinPR 版本。
+10. 在真机或模拟器加载 `.so`，确认无动态库缺失。
+
+WSL 构建脚本伪码：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+OUT_DIR="$REPO_ROOT/harmony/out/ohos-arm64"
+DEPS_DIR="$REPO_ROOT/harmony/third_party"
+
+: "${OHOS_NDK_HOME:?Set OHOS_NDK_HOME to the Linux OHOS native SDK path}"
+: "${OHOS_ARCH:=arm64-v8a}"
+
+cmake --version
+ninja --version
+
+build_zlib() {
+  cmake -S "$DEPS_DIR/zlib" -B "$OUT_DIR/build/zlib" -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$OHOS_NDK_HOME/build/cmake/ohos.toolchain.cmake" \
+    -DOHOS_ARCH="$OHOS_ARCH" \
+    -DCMAKE_INSTALL_PREFIX="$OUT_DIR/sysroot"
+  cmake --build "$OUT_DIR/build/zlib"
+  cmake --install "$OUT_DIR/build/zlib"
+}
+
+build_cjson() {
+  cmake -S "$DEPS_DIR/cjson" -B "$OUT_DIR/build/cjson" -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$OHOS_NDK_HOME/build/cmake/ohos.toolchain.cmake" \
+    -DOHOS_ARCH="$OHOS_ARCH" \
+    -DCMAKE_INSTALL_PREFIX="$OUT_DIR/sysroot" \
+    -DENABLE_CJSON_TEST=OFF
+  cmake --build "$OUT_DIR/build/cjson"
+  cmake --install "$OUT_DIR/build/cjson"
+}
+
+build_freerdp() {
+  cmake -S "$DEPS_DIR/FreeRDP" -B "$OUT_DIR/build/freerdp" -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$OHOS_NDK_HOME/build/cmake/ohos.toolchain.cmake" \
+    -DOHOS_ARCH="$OHOS_ARCH" \
+    -DCMAKE_INSTALL_PREFIX="$OUT_DIR/sysroot" \
+    -DWITH_SERVER=OFF \
+    -DWITH_CLIENT=ON \
+    -DWITH_CHANNELS=OFF \
+    -DWITH_ALSA=OFF \
+    -DWITH_PULSE=OFF \
+    -DWITH_CUPS=OFF \
+    -DWITH_FFMPEG=OFF
+  cmake --build "$OUT_DIR/build/freerdp"
+  cmake --install "$OUT_DIR/build/freerdp"
+}
+
+build_zlib
+build_cjson
+build_freerdp
+```
+
+Windows 触发 WSL 伪码：
+
+```powershell
+$Repo = "C:\Users\mu\Desktop\code\demo"
+wsl.exe -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/Users/mu/Desktop/code/demo && ./harmony/scripts/wsl/build-freerdp-ohos.sh"
+```
 
 CMake 伪码：
 
@@ -549,8 +643,11 @@ add_library(native_rdp SHARED
 )
 
 target_include_directories(native_rdp PRIVATE
-  ${FREERDP_INSTALL}/include
-  ${OPENSSL_INSTALL}/include
+  ${CMAKE_SOURCE_DIR}/../../../out/ohos-arm64/sysroot/include
+)
+
+target_link_directories(native_rdp PRIVATE
+  ${CMAKE_SOURCE_DIR}/../../../out/ohos-arm64/sysroot/lib
 )
 
 target_link_libraries(native_rdp PRIVATE
@@ -590,16 +687,19 @@ ProbeResult ProbeFreerdp() {
 
 验收标准：
 
+- `wsl.exe -d Ubuntu-24.04` 能进入当前仓库目录。
+- WSL 内 `cmake`、`ninja` 可用。
+- WSL 内 `OHOS_NDK_HOME` 指向 Linux 版 OHOS native SDK。
 - `native_rdp.so` 能成功加载。
 - `probe()` 返回 FreeRDP version、OpenSSL version、WinPR available。
-- 构建产物只在本地生成，不提交到仓库。
+- WSL 构建产物只在 `harmony/out/ohos-arm64/` 或本地输出目录生成，不提交到仓库。
 - 关闭音频、文件重定向、智能卡、打印机、多显示器、RD Gateway。
 - 依赖版本和构建命令写入文档。
 
 阶段遗留问题和影响：
 
-- 遗留问题：只证明库能加载，不证明能完成 RDP 登录。
-- 影响：如果 M3 失败，M4-M6 全部阻塞；需要优先降级为先做 TCP/RDP negotiation probe。
+- 遗留问题：WSL 编译通过只证明库能加载，不证明能完成 RDP 登录。
+- 影响：如果 WSL 内 Linux 版 OHOS NDK、OpenSSL 或 FreeRDP 编译失败，M4-M6 全部阻塞；需要优先降级为先做 TCP/RDP negotiation probe。
 
 ### M4 执行拆解：只连接不渲染
 
@@ -1041,28 +1141,31 @@ void RenderDirtyRects(const Frame& frame, const std::vector<Rect>& dirtyRects) {
 
 以下问题在当前阶段尚未解决，需要在后续实施中持续报告。
 
-1. FreeRDP 鸿蒙交叉编译尚未验证。
-   - 影响：M3 是最大技术门槛；如果失败，M4-M6 全部阻塞。
+1. WSL 内 FreeRDP 鸿蒙交叉编译尚未验证。
+   - 影响：M3 是最大技术门槛；如果 WSL 内 Linux 版 OHOS NDK 或依赖编译失败，M4-M6 全部阻塞。
 
 2. OpenSSL / NTLM / NLA 兼容性尚未验证。
    - 影响：即使 TCP 可达，也可能在认证阶段失败；需要保留详细日志和错误码。
 
-3. `XComponent` / `NativeWindow` 的实际 API 需要按目标 SDK 校准。
+3. WSL 编译产物与 DevEco 工程集成路径未固化。
+   - 影响：需要明确 `.so`、头文件和 CMake config 从 `harmony/out/ohos-arm64/` 进入 ArkTS native module 的方式，否则构建可复现性差。
+
+4. `XComponent` / `NativeWindow` 的实际 API 需要按目标 SDK 校准。
    - 影响：M5 的 native surface 绑定和 buffer flush 可能需要按 HarmonyOS / OpenHarmony 版本调整。
 
-4. 当前 `native/freerdp-bridge` 是 Windows demo 的桌面 stand-in。
+5. 当前 `native/freerdp-bridge` 是 Windows demo 的桌面 stand-in。
    - 影响：它能复用参数模型和 FreeRDP 调用思路，但不能直接作为鸿蒙 N-API 模块使用。
 
-5. 密码、证书和会话配置的安全存储方案未定。
+6. 密码、证书和会话配置的安全存储方案未定。
    - 影响：第一版不能保存明文密码；TOFU 和安全存储需要在 M7 前明确。
 
-6. 输入法、中文输入和复杂组合键未验证。
+7. 输入法、中文输入和复杂组合键未验证。
    - 影响：M6 第一版只能保证基础键鼠操作，中文输入体验可能不足。
 
-7. 渲染性能未知。
+8. 渲染性能未知。
    - 影响：M5 先接受 CPU 全帧/局部拷贝；如果高分辨率卡顿，M7 必须投入 dirty rect、双缓冲或 GPU texture。
 
-8. 缺少真机测试矩阵。
+9. 缺少真机测试矩阵。
    - 影响：模拟器通过不代表真机可用；需要至少覆盖一台目标 HarmonyOS 设备、一个 Windows 10/11 Pro RDP 目标和一个弱网场景。
 
 ## 第一版范围
@@ -1089,7 +1192,8 @@ void RenderDirtyRects(const Frame& frame, const std::vector<Rect>& dirtyRects) {
 
 ## 最大风险点
 
-- FreeRDP 在鸿蒙 NDK 上的交叉编译。
+- WSL 内 Linux 版 OHOS NDK、FreeRDP、OpenSSL、WinPR 的交叉编译链路。
+- WSL 产物同步到 Windows / DevEco 工程后的链接和打包路径。
 - OpenSSL / NTLM / NLA 兼容性。
 - `NativeWindow` 渲染性能。
 - 输入法和组合键映射。
@@ -1099,15 +1203,17 @@ void RenderDirtyRects(const Frame& frame, const std::vector<Rect>& dirtyRects) {
 
 ## 下一步建议
 
-下一步先做 M1 + M2，不急着直接编完整 FreeRDP：
+下一步仍然先做 M1 + M2，同时把 M3 的 WSL 编译环境准备好，不在 Windows 上尝试直接编完整 FreeRDP：
 
 1. 创建 `harmony/` 或 `openharmony/` 工程骨架。
 2. 做 ArkTS 连接页、会话页、诊断页。
 3. 新建 N-API native bridge。
 4. 实现 `probe()`、`connect(params)`、`disconnect()` 的 mock/native 调用。
-5. 让 C++ 返回状态和日志。
+5. 在 WSL Ubuntu 内确认 `cmake`、`ninja`、Linux 版 OHOS NDK 路径。
+6. 新增 `harmony/scripts/wsl/build-freerdp-ohos.sh`，先只做到依赖版本检查和空构建目录初始化。
+7. 让 C++ 返回状态和日志。
 
-只要 ArkUI 能调用 C++，C++ 能回传状态和日志，后续接 FreeRDP 就有明确落点。
+只要 ArkUI 能调用 C++，C++ 能回传状态和日志，同时 WSL 能稳定产出 native 依赖，后续接 FreeRDP 就有明确落点。
 
 ## 参考依据
 
