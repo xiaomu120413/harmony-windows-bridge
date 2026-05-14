@@ -3,11 +3,13 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 FREE_RDP_SRC="$REPO_ROOT/harmony/third_party/FreeRDP"
+FREERDP_BUILD_SRC=""
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/harmony/out/ohos-arm64}"
 PREFIX="$OUT_DIR/sysroot"
 LOG_DIR="$OUT_DIR/logs"
 PROBE_DIR="$OUT_DIR/probe"
+RUNTIME_DIR="$OUT_DIR/runtime-libs"
 
 OHOS_ARCH="${OHOS_ARCH:-arm64-v8a}"
 WORK_DIR="${OHOS_BUILD_WORKDIR:-$HOME/.cache/demo-ohos-${OHOS_ARCH}}"
@@ -142,6 +144,22 @@ prepare_cmake_args() {
   )
 }
 
+prepare_freerdp_build_source() {
+  FREERDP_BUILD_SRC="$BUILD_DIR/freerdp-src"
+  safe_rm_rf "$FREERDP_BUILD_SRC"
+  mkdir -p "$FREERDP_BUILD_SRC"
+  cp -a "$FREE_RDP_SRC/." "$FREERDP_BUILD_SRC/"
+
+  local thread_file="$FREERDP_BUILD_SRC/winpr/libwinpr/thread/thread.c"
+  if ! grep -q '__OHOS__' "$thread_file"; then
+    perl -0pi -e 's/#ifndef ANDROID\s+pthread_cancel\(thread->thread\);\s+#else/#if !defined(ANDROID) \&\& !defined(__OHOS__)\n\tpthread_cancel(thread->thread);\n#else/s' "$thread_file"
+    grep -q '__OHOS__' "$thread_file" || {
+      printf 'Failed to apply OHOS pthread_cancel compatibility patch to %s\n' "$thread_file" >&2
+      exit 1
+    }
+  fi
+}
+
 build_openssl() {
   if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libssl.so" && -f "$PREFIX/include/openssl/ssl.h" ]]; then
     log "OpenSSL already installed"
@@ -214,11 +232,19 @@ build_cjson() {
 build_freerdp() {
   local build="$BUILD_DIR/freerdp"
 
+  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libfreerdp3.so" && -f "$PREFIX/lib/libwinpr3.so" ]]; then
+    log "FreeRDP already installed"
+    return 0
+  fi
+
+  safe_rm_rf "$build"
+  prepare_freerdp_build_source
+
   log "build FreeRDP for $OHOS_ARCH"
   export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig"
   export PKG_CONFIG_SYSROOT_DIR=
 
-  cmake -S "$FREE_RDP_SRC" -B "$build" "${cmake_common_args[@]}" \
+  cmake -S "$FREERDP_BUILD_SRC" -B "$build" "${cmake_common_args[@]}" \
     -DUNIX=ON \
     -DBUILD_SHARED_LIBS=ON \
     -DBUILD_TESTING=OFF \
@@ -226,7 +252,7 @@ build_freerdp() {
     -DBUILD_BENCHMARK=OFF \
     -DBUILD_FUZZERS=OFF \
     -DUSE_VERSION_FROM_GIT_TAG=OFF \
-    -DUSE_GIT_FOR_REVISION=ON \
+    -DUSE_GIT_FOR_REVISION=OFF \
     -DWITH_LIBRARY_VERSIONING=ON \
     -DWITH_LIBRARY_SOVERSIONING=OFF \
     -DWITH_BINARY_VERSIONING=OFF \
@@ -282,6 +308,24 @@ build_freerdp() {
 
   cmake --build "$build" --parallel "$JOBS" 2>&1 | tee "$LOG_DIR/freerdp-build.log"
   cmake --install "$build" 2>&1 | tee "$LOG_DIR/freerdp-install.log"
+}
+
+stage_runtime_libs() {
+  log "stage runtime shared libraries"
+  safe_rm_rf "$RUNTIME_DIR"
+  mkdir -p "$RUNTIME_DIR/ossl-modules"
+
+  cp -L "$PREFIX/lib/libfreerdp3.so" "$RUNTIME_DIR/libfreerdp3.so"
+  cp -L "$PREFIX/lib/libfreerdp-client3.so" "$RUNTIME_DIR/libfreerdp-client3.so"
+  cp -L "$PREFIX/lib/libwinpr3.so" "$RUNTIME_DIR/libwinpr3.so"
+  cp -L "$PREFIX/lib/libssl.so.3" "$RUNTIME_DIR/libssl.so.3"
+  cp -L "$PREFIX/lib/libcrypto.so.3" "$RUNTIME_DIR/libcrypto.so.3"
+  cp -L "$PREFIX/lib/libcjson.so.1" "$RUNTIME_DIR/libcjson.so.1"
+  cp -L "$PREFIX/lib/libz.so.1" "$RUNTIME_DIR/libz.so.1"
+
+  if [[ -f "$PREFIX/lib/ossl-modules/legacy.so" ]]; then
+    cp -L "$PREFIX/lib/ossl-modules/legacy.so" "$RUNTIME_DIR/ossl-modules/legacy.so"
+  fi
 }
 
 build_probe() {
@@ -367,6 +411,8 @@ write_manifest() {
     printf 'cjson_version=%s\n' "$CJSON_VERSION"
     printf '\n[libs]\n'
     find "$PREFIX/lib" "$PROBE_DIR" -maxdepth 1 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
+    printf '\n[runtime-libs]\n'
+    find "$RUNTIME_DIR" -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
   } > "$manifest"
 }
 
@@ -383,7 +429,9 @@ verify_elf_outputs() {
     "$PREFIX/lib"/libcrypto*.so* \
     "$PREFIX/lib"/libcjson*.so* \
     "$PREFIX/lib"/libz*.so* \
-    "$PROBE_DIR"/libfreerdp_ohos_probe.so; do
+    "$PROBE_DIR"/libfreerdp_ohos_probe.so \
+    "$RUNTIME_DIR"/*.so* \
+    "$RUNTIME_DIR"/ossl-modules/*.so*; do
     [[ -e "$lib" ]] || continue
     {
       printf '\n## %s\n' "$lib"
@@ -410,6 +458,7 @@ main() {
   build_zlib
   build_cjson
   build_freerdp
+  stage_runtime_libs
   build_probe
   write_manifest
   verify_elf_outputs
