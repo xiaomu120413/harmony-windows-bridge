@@ -6,7 +6,21 @@ Current milestone:
 
 - Build a normal-permission HAP first.
 - Keep `mstsc` / `wfreerdp.exe` out of the HarmonyOS runtime path.
-- Add the RDP ArkUI and N-API work after the HAP build path is stable.
+- ArkTS calls into the C++ N-API bridge through `libentry.so`.
+- Native `probe()`, `connect(params)`, and `disconnect()` are available as M2 placeholders.
+- FreeRDP is still intentionally not linked; that belongs to M3.
+
+## Native bridge
+
+The entry module builds a native shared library from `entry/src/main/cpp/CMakeLists.txt`.
+
+Current exported calls:
+
+- `probe()` returns bridge version, ABI, and FreeRDP link status.
+- `connect(params)` validates the basic connection fields and returns native logs.
+- `disconnect()` returns a native disconnect result.
+
+The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`.
 
 ## Build and install with MCP
 

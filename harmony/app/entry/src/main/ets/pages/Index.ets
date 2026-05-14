@@ -1,4 +1,21 @@
-type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Disconnected'
+import rdpNative from 'libentry.so'
+
+type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Bridge ready' | 'Disconnected' | 'Failed'
+
+interface NativeProbeResult {
+  bridgeVersion: string
+  abi: string
+  freeRdpVersion: string
+  freeRdpLinked: boolean
+  logs: string[]
+}
+
+interface NativeCommandResult {
+  ok: boolean
+  state: string
+  message: string
+  logs: string[]
+}
 
 @Entry
 @Component
@@ -12,41 +29,89 @@ struct Index {
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
+  @State private nativeProbeText: string = 'Native bridge not probed'
 
   private appendLog(line: string): void {
     this.logText = `${this.logText}\n${line}`
   }
 
-  private connectMock(): void {
+  private appendNativeLogs(lines: string[]): void {
+    for (let i = 0; i < lines.length; i++) {
+      this.appendLog(lines[i])
+    }
+  }
+
+  aboutToAppear(): void {
+    this.probeNative()
+  }
+
+  private probeNative(): void {
+    try {
+      const result: NativeProbeResult = rdpNative.probe()
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion}`
+      this.appendNativeLogs(result.logs)
+    } catch (error) {
+      this.nativeProbeText = 'Native bridge probe failed'
+      this.appendLog(`Native probe failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connectionState = 'Idle'
       this.appendLog('Missing host, username, or password')
       return
     }
-    this.connectionState = 'Resolving'
-    this.appendLog(`Connecting to ${this.host}:${this.port}`)
-    setTimeout(() => {
-      this.connectionState = 'TCP connected'
-      this.appendLog('TCP connected')
-    }, 300)
-    setTimeout(() => {
-      this.connectionState = 'Negotiating'
-      this.appendLog('RDP negotiating')
-    }, 600)
-    setTimeout(() => {
-      this.connectionState = 'Authenticating'
-      this.appendLog('Authenticating')
-    }, 900)
-    setTimeout(() => {
-      this.connectionState = 'Connected'
-      this.currentTab = 'session'
-      this.appendLog('Connected (mock)')
-    }, 1200)
+
+    try {
+      this.connectionState = 'Resolving'
+      this.appendLog(`Calling native connect for ${this.host}:${this.port}`)
+      const result: NativeCommandResult = rdpNative.connect({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        resolution: this.resolution,
+        certPolicy: this.certPolicy
+      })
+      this.connectionState = this.toConnectionState(result.state)
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+      if (result.ok) {
+        this.currentTab = 'session'
+      }
+    } catch (error) {
+      this.connectionState = 'Failed'
+      this.appendLog(`Native connect failed: ${JSON.stringify(error)}`)
+    }
   }
 
-  private disconnectMock(): void {
-    this.connectionState = 'Disconnected'
-    this.appendLog('Disconnected')
+  private disconnectNative(): void {
+    try {
+      const result: NativeCommandResult = rdpNative.disconnect()
+      this.connectionState = this.toConnectionState(result.state)
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+    } catch (error) {
+      this.connectionState = 'Failed'
+      this.appendLog(`Native disconnect failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private toConnectionState(value: string): ConnectionState {
+    if (value === 'Bridge ready') {
+      return 'Bridge ready'
+    }
+    if (value === 'Disconnected') {
+      return 'Disconnected'
+    }
+    if (value === 'Failed') {
+      return 'Failed'
+    }
+    if (value === 'Connected') {
+      return 'Connected'
+    }
+    return 'Idle'
   }
 
   @Builder
@@ -110,14 +175,30 @@ struct Index {
           this.certPolicy = value
         })
 
-        Button('Mock Connect')
+        Button('Native Probe')
+          .height(40)
+          .width('100%')
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
+          .margin({ bottom: 10 })
+          .onClick(() => {
+            this.probeNative()
+          })
+
+        Button('Connect')
           .height(44)
           .width('100%')
           .backgroundColor('#0A84FF')
           .fontColor(Color.White)
           .onClick(() => {
-            this.connectMock()
+            this.connectNative()
           })
+
+        Text(this.nativeProbeText)
+          .fontSize(13)
+          .fontColor('#475467')
+          .width('100%')
+          .margin({ top: 14 })
 
         Text(`State: ${this.connectionState}`)
           .fontSize(14)
@@ -153,7 +234,7 @@ struct Index {
           .backgroundColor('#D92D20')
           .fontColor(Color.White)
           .onClick(() => {
-            this.disconnectMock()
+            this.disconnectNative()
           })
       }
       .width('100%')
@@ -205,7 +286,11 @@ struct Index {
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })
-        Text('RDP negotiation: pending native bridge')
+        Text(`Native bridge: ${this.nativeProbeText}`)
+          .fontSize(15)
+          .width('100%')
+          .margin({ bottom: 8 })
+        Text('RDP negotiation: pending FreeRDP link')
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })

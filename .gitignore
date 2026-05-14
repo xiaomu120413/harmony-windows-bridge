@@ -11,6 +11,7 @@ tools/hapsigner/output/
 tools/hapsigner/stage-*/
 
 # HarmonyOS local build output
+.hvigor/
 harmony/app/.hvigor/
 harmony/app/oh_modules/
 harmony/app/**/build/
