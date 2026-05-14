@@ -4,6 +4,11 @@ This repository intentionally excludes generated and downloaded artifacts:
 
 - `tools/vcpkg/`
 - `tools/freerdp/*.exe`
+- `harmony/app/.hvigor/`
+- `harmony/app/oh_modules/`
+- `harmony/app/**/build/`
+- `harmony/app/**/*.hap`
+- `harmony/app/tmp/`
 - `native/freerdp-bridge/build/`
 - `config.local.json`
 - `app-server*.log`

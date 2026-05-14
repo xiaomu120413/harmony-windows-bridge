@@ -1,0 +1,244 @@
+type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Disconnected'
+
+@Entry
+@Component
+struct MainPage {
+  @State private host: string = ''
+  @State private port: string = '3389'
+  @State private username: string = ''
+  @State private password: string = ''
+  @State private resolution: string = '1280x720'
+  @State private certPolicy: string = 'tofu'
+  @State private currentTab: string = 'connect'
+  @State private connectionState: ConnectionState = 'Idle'
+  @State private logText: string = 'Ready'
+
+  private appendLog(line: string): void {
+    this.logText = `${this.logText}\n${line}`
+  }
+
+  private connectMock(): void {
+    if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
+      this.connectionState = 'Idle'
+      this.appendLog('Missing host, username, or password')
+      return
+    }
+    this.connectionState = 'Resolving'
+    this.appendLog(`Connecting to ${this.host}:${this.port}`)
+    setTimeout(() => {
+      this.connectionState = 'TCP connected'
+      this.appendLog('TCP connected')
+    }, 300)
+    setTimeout(() => {
+      this.connectionState = 'Negotiating'
+      this.appendLog('RDP negotiating')
+    }, 600)
+    setTimeout(() => {
+      this.connectionState = 'Authenticating'
+      this.appendLog('Authenticating')
+    }, 900)
+    setTimeout(() => {
+      this.connectionState = 'Connected'
+      this.currentTab = 'session'
+      this.appendLog('Connected (mock)')
+    }, 1200)
+  }
+
+  private disconnectMock(): void {
+    this.connectionState = 'Disconnected'
+    this.appendLog('Disconnected')
+  }
+
+  @Builder
+  private buildTabs() {
+    Row() {
+      this.tabButton('connect', 'Connect')
+      this.tabButton('session', 'Session')
+      this.tabButton('diagnostics', 'Diagnostics')
+    }
+    .height(48)
+    .width('100%')
+    .backgroundColor('#FFFFFF')
+    .padding({ left: 16, right: 16 })
+  }
+
+  @Builder
+  private tabButton(id: string, label: string) {
+    Button(label)
+      .height(36)
+      .layoutWeight(1)
+      .margin({ right: 8 })
+      .backgroundColor(this.currentTab === id ? '#0A84FF' : '#E8EEF7')
+      .fontColor(this.currentTab === id ? Color.White : '#1D2433')
+      .onClick(() => {
+        this.currentTab = id
+      })
+  }
+
+  @Builder
+  private buildConnectPage() {
+    Scroll() {
+      Column() {
+        Text('FreeRDP HarmonyOS')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#101828')
+          .width('100%')
+          .margin({ bottom: 18 })
+
+        this.inputField('Windows host', this.host, (value: string) => {
+          this.host = value
+        })
+        this.inputField('Port', this.port, (value: string) => {
+          this.port = value
+        })
+        this.inputField('Username', this.username, (value: string) => {
+          this.username = value
+        })
+        TextInput({ placeholder: 'Password', text: this.password })
+          .type(InputType.Password)
+          .height(44)
+          .width('100%')
+          .margin({ bottom: 12 })
+          .onChange((value: string) => {
+            this.password = value
+          })
+        this.inputField('Resolution', this.resolution, (value: string) => {
+          this.resolution = value
+        })
+        this.inputField('Certificate policy', this.certPolicy, (value: string) => {
+          this.certPolicy = value
+        })
+
+        Button('Mock Connect')
+          .height(44)
+          .width('100%')
+          .backgroundColor('#0A84FF')
+          .fontColor(Color.White)
+          .onClick(() => {
+            this.connectMock()
+          })
+
+        Text(`State: ${this.connectionState}`)
+          .fontSize(14)
+          .fontColor('#475467')
+          .width('100%')
+          .margin({ top: 16 })
+      }
+      .padding(20)
+    }
+    .layoutWeight(1)
+  }
+
+  @Builder
+  private inputField(label: string, value: string, onChange: (value: string) => void) {
+    TextInput({ placeholder: label, text: value })
+      .height(44)
+      .width('100%')
+      .margin({ bottom: 12 })
+      .onChange(onChange)
+  }
+
+  @Builder
+  private buildSessionPage() {
+    Column() {
+      Row() {
+        Text(this.connectionState)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#101828')
+          .layoutWeight(1)
+        Button('Disconnect')
+          .height(36)
+          .backgroundColor('#D92D20')
+          .fontColor(Color.White)
+          .onClick(() => {
+            this.disconnectMock()
+          })
+      }
+      .width('100%')
+      .height(52)
+      .padding({ left: 16, right: 16 })
+      .backgroundColor('#FFFFFF')
+
+      Stack() {
+        XComponent({
+          id: 'rdpSurface',
+          type: XComponentType.SURFACE
+        })
+          .width('100%')
+          .height('100%')
+
+        Text('Remote desktop surface')
+          .fontSize(20)
+          .fontColor('#667085')
+      }
+      .layoutWeight(1)
+      .width('100%')
+      .backgroundColor('#101828')
+
+      Row() {
+        Button('Ctrl').layoutWeight(1)
+        Button('Alt').layoutWeight(1)
+        Button('Win').layoutWeight(1)
+        Button('Esc').layoutWeight(1)
+        Button('Tab').layoutWeight(1)
+      }
+      .height(56)
+      .width('100%')
+      .padding({ left: 8, right: 8 })
+      .backgroundColor('#FFFFFF')
+    }
+    .layoutWeight(1)
+  }
+
+  @Builder
+  private buildDiagnosticsPage() {
+    Scroll() {
+      Column() {
+        Text('Diagnostics')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .width('100%')
+          .margin({ bottom: 16 })
+        Text(`TCP target: ${this.host || '-'}:${this.port}`)
+          .fontSize(15)
+          .width('100%')
+          .margin({ bottom: 8 })
+        Text('RDP negotiation: pending native bridge')
+          .fontSize(15)
+          .width('100%')
+          .margin({ bottom: 8 })
+        Text('Logs')
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .width('100%')
+          .margin({ top: 16, bottom: 8 })
+        Text(this.logText)
+          .fontSize(13)
+          .fontColor('#344054')
+          .width('100%')
+          .backgroundColor('#FFFFFF')
+          .padding(12)
+      }
+      .padding(20)
+    }
+    .layoutWeight(1)
+  }
+
+  build() {
+    Column() {
+      this.buildTabs()
+      if (this.currentTab === 'connect') {
+        this.buildConnectPage()
+      } else if (this.currentTab === 'session') {
+        this.buildSessionPage()
+      } else {
+        this.buildDiagnosticsPage()
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#F2F4F7')
+  }
+}

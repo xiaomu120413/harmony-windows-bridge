@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "HarmonyOS RDP client"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "FreeRDP client entry"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "FreeRDP"
+    }
+  ]
+}

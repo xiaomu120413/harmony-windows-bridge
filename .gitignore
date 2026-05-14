@@ -10,6 +10,13 @@ tools/hapsigner/*.hap
 tools/hapsigner/output/
 tools/hapsigner/stage-*/
 
+# HarmonyOS local build output
+harmony/app/.hvigor/
+harmony/app/oh_modules/
+harmony/app/**/build/
+harmony/app/**/*.hap
+harmony/app/tmp/
+
 # Native build output
 native/freerdp-bridge/build/
 native/freerdp-bridge/out/

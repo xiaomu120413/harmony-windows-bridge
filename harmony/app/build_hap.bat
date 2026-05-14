@@ -1,0 +1,53 @@
+@echo off
+setlocal
+set "SCRIPT_DIR=%~dp0"
+set "PROJECT_DIR=%SCRIPT_DIR:~0,-1%"
+set "HVIGORW_CMD="
+set "IDE_HOME="
+set "JAVA_BIN_DIR="
+
+if not defined IDE_HOME if defined DEVECOSTUDIO_HOME (
+  set "IDE_HOME=%DEVECOSTUDIO_HOME%"
+)
+
+if not defined IDE_HOME if exist "C:\Program Files\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat" (
+  set "IDE_HOME=C:\Program Files\Huawei\DevEco Studio"
+)
+
+if defined IDE_HOME if exist "%IDE_HOME%\jbr\bin\java.exe" (
+  set "JAVA_BIN_DIR=%IDE_HOME%\jbr\bin"
+) else if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" (
+  set "JAVA_BIN_DIR=%JAVA_HOME%\bin"
+)
+
+if not defined HVIGORW_CMD if defined IDE_HOME if exist "%IDE_HOME%\tools\hvigor\bin\hvigorw.bat" (
+  set "HVIGORW_CMD=%IDE_HOME%\tools\hvigor\bin\hvigorw.bat"
+)
+
+if defined JAVA_BIN_DIR (
+  set "PATH=%JAVA_BIN_DIR%;C:\Windows\System32;C:\Windows;%PATH%"
+)
+
+cd /d "%PROJECT_DIR%"
+
+if not defined HVIGORW_CMD (
+  echo hvigorw not found. Set DEVECOSTUDIO_HOME or install DevEco Studio.
+  endlocal
+  exit /b 1
+)
+
+call "%HVIGORW_CMD%" --no-daemon assembleHap --mode module -p product=default -p module=entry@default
+if errorlevel 1 (
+  echo hvigor assembleHap failed with exit code %ERRORLEVEL%.
+  endlocal
+  exit /b %ERRORLEVEL%
+)
+
+if not exist "entry\build\default\outputs\default\entry-default-unsigned.hap" (
+  echo Build output not found: entry\build\default\outputs\default\entry-default-unsigned.hap
+  endlocal
+  exit /b 1
+)
+
+for %%I in ("entry\build\default\outputs\default\entry-default-unsigned.hap") do echo HAP %%~fI ^| size=%%~zI ^| time=%%~tI
+endlocal

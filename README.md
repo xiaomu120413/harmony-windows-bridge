@@ -6,6 +6,7 @@
 
 - `app/`: 本地应用，浏览器界面 + Node 后端。
 - `native/freerdp-bridge/`: 链接 FreeRDP 三方库的 native bridge 骨架。
+- `harmony/`: 鸿蒙 App 工程入口，先用于构建普通权限 HAP。
 - `docs/harmonyos-porting.md`: 后续迁移到鸿蒙应用的结构说明。
 - `docs/windows-rdp-environment-setup.md`: Windows 远程桌面服务端、用户、网络、VPN/Guest Wi-Fi 排查文档。
 - `skills/windows-rdp-troubleshooting/`: 可复用的 Codex skill 草稿，用于以后排查 RDP/FreeRDP 连接问题。
@@ -61,6 +62,12 @@ native\freerdp-bridge\build\Release\freerdp_bridge.exe
 ```
 
 当前 bridge 已经链接并调用 FreeRDP 库做探测；真正的应用内画面渲染和输入回调是下一阶段 native 工作。
+
+## 鸿蒙 HAP 构建
+
+当前先按 M1 做普通权限 HAP。鸿蒙工程放在 `harmony/app/`，构建 unsigned HAP 后，再用 `tools/hapsigner/Sign-NormalApp.ps1` 签成普通应用。
+
+本地构建产物和最终 `.hap` 不提交。
 
 ## 你需要准备什么
 
