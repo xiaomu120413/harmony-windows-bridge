@@ -6,6 +6,9 @@ app-server*.log
 node_modules/
 tools/vcpkg/
 tools/freerdp/*.exe
+tools/hapsigner/*.hap
+tools/hapsigner/output/
+tools/hapsigner/stage-*/
 
 # Native build output
 native/freerdp-bridge/build/
