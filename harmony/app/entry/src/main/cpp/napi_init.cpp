@@ -1540,6 +1540,26 @@ public:
         return connected_.load();
     }
 
+    bool Resize(uint32_t width, uint32_t height, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (width < 320 || height < 200 || width > 8192 || height > 8192) {
+            message = "resize requires width 320-8192 and height 200-8192";
+            return false;
+        }
+        if (!connected_.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+
+        message = "dynamic resize is not available in this build: FreeRDP display-control channel is disabled";
+        return false;
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -2043,7 +2063,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.2");
+    SetString(env, result, "bridgeVersion", "0.6.3");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -2068,7 +2088,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, paintTestPattern, sendPointer, sendKey, sendUnicode"
+        "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, sendPointer, sendKey, sendUnicode"
     };
     if (freerdp.linked) {
         logs.push_back("FreeRDP probe library loaded");
@@ -2165,6 +2185,41 @@ napi_value PaintTestPattern(napi_env env, napi_callback_info info)
     SetString(env, result, "state", paint.ok ? "Bridge ready" : "Failed");
     SetString(env, result, "message", paint.message);
     SetNamed(env, result, "logs", MakeStringArray(env, paint.logs));
+    return result;
+}
+
+napi_value Resize(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native resize invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Disconnected");
+        SetString(env, result, "message", "resize requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    const uint32_t width = GetUint32Property(env, arg, "width");
+    const uint32_t height = GetUint32Property(env, arg, "height");
+    logs.push_back("size=" + std::to_string(width) + "x" + std::to_string(height));
+
+    std::string message;
+    const bool ok = g_session.Resize(width, height, message);
+    g_events.log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
 }
 
@@ -2314,6 +2369,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"resize", nullptr, Resize, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"paintTestPattern", nullptr, PaintTestPattern, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},

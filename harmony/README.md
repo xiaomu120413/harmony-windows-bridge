@@ -27,6 +27,7 @@ Current milestone:
 - M6.6 adds native Unicode keyboard input and a Session page soft text entry control.
 - M6.7 exposes the native FreeRDP desktop size through `probe()` and uses it for pointer coordinate mapping when available.
 - M6.8 maps two-finger horizontal drags on the remote surface to RDP horizontal wheel events.
+- M6.9 adds the `resize(width, height)` N-API surface and reports that dynamic resize is blocked by the current no-channel FreeRDP build.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -38,6 +39,7 @@ Current exported calls:
 - `probe()` returns bridge version, ABI, FreeRDP, WinPR, and OpenSSL probe status.
 - `connect(params)` validates the basic connection fields, starts the native session worker, and returns the initial state.
 - `disconnect()` returns a native disconnect result.
+- `resize(input)` validates a target size and returns an explicit unsupported message until the FreeRDP display-control channel is enabled.
 - `paintTestPattern()` writes a CPU-generated test frame into the current `XComponent` surface.
 - `sendPointer(input)` sends RDP pointer, button, and wheel events when a FreeRDP session is connected.
 - `sendKey(input)` sends RDP scancode key events when a FreeRDP session is connected.
@@ -167,6 +169,13 @@ M6.8 notes:
 
 - Two-finger touch movement now tracks both axes; vertical-dominant movement sends `PTR_FLAGS_WHEEL`, horizontal-dominant movement sends `PTR_FLAGS_HWHEEL`.
 - The same 24 px threshold is used for vertical and horizontal wheel events.
+- IME composition handling and finer gesture conflict tuning are still pending.
+
+M6.9 notes:
+
+- The bridge now exports `resize({ width, height })` and the Session page has a Resize action that uses the connection form resolution.
+- The native method validates size bounds and active-session state, but returns unsupported for live resize because the current FreeRDP build has display-control channels disabled.
+- Real dynamic resolution requires enabling the FreeRDP display-control channel and wiring monitor layout PDUs in a later build step.
 - IME composition handling and finer gesture conflict tuning are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.

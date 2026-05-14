@@ -213,6 +213,24 @@ struct Index {
     }
   }
 
+  private resizeNative(): void {
+    const width = this.parseResolutionPart(0)
+    const height = this.parseResolutionPart(1)
+    if (width <= 0 || height <= 0) {
+      this.appendLog(`Invalid resolution: ${this.resolution}`)
+      return
+    }
+
+    try {
+      const result: NativeCommandResult = rdpNative.resize({ width: width, height: height })
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+      this.probeNative()
+    } catch (error) {
+      this.appendLog(`Native resize failed: ${JSON.stringify(error)}`)
+    }
+  }
+
   private isConnected(): boolean {
     return this.connectionState === 'Connected'
   }
@@ -749,6 +767,14 @@ struct Index {
           .fontColor(Color.White)
           .onClick(() => {
             this.disconnectNative()
+          })
+        Button('Resize')
+          .height(36)
+          .margin({ left: 8 })
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
+          .onClick(() => {
+            this.resizeNative()
           })
         Button('Paint')
           .height(36)
