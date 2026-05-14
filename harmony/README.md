@@ -22,6 +22,7 @@ Current milestone:
 - M6.1 wires Session page single-touch left click/drag and toolbar key strokes into the native input bridge.
 - M6.2 adds toolbar latch state for Ctrl, Alt, and Win so follow-up key strokes can be sent as combinations.
 - M6.3 maps two-finger vertical drags on the remote surface to RDP mouse wheel events.
+- M6.4 adds long-press right click and defers left-click down until click release or drag threshold.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -125,7 +126,14 @@ M6.3 notes:
 - The session `XComponent` now consumes two-finger vertical touch moves and sends `PTR_FLAGS_WHEEL` pointer events through the existing native `sendPointer()` bridge.
 - The first version uses a 24 px movement threshold and one wheel event per threshold crossing; downward finger movement is mapped to negative wheel direction.
 - If a second finger appears while a left-button drag is active, ArkTS releases the left button before starting wheel handling.
-- Long-press right click, horizontal wheel, text input, coordinate scaling, and finer gesture conflict handling are still pending.
+- Horizontal wheel, text input, coordinate scaling, and finer gesture conflict handling are still pending.
+
+M6.4 notes:
+
+- Single-touch down now starts a pending touch instead of immediately sending left-button down.
+- Releasing before the drag threshold sends a left click; moving at least 8 px starts a left-button drag from the original touch point.
+- Holding for 550 ms sends a right click and suppresses the later left click.
+- Horizontal wheel, text input, coordinate scaling, and finer gesture conflict handling are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

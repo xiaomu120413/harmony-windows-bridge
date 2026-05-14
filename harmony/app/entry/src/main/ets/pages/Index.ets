@@ -7,9 +7,12 @@ const PTR_FLAGS_WHEEL: number = 0x0200
 const PTR_FLAGS_WHEEL_NEGATIVE: number = 0x0100
 const PTR_FLAGS_DOWN: number = 0x8000
 const PTR_FLAGS_BUTTON1: number = 0x1000
+const PTR_FLAGS_BUTTON2: number = 0x2000
 const RDP_WHEEL_DELTA: number = 0x0078
 const RDP_WHEEL_DELTA_NEGATIVE: number = 0x0088
+const TOUCH_DRAG_THRESHOLD: number = 8
 const TOUCH_WHEEL_THRESHOLD: number = 24
+const LONG_PRESS_TIMEOUT_MS: number = 550
 
 const RDP_SCANCODE_ESCAPE: number = 0x01
 const RDP_SCANCODE_TAB: number = 0x0F
@@ -65,6 +68,13 @@ struct Index {
   @State private winModifierDown: boolean = false
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
+  private pendingTouchActive: boolean = false
+  private longPressTriggered: boolean = false
+  private longPressTimer: number = -1
+  private pendingTouchStartX: number = 0
+  private pendingTouchStartY: number = 0
+  private lastTouchX: number = 0
+  private lastTouchY: number = 0
   private twoFingerScrollActive: boolean = false
   private twoFingerLastY: number = 0
   private surfaceController: XComponentController = new XComponentController()
@@ -216,6 +226,18 @@ struct Index {
     this.sendPointer(flags, x, y)
   }
 
+  private sendLeftClick(x: number, y: number): void {
+    this.sendPointer(PTR_FLAGS_MOVE, x, y)
+    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y)
+    this.sendPointer(PTR_FLAGS_BUTTON1, x, y)
+  }
+
+  private sendRightClick(x: number, y: number): void {
+    this.sendPointer(PTR_FLAGS_MOVE, x, y)
+    this.sendPointer(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y)
+    this.sendPointer(PTR_FLAGS_BUTTON2, x, y)
+  }
+
   private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true): boolean {
     if (!this.isConnected()) {
       if (logDisconnected) {
@@ -287,6 +309,72 @@ struct Index {
     }
   }
 
+  private startPendingTouch(x: number, y: number): void {
+    this.cancelLongPressTimer()
+    this.pendingTouchActive = true
+    this.longPressTriggered = false
+    this.pendingTouchStartX = x
+    this.pendingTouchStartY = y
+    this.lastTouchX = x
+    this.lastTouchY = y
+    this.longPressTimer = setTimeout(() => {
+      if (!this.pendingTouchActive || this.pointerDown) {
+        return
+      }
+      this.pendingTouchActive = false
+      this.longPressTriggered = true
+      this.longPressTimer = -1
+      this.sendRightClick(this.pendingTouchStartX, this.pendingTouchStartY)
+    }, LONG_PRESS_TIMEOUT_MS)
+  }
+
+  private cancelLongPressTimer(): void {
+    if (this.longPressTimer >= 0) {
+      clearTimeout(this.longPressTimer)
+      this.longPressTimer = -1
+    }
+  }
+
+  private cancelPendingTouch(): void {
+    this.cancelLongPressTimer()
+    this.pendingTouchActive = false
+    this.longPressTriggered = false
+  }
+
+  private beginLeftDrag(x: number, y: number): void {
+    this.cancelLongPressTimer()
+    this.pendingTouchActive = false
+    this.pointerDown = true
+    this.sendPointer(PTR_FLAGS_MOVE, this.pendingTouchStartX, this.pendingTouchStartY)
+    this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, this.pendingTouchStartX,
+      this.pendingTouchStartY)
+    this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y)
+  }
+
+  private finishSingleTouch(x: number, y: number, cancelled: boolean): void {
+    this.cancelLongPressTimer()
+
+    if (this.longPressTriggered) {
+      this.pendingTouchActive = false
+      this.longPressTriggered = false
+      this.pointerDown = false
+      return
+    }
+
+    if (this.pendingTouchActive) {
+      this.pendingTouchActive = false
+      if (!cancelled) {
+        this.sendLeftClick(x, y)
+      }
+      return
+    }
+
+    if (this.pointerDown) {
+      this.pointerDown = false
+      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y)
+    }
+  }
+
   private handleSurfaceTouch(event: TouchEvent): void {
     if (this.twoFingerScrollActive && event.touches.length < 2) {
       this.twoFingerScrollActive = false
@@ -298,28 +386,43 @@ struct Index {
     }
 
     if (event.touches.length < 1) {
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.finishSingleTouch(this.lastTouchX, this.lastTouchY, event.type === TouchType.Cancel)
+      }
       return
     }
 
     const touch = event.touches[0]
     const x = touch.x
     const y = touch.y
+    this.lastTouchX = x
+    this.lastTouchY = y
 
     if (event.type === TouchType.Down) {
-      this.pointerDown = true
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y)
+      this.startPendingTouch(x, y)
       return
     }
 
     if (event.type === TouchType.Move) {
-      const flags = this.pointerDown ? PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN : PTR_FLAGS_MOVE
-      this.sendPointer(flags, x, y)
+      if (this.pendingTouchActive) {
+        const dx = x - this.pendingTouchStartX
+        const dy = y - this.pendingTouchStartY
+        if (Math.abs(dx) >= TOUCH_DRAG_THRESHOLD || Math.abs(dy) >= TOUCH_DRAG_THRESHOLD) {
+          this.beginLeftDrag(x, y)
+        }
+        return
+      }
+
+      if (this.pointerDown) {
+        this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y)
+      } else {
+        this.sendPointer(PTR_FLAGS_MOVE, x, y)
+      }
       return
     }
 
     if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-      this.pointerDown = false
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y)
+      this.finishSingleTouch(x, y, event.type === TouchType.Cancel)
     }
   }
 
@@ -332,6 +435,10 @@ struct Index {
     const secondTouch = event.touches[1]
     const centerX = (firstTouch.x + secondTouch.x) / 2
     const centerY = (firstTouch.y + secondTouch.y) / 2
+
+    if (this.pendingTouchActive || this.longPressTriggered) {
+      this.cancelPendingTouch()
+    }
 
     if (this.pointerDown) {
       this.pointerDown = false
