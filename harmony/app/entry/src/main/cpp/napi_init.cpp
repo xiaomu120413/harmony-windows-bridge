@@ -8,6 +8,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <functional>
 #include <iomanip>
 #include <memory>
 #include <mutex>
@@ -26,6 +27,7 @@
 #include <freerdp/freerdp.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
+#include <winpr/synch.h>
 #endif
 
 namespace {
@@ -153,11 +155,12 @@ TcpConnectResult TestTcpConnect(const std::string& host, const std::string& port
     return {false, lastMessage};
 }
 
-struct RdpAuthResult {
+struct RdpSessionRunResult {
     bool available = false;
-    bool ok = false;
+    bool connected = false;
+    bool cancelled = false;
+    bool failed = false;
     std::string message;
-    std::vector<std::string> logs;
 };
 
 bool ParseUInt32(const std::string& value, uint32_t& result)
@@ -296,24 +299,31 @@ public:
                 return false;
             }
             handles_.push_back(handle);
+            if (std::strcmp(library, "libwinpr3.so") == 0) {
+                winprHandle_ = handle;
+            }
             if (std::strcmp(library, "libfreerdp3.so") == 0) {
                 freerdpHandle_ = handle;
             }
         }
 
-        loaded_ = LoadSymbol("freerdp_new", freerdpNew, error) &&
-            LoadSymbol("freerdp_free", freerdpFree, error) &&
-            LoadSymbol("freerdp_context_new", contextNew, error) &&
-            LoadSymbol("freerdp_context_free", contextFree, error) &&
-            LoadSymbol("freerdp_connect", connect, error) &&
-            LoadSymbol("freerdp_disconnect", disconnect, error) &&
-            LoadSymbol("freerdp_abort_connect_context", abortConnectContext, error) &&
-            LoadSymbol("freerdp_get_last_error", getLastError, error) &&
-            LoadSymbol("freerdp_get_last_error_name", getLastErrorName, error) &&
-            LoadSymbol("freerdp_get_last_error_string", getLastErrorString, error) &&
-            LoadSymbol("freerdp_settings_set_string", settingsSetString, error) &&
-            LoadSymbol("freerdp_settings_set_uint32", settingsSetUint32, error) &&
-            LoadSymbol("freerdp_settings_set_bool", settingsSetBool, error);
+        loaded_ = LoadFreerdpSymbol("freerdp_new", freerdpNew, error) &&
+            LoadFreerdpSymbol("freerdp_free", freerdpFree, error) &&
+            LoadFreerdpSymbol("freerdp_context_new", contextNew, error) &&
+            LoadFreerdpSymbol("freerdp_context_free", contextFree, error) &&
+            LoadFreerdpSymbol("freerdp_connect", connect, error) &&
+            LoadFreerdpSymbol("freerdp_disconnect", disconnect, error) &&
+            LoadFreerdpSymbol("freerdp_abort_connect_context", abortConnectContext, error) &&
+            LoadFreerdpSymbol("freerdp_shall_disconnect_context", shallDisconnectContext, error) &&
+            LoadFreerdpSymbol("freerdp_get_event_handles", getEventHandles, error) &&
+            LoadFreerdpSymbol("freerdp_check_event_handles", checkEventHandles, error) &&
+            LoadFreerdpSymbol("freerdp_get_last_error", getLastError, error) &&
+            LoadFreerdpSymbol("freerdp_get_last_error_name", getLastErrorName, error) &&
+            LoadFreerdpSymbol("freerdp_get_last_error_string", getLastErrorString, error) &&
+            LoadFreerdpSymbol("freerdp_settings_set_string", settingsSetString, error) &&
+            LoadFreerdpSymbol("freerdp_settings_set_uint32", settingsSetUint32, error) &&
+            LoadFreerdpSymbol("freerdp_settings_set_bool", settingsSetBool, error) &&
+            LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
 
@@ -324,11 +334,15 @@ public:
     using ConnectFn = BOOL (*)(freerdp*);
     using DisconnectFn = BOOL (*)(freerdp*);
     using AbortConnectContextFn = BOOL (*)(rdpContext*);
+    using ShallDisconnectContextFn = BOOL (*)(const rdpContext*);
+    using GetEventHandlesFn = DWORD (*)(rdpContext*, HANDLE*, DWORD);
+    using CheckEventHandlesFn = BOOL (*)(rdpContext*);
     using GetLastErrorFn = UINT32 (*)(const rdpContext*);
     using GetLastErrorTextFn = const char* (*)(UINT32);
     using SettingsSetStringFn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_String, const char*);
     using SettingsSetUint32Fn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_UInt32, UINT32);
     using SettingsSetBoolFn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_Bool, BOOL);
+    using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
     FreerdpFreeFn freerdpFree = nullptr;
@@ -337,27 +351,43 @@ public:
     ConnectFn connect = nullptr;
     DisconnectFn disconnect = nullptr;
     AbortConnectContextFn abortConnectContext = nullptr;
+    ShallDisconnectContextFn shallDisconnectContext = nullptr;
+    GetEventHandlesFn getEventHandles = nullptr;
+    CheckEventHandlesFn checkEventHandles = nullptr;
     GetLastErrorFn getLastError = nullptr;
     GetLastErrorTextFn getLastErrorName = nullptr;
     GetLastErrorTextFn getLastErrorString = nullptr;
     SettingsSetStringFn settingsSetString = nullptr;
     SettingsSetUint32Fn settingsSetUint32 = nullptr;
     SettingsSetBoolFn settingsSetBool = nullptr;
+    WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
     template <typename Fn>
-    bool LoadSymbol(const char* name, Fn& target, std::string& error)
+    bool LoadFreerdpSymbol(const char* name, Fn& target, std::string& error)
     {
-        if (freerdpHandle_ == nullptr) {
-            error = "libfreerdp3.so handle is not loaded";
+        return LoadSymbolFrom(freerdpHandle_, "libfreerdp3.so", name, target, error);
+    }
+
+    template <typename Fn>
+    bool LoadWinprSymbol(const char* name, Fn& target, std::string& error)
+    {
+        return LoadSymbolFrom(winprHandle_, "libwinpr3.so", name, target, error);
+    }
+
+    template <typename Fn>
+    bool LoadSymbolFrom(void* handle, const char* library, const char* name, Fn& target, std::string& error)
+    {
+        if (handle == nullptr) {
+            error = std::string(library) + " handle is not loaded";
             return false;
         }
 
         dlerror();
-        void* symbol = dlsym(freerdpHandle_, name);
+        void* symbol = dlsym(handle, name);
         const char* detail = dlerror();
         if (detail != nullptr || symbol == nullptr) {
-            error = std::string("dlsym ") + name + " failed: " +
+            error = std::string("dlsym ") + library + "!" + name + " failed: " +
                 (detail == nullptr ? "symbol not found" : detail);
             return false;
         }
@@ -367,6 +397,7 @@ private:
     }
 
     std::vector<void*> handles_;
+    void* winprHandle_ = nullptr;
     void* freerdpHandle_ = nullptr;
     bool loaded_ = false;
 };
@@ -418,19 +449,40 @@ std::string LastErrorMessage(FreerdpRuntimeApi& api, uint32_t code)
     return result;
 }
 
-RdpAuthResult RunFreerdpAuthenticationOnly(const ConnectParams& params)
+FreerdpRuntimeApi& SharedFreerdpRuntimeApi()
 {
-    RdpAuthResult result;
+    static FreerdpRuntimeApi api;
+    return api;
+}
+
+bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error)
+{
+    static std::mutex loadMutex;
+    std::lock_guard<std::mutex> lock(loadMutex);
+    return api.Load(error);
+}
+
+using FreerdpSetActiveFn = std::function<void(FreerdpRuntimeApi*, freerdp*, rdpContext*)>;
+using FreerdpClearActiveFn = std::function<void(freerdp*)>;
+using FreerdpLogFn = std::function<void(const std::string&)>;
+using FreerdpConnectedFn = std::function<void()>;
+
+RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
+    const FreerdpSetActiveFn& setActive, const FreerdpClearActiveFn& clearActive,
+    const FreerdpLogFn& log, const FreerdpConnectedFn& onConnected)
+{
+    RdpSessionRunResult result;
     result.available = true;
 
     std::string modulesPath = EnsureOpenSslModulesPath();
     if (!modulesPath.empty()) {
-        result.logs.push_back("OPENSSL_MODULES=" + modulesPath);
+        log("OPENSSL_MODULES=" + modulesPath);
     }
 
     uint32_t port = 0;
     if (!ParsePort(params.port, port)) {
         result.message = "invalid RDP port: " + params.port;
+        result.failed = true;
         return result;
     }
 
@@ -439,24 +491,25 @@ RdpAuthResult RunFreerdpAuthenticationOnly(const ConnectParams& params)
     ParseResolutionOrDefault(params.resolution, width, height);
 
     std::string error;
-    static std::mutex apiMutex;
-    static FreerdpRuntimeApi api;
-    std::lock_guard<std::mutex> apiLock(apiMutex);
-    if (!api.Load(error)) {
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
         result.available = false;
         result.message = error;
+        result.failed = true;
         return result;
     }
-    result.logs.push_back("FreeRDP runtime symbols loaded");
+    log("FreeRDP runtime symbols loaded");
 
     freerdp* instance = api.freerdpNew();
     if (instance == nullptr) {
         result.message = "freerdp_new failed";
+        result.failed = true;
         return result;
     }
 
     bool contextCreated = false;
     auto cleanup = [&]() {
+        clearActive(instance);
         if (contextCreated && instance->context != nullptr) {
             api.abortConnectContext(instance->context);
             api.disconnect(instance);
@@ -467,14 +520,17 @@ RdpAuthResult RunFreerdpAuthenticationOnly(const ConnectParams& params)
 
     if (!api.contextNew(instance)) {
         result.message = "freerdp_context_new failed";
+        result.failed = true;
         cleanup();
         return result;
     }
     contextCreated = true;
+    setActive(&api, instance, instance->context);
 
     rdpSettings* settings = instance->context == nullptr ? nullptr : instance->context->settings;
     if (settings == nullptr) {
         result.message = "FreeRDP settings unavailable";
+        result.failed = true;
         cleanup();
         return result;
     }
@@ -492,13 +548,14 @@ RdpAuthResult RunFreerdpAuthenticationOnly(const ConnectParams& params)
         !SetFreerdpUint32(api, settings, FreeRDP_TcpConnectTimeout, 5000, "TcpConnectTimeout", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_OsMajorType, OSMAJORTYPE_UNIX, "OsMajorType", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_OsMinorType, OSMINORTYPE_NATIVE_WAYLAND, "OsMinorType", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AuthenticationOnly, true, "AuthenticationOnly", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AuthenticationOnly, false, "AuthenticationOnly", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_Authentication, true, "Authentication", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_NegotiateSecurityLayer, true, "NegotiateSecurityLayer", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_CertificateCallbackPreferPEM, true, "CertificateCallbackPreferPEM", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, acceptCertificate, "IgnoreCertificate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AutoAcceptCertificate, acceptCertificate, "AutoAcceptCertificate", error)) {
         result.message = error;
+        result.failed = true;
         cleanup();
         return result;
     }
@@ -506,36 +563,93 @@ RdpAuthResult RunFreerdpAuthenticationOnly(const ConnectParams& params)
     if (!user.domain.empty() &&
         !SetFreerdpString(api, settings, FreeRDP_Domain, user.domain, "Domain", error)) {
         result.message = error;
+        result.failed = true;
         cleanup();
         return result;
     }
 
-    result.logs.push_back("FreeRDP target configured");
-    result.logs.push_back("FreeRDP mode=AuthenticationOnly");
+    log("FreeRDP target configured");
+    log("FreeRDP mode=PersistentSession");
     if (!user.domain.empty()) {
-        result.logs.push_back("FreeRDP domain parsed from username");
+        log("FreeRDP domain parsed from username");
     }
 
     BOOL rc = api.connect(instance);
     uint32_t lastError = instance->context == nullptr ? UINT32_MAX : api.getLastError(instance->context);
-    result.logs.push_back(std::string("freerdp_connect returned ") + (rc ? "true" : "false"));
+    log(std::string("freerdp_connect returned ") + (rc ? "true" : "false"));
 
-    if (lastError == FREERDP_ERROR_SUCCESS) {
-        result.ok = true;
-        result.message = "FreeRDP authentication-only succeeded";
-    } else {
-        result.message = "FreeRDP authentication-only failed: " + LastErrorMessage(api, lastError);
+    if (!running.load()) {
+        result.cancelled = true;
+        result.message = "FreeRDP connect cancelled";
+        cleanup();
+        return result;
+    }
+
+    if (!rc) {
+        result.failed = true;
+        result.message = "FreeRDP connect failed: " + LastErrorMessage(api, lastError);
+        cleanup();
+        return result;
+    }
+
+    result.connected = true;
+    result.message = "FreeRDP session connected";
+    onConnected();
+    log("FreeRDP event loop started");
+
+    while (running.load() && !api.shallDisconnectContext(instance->context)) {
+        HANDLE handles[MAXIMUM_WAIT_OBJECTS] = {};
+        DWORD count = api.getEventHandles(instance->context, handles, MAXIMUM_WAIT_OBJECTS);
+        if (count == 0) {
+            uint32_t errorCode = api.getLastError(instance->context);
+            result.failed = true;
+            result.message = "freerdp_get_event_handles failed: " + LastErrorMessage(api, errorCode);
+            break;
+        }
+
+        DWORD waitStatus = api.waitForMultipleObjects(count, handles, FALSE, 250);
+        if (!running.load()) {
+            result.cancelled = true;
+            result.message = "FreeRDP session cancelled";
+            break;
+        }
+
+        if (waitStatus == WAIT_TIMEOUT) {
+            continue;
+        }
+
+        if (waitStatus == WAIT_FAILED) {
+            result.failed = true;
+            result.message = "WaitForMultipleObjects failed: " + Hex32(static_cast<uint32_t>(waitStatus));
+            break;
+        }
+
+        if (!api.checkEventHandles(instance->context)) {
+            uint32_t errorCode = api.getLastError(instance->context);
+            if (errorCode == FREERDP_ERROR_SUCCESS) {
+                result.message = "FreeRDP event loop stopped without error";
+            } else {
+                result.failed = true;
+                result.message = "FreeRDP event loop failed: " + LastErrorMessage(api, errorCode);
+            }
+            break;
+        }
+    }
+
+    if (!result.cancelled && !result.failed && result.message == "FreeRDP session connected") {
+        result.message = "FreeRDP session ended";
     }
 
     cleanup();
     return result;
 }
 #else
-RdpAuthResult RunFreerdpAuthenticationOnly(const ConnectParams&)
+RdpSessionRunResult RunFreerdpSessionUnavailable()
 {
-    RdpAuthResult result;
+    RdpSessionRunResult result;
     result.available = false;
     result.message = "FreeRDP headers not found at build time";
+    result.failed = true;
     return result;
 }
 #endif
@@ -668,6 +782,7 @@ public:
     void Disconnect()
     {
         running_.store(false);
+        RequestNativeDisconnect();
         if (worker_.joinable()) {
             worker_.join();
         }
@@ -697,6 +812,38 @@ private:
         }
         return running_.load();
     }
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
+    {
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        activeApi_ = api;
+        activeInstance_ = instance;
+        activeContext_ = context;
+    }
+
+    void ClearActiveNative(freerdp* instance)
+    {
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeInstance_ != instance) {
+            return;
+        }
+
+        activeApi_ = nullptr;
+        activeInstance_ = nullptr;
+        activeContext_ = nullptr;
+    }
+
+    void RequestNativeDisconnect()
+    {
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeApi_ != nullptr && activeContext_ != nullptr) {
+            activeApi_->abortConnectContext(activeContext_);
+        }
+    }
+#else
+    void RequestNativeDisconnect() {}
+#endif
 
     void WorkerMain(ConnectParams params)
     {
@@ -739,7 +886,7 @@ private:
 
         EmitState("Negotiating");
         EmitLog("state=Negotiating");
-        EmitLog("starting FreeRDP authentication-only connect");
+        EmitLog("starting FreeRDP persistent connect");
         if (!SleepInterruptibly(250)) {
             EmitState("Disconnected");
             EmitLog("native worker cancelled");
@@ -748,19 +895,35 @@ private:
 
         EmitState("Authenticating");
         EmitLog("state=Authenticating");
-        RdpAuthResult auth = RunFreerdpAuthenticationOnly(params);
-        for (const auto& line : auth.logs) {
-            EmitLog(line);
-        }
+        RdpSessionRunResult session;
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        session = RunFreerdpSession(params, running_,
+            [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context) {
+                SetActiveNative(api, instance, context);
+            },
+            [this](freerdp* instance) {
+                ClearActiveNative(instance);
+            },
+            [this](const std::string& line) {
+                EmitLog(line);
+            },
+            [this]() {
+                EmitState("Connected");
+                EmitLog("state=Connected");
+                EmitLog("FreeRDP persistent session loop is active");
+            });
+#else
+        session = RunFreerdpSessionUnavailable();
+#endif
 
-        if (!running_.load()) {
+        if (session.cancelled || !running_.load()) {
             EmitState("Disconnected");
             EmitLog("native worker cancelled");
             return;
         }
 
-        if (!auth.ok) {
-            std::string message = auth.available ? auth.message : "FreeRDP runtime unavailable: " + auth.message;
+        if (session.failed) {
+            std::string message = session.available ? session.message : "FreeRDP runtime unavailable: " + session.message;
             EmitState("Failed");
             EmitLog(message);
             g_events.error.Emit(message);
@@ -768,13 +931,19 @@ private:
             return;
         }
 
-        EmitState("Connected");
-        EmitLog(auth.message);
-        EmitLog("M4.3 FreeRDP authentication-only path verified; persistent session loop starts in the next step");
+        EmitState("Disconnected");
+        EmitLog(session.message);
+        running_.store(false);
     }
 
     std::atomic_bool running_ = false;
     std::thread worker_;
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    std::mutex activeMutex_;
+    FreerdpRuntimeApi* activeApi_ = nullptr;
+    freerdp* activeInstance_ = nullptr;
+    rdpContext* activeContext_ = nullptr;
+#endif
 };
 
 RdpSession g_session;
@@ -965,7 +1134,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.4.0");
+    SetString(env, result, "bridgeVersion", "0.4.1");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);

@@ -11,8 +11,9 @@ Current milestone:
 - `probe()` dynamically loads the local FreeRDP probe library when runtime `.so` files have been synced from `harmony/out/`.
 - M4.1 has a native session worker and cross-thread state/log/error callbacks.
 - M4.2 performs a real TCP reachability check from the native worker.
-- M4.3 dynamically loads FreeRDP at runtime and runs `freerdp_connect` in authentication-only mode after TCP succeeds.
-- A persistent connected session loop is still pending before M5 rendering.
+- M4.3 dynamically loads FreeRDP at runtime and verifies the authentication-only connect path after TCP succeeds.
+- M4.4 disables authentication-only mode, runs a persistent FreeRDP event loop, and lets `disconnect()` abort the active native context.
+- Rendering is still pending for M5.
 
 ## Native bridge
 
@@ -35,7 +36,7 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- M4.3 verifies the FreeRDP connect/auth path in authentication-only mode; it does not keep a desktop session alive yet.
+- M4.4 can hold a connected FreeRDP session loop, but no desktop pixels are consumed or rendered yet.
 - Callback lifecycle is only smoke-tested for one connect/disconnect path; reconnect, page teardown, and app backgrounding still need stress testing.
 - The XComponent is only a placeholder until M5 rendering.
 
@@ -50,6 +51,13 @@ M4.3 notes:
 - `OPENSSL_MODULES` is set to the packaged `ossl-modules` directory before FreeRDP starts, so NTLM/NLA can use OpenSSL providers.
 - Runtime libraries are kept loaded for the process lifetime because WinPR registers thread-local destructors.
 - Tested negative path on device `3QC0124C11000711`: TCP to `35.180.139.74:3389` succeeds, FreeRDP fails cleanly with `ERRCONNECT_SECURITY_NEGO_CONNECT_FAILED`, and the app remains alive.
+
+M4.4 notes:
+
+- The worker now calls `freerdp_connect` with `FreeRDP_AuthenticationOnly=false`.
+- After connect succeeds, the worker uses `freerdp_get_event_handles`, WinPR `WaitForMultipleObjects`, and `freerdp_check_event_handles` to keep the RDP session alive.
+- `disconnect()` clears the worker running flag and calls `freerdp_abort_connect_context` on the active context so connect/wait can unwind.
+- A real Windows RDP success path still needs device-side validation with working credentials; the available automated check is currently a negative negotiation test.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

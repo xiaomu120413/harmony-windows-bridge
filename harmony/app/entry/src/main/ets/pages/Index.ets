@@ -334,7 +334,7 @@ struct Index {
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })
-        Text('RDP negotiation: FreeRDP authentication-only path')
+        Text('RDP negotiation: FreeRDP persistent session loop')
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })
