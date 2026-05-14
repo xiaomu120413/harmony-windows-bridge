@@ -55,6 +55,9 @@ struct Index {
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
   @State private nativeProbeText: string = 'Native bridge not probed'
+  @State private ctrlModifierDown: boolean = false
+  @State private altModifierDown: boolean = false
+  @State private winModifierDown: boolean = false
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
   private surfaceController: XComponentController = new XComponentController()
@@ -84,6 +87,8 @@ struct Index {
         this.connectionState = this.toConnectionState(state)
         if (state === 'Connected') {
           this.currentTab = 'session'
+        } else {
+          this.clearModifierState()
         }
       })
       rdpNative.onLog((line: string) => {
@@ -163,6 +168,7 @@ struct Index {
 
   private disconnectNative(): void {
     try {
+      this.releaseActiveModifiers()
       const result: NativeCommandResult = rdpNative.disconnect()
       this.connectionState = this.toConnectionState(result.state)
       this.appendLog(result.message)
@@ -196,23 +202,74 @@ struct Index {
     }
   }
 
-  private sendKeyStroke(scancode: number): void {
+  private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true): boolean {
     if (!this.isConnected()) {
-      this.appendLog('Key input skipped: no active FreeRDP session')
-      return
+      if (logDisconnected) {
+        this.appendLog('Key input skipped: no active FreeRDP session')
+      }
+      return false
     }
 
     try {
-      const down: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: true })
-      const up: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: false })
-      if (!down.ok) {
-        this.appendLog(down.message)
+      const result: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: down })
+      if (!result.ok) {
+        this.appendLog(result.message)
       }
-      if (!up.ok) {
-        this.appendLog(up.message)
-      }
+      return result.ok
     } catch (error) {
       this.appendLog(`Native key input failed: ${JSON.stringify(error)}`)
+      return false
+    }
+  }
+
+  private sendKeyStroke(scancode: number): void {
+    if (this.sendKeyEvent(scancode, true)) {
+      this.sendKeyEvent(scancode, false)
+    }
+  }
+
+  private clearModifierState(): void {
+    this.ctrlModifierDown = false
+    this.altModifierDown = false
+    this.winModifierDown = false
+  }
+
+  private releaseActiveModifiers(): void {
+    if (!this.isConnected()) {
+      this.clearModifierState()
+      return
+    }
+
+    if (this.winModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_LWIN, false, false)
+    }
+    if (this.altModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_LMENU, false, false)
+    }
+    if (this.ctrlModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_LCONTROL, false, false)
+    }
+    this.clearModifierState()
+  }
+
+  private toggleCtrlModifier(): void {
+    const nextDown = !this.ctrlModifierDown
+    if (this.sendKeyEvent(RDP_SCANCODE_LCONTROL, nextDown)) {
+      this.ctrlModifierDown = nextDown
+    }
+  }
+
+  private toggleAltModifier(): void {
+    const nextDown = !this.altModifierDown
+    if (this.sendKeyEvent(RDP_SCANCODE_LMENU, nextDown)) {
+      this.altModifierDown = nextDown
+    }
+  }
+
+  private toggleWinModifier(): void {
+    const nextDown = !this.winModifierDown
+    if (this.sendKeyEvent(RDP_SCANCODE_LWIN, nextDown)) {
+      this.winModifierDown = nextDown
     }
   }
 
@@ -441,26 +498,36 @@ struct Index {
       Row() {
         Button('Ctrl')
           .layoutWeight(1)
+          .backgroundColor(this.ctrlModifierDown ? '#0A84FF' : '#E8EEF7')
+          .fontColor(this.ctrlModifierDown ? Color.White : '#1D2433')
           .onClick(() => {
-            this.sendKeyStroke(RDP_SCANCODE_LCONTROL)
+            this.toggleCtrlModifier()
           })
         Button('Alt')
           .layoutWeight(1)
+          .backgroundColor(this.altModifierDown ? '#0A84FF' : '#E8EEF7')
+          .fontColor(this.altModifierDown ? Color.White : '#1D2433')
           .onClick(() => {
-            this.sendKeyStroke(RDP_SCANCODE_LMENU)
+            this.toggleAltModifier()
           })
         Button('Win')
           .layoutWeight(1)
+          .backgroundColor(this.winModifierDown ? '#0A84FF' : '#E8EEF7')
+          .fontColor(this.winModifierDown ? Color.White : '#1D2433')
           .onClick(() => {
-            this.sendKeyStroke(RDP_SCANCODE_LWIN)
+            this.toggleWinModifier()
           })
         Button('Esc')
           .layoutWeight(1)
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
           .onClick(() => {
             this.sendKeyStroke(RDP_SCANCODE_ESCAPE)
           })
         Button('Tab')
           .layoutWeight(1)
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
           .onClick(() => {
             this.sendKeyStroke(RDP_SCANCODE_TAB)
           })

@@ -20,6 +20,7 @@ Current milestone:
 - M5.5 switches to the Session tab before starting native connect and suppresses the automatic debug paint while a connection is active.
 - M6.0 exposes native `sendPointer()` and `sendKey()` bridge calls backed by FreeRDP input APIs.
 - M6.1 wires Session page single-touch left click/drag and toolbar key strokes into the native input bridge.
+- M6.2 adds toolbar latch state for Ctrl, Alt, and Win so follow-up key strokes can be sent as combinations.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -109,7 +110,14 @@ M6.1 notes:
 
 - The `XComponent` surface now handles single-touch down/move/up and maps it to RDP left-button down/drag/up pointer events.
 - The toolbar sends one key press/release for Ctrl, Alt, Win, Esc, and Tab through `sendKey()`.
-- Combination-key latch state, wheel gestures, long-press right click, text input, and coordinate scaling against a mismatched desktop resolution are still pending.
+- Wheel gestures, long-press right click, text input, and coordinate scaling against a mismatched desktop resolution are still pending.
+
+M6.2 notes:
+
+- Ctrl, Alt, and Win are now latch buttons: first tap sends key-down and marks the button active; second tap sends key-up.
+- Esc and Tab still send press/release strokes, so active modifiers can combine with them.
+- Disconnect and non-connected state callbacks clear modifier UI state; `disconnect()` also releases active modifiers before closing the native session when possible.
+- Wheel gestures, long-press right click, text input, and coordinate scaling against a mismatched desktop resolution are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 
