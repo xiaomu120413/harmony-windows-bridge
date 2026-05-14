@@ -37,11 +37,24 @@ export interface NativeCommandResult {
   logs: string[];
 }
 
+export interface NativePointerInput {
+  flags: number;
+  x: number;
+  y: number;
+}
+
+export interface NativeKeyInput {
+  scancode: number;
+  down: boolean;
+}
+
 declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: NativeConnectParams): NativeCommandResult;
   disconnect(): NativeCommandResult;
   paintTestPattern(): NativeCommandResult;
+  sendPointer(input: NativePointerInput): NativeCommandResult;
+  sendKey(input: NativeKeyInput): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

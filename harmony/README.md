@@ -18,6 +18,7 @@ Current milestone:
 - M5.3 factors the NativeWindow write path into a reusable RGBA frame renderer for future FreeRDP updates.
 - M5.4 registers FreeRDP GDI paint callbacks and routes the GDI primary framebuffer into the native RGBA renderer.
 - M5.5 switches to the Session tab before starting native connect and suppresses the automatic debug paint while a connection is active.
+- M6.0 exposes native `sendPointer()` and `sendKey()` bridge calls backed by FreeRDP input APIs.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -96,6 +97,12 @@ M5.5 notes:
 
 - The Connect action now moves the UI to the Session tab before invoking `native.connect()`, so the XComponent can be created while TCP negotiation/authentication are still in progress.
 - The XComponent `onLoad` debug paint only runs in idle/disconnected/failed states; active connection states leave the surface ready for FreeRDP frames.
+
+M6.0 notes:
+
+- The native module now dynamically loads `freerdp_input_send_mouse_event` and `freerdp_input_send_keyboard_event_ex`.
+- `sendPointer({ flags, x, y })` and `sendKey({ scancode, down })` validate that a FreeRDP session is connected before dispatching to `rdpContext::input`.
+- ArkUI gesture/key mapping is still pending; this step only proves the N-API and native input dispatch surface.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

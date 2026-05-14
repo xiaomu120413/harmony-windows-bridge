@@ -32,6 +32,7 @@
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
+#include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
 #include <freerdp/update.h>
@@ -352,6 +353,8 @@ public:
             LoadFreerdpSymbol("gdi_init", gdiInit, error) &&
             LoadFreerdpSymbol("gdi_free", gdiFree, error) &&
             LoadFreerdpSymbol("gdi_resize", gdiResize, error) &&
+            LoadFreerdpSymbol("freerdp_input_send_mouse_event", inputSendMouseEvent, error) &&
+            LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
@@ -375,6 +378,8 @@ public:
     using GdiInitFn = BOOL (*)(freerdp*, UINT32);
     using GdiFreeFn = void (*)(freerdp*);
     using GdiResizeFn = BOOL (*)(rdpGdi*, UINT32, UINT32);
+    using InputSendMouseEventFn = BOOL (*)(rdpInput*, UINT16, UINT16, UINT16);
+    using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -397,6 +402,8 @@ public:
     GdiInitFn gdiInit = nullptr;
     GdiFreeFn gdiFree = nullptr;
     GdiResizeFn gdiResize = nullptr;
+    InputSendMouseEventFn inputSendMouseEvent = nullptr;
+    InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -1481,6 +1488,7 @@ public:
         Disconnect();
 
         running_.store(true);
+        connected_.store(false);
         message = "native worker started";
         worker_ = std::thread([this, params]() {
             WorkerMain(params);
@@ -1491,10 +1499,71 @@ public:
     void Disconnect()
     {
         running_.store(false);
+        connected_.store(false);
         RequestNativeDisconnect();
         if (worker_.joinable()) {
             worker_.join();
         }
+    }
+
+    bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected_.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->input == nullptr) {
+            message = "FreeRDP input channel is not ready";
+            return false;
+        }
+        if (activeApi_->inputSendMouseEvent == nullptr) {
+            message = "FreeRDP mouse input symbol is not loaded";
+            return false;
+        }
+
+        if (!activeApi_->inputSendMouseEvent(activeContext_->input, flags, x, y)) {
+            message = "freerdp_input_send_mouse_event failed";
+            return false;
+        }
+        message = "pointer event sent";
+        return true;
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
+    bool SendKey(uint32_t rdpScancode, bool down, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected_.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->input == nullptr) {
+            message = "FreeRDP input channel is not ready";
+            return false;
+        }
+        if (activeApi_->inputSendKeyboardEventEx == nullptr) {
+            message = "FreeRDP keyboard input symbol is not loaded";
+            return false;
+        }
+
+        if (!activeApi_->inputSendKeyboardEventEx(activeContext_->input, down ? TRUE : FALSE, FALSE, rdpScancode)) {
+            message = "freerdp_input_send_keyboard_event_ex failed";
+            return false;
+        }
+        message = down ? "key down sent" : "key up sent";
+        return true;
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
     }
 
 private:
@@ -1617,6 +1686,7 @@ private:
                 EmitLog(line);
             },
             [this]() {
+                connected_.store(true);
                 EmitState("Connected");
                 EmitLog("state=Connected");
                 EmitLog("FreeRDP persistent session loop is active");
@@ -1626,6 +1696,7 @@ private:
 #endif
 
         if (session.cancelled || !running_.load()) {
+            connected_.store(false);
             EmitState("Disconnected");
             EmitLog("native worker cancelled");
             return;
@@ -1633,6 +1704,7 @@ private:
 
         if (session.failed) {
             std::string message = session.available ? session.message : "FreeRDP runtime unavailable: " + session.message;
+            connected_.store(false);
             EmitState("Failed");
             EmitLog(message);
             g_events.error.Emit(message);
@@ -1640,12 +1712,14 @@ private:
             return;
         }
 
+        connected_.store(false);
         EmitState("Disconnected");
         EmitLog(session.message);
         running_.store(false);
     }
 
     std::atomic_bool running_ = false;
+    std::atomic_bool connected_ = false;
     std::thread worker_;
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::mutex activeMutex_;
@@ -1803,6 +1877,50 @@ std::string GetStringProperty(napi_env env, napi_value object, const char* name)
     return std::string(buffer.data(), length);
 }
 
+uint32_t GetUint32Property(napi_env env, napi_value object, const char* name, uint32_t fallback = 0)
+{
+    bool hasProperty = false;
+    napi_has_named_property(env, object, name, &hasProperty);
+    if (!hasProperty) {
+        return fallback;
+    }
+
+    napi_value value = nullptr;
+    napi_get_named_property(env, object, name, &value);
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, value, &type);
+    if (type != napi_number) {
+        return fallback;
+    }
+
+    uint32_t result = fallback;
+    napi_get_value_uint32(env, value, &result);
+    return result;
+}
+
+bool GetBoolProperty(napi_env env, napi_value object, const char* name, bool fallback = false)
+{
+    bool hasProperty = false;
+    napi_has_named_property(env, object, name, &hasProperty);
+    if (!hasProperty) {
+        return fallback;
+    }
+
+    napi_value value = nullptr;
+    napi_get_named_property(env, object, name, &value);
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, value, &type);
+    if (type != napi_boolean) {
+        return fallback;
+    }
+
+    bool result = fallback;
+    napi_get_value_bool(env, value, &result);
+    return result;
+}
+
 napi_value GetFirstArgument(napi_env env, napi_callback_info info)
 {
     size_t argc = 1;
@@ -1856,7 +1974,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.5.3");
+    SetString(env, result, "bridgeVersion", "0.6.0");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -1878,7 +1996,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, paintTestPattern"
+        "Native calls are available: probe, connect, disconnect, paintTestPattern, sendPointer, sendKey"
     };
     if (freerdp.linked) {
         logs.push_back("FreeRDP probe library loaded");
@@ -1972,6 +2090,78 @@ napi_value PaintTestPattern(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value SendPointer(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native pointer input invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Disconnected");
+        SetString(env, result, "message", "pointer input requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    const uint32_t flags = GetUint32Property(env, arg, "flags");
+    const uint32_t x = GetUint32Property(env, arg, "x");
+    const uint32_t y = GetUint32Property(env, arg, "y");
+    logs.push_back("flags=" + std::to_string(flags) + " x=" + std::to_string(x) + " y=" + std::to_string(y));
+
+    std::string message;
+    const bool ok = g_session.SendPointer(static_cast<uint16_t>(flags & 0xFFFFU),
+        static_cast<uint16_t>(std::min(x, 0xFFFFU)), static_cast<uint16_t>(std::min(y, 0xFFFFU)), message);
+    g_events.log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
+napi_value SendKey(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native keyboard input invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Disconnected");
+        SetString(env, result, "message", "keyboard input requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    const uint32_t scancode = GetUint32Property(env, arg, "scancode");
+    const bool down = GetBoolProperty(env, arg, "down");
+    logs.push_back("scancode=" + std::to_string(scancode) + (down ? " down" : " up"));
+
+    std::string message;
+    const bool ok = g_session.SendKey(scancode, down, message);
+    g_events.log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name)
 {
     napi_value callback = GetFirstArgument(env, info);
@@ -2012,6 +2202,8 @@ static napi_value Init(napi_env env, napi_value exports)
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"paintTestPattern", nullptr, PaintTestPattern, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
