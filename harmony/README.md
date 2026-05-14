@@ -15,6 +15,7 @@ Current milestone:
 - M4.4 disables authentication-only mode, runs a persistent FreeRDP event loop, and lets `disconnect()` abort the active native context.
 - M5.1 registers the ArkUI `XComponent` surface with the native module and reports native surface lifecycle status.
 - M5.2 writes an RGBA test pattern into the `XComponent` NativeWindow buffer from C++.
+- M5.3 factors the NativeWindow write path into a reusable RGBA frame renderer for future FreeRDP updates.
 - Writing real FreeRDP frame updates into the surface buffer is still pending.
 
 ## Native bridge
@@ -76,6 +77,12 @@ M5.2 notes:
 - `probe()` now exposes `surfacePaintCount` and `surfaceLastPaintMessage`; the Session page calls `paintTestPattern()` when the XComponent loads and also provides a temporary Paint button for manual verification.
 - The test renderer writes the full surface every time. Dirty rect rendering, double buffering strategy, and FreeRDP-to-RGBA conversion remain future work.
 - If the Session tab is not mounted, `paintTestPattern()` returns a non-fatal failure and logs that the XComponent surface is not ready.
+
+M5.3 notes:
+
+- The surface bridge now has a `RenderRgbaFrame` path that accepts source pixels, dimensions, stride, and label, then handles native buffer mapping, row copy, RGBA/BGRA conversion, unmap, and flush.
+- `paintTestPattern()` now generates a synthetic RGBA frame and renders it through the same path that FreeRDP desktop frames will use.
+- The renderer still copies a full frame and does not scale or letterbox mismatched desktop/surface sizes yet.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

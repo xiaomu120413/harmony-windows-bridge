@@ -779,6 +779,14 @@ struct SurfacePaintResult {
     std::vector<std::string> logs;
 };
 
+struct RgbaFrame {
+    const uint8_t* data = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    int32_t strideBytes = 0;
+    std::string label;
+};
+
 std::string ReadXComponentId(OH_NativeXComponent* component)
 {
     char id[OH_XCOMPONENT_ID_LEN_MAX + 1] = {};
@@ -873,10 +881,60 @@ public:
 
     SurfacePaintResult PaintTestPattern()
     {
-        SurfacePaintResult result;
         std::lock_guard<std::mutex> lock(mutex_);
         if (!ready_ || window_ == nullptr || width_ == 0 || height_ == 0) {
+            SurfacePaintResult result;
             result.message = "XComponent surface is not ready for paint";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        std::vector<uint8_t> pixels(static_cast<size_t>(width_) * height_ * 4U);
+        const int32_t strideBytes = static_cast<int32_t>(width_ * 4U);
+        FillTestPatternRgba(pixels.data(), width_, height_, strideBytes, paintCount_ + 1);
+        RgbaFrame frame = {
+            pixels.data(),
+            width_,
+            height_,
+            strideBytes,
+            "test pattern",
+        };
+        return RenderRgbaFrameLocked(frame);
+    }
+
+    SurfacePaintResult RenderRgbaFrame(const RgbaFrame& frame)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return RenderRgbaFrameLocked(frame);
+    }
+
+    SurfaceSnapshot Snapshot()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return SnapshotLocked();
+    }
+
+private:
+    SurfacePaintResult RenderRgbaFrameLocked(const RgbaFrame& frame)
+    {
+        SurfacePaintResult result;
+        if (!ready_ || window_ == nullptr || width_ == 0 || height_ == 0) {
+            result.message = "XComponent surface is not ready for render";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+        if (frame.data == nullptr || frame.width == 0 || frame.height == 0) {
+            result.message = "RGBA frame is empty";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+        const int32_t sourceStride = frame.strideBytes > 0 ? frame.strideBytes :
+            static_cast<int32_t>(frame.width * 4U);
+        if (sourceStride < static_cast<int32_t>(frame.width * 4U)) {
+            result.message = "RGBA frame stride is invalid";
             result.logs.push_back(result.message);
             lastPaintMessage_ = result.message;
             return result;
@@ -951,8 +1009,8 @@ public:
 
         const uint32_t bufferWidth = handle->width > 0 ? static_cast<uint32_t>(handle->width) : width_;
         const uint32_t bufferHeight = handle->height > 0 ? static_cast<uint32_t>(handle->height) : height_;
-        const uint32_t drawWidth = std::min(width_, bufferWidth);
-        const uint32_t drawHeight = std::min(height_, bufferHeight);
+        const uint32_t drawWidth = std::min({width_, bufferWidth, frame.width});
+        const uint32_t drawHeight = std::min({height_, bufferHeight, frame.height});
         const int32_t rowBytes = ResolveRowBytes(*handle, drawWidth, drawHeight);
         if (drawWidth == 0 || drawHeight == 0 || rowBytes <= 0) {
             OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
@@ -1016,7 +1074,7 @@ public:
 
         BufferHandle mappedHandle = *handle;
         mappedHandle.virAddr = static_cast<uint8_t*>(mappedAddress) + mappedOffset;
-        DrawTestPattern(mappedHandle, drawWidth, drawHeight, mappedRowBytes, paintCount_ + 1);
+        CopyRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride, drawWidth, drawHeight);
         OH_NativeBuffer_Unmap(nativeBuffer);
 
         Region::Rect dirtyRect = {0, 0, drawWidth, drawHeight};
@@ -1032,23 +1090,18 @@ public:
 
         ++paintCount_;
         result.ok = true;
-        result.message = "NativeWindow test pattern painted: " + std::to_string(drawWidth) + "x" +
-            std::to_string(drawHeight);
+        const std::string frameLabel = frame.label.empty() ? "frame" : frame.label;
+        result.message = "NativeWindow RGBA frame rendered: " + frameLabel + " " +
+            std::to_string(drawWidth) + "x" + std::to_string(drawHeight);
         result.logs.push_back(result.message);
+        result.logs.push_back("RGBA source=" + std::to_string(frame.width) + "x" +
+            std::to_string(frame.height) + " stride=" + std::to_string(sourceStride));
         result.logs.push_back("NativeWindow format=" + std::to_string(handle->format) +
             " stride=" + std::to_string(handle->stride) +
             " rowBytes=" + std::to_string(mappedRowBytes));
         lastPaintMessage_ = result.message;
         return result;
     }
-
-    SurfaceSnapshot Snapshot()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return SnapshotLocked();
-    }
-
-private:
     static void CloseFence(int fenceFd)
     {
         if (fenceFd >= 0) {
@@ -1109,26 +1162,33 @@ private:
         return 0;
     }
 
-    static void WritePixel(uint8_t* pixel, int32_t format, uint8_t r, uint8_t g, uint8_t b)
+    static void WriteRgbaPixel(uint8_t* pixel, uint8_t r, uint8_t g, uint8_t b)
     {
-        if (format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 || format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888) {
-            pixel[0] = b;
-            pixel[1] = g;
-            pixel[2] = r;
-            pixel[3] = 0xFF;
-            return;
-        }
-
         pixel[0] = r;
         pixel[1] = g;
         pixel[2] = b;
         pixel[3] = 0xFF;
     }
 
-    static void DrawTestPattern(const BufferHandle& handle, uint32_t width, uint32_t height,
+    static void CopyRgbaPixelToNative(uint8_t* pixel, int32_t format, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+    {
+        if (format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 || format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888) {
+            pixel[0] = b;
+            pixel[1] = g;
+            pixel[2] = r;
+            pixel[3] = a;
+            return;
+        }
+
+        pixel[0] = r;
+        pixel[1] = g;
+        pixel[2] = b;
+        pixel[3] = a;
+    }
+
+    static void FillTestPatternRgba(uint8_t* base, uint32_t width, uint32_t height,
         int32_t rowBytes, uint32_t frameIndex)
     {
-        auto* base = static_cast<uint8_t*>(handle.virAddr);
         const uint32_t safeWidth = std::max(width, 1U);
         const uint32_t safeHeight = std::max(height, 1U);
         for (uint32_t y = 0; y < height; ++y) {
@@ -1143,7 +1203,32 @@ private:
                     g = 255;
                     b = 255;
                 }
-                WritePixel(row + x * 4, handle.format, r, g, b);
+                WriteRgbaPixel(row + x * 4, r, g, b);
+            }
+        }
+    }
+
+    static void CopyRgbaToNative(const BufferHandle& handle, int32_t rowBytes, const uint8_t* source,
+        int32_t sourceStride, uint32_t width, uint32_t height)
+    {
+        auto* target = static_cast<uint8_t*>(handle.virAddr);
+        if (handle.format == NATIVEBUFFER_PIXEL_FMT_RGBA_8888 ||
+            handle.format == NATIVEBUFFER_PIXEL_FMT_RGBX_8888) {
+            const size_t bytesPerRow = static_cast<size_t>(width) * 4U;
+            for (uint32_t y = 0; y < height; ++y) {
+                std::memcpy(target + static_cast<int64_t>(rowBytes) * y,
+                    source + static_cast<int64_t>(sourceStride) * y, bytesPerRow);
+            }
+            return;
+        }
+
+        for (uint32_t y = 0; y < height; ++y) {
+            uint8_t* targetRow = target + static_cast<int64_t>(rowBytes) * y;
+            const uint8_t* sourceRow = source + static_cast<int64_t>(sourceStride) * y;
+            for (uint32_t x = 0; x < width; ++x) {
+                const uint8_t* sourcePixel = sourceRow + x * 4;
+                CopyRgbaPixelToNative(targetRow + x * 4, handle.format, sourcePixel[0],
+                    sourcePixel[1], sourcePixel[2], sourcePixel[3]);
             }
         }
     }
@@ -1626,7 +1711,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.5.1");
+    SetString(env, result, "bridgeVersion", "0.5.2");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
