@@ -19,6 +19,7 @@ Current milestone:
 - M5.4 registers FreeRDP GDI paint callbacks and routes the GDI primary framebuffer into the native RGBA renderer.
 - M5.5 switches to the Session tab before starting native connect and suppresses the automatic debug paint while a connection is active.
 - M6.0 exposes native `sendPointer()` and `sendKey()` bridge calls backed by FreeRDP input APIs.
+- M6.1 wires Session page single-touch left click/drag and toolbar key strokes into the native input bridge.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -103,6 +104,12 @@ M6.0 notes:
 - The native module now dynamically loads `freerdp_input_send_mouse_event` and `freerdp_input_send_keyboard_event_ex`.
 - `sendPointer({ flags, x, y })` and `sendKey({ scancode, down })` validate that a FreeRDP session is connected before dispatching to `rdpContext::input`.
 - ArkUI gesture/key mapping is still pending; this step only proves the N-API and native input dispatch surface.
+
+M6.1 notes:
+
+- The `XComponent` surface now handles single-touch down/move/up and maps it to RDP left-button down/drag/up pointer events.
+- The toolbar sends one key press/release for Ctrl, Alt, Win, Esc, and Tab through `sendKey()`.
+- Combination-key latch state, wheel gestures, long-press right click, text input, and coordinate scaling against a mismatched desktop resolution are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

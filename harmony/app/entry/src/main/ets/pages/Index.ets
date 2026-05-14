@@ -2,6 +2,16 @@ import rdpNative from 'libentry.so'
 
 type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Bridge ready' | 'Disconnected' | 'Failed'
 
+const PTR_FLAGS_MOVE: number = 0x0800
+const PTR_FLAGS_DOWN: number = 0x8000
+const PTR_FLAGS_BUTTON1: number = 0x1000
+
+const RDP_SCANCODE_ESCAPE: number = 0x01
+const RDP_SCANCODE_TAB: number = 0x0F
+const RDP_SCANCODE_LCONTROL: number = 0x1D
+const RDP_SCANCODE_LMENU: number = 0x38
+const RDP_SCANCODE_LWIN: number = 0x015B
+
 interface NativeProbeResult {
   bridgeVersion: string
   abi: string
@@ -46,6 +56,7 @@ struct Index {
   @State private logText: string = 'Ready'
   @State private nativeProbeText: string = 'Native bridge not probed'
   private callbacksRegistered: boolean = false
+  private pointerDown: boolean = false
   private surfaceController: XComponentController = new XComponentController()
 
   private appendLog(line: string): void {
@@ -159,6 +170,76 @@ struct Index {
     } catch (error) {
       this.connectionState = 'Failed'
       this.appendLog(`Native disconnect failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private isConnected(): boolean {
+    return this.connectionState === 'Connected'
+  }
+
+  private sendPointer(flags: number, x: number, y: number): void {
+    if (!this.isConnected()) {
+      return
+    }
+
+    try {
+      const result: NativeCommandResult = rdpNative.sendPointer({
+        flags: flags,
+        x: Math.max(0, Math.round(x)),
+        y: Math.max(0, Math.round(y))
+      })
+      if (!result.ok) {
+        this.appendLog(result.message)
+      }
+    } catch (error) {
+      this.appendLog(`Native pointer input failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private sendKeyStroke(scancode: number): void {
+    if (!this.isConnected()) {
+      this.appendLog('Key input skipped: no active FreeRDP session')
+      return
+    }
+
+    try {
+      const down: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: true })
+      const up: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: false })
+      if (!down.ok) {
+        this.appendLog(down.message)
+      }
+      if (!up.ok) {
+        this.appendLog(up.message)
+      }
+    } catch (error) {
+      this.appendLog(`Native key input failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private handleSurfaceTouch(event: TouchEvent): void {
+    if (event.touches.length < 1) {
+      return
+    }
+
+    const touch = event.touches[0]
+    const x = touch.x
+    const y = touch.y
+
+    if (event.type === TouchType.Down) {
+      this.pointerDown = true
+      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y)
+      return
+    }
+
+    if (event.type === TouchType.Move) {
+      const flags = this.pointerDown ? PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN : PTR_FLAGS_MOVE
+      this.sendPointer(flags, x, y)
+      return
+    }
+
+    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.pointerDown = false
+      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y)
     }
   }
 
@@ -345,6 +426,9 @@ struct Index {
           .onDestroy(() => {
             this.appendLog('XComponent destroyed')
           })
+          .onTouch((event: TouchEvent) => {
+            this.handleSurfaceTouch(event)
+          })
 
         Text('Remote desktop surface')
           .fontSize(20)
@@ -355,11 +439,31 @@ struct Index {
       .backgroundColor('#101828')
 
       Row() {
-        Button('Ctrl').layoutWeight(1)
-        Button('Alt').layoutWeight(1)
-        Button('Win').layoutWeight(1)
-        Button('Esc').layoutWeight(1)
-        Button('Tab').layoutWeight(1)
+        Button('Ctrl')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.sendKeyStroke(RDP_SCANCODE_LCONTROL)
+          })
+        Button('Alt')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.sendKeyStroke(RDP_SCANCODE_LMENU)
+          })
+        Button('Win')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.sendKeyStroke(RDP_SCANCODE_LWIN)
+          })
+        Button('Esc')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.sendKeyStroke(RDP_SCANCODE_ESCAPE)
+          })
+        Button('Tab')
+          .layoutWeight(1)
+          .onClick(() => {
+            this.sendKeyStroke(RDP_SCANCODE_TAB)
+          })
       }
       .height(56)
       .width('100%')
