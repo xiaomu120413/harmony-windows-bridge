@@ -1,6 +1,6 @@
 # FreeRDP remote-control demo
 
-这个 demo 用 FreeRDP 从一台控制端机器连接到另一台目标机器的 RDP 桌面。现在包含一个本地 Web 应用入口，并新增了 FreeRDP library/native bridge 集成骨架。
+这个仓库是统一仓库：包含 FreeRDP/RDP 控制端 demo、FreeRDP library/native bridge 骨架、Windows RDP 环境排查文档，以及可复用的 Codex troubleshooting skill。
 
 ## 目录
 
