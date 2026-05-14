@@ -13,7 +13,8 @@ Current milestone:
 - M4.2 performs a real TCP reachability check from the native worker.
 - M4.3 dynamically loads FreeRDP at runtime and verifies the authentication-only connect path after TCP succeeds.
 - M4.4 disables authentication-only mode, runs a persistent FreeRDP event loop, and lets `disconnect()` abort the active native context.
-- Rendering is still pending for M5.
+- M5.1 registers the ArkUI `XComponent` surface with the native module and reports native surface lifecycle status.
+- Writing FreeRDP frames into the surface buffer is still pending.
 
 ## Native bridge
 
@@ -36,9 +37,9 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- M4.4 can hold a connected FreeRDP session loop, but no desktop pixels are consumed or rendered yet.
+- M4.4 can hold a connected FreeRDP session loop, but FreeRDP desktop pixels are not rendered yet.
+- M5.1 only verifies the `XComponent` to native surface bridge; NativeWindow buffer writes start in the next rendering step.
 - Callback lifecycle is only smoke-tested for one connect/disconnect path; reconnect, page teardown, and app backgrounding still need stress testing.
-- The XComponent is only a placeholder until M5 rendering.
 
 M4.2 notes:
 
@@ -58,6 +59,14 @@ M4.4 notes:
 - After connect succeeds, the worker uses `freerdp_get_event_handles`, WinPR `WaitForMultipleObjects`, and `freerdp_check_event_handles` to keep the RDP session alive.
 - `disconnect()` clears the worker running flag and calls `freerdp_abort_connect_context` on the active context so connect/wait can unwind.
 - A real Windows RDP success path still needs device-side validation with working credentials; the available automated check is currently a negative negotiation test.
+
+M5.1 notes:
+
+- ArkUI `XComponent` now sets `libraryname: 'entry'` and uses an `XComponentController`.
+- The native module reads `OH_NATIVE_XCOMPONENT_OBJ` during N-API init and registers `OH_NativeXComponent_Callback`.
+- Native callbacks track surface created/changed/destroyed events, surface id, dimensions, and touch count.
+- `probe()` exposes the current surface status so the diagnostics page can confirm whether the native surface is ready.
+- The surface is mounted only while the Session tab is visible; switching away destroys it until the next M5 rendering step decides whether to keep it mounted.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

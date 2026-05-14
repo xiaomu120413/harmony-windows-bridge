@@ -5,6 +5,15 @@ export interface NativeProbeResult {
   winprVersion: string;
   opensslVersion: string;
   freeRdpLinked: boolean;
+  surfaceRegistered: boolean;
+  surfaceReady: boolean;
+  surfaceId: string;
+  surfaceWidth: number;
+  surfaceHeight: number;
+  surfaceCreatedCount: number;
+  surfaceChangedCount: number;
+  surfaceDestroyedCount: number;
+  surfaceTouchCount: number;
   probeJson: string;
   probeError: string;
   logs: string[];

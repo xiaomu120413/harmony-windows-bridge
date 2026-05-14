@@ -21,6 +21,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include <ace/xcomponent/native_interface_xcomponent.h>
+
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
@@ -754,6 +756,198 @@ struct SessionEventHub {
 
 SessionEventHub g_events;
 
+struct SurfaceSnapshot {
+    bool registered = false;
+    bool ready = false;
+    std::string id;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t createdCount = 0;
+    uint32_t changedCount = 0;
+    uint32_t destroyedCount = 0;
+    uint32_t touchCount = 0;
+};
+
+std::string ReadXComponentId(OH_NativeXComponent* component)
+{
+    char id[OH_XCOMPONENT_ID_LEN_MAX + 1] = {};
+    uint64_t size = sizeof(id);
+    int32_t rc = OH_NativeXComponent_GetXComponentId(component, id, &size);
+    if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS || size == 0) {
+        return "unknown";
+    }
+    return std::string(id);
+}
+
+class SurfaceBridge {
+public:
+    void Register(OH_NativeXComponent* component, bool ok)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        component_ = component;
+        registered_ = ok;
+        id_ = component == nullptr ? "" : ReadXComponentId(component);
+    }
+
+    void OnSurfaceCreated(OH_NativeXComponent* component, void* window)
+    {
+        uint64_t width = 0;
+        uint64_t height = 0;
+        OH_NativeXComponent_GetXComponentSize(component, window, &width, &height);
+
+        SurfaceSnapshot snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            component_ = component;
+            window_ = window;
+            registered_ = true;
+            ready_ = window != nullptr;
+            id_ = ReadXComponentId(component);
+            width_ = static_cast<uint32_t>(width);
+            height_ = static_cast<uint32_t>(height);
+            ++createdCount_;
+            snapshot = SnapshotLocked();
+        }
+
+        g_events.log.Emit("XComponent surface created: " + snapshot.id + " " +
+            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height));
+    }
+
+    void OnSurfaceChanged(OH_NativeXComponent* component, void* window)
+    {
+        uint64_t width = 0;
+        uint64_t height = 0;
+        OH_NativeXComponent_GetXComponentSize(component, window, &width, &height);
+
+        SurfaceSnapshot snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            component_ = component;
+            window_ = window;
+            ready_ = window != nullptr;
+            id_ = ReadXComponentId(component);
+            width_ = static_cast<uint32_t>(width);
+            height_ = static_cast<uint32_t>(height);
+            ++changedCount_;
+            snapshot = SnapshotLocked();
+        }
+
+        g_events.log.Emit("XComponent surface changed: " + snapshot.id + " " +
+            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height));
+    }
+
+    void OnSurfaceDestroyed(OH_NativeXComponent* component, void*)
+    {
+        SurfaceSnapshot snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            component_ = component;
+            window_ = nullptr;
+            ready_ = false;
+            id_ = ReadXComponentId(component);
+            width_ = 0;
+            height_ = 0;
+            ++destroyedCount_;
+            snapshot = SnapshotLocked();
+        }
+
+        g_events.log.Emit("XComponent surface destroyed: " + snapshot.id);
+    }
+
+    void OnTouchEvent()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++touchCount_;
+    }
+
+    SurfaceSnapshot Snapshot()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return SnapshotLocked();
+    }
+
+private:
+    SurfaceSnapshot SnapshotLocked() const
+    {
+        return SurfaceSnapshot{
+            registered_,
+            ready_,
+            id_.empty() ? "unknown" : id_,
+            width_,
+            height_,
+            createdCount_,
+            changedCount_,
+            destroyedCount_,
+            touchCount_,
+        };
+    }
+
+    std::mutex mutex_;
+    OH_NativeXComponent* component_ = nullptr;
+    void* window_ = nullptr;
+    bool registered_ = false;
+    bool ready_ = false;
+    std::string id_;
+    uint32_t width_ = 0;
+    uint32_t height_ = 0;
+    uint32_t createdCount_ = 0;
+    uint32_t changedCount_ = 0;
+    uint32_t destroyedCount_ = 0;
+    uint32_t touchCount_ = 0;
+};
+
+SurfaceBridge g_surface;
+
+void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
+{
+    g_surface.OnSurfaceCreated(component, window);
+}
+
+void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
+{
+    g_surface.OnSurfaceChanged(component, window);
+}
+
+void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
+{
+    g_surface.OnSurfaceDestroyed(component, window);
+}
+
+void OnXComponentTouchEvent(OH_NativeXComponent*, void*)
+{
+    g_surface.OnTouchEvent();
+}
+
+bool RegisterNativeXComponent(napi_env env, napi_value exports)
+{
+    napi_value nativeXComponentValue = nullptr;
+    napi_status status = napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &nativeXComponentValue);
+    if (status != napi_ok || nativeXComponentValue == nullptr) {
+        return false;
+    }
+
+    OH_NativeXComponent* component = nullptr;
+    status = napi_unwrap(env, nativeXComponentValue, reinterpret_cast<void**>(&component));
+    if (status != napi_ok || component == nullptr) {
+        return false;
+    }
+
+    static OH_NativeXComponent_Callback callback = {
+        OnXComponentSurfaceCreated,
+        OnXComponentSurfaceChanged,
+        OnXComponentSurfaceDestroyed,
+        OnXComponentTouchEvent,
+    };
+
+    int32_t rc = OH_NativeXComponent_RegisterCallback(component, &callback);
+    const bool ok = rc == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
+    g_surface.Register(component, ok);
+    if (ok) {
+        g_events.log.Emit("XComponent callback registered: " + ReadXComponentId(component));
+    }
+    return ok;
+}
+
 class RdpSession {
 public:
     ~RdpSession()
@@ -962,6 +1156,13 @@ napi_value MakeBool(napi_env env, bool value)
     return result;
 }
 
+napi_value MakeUint32(napi_env env, uint32_t value)
+{
+    napi_value result = nullptr;
+    napi_create_uint32(env, value, &result);
+    return result;
+}
+
 napi_value MakeObject(napi_env env)
 {
     napi_value result = nullptr;
@@ -982,6 +1183,11 @@ void SetString(napi_env env, napi_value object, const char* name, const std::str
 void SetBool(napi_env env, napi_value object, const char* name, bool value)
 {
     SetNamed(env, object, name, MakeBool(env, value));
+}
+
+void SetUint32(napi_env env, napi_value object, const char* name, uint32_t value)
+{
+    SetNamed(env, object, name, MakeUint32(env, value));
 }
 
 std::string ExtractJsonString(const std::string& json, const std::string& key)
@@ -1132,9 +1338,10 @@ std::string CurrentAbi()
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
+    SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.4.1");
+    SetString(env, result, "bridgeVersion", "0.5.0");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -1142,6 +1349,15 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetString(env, result, "probeJson", freerdp.json);
     SetString(env, result, "probeError", freerdp.error);
     SetBool(env, result, "freeRdpLinked", freerdp.linked);
+    SetBool(env, result, "surfaceRegistered", surface.registered);
+    SetBool(env, result, "surfaceReady", surface.ready);
+    SetString(env, result, "surfaceId", surface.id);
+    SetUint32(env, result, "surfaceWidth", surface.width);
+    SetUint32(env, result, "surfaceHeight", surface.height);
+    SetUint32(env, result, "surfaceCreatedCount", surface.createdCount);
+    SetUint32(env, result, "surfaceChangedCount", surface.changedCount);
+    SetUint32(env, result, "surfaceDestroyedCount", surface.destroyedCount);
+    SetUint32(env, result, "surfaceTouchCount", surface.touchCount);
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
@@ -1154,6 +1370,14 @@ napi_value Probe(napi_env env, napi_callback_info info)
         logs.push_back(freerdp.opensslVersion);
     } else {
         logs.push_back("FreeRDP probe library not loaded: " + freerdp.error);
+    }
+    if (surface.ready) {
+        logs.push_back("XComponent surface ready: " + surface.id + " " +
+            std::to_string(surface.width) + "x" + std::to_string(surface.height));
+    } else if (surface.registered) {
+        logs.push_back("XComponent callback registered; surface not created");
+    } else {
+        logs.push_back("XComponent callback not registered");
     }
     SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
@@ -1259,6 +1483,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+    RegisterNativeXComponent(env, exports);
     return exports;
 }
 EXTERN_C_END

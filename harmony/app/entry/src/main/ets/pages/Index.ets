@@ -9,6 +9,15 @@ interface NativeProbeResult {
   winprVersion: string
   opensslVersion: string
   freeRdpLinked: boolean
+  surfaceRegistered: boolean
+  surfaceReady: boolean
+  surfaceId: string
+  surfaceWidth: number
+  surfaceHeight: number
+  surfaceCreatedCount: number
+  surfaceChangedCount: number
+  surfaceDestroyedCount: number
+  surfaceTouchCount: number
   probeJson: string
   probeError: string
   logs: string[]
@@ -35,6 +44,7 @@ struct Index {
   @State private logText: string = 'Ready'
   @State private nativeProbeText: string = 'Native bridge not probed'
   private callbacksRegistered: boolean = false
+  private surfaceController: XComponentController = new XComponentController()
 
   private appendLog(line: string): void {
     this.logText = `${this.logText}\n${line}`
@@ -80,7 +90,8 @@ struct Index {
     try {
       const result: NativeProbeResult = rdpNative.probe()
       const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState}`
+      const surfaceText = result.surfaceReady ? `surface ${result.surfaceWidth}x${result.surfaceHeight}` : 'surface pending'
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText}`
       this.appendNativeLogs(result.logs)
     } catch (error) {
       this.nativeProbeText = 'Native bridge probe failed'
@@ -289,10 +300,19 @@ struct Index {
       Stack() {
         XComponent({
           id: 'rdpSurface',
-          type: XComponentType.SURFACE
+          type: XComponentType.SURFACE,
+          libraryname: 'entry',
+          controller: this.surfaceController
         })
           .width('100%')
           .height('100%')
+          .onLoad(() => {
+            this.appendLog('XComponent loaded')
+            this.probeNative()
+          })
+          .onDestroy(() => {
+            this.appendLog('XComponent destroyed')
+          })
 
         Text('Remote desktop surface')
           .fontSize(20)
