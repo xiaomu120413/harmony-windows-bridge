@@ -21,6 +21,7 @@ harmony/app/tmp/
 # Native build output
 native/freerdp-bridge/build/
 native/freerdp-bridge/out/
+harmony/out/
 
 # OS/editor
 .DS_Store
