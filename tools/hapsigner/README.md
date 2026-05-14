@@ -9,6 +9,7 @@ Required files:
 - `OpenHarmony.p12`
 - `OpenHarmonyApplication.pem`
 - `OpenHarmonyProfileDebug.pem`
+- `UnsgnedDebugProfileTemplate.json`
 - `ohos_provision_debug.p7b`
 - `material/`
 
