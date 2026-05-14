@@ -10,7 +10,8 @@ Current milestone:
 - Native `probe()`, `connect(params)`, and `disconnect()` are available.
 - `probe()` dynamically loads the local FreeRDP probe library when runtime `.so` files have been synced from `harmony/out/`.
 - M4.1 has a native session worker and cross-thread state/log/error callbacks.
-- Real FreeRDP connect/auth is still pending M4.2.
+- M4.2 performs a real TCP reachability check from the native worker before the remaining simulated RDP states.
+- Real FreeRDP connect/auth is still pending M4.3.
 
 ## Native bridge
 
@@ -31,11 +32,17 @@ M4.1 verification:
 - HAP installed and launched on device `3QC0124C11000711`.
 - The connection form started the native worker, ArkUI switched to the session page, and the page displayed `Connected` from the native state callback.
 
-M4.1 remaining issues:
+M4.1 remaining issues carried forward:
 
-- The worker still simulates the RDP state chain; no TCP socket, TLS/NLA, or FreeRDP auth is performed yet.
+- M4.2 replaces the TCP portion with a real socket check, but TLS/NLA and FreeRDP auth are still not performed.
 - Callback lifecycle is only smoke-tested for one connect/disconnect path; reconnect, page teardown, and app backgrounding still need stress testing.
 - The XComponent is only a placeholder until M5 rendering.
+
+M4.2 notes:
+
+- The module declares only `ohos.permission.INTERNET`; no signing-profile privileges are added.
+- TCP success/failure is reported through `onState`, `onLog`, and `onError`.
+- `Negotiating`, `Authenticating`, and `Connected` are still simulated after TCP succeeds until FreeRDP connect/auth is wired.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`.
 
