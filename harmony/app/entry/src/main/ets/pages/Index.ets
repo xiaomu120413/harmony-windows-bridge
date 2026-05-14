@@ -334,7 +334,7 @@ struct Index {
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })
-        Text('RDP negotiation: pending M4 connect/auth loop')
+        Text('RDP negotiation: FreeRDP authentication-only path')
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })
