@@ -2,7 +2,7 @@ type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 
 
 @Entry
 @Component
-struct MainPage {
+struct Index {
   @State private host: string = ''
   @State private port: string = '3389'
   @State private username: string = ''

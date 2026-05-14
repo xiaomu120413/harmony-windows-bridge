@@ -59,6 +59,40 @@ foreach ($path in @($UnsignedHap, $ProfileJson, $ProfileP7b, $SignedHap, $Verify
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+function New-HapArchive {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDirectory,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    if (Test-Path $DestinationPath) {
+        Remove-Item -LiteralPath $DestinationPath -Force
+    }
+
+    $sourceRoot = (Resolve-Path $SourceDirectory).Path.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $destinationStream = [IO.File]::Open($DestinationPath, [IO.FileMode]::CreateNew)
+    $archive = [IO.Compression.ZipArchive]::new($destinationStream, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | ForEach-Object {
+            $relativePath = $_.FullName.Substring($sourceRoot.Length + 1).Replace('\', '/')
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $_.FullName,
+                $relativePath,
+                [IO.Compression.CompressionLevel]::Optimal
+            ) | Out-Null
+        }
+    }
+    finally {
+        $archive.Dispose()
+        $destinationStream.Dispose()
+    }
+}
+
 [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $InputHap), $StageDir)
 
 $ModulePath = Join-Path $StageDir "module.json"
@@ -74,7 +108,7 @@ if ($ModuleJson.module.PSObject.Properties.Name -contains "extensionAbilities" -
 }
 
 $ModuleJson | ConvertTo-Json -Depth 100 -Compress | Set-Content -Path $ModulePath -Encoding UTF8
-[IO.Compression.ZipFile]::CreateFromDirectory($StageDir, $UnsignedHap)
+New-HapArchive -SourceDirectory $StageDir -DestinationPath $UnsignedHap
 
 $TemplatePath = Join-Path $ScriptRoot "UnsgnedDebugProfileTemplate.json"
 $Template = Get-Content -Raw -Encoding UTF8 $TemplatePath | ConvertFrom-Json
