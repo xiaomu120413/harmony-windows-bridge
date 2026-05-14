@@ -1,25 +1,14 @@
-# HAP signer
+# HAP signing material
 
-This directory keeps the local HAP signing toolchain used by this repo.
+This directory keeps the signing material consumed by the HarmonyOS project build.
 
-The signed HAP output is generated locally under `output/` and is intentionally ignored by git.
-Intermediate files are removed after verification.
+Signing is configured in `harmony/app/build-profile.json5` and should run through the HarmonyOS MCP `build_app` flow. Do not use a standalone signing script.
 
-## Sign as a normal app
+Required files:
 
-```powershell
-.\tools\hapsigner\Sign-NormalApp.ps1 -InputHap C:\path\to\entry-default-unsigned.hap
-```
+- `OpenHarmony.p12`
+- `OpenHarmonyApplication.pem`
+- `freerdp-normal-profile.p7b`
+- `material/`
 
-The script rewrites the input HAP metadata before signing:
-
-- removes `requestPermissions`
-- removes `EnterpriseAdminAbility`
-- signs with `apl: normal`
-- signs with `app-feature: hos_normal_app`
-
-Expected local output:
-
-```text
-tools\hapsigner\output\securitytool-normal-signed.hap
-```
+Generated HAPs and verification output remain local under `output/` and are ignored by git.

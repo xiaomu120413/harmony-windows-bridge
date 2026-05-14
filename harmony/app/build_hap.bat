@@ -43,11 +43,11 @@ if errorlevel 1 (
   exit /b %ERRORLEVEL%
 )
 
-if not exist "entry\build\default\outputs\default\entry-default-unsigned.hap" (
-  echo Build output not found: entry\build\default\outputs\default\entry-default-unsigned.hap
+if not exist "entry\build\default\outputs\default\entry-default-signed.hap" (
+  echo Build output not found: entry\build\default\outputs\default\entry-default-signed.hap
   endlocal
   exit /b 1
 )
 
-for %%I in ("entry\build\default\outputs\default\entry-default-unsigned.hap") do echo HAP %%~fI ^| size=%%~zI ^| time=%%~tI
+for %%I in ("entry\build\default\outputs\default\entry-default-signed.hap") do echo HAP %%~fI ^| size=%%~zI ^| time=%%~tI
 endlocal

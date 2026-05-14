@@ -67,7 +67,7 @@ HarmonyOS App
 - Windows 上不再尝试直接交叉编译 FreeRDP 及其依赖。
 - WSL 里必须使用 Linux 版 OpenHarmony / HarmonyOS NDK toolchain；不能直接拿 Windows 版 DevEco SDK 里的 Windows 可执行文件当作 WSL 编译器。
 - WSL 通过 `/mnt/c/Users/mu/Desktop/code/demo` 访问当前仓库，编译产物落到 `harmony/out/ohos-arm64/` 或等价本地输出目录。
-- HAP 签名仍在 Windows 侧使用 `tools/hapsigner/Sign-NormalApp.ps1`，签名产物不提交。
+- HAP 签名改为工程级 `build-profile.json5` 配置，由 HarmonyOS MCP `build_app` 在构建阶段完成；签名产物不提交。
 
 WSL 当前入口：
 

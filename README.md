@@ -65,7 +65,7 @@ native\freerdp-bridge\build\Release\freerdp_bridge.exe
 
 ## 鸿蒙 HAP 构建
 
-当前先按 M1 做普通权限 HAP。鸿蒙工程放在 `harmony/app/`，构建 unsigned HAP 后，再用 `tools/hapsigner/Sign-NormalApp.ps1` 签成普通应用。
+当前先按 M1 做普通权限 HAP。鸿蒙工程放在 `harmony/app/`，签名材料已写入 `build-profile.json5`，通过 HarmonyOS MCP 的 `build_app` / `install_app` 构建和安装。
 
 本地构建产物和最终 `.hap` 不提交。
 
