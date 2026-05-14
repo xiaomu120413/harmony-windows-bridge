@@ -26,6 +26,7 @@ Current milestone:
 - M6.5 scales touch coordinates from the XComponent surface size into the requested RDP desktop resolution.
 - M6.6 adds native Unicode keyboard input and a Session page soft text entry control.
 - M6.7 exposes the native FreeRDP desktop size through `probe()` and uses it for pointer coordinate mapping when available.
+- M6.8 maps two-finger horizontal drags on the remote surface to RDP horizontal wheel events.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -153,7 +154,7 @@ M6.6 notes:
 - The native bridge now dynamically loads `freerdp_input_send_unicode_keyboard_event` and exposes `sendUnicode({ code, down })`.
 - The Session page has a compact text entry row; tapping Send emits each BMP UTF-16 code unit as Unicode key down/up.
 - Non-BMP characters are skipped and logged because FreeRDP's Unicode keyboard event takes a `UINT16` code.
-- Horizontal wheel, IME composition handling, and finer gesture conflict handling are still pending.
+- IME composition handling and finer gesture conflict handling are still pending.
 
 M6.7 notes:
 
@@ -161,6 +162,12 @@ M6.7 notes:
 - ArkTS refreshes `probe()` when the state reaches `Connected` and prefers the native desktop size over the requested form resolution for pointer coordinate mapping.
 - If the session has not connected yet, coordinate mapping still falls back to the requested resolution.
 - Horizontal wheel, IME composition handling, and finer gesture conflict handling are still pending.
+
+M6.8 notes:
+
+- Two-finger touch movement now tracks both axes; vertical-dominant movement sends `PTR_FLAGS_WHEEL`, horizontal-dominant movement sends `PTR_FLAGS_HWHEEL`.
+- The same 24 px threshold is used for vertical and horizontal wheel events.
+- IME composition handling and finer gesture conflict tuning are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

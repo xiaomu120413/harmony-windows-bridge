@@ -3,6 +3,7 @@ import rdpNative from 'libentry.so'
 type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Bridge ready' | 'Disconnected' | 'Failed'
 
 const PTR_FLAGS_MOVE: number = 0x0800
+const PTR_FLAGS_HWHEEL: number = 0x0400
 const PTR_FLAGS_WHEEL: number = 0x0200
 const PTR_FLAGS_WHEEL_NEGATIVE: number = 0x0100
 const PTR_FLAGS_DOWN: number = 0x8000
@@ -84,6 +85,7 @@ struct Index {
   private lastTouchX: number = 0
   private lastTouchY: number = 0
   private twoFingerScrollActive: boolean = false
+  private twoFingerLastX: number = 0
   private twoFingerLastY: number = 0
   private surfaceController: XComponentController = new XComponentController()
 
@@ -284,6 +286,13 @@ struct Index {
     const flags = deltaY > 0 ?
       PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
       PTR_FLAGS_WHEEL | RDP_WHEEL_DELTA
+    this.sendPointer(flags, x, y)
+  }
+
+  private sendHorizontalWheel(deltaX: number, x: number, y: number): void {
+    const flags = deltaX > 0 ?
+      PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
+      PTR_FLAGS_HWHEEL | RDP_WHEEL_DELTA
     this.sendPointer(flags, x, y)
   }
 
@@ -563,14 +572,21 @@ struct Index {
 
     if (event.type === TouchType.Down || !this.twoFingerScrollActive) {
       this.twoFingerScrollActive = true
+      this.twoFingerLastX = centerX
       this.twoFingerLastY = centerY
       return true
     }
 
     if (event.type === TouchType.Move) {
+      const deltaX = centerX - this.twoFingerLastX
       const deltaY = centerY - this.twoFingerLastY
-      if (Math.abs(deltaY) >= TOUCH_WHEEL_THRESHOLD) {
-        this.sendWheel(deltaY, centerX, centerY)
+      if (Math.abs(deltaY) >= TOUCH_WHEEL_THRESHOLD || Math.abs(deltaX) >= TOUCH_WHEEL_THRESHOLD) {
+        if (Math.abs(deltaY) >= Math.abs(deltaX)) {
+          this.sendWheel(deltaY, centerX, centerY)
+        } else {
+          this.sendHorizontalWheel(deltaX, centerX, centerY)
+        }
+        this.twoFingerLastX = centerX
         this.twoFingerLastY = centerY
       }
       return true
