@@ -2,7 +2,11 @@ export interface NativeProbeResult {
   bridgeVersion: string;
   abi: string;
   freeRdpVersion: string;
+  winprVersion: string;
+  opensslVersion: string;
   freeRdpLinked: boolean;
+  probeJson: string;
+  probeError: string;
   logs: string[];
 }
 

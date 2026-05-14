@@ -6,7 +6,11 @@ interface NativeProbeResult {
   bridgeVersion: string
   abi: string
   freeRdpVersion: string
+  winprVersion: string
+  opensslVersion: string
   freeRdpLinked: boolean
+  probeJson: string
+  probeError: string
   logs: string[]
 }
 
@@ -48,7 +52,8 @@ struct Index {
   private probeNative(): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion}`
+      const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState}`
       this.appendNativeLogs(result.logs)
     } catch (error) {
       this.nativeProbeText = 'Native bridge probe failed'
@@ -290,7 +295,7 @@ struct Index {
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })
-        Text('RDP negotiation: pending FreeRDP link')
+        Text('RDP negotiation: pending M4 connect/auth loop')
           .fontSize(15)
           .width('100%')
           .margin({ bottom: 8 })

@@ -1,5 +1,6 @@
 #include "napi/native_api.h"
 
+#include <dlfcn.h>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,15 @@ struct ConnectParams {
     std::string username;
     std::string resolution;
     std::string certPolicy;
+};
+
+struct FreerdpProbeResult {
+    bool linked = false;
+    std::string json;
+    std::string error;
+    std::string freerdpVersion = "not-linked";
+    std::string winprVersion = "not-linked";
+    std::string opensslVersion = "not-linked";
 };
 
 napi_value MakeString(napi_env env, const std::string& value)
@@ -47,6 +57,70 @@ void SetString(napi_env env, napi_value object, const char* name, const std::str
 void SetBool(napi_env env, napi_value object, const char* name, bool value)
 {
     SetNamed(env, object, name, MakeBool(env, value));
+}
+
+std::string ExtractJsonString(const std::string& json, const std::string& key)
+{
+    const std::string marker = "\"" + key + "\":\"";
+    const size_t start = json.find(marker);
+    if (start == std::string::npos) {
+        return "";
+    }
+
+    size_t valueStart = start + marker.size();
+    std::string result;
+    for (size_t i = valueStart; i < json.size(); ++i) {
+        char c = json[i];
+        if (c == '\\' && i + 1 < json.size()) {
+            result.push_back(json[i + 1]);
+            ++i;
+            continue;
+        }
+        if (c == '"') {
+            break;
+        }
+        result.push_back(c);
+    }
+    return result;
+}
+
+FreerdpProbeResult LoadFreerdpProbe()
+{
+    FreerdpProbeResult result;
+    void* handle = dlopen("libfreerdp_ohos_probe.so", RTLD_NOW | RTLD_LOCAL);
+    if (handle == nullptr) {
+        const char* error = dlerror();
+        result.error = error == nullptr ? "dlopen failed" : error;
+        return result;
+    }
+
+    using ProbeFn = const char* (*)();
+    dlerror();
+    auto probe = reinterpret_cast<ProbeFn>(dlsym(handle, "freerdp_ohos_probe"));
+    const char* symbolError = dlerror();
+    if (symbolError != nullptr || probe == nullptr) {
+        result.error = symbolError == nullptr ? "dlsym failed" : symbolError;
+        dlclose(handle);
+        return result;
+    }
+
+    const char* json = probe();
+    result.json = json == nullptr ? "" : json;
+    result.linked = !result.json.empty();
+    result.freerdpVersion = ExtractJsonString(result.json, "freerdpVersion");
+    result.winprVersion = ExtractJsonString(result.json, "winprVersion");
+    result.opensslVersion = ExtractJsonString(result.json, "opensslVersion");
+    if (result.freerdpVersion.empty()) {
+        result.freerdpVersion = "unknown";
+    }
+    if (result.winprVersion.empty()) {
+        result.winprVersion = "unknown";
+    }
+    if (result.opensslVersion.empty()) {
+        result.opensslVersion = "unknown";
+    }
+    dlclose(handle);
+    return result;
 }
 
 napi_value MakeStringArray(napi_env env, const std::vector<std::string>& values)
@@ -123,16 +197,31 @@ std::string CurrentAbi()
 
 napi_value Probe(napi_env env, napi_callback_info info)
 {
+    FreerdpProbeResult freerdp = LoadFreerdpProbe();
+
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.2.0");
+    SetString(env, result, "bridgeVersion", "0.3.0");
     SetString(env, result, "abi", CurrentAbi());
-    SetString(env, result, "freeRdpVersion", "not-linked");
-    SetBool(env, result, "freeRdpLinked", false);
-    SetNamed(env, result, "logs", MakeStringArray(env, {
+    SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
+    SetString(env, result, "winprVersion", freerdp.winprVersion);
+    SetString(env, result, "opensslVersion", freerdp.opensslVersion);
+    SetString(env, result, "probeJson", freerdp.json);
+    SetString(env, result, "probeError", freerdp.error);
+    SetBool(env, result, "freeRdpLinked", freerdp.linked);
+
+    std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "FreeRDP dependency is pending M3 cross compile",
         "Native calls are available: probe, connect, disconnect"
-    }));
+    };
+    if (freerdp.linked) {
+        logs.push_back("FreeRDP probe library loaded");
+        logs.push_back("FreeRDP " + freerdp.freerdpVersion);
+        logs.push_back("WinPR " + freerdp.winprVersion);
+        logs.push_back(freerdp.opensslVersion);
+    } else {
+        logs.push_back("FreeRDP probe library not loaded: " + freerdp.error);
+    }
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
 }
 
@@ -155,7 +244,7 @@ napi_value Connect(napi_env env, napi_callback_info info)
     logs.push_back("username=" + params.username);
     logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
-    logs.push_back("RDP connect/auth loop will be implemented after FreeRDP is linked");
+    logs.push_back("FreeRDP probe is separate; RDP connect/auth loop starts in M4");
 
     SetBool(env, result, "ok", true);
     SetString(env, result, "state", "Bridge ready");

@@ -12,4 +12,4 @@ include_directories(${NATIVERENDER_ROOT_PATH}
 
 add_library(entry SHARED napi_init.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
-target_link_libraries(entry PUBLIC libace_napi.z.so)
+target_link_libraries(entry PUBLIC libace_napi.z.so libdl.so)

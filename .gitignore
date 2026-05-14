@@ -14,6 +14,8 @@ tools/hapsigner/stage-*/
 .hvigor/
 harmony/app/.hvigor/
 harmony/app/oh_modules/
+harmony/app/entry/libs/
+harmony/app/entry/src/main/libs/
 harmony/app/**/build/
 harmony/app/**/*.hap
 harmony/app/tmp/
