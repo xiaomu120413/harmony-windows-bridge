@@ -8,7 +8,8 @@ Required files:
 
 - `OpenHarmony.p12`
 - `OpenHarmonyApplication.pem`
-- `freerdp-normal-profile.p7b`
+- `OpenHarmonyProfileDebug.pem`
+- `ohos_provision_debug.p7b`
 - `material/`
 
 Generated HAPs and verification output remain local under `output/` and are ignored by git.

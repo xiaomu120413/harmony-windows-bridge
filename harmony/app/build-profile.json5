@@ -8,7 +8,7 @@
           "certpath": "../../tools/hapsigner/OpenHarmonyApplication.pem",
           "keyAlias": "openharmony application release",
           "keyPassword": "000000167480EFDCA360901AC59CD0CC6BE9EAEE9D5AAB8213F99DD4A091C3E78EEBAE68EC10",
-          "profile": "../../tools/hapsigner/freerdp-normal-profile.p7b",
+          "profile": "../../tools/hapsigner/ohos_provision_debug.p7b",
           "signAlg": "SHA256withECDSA",
           "storeFile": "../../tools/hapsigner/OpenHarmony.p12",
           "storePassword": "000000167480EFDCA360901AC59CD0CC6BE9EAEE9D5AAB8213F99DD4A091C3E78EEBAE68EC10"
