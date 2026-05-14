@@ -68,6 +68,7 @@ struct Index {
   @State private winModifierDown: boolean = false
   @State private surfacePixelWidth: number = 0
   @State private surfacePixelHeight: number = 0
+  @State private remoteTextInput: string = ''
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
@@ -306,6 +307,61 @@ struct Index {
     if (this.sendKeyEvent(scancode, true)) {
       this.sendKeyEvent(scancode, false)
     }
+  }
+
+  private sendUnicodeEvent(code: number, down: boolean): boolean {
+    if (!this.isConnected()) {
+      this.appendLog('Text input skipped: no active FreeRDP session')
+      return false
+    }
+
+    try {
+      const result: NativeCommandResult = rdpNative.sendUnicode({ code: code, down: down })
+      if (!result.ok) {
+        this.appendLog(result.message)
+      }
+      return result.ok
+    } catch (error) {
+      this.appendLog(`Native unicode input failed: ${JSON.stringify(error)}`)
+      return false
+    }
+  }
+
+  private sendUnicodeStroke(code: number): void {
+    if (this.sendUnicodeEvent(code, true)) {
+      this.sendUnicodeEvent(code, false)
+    }
+  }
+
+  private sendRemoteText(): void {
+    if (!this.remoteTextInput.length) {
+      return
+    }
+    if (!this.isConnected()) {
+      this.appendLog('Text input skipped: no active FreeRDP session')
+      return
+    }
+
+    for (let i = 0; i < this.remoteTextInput.length; i++) {
+      const code = this.remoteTextInput.charCodeAt(i)
+      if (code >= 0xD800 && code <= 0xDBFF) {
+        if (i + 1 < this.remoteTextInput.length) {
+          const nextCode = this.remoteTextInput.charCodeAt(i + 1)
+          if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
+            this.appendLog('Text input skipped: non-BMP character is not supported yet')
+            i++
+            continue
+          }
+        }
+      }
+      if (code >= 0xDC00 && code <= 0xDFFF) {
+        this.appendLog('Text input skipped: unmatched UTF-16 surrogate')
+        continue
+      }
+      this.sendUnicodeStroke(code)
+    }
+
+    this.remoteTextInput = ''
   }
 
   private clearModifierState(): void {
@@ -707,46 +763,71 @@ struct Index {
       .width('100%')
       .backgroundColor('#101828')
 
-      Row() {
-        Button('Ctrl')
-          .layoutWeight(1)
-          .backgroundColor(this.ctrlModifierDown ? '#0A84FF' : '#E8EEF7')
-          .fontColor(this.ctrlModifierDown ? Color.White : '#1D2433')
-          .onClick(() => {
-            this.toggleCtrlModifier()
-          })
-        Button('Alt')
-          .layoutWeight(1)
-          .backgroundColor(this.altModifierDown ? '#0A84FF' : '#E8EEF7')
-          .fontColor(this.altModifierDown ? Color.White : '#1D2433')
-          .onClick(() => {
-            this.toggleAltModifier()
-          })
-        Button('Win')
-          .layoutWeight(1)
-          .backgroundColor(this.winModifierDown ? '#0A84FF' : '#E8EEF7')
-          .fontColor(this.winModifierDown ? Color.White : '#1D2433')
-          .onClick(() => {
-            this.toggleWinModifier()
-          })
-        Button('Esc')
-          .layoutWeight(1)
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .onClick(() => {
-            this.sendKeyStroke(RDP_SCANCODE_ESCAPE)
-          })
-        Button('Tab')
-          .layoutWeight(1)
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .onClick(() => {
-            this.sendKeyStroke(RDP_SCANCODE_TAB)
-          })
+      Column() {
+        Row() {
+          Button('Ctrl')
+            .layoutWeight(1)
+            .backgroundColor(this.ctrlModifierDown ? '#0A84FF' : '#E8EEF7')
+            .fontColor(this.ctrlModifierDown ? Color.White : '#1D2433')
+            .onClick(() => {
+              this.toggleCtrlModifier()
+            })
+          Button('Alt')
+            .layoutWeight(1)
+            .backgroundColor(this.altModifierDown ? '#0A84FF' : '#E8EEF7')
+            .fontColor(this.altModifierDown ? Color.White : '#1D2433')
+            .onClick(() => {
+              this.toggleAltModifier()
+            })
+          Button('Win')
+            .layoutWeight(1)
+            .backgroundColor(this.winModifierDown ? '#0A84FF' : '#E8EEF7')
+            .fontColor(this.winModifierDown ? Color.White : '#1D2433')
+            .onClick(() => {
+              this.toggleWinModifier()
+            })
+          Button('Esc')
+            .layoutWeight(1)
+            .backgroundColor('#E8EEF7')
+            .fontColor('#1D2433')
+            .onClick(() => {
+              this.sendKeyStroke(RDP_SCANCODE_ESCAPE)
+            })
+          Button('Tab')
+            .layoutWeight(1)
+            .backgroundColor('#E8EEF7')
+            .fontColor('#1D2433')
+            .onClick(() => {
+              this.sendKeyStroke(RDP_SCANCODE_TAB)
+            })
+        }
+        .height(44)
+        .width('100%')
+
+        Row() {
+          TextInput({ placeholder: 'Text', text: this.remoteTextInput })
+            .height(40)
+            .layoutWeight(1)
+            .onChange((value: string) => {
+              this.remoteTextInput = value
+            })
+          Button('Send')
+            .height(40)
+            .width(112)
+            .margin({ left: 8 })
+            .backgroundColor('#0A84FF')
+            .fontColor(Color.White)
+            .onClick(() => {
+              this.sendRemoteText()
+            })
+        }
+        .height(48)
+        .width('100%')
+        .margin({ top: 8 })
       }
-      .height(56)
+      .height(112)
       .width('100%')
-      .padding({ left: 8, right: 8 })
+      .padding({ left: 8, right: 8, top: 8, bottom: 8 })
       .backgroundColor('#FFFFFF')
     }
     .layoutWeight(1)

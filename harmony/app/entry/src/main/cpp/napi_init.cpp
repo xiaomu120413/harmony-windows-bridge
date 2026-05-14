@@ -355,6 +355,7 @@ public:
             LoadFreerdpSymbol("gdi_resize", gdiResize, error) &&
             LoadFreerdpSymbol("freerdp_input_send_mouse_event", inputSendMouseEvent, error) &&
             LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
+            LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
@@ -380,6 +381,7 @@ public:
     using GdiResizeFn = BOOL (*)(rdpGdi*, UINT32, UINT32);
     using InputSendMouseEventFn = BOOL (*)(rdpInput*, UINT16, UINT16, UINT16);
     using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
+    using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -404,6 +406,7 @@ public:
     GdiResizeFn gdiResize = nullptr;
     InputSendMouseEventFn inputSendMouseEvent = nullptr;
     InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
+    InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -1566,6 +1569,41 @@ public:
 #endif
     }
 
+    bool SendUnicode(uint32_t code, bool down, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (code == 0 || code > 0xFFFFU) {
+            message = "unicode input requires a BMP UTF-16 code unit";
+            return false;
+        }
+        if (!connected_.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->input == nullptr) {
+            message = "FreeRDP input channel is not ready";
+            return false;
+        }
+        if (activeApi_->inputSendUnicodeKeyboardEvent == nullptr) {
+            message = "FreeRDP unicode keyboard input symbol is not loaded";
+            return false;
+        }
+
+        const UINT16 flags = down ? 0 : KBD_FLAGS_RELEASE;
+        if (!activeApi_->inputSendUnicodeKeyboardEvent(activeContext_->input, flags, static_cast<UINT16>(code))) {
+            message = "freerdp_input_send_unicode_keyboard_event failed";
+            return false;
+        }
+        message = down ? "unicode key down sent" : "unicode key up sent";
+        return true;
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
 private:
     void EmitState(const std::string& state)
     {
@@ -1974,7 +2012,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.0");
+    SetString(env, result, "bridgeVersion", "0.6.1");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -1996,7 +2034,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, paintTestPattern, sendPointer, sendKey"
+        "Native calls are available: probe, connect, disconnect, paintTestPattern, sendPointer, sendKey, sendUnicode"
     };
     if (freerdp.linked) {
         logs.push_back("FreeRDP probe library loaded");
@@ -2162,6 +2200,41 @@ napi_value SendKey(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value SendUnicode(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native unicode keyboard input invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Disconnected");
+        SetString(env, result, "message", "unicode keyboard input requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    const uint32_t code = GetUint32Property(env, arg, "code");
+    const bool down = GetBoolProperty(env, arg, "down");
+    logs.push_back("code=" + std::to_string(code) + (down ? " down" : " up"));
+
+    std::string message;
+    const bool ok = g_session.SendUnicode(code, down, message);
+    g_events.log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name)
 {
     napi_value callback = GetFirstArgument(env, info);
@@ -2204,6 +2277,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"paintTestPattern", nullptr, PaintTestPattern, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

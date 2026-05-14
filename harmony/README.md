@@ -24,6 +24,7 @@ Current milestone:
 - M6.3 maps two-finger vertical drags on the remote surface to RDP mouse wheel events.
 - M6.4 adds long-press right click and defers left-click down until click release or drag threshold.
 - M6.5 scales touch coordinates from the XComponent surface size into the requested RDP desktop resolution.
+- M6.6 adds native Unicode keyboard input and a Session page soft text entry control.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -36,6 +37,9 @@ Current exported calls:
 - `connect(params)` validates the basic connection fields, starts the native session worker, and returns the initial state.
 - `disconnect()` returns a native disconnect result.
 - `paintTestPattern()` writes a CPU-generated test frame into the current `XComponent` surface.
+- `sendPointer(input)` sends RDP pointer, button, and wheel events when a FreeRDP session is connected.
+- `sendKey(input)` sends RDP scancode key events when a FreeRDP session is connected.
+- `sendUnicode(input)` sends BMP UTF-16 Unicode keyboard events when a FreeRDP session is connected.
 - `onState(callback)` receives session states: `Resolving`, `TCP connected`, `Negotiating`, `Authenticating`, `Connected`, `Disconnected`, or `Failed`.
 - `onLog(callback)` receives native session log lines.
 - `onError(callback)` receives validation or worker errors.
@@ -141,7 +145,14 @@ M6.5 notes:
 - `probe()` surface dimensions are now stored in ArkTS and used to map touch coordinates into the connection form resolution, for example surface `2432x1077` to requested desktop `1280x720`.
 - The mapping clamps coordinates to the requested desktop bounds before calling native `sendPointer()`.
 - This is a first-pass client-side mapping; the native side still does not expose the actual negotiated desktop size after server-side adjustment.
-- Horizontal wheel, text input, actual negotiated desktop-size mapping, and finer gesture conflict handling are still pending.
+- Horizontal wheel, actual negotiated desktop-size mapping, and finer gesture conflict handling are still pending.
+
+M6.6 notes:
+
+- The native bridge now dynamically loads `freerdp_input_send_unicode_keyboard_event` and exposes `sendUnicode({ code, down })`.
+- The Session page has a compact text entry row; tapping Send emits each BMP UTF-16 code unit as Unicode key down/up.
+- Non-BMP characters are skipped and logged because FreeRDP's Unicode keyboard event takes a `UINT16` code.
+- Horizontal wheel, IME composition handling, actual negotiated desktop-size mapping, and finer gesture conflict handling are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

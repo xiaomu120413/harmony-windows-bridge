@@ -48,6 +48,11 @@ export interface NativeKeyInput {
   down: boolean;
 }
 
+export interface NativeUnicodeInput {
+  code: number;
+  down: boolean;
+}
+
 declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: NativeConnectParams): NativeCommandResult;
@@ -55,6 +60,7 @@ declare const rdpNative: {
   paintTestPattern(): NativeCommandResult;
   sendPointer(input: NativePointerInput): NativeCommandResult;
   sendKey(input: NativeKeyInput): NativeCommandResult;
+  sendUnicode(input: NativeUnicodeInput): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
