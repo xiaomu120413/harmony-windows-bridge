@@ -3,8 +3,13 @@ import rdpNative from 'libentry.so'
 type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Bridge ready' | 'Disconnected' | 'Failed'
 
 const PTR_FLAGS_MOVE: number = 0x0800
+const PTR_FLAGS_WHEEL: number = 0x0200
+const PTR_FLAGS_WHEEL_NEGATIVE: number = 0x0100
 const PTR_FLAGS_DOWN: number = 0x8000
 const PTR_FLAGS_BUTTON1: number = 0x1000
+const RDP_WHEEL_DELTA: number = 0x0078
+const RDP_WHEEL_DELTA_NEGATIVE: number = 0x0088
+const TOUCH_WHEEL_THRESHOLD: number = 24
 
 const RDP_SCANCODE_ESCAPE: number = 0x01
 const RDP_SCANCODE_TAB: number = 0x0F
@@ -60,6 +65,8 @@ struct Index {
   @State private winModifierDown: boolean = false
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
+  private twoFingerScrollActive: boolean = false
+  private twoFingerLastY: number = 0
   private surfaceController: XComponentController = new XComponentController()
 
   private appendLog(line: string): void {
@@ -202,6 +209,13 @@ struct Index {
     }
   }
 
+  private sendWheel(deltaY: number, x: number, y: number): void {
+    const flags = deltaY > 0 ?
+      PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
+      PTR_FLAGS_WHEEL | RDP_WHEEL_DELTA
+    this.sendPointer(flags, x, y)
+  }
+
   private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true): boolean {
     if (!this.isConnected()) {
       if (logDisconnected) {
@@ -274,6 +288,15 @@ struct Index {
   }
 
   private handleSurfaceTouch(event: TouchEvent): void {
+    if (this.twoFingerScrollActive && event.touches.length < 2) {
+      this.twoFingerScrollActive = false
+      return
+    }
+
+    if (this.handleTwoFingerScroll(event)) {
+      return
+    }
+
     if (event.touches.length < 1) {
       return
     }
@@ -298,6 +321,44 @@ struct Index {
       this.pointerDown = false
       this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y)
     }
+  }
+
+  private handleTwoFingerScroll(event: TouchEvent): boolean {
+    if (event.touches.length < 2) {
+      return false
+    }
+
+    const firstTouch = event.touches[0]
+    const secondTouch = event.touches[1]
+    const centerX = (firstTouch.x + secondTouch.x) / 2
+    const centerY = (firstTouch.y + secondTouch.y) / 2
+
+    if (this.pointerDown) {
+      this.pointerDown = false
+      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, firstTouch.x, firstTouch.y)
+    }
+
+    if (event.type === TouchType.Down || !this.twoFingerScrollActive) {
+      this.twoFingerScrollActive = true
+      this.twoFingerLastY = centerY
+      return true
+    }
+
+    if (event.type === TouchType.Move) {
+      const deltaY = centerY - this.twoFingerLastY
+      if (Math.abs(deltaY) >= TOUCH_WHEEL_THRESHOLD) {
+        this.sendWheel(deltaY, centerX, centerY)
+        this.twoFingerLastY = centerY
+      }
+      return true
+    }
+
+    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.twoFingerScrollActive = false
+      return true
+    }
+
+    return true
   }
 
   private toConnectionState(value: string): ConnectionState {
