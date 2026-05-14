@@ -510,6 +510,19 @@ bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error)
 }
 
 std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
+std::atomic_uint32_t g_rdpDesktopWidth{0};
+std::atomic_uint32_t g_rdpDesktopHeight{0};
+
+void SetRdpDesktopSize(uint32_t width, uint32_t height)
+{
+    g_rdpDesktopWidth.store(width);
+    g_rdpDesktopHeight.store(height);
+}
+
+void ClearRdpDesktopSize()
+{
+    SetRdpDesktopSize(0, 0);
+}
 
 BOOL HarmonyBeginPaint(rdpContext* context)
 {
@@ -583,6 +596,7 @@ BOOL HarmonyDesktopResize(rdpContext* context)
         return FALSE;
     }
 
+    SetRdpDesktopSize(width, height);
     EmitNativeLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
     return TRUE;
 }
@@ -604,6 +618,14 @@ BOOL HarmonyPostConnect(freerdp* instance)
     update->EndPaint = HarmonyEndPaint;
     update->DesktopResize = HarmonyDesktopResize;
     g_freerdpRenderedFrameCount.store(0);
+    if (instance->context->settings != nullptr) {
+        const uint32_t width = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopWidth);
+        const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);
+        if (width > 0 && height > 0) {
+            SetRdpDesktopSize(width, height);
+            EmitNativeLog("FreeRDP desktop size: " + std::to_string(width) + "x" + std::to_string(height));
+        }
+    }
     EmitNativeLog("FreeRDP GDI callbacks registered");
     return TRUE;
 }
@@ -619,6 +641,7 @@ void HarmonyPostDisconnect(freerdp* instance)
         api.gdiFree(instance);
         EmitNativeLog("FreeRDP GDI resources released");
     }
+    ClearRdpDesktopSize();
 }
 
 using FreerdpSetActiveFn = std::function<void(FreerdpRuntimeApi*, freerdp*, rdpContext*)>;
@@ -668,6 +691,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
 
     bool contextCreated = false;
     auto cleanup = [&]() {
+        ClearRdpDesktopSize();
         clearActive(instance);
         if (contextCreated && instance->context != nullptr) {
             api.abortConnectContext(instance->context);
@@ -730,6 +754,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
 
     instance->PostConnect = HarmonyPostConnect;
     instance->PostDisconnect = HarmonyPostDisconnect;
+    ClearRdpDesktopSize();
 
     log("FreeRDP target configured");
     log("FreeRDP mode=PersistentSession");
@@ -1503,10 +1528,16 @@ public:
     {
         running_.store(false);
         connected_.store(false);
+        ClearRdpDesktopSize();
         RequestNativeDisconnect();
         if (worker_.joinable()) {
             worker_.join();
         }
+    }
+
+    bool IsConnected() const
+    {
+        return connected_.load();
     }
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
@@ -2012,7 +2043,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.1");
+    SetString(env, result, "bridgeVersion", "0.6.2");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -2031,6 +2062,9 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetUint32(env, result, "surfaceTouchCount", surface.touchCount);
     SetUint32(env, result, "surfacePaintCount", surface.paintCount);
     SetString(env, result, "surfaceLastPaintMessage", surface.lastPaintMessage);
+    SetBool(env, result, "sessionConnected", g_session.IsConnected());
+    SetUint32(env, result, "desktopWidth", g_rdpDesktopWidth.load());
+    SetUint32(env, result, "desktopHeight", g_rdpDesktopHeight.load());
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
@@ -2054,6 +2088,12 @@ napi_value Probe(napi_env env, napi_callback_info info)
         logs.push_back("XComponent callback registered; surface not created");
     } else {
         logs.push_back("XComponent callback not registered");
+    }
+    const uint32_t desktopWidth = g_rdpDesktopWidth.load();
+    const uint32_t desktopHeight = g_rdpDesktopHeight.load();
+    if (desktopWidth > 0 && desktopHeight > 0) {
+        logs.push_back("FreeRDP desktop size ready: " + std::to_string(desktopWidth) + "x" +
+            std::to_string(desktopHeight));
     }
     SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;

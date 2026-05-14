@@ -38,6 +38,9 @@ interface NativeProbeResult {
   surfaceTouchCount: number
   surfacePaintCount: number
   surfaceLastPaintMessage: string
+  sessionConnected: boolean
+  desktopWidth: number
+  desktopHeight: number
   probeJson: string
   probeError: string
   logs: string[]
@@ -68,6 +71,8 @@ struct Index {
   @State private winModifierDown: boolean = false
   @State private surfacePixelWidth: number = 0
   @State private surfacePixelHeight: number = 0
+  @State private desktopPixelWidth: number = 0
+  @State private desktopPixelHeight: number = 0
   @State private remoteTextInput: string = ''
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
@@ -107,6 +112,7 @@ struct Index {
         this.connectionState = this.toConnectionState(state)
         if (state === 'Connected') {
           this.currentTab = 'session'
+          this.probeNative()
         } else {
           this.clearModifierState()
         }
@@ -129,10 +135,14 @@ struct Index {
       const result: NativeProbeResult = rdpNative.probe()
       this.surfacePixelWidth = result.surfaceWidth
       this.surfacePixelHeight = result.surfaceHeight
+      this.desktopPixelWidth = result.desktopWidth
+      this.desktopPixelHeight = result.desktopHeight
       const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
       const surfaceText = result.surfaceReady ? `surface ${result.surfaceWidth}x${result.surfaceHeight}` : 'surface pending'
+      const desktopText = result.desktopWidth > 0 && result.desktopHeight > 0 ?
+        `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${paintText}`
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${desktopText} | ${paintText}`
       this.appendNativeLogs(result.logs)
     } catch (error) {
       this.nativeProbeText = 'Native bridge probe failed'
@@ -240,10 +250,16 @@ struct Index {
   }
 
   private getRequestedDesktopWidth(): number {
+    if (this.desktopPixelWidth > 0) {
+      return this.desktopPixelWidth
+    }
     return this.parseResolutionPart(0)
   }
 
   private getRequestedDesktopHeight(): number {
+    if (this.desktopPixelHeight > 0) {
+      return this.desktopPixelHeight
+    }
     return this.parseResolutionPart(1)
   }
 

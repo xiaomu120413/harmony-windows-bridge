@@ -16,6 +16,9 @@ export interface NativeProbeResult {
   surfaceTouchCount: number;
   surfacePaintCount: number;
   surfaceLastPaintMessage: string;
+  sessionConnected: boolean;
+  desktopWidth: number;
+  desktopHeight: number;
   probeJson: string;
   probeError: string;
   logs: string[];
