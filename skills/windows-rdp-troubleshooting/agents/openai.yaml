@@ -1,0 +1,4 @@
+interface:
+  display_name: "Windows RDP Troubleshooting"
+  short_description: "Debug RDP and FreeRDP failures"
+  default_prompt: "Diagnose why Windows Remote Desktop or FreeRDP cannot connect. Check target RDP service, allowed users, firewall, LAN reachability, VPN routes, and protocol negotiation."

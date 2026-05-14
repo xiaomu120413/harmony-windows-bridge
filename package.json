@@ -1,0 +1,12 @@
+{
+  "name": "freerdp-control-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local app demo for connecting to Windows machines through FreeRDP.",
+  "scripts": {
+    "start": "node app/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

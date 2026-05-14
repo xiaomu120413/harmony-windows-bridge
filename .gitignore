@@ -1,0 +1,22 @@
+# Local runtime config and logs
+config.local.json
+app-server*.log
+
+# Dependencies and downloaded tools
+node_modules/
+tools/vcpkg/
+tools/freerdp/*.exe
+
+# Native build output
+native/freerdp-bridge/build/
+native/freerdp-bridge/out/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
