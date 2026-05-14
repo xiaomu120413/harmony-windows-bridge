@@ -9,7 +9,8 @@ Current milestone:
 - ArkTS calls into the C++ N-API bridge through `libentry.so`.
 - Native `probe()`, `connect(params)`, and `disconnect()` are available.
 - `probe()` dynamically loads the local FreeRDP probe library when runtime `.so` files have been synced from `harmony/out/`.
-- Real RDP connect/auth is still pending M4.
+- M4.1 has a native session worker and cross-thread state/log/error callbacks.
+- Real FreeRDP connect/auth is still pending M4.2.
 
 ## Native bridge
 
@@ -18,8 +19,23 @@ The entry module builds a native shared library from `entry/src/main/cpp/CMakeLi
 Current exported calls:
 
 - `probe()` returns bridge version, ABI, FreeRDP, WinPR, and OpenSSL probe status.
-- `connect(params)` validates the basic connection fields and returns native logs.
+- `connect(params)` validates the basic connection fields, starts the native session worker, and returns the initial state.
 - `disconnect()` returns a native disconnect result.
+- `onState(callback)` receives session states: `Resolving`, `TCP connected`, `Negotiating`, `Authenticating`, `Connected`, `Disconnected`, or `Failed`.
+- `onLog(callback)` receives native session log lines.
+- `onError(callback)` receives validation or worker errors.
+
+M4.1 verification:
+
+- Clean HAP build through HarmonyOS MCP succeeded.
+- HAP installed and launched on device `3QC0124C11000711`.
+- The connection form started the native worker, ArkUI switched to the session page, and the page displayed `Connected` from the native state callback.
+
+M4.1 remaining issues:
+
+- The worker still simulates the RDP state chain; no TCP socket, TLS/NLA, or FreeRDP auth is performed yet.
+- Callback lifecycle is only smoke-tested for one connect/disconnect path; reconnect, page teardown, and app backgrounding still need stress testing.
+- The XComponent is only a placeholder until M5 rendering.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`.
 

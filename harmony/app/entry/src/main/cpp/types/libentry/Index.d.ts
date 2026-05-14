@@ -30,6 +30,9 @@ declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: NativeConnectParams): NativeCommandResult;
   disconnect(): NativeCommandResult;
+  onState(callback: (state: string) => void): NativeCommandResult;
+  onLog(callback: (line: string) => void): NativeCommandResult;
+  onError(callback: (message: string) => void): NativeCommandResult;
 };
 
 export default rdpNative;

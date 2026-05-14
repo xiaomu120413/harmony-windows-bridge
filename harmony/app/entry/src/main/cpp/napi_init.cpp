@@ -1,7 +1,12 @@
 #include "napi/native_api.h"
 
+#include <atomic>
+#include <chrono>
 #include <dlfcn.h>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -22,6 +27,205 @@ struct FreerdpProbeResult {
     std::string winprVersion = "not-linked";
     std::string opensslVersion = "not-linked";
 };
+
+struct CallbackData {
+    std::string value;
+};
+
+void CallStringCallback(napi_env env, napi_value jsCallback, void* context, void* data)
+{
+    std::unique_ptr<CallbackData> callbackData(static_cast<CallbackData*>(data));
+    if (env == nullptr || jsCallback == nullptr || callbackData == nullptr) {
+        return;
+    }
+
+    napi_value undefined = nullptr;
+    napi_get_undefined(env, &undefined);
+    napi_value value = nullptr;
+    napi_create_string_utf8(env, callbackData->value.c_str(), callbackData->value.size(), &value);
+    napi_value argv[1] = {value};
+    napi_call_function(env, undefined, jsCallback, 1, argv, nullptr);
+}
+
+class EventSink {
+public:
+    ~EventSink()
+    {
+        Reset();
+    }
+
+    bool Set(napi_env env, napi_value callback, const char* name)
+    {
+        napi_valuetype type = napi_undefined;
+        napi_typeof(env, callback, &type);
+        if (type != napi_function) {
+            return false;
+        }
+
+        napi_value resourceName = nullptr;
+        napi_create_string_utf8(env, name, NAPI_AUTO_LENGTH, &resourceName);
+
+        napi_threadsafe_function next = nullptr;
+        napi_status status = napi_create_threadsafe_function(
+            env,
+            callback,
+            nullptr,
+            resourceName,
+            0,
+            1,
+            nullptr,
+            nullptr,
+            nullptr,
+            CallStringCallback,
+            &next);
+        if (status != napi_ok || next == nullptr) {
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (function_ != nullptr) {
+            napi_release_threadsafe_function(function_, napi_tsfn_abort);
+        }
+        function_ = next;
+        return true;
+    }
+
+    void Emit(const std::string& value)
+    {
+        napi_threadsafe_function current = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            current = function_;
+            if (current == nullptr) {
+                return;
+            }
+            napi_acquire_threadsafe_function(current);
+        }
+
+        auto data = new CallbackData{value};
+        napi_status status = napi_call_threadsafe_function(current, data, napi_tsfn_nonblocking);
+        if (status != napi_ok) {
+            delete data;
+        }
+        napi_release_threadsafe_function(current, napi_tsfn_release);
+    }
+
+    void Reset()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (function_ != nullptr) {
+            napi_release_threadsafe_function(function_, napi_tsfn_abort);
+            function_ = nullptr;
+        }
+    }
+
+private:
+    std::mutex mutex_;
+    napi_threadsafe_function function_ = nullptr;
+};
+
+struct SessionEventHub {
+    EventSink state;
+    EventSink log;
+    EventSink error;
+};
+
+SessionEventHub g_events;
+
+class RdpSession {
+public:
+    ~RdpSession()
+    {
+        Disconnect();
+    }
+
+    bool Connect(const ConnectParams& params, std::string& message)
+    {
+        if (params.host.empty() || params.port.empty() || params.username.empty()) {
+            message = "host, port, and username are required";
+            g_events.error.Emit(message);
+            return false;
+        }
+
+        Disconnect();
+
+        running_.store(true);
+        message = "native worker started";
+        worker_ = std::thread([this, params]() {
+            WorkerMain(params);
+        });
+        return true;
+    }
+
+    void Disconnect()
+    {
+        running_.store(false);
+        if (worker_.joinable()) {
+            worker_.join();
+        }
+    }
+
+private:
+    void EmitState(const std::string& state)
+    {
+        g_events.state.Emit(state);
+    }
+
+    void EmitLog(const std::string& line)
+    {
+        g_events.log.Emit(line);
+    }
+
+    bool SleepInterruptibly(int milliseconds)
+    {
+        constexpr int stepMs = 25;
+        int elapsed = 0;
+        while (elapsed < milliseconds) {
+            if (!running_.load()) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(stepMs));
+            elapsed += stepMs;
+        }
+        return running_.load();
+    }
+
+    void WorkerMain(ConnectParams params)
+    {
+        EmitLog("native worker accepted params");
+        EmitLog("target=" + params.host + ":" + params.port);
+
+        const std::vector<std::string> states = {
+            "Resolving",
+            "TCP connected",
+            "Negotiating",
+            "Authenticating",
+            "Connected"
+        };
+
+        for (const auto& state : states) {
+            if (!running_.load()) {
+                EmitState("Disconnected");
+                EmitLog("native worker cancelled");
+                return;
+            }
+            EmitState(state);
+            EmitLog("state=" + state);
+            if (!SleepInterruptibly(250)) {
+                EmitState("Disconnected");
+                EmitLog("native worker cancelled");
+                return;
+            }
+        }
+
+        EmitLog("M4.1 worker lifecycle verified; real freerdp_connect starts in the next step");
+    }
+
+    std::atomic_bool running_ = false;
+    std::thread worker_;
+};
+
+RdpSession g_session;
 
 napi_value MakeString(napi_env env, const std::string& value)
 {
@@ -157,6 +361,14 @@ std::string GetStringProperty(napi_env env, napi_value object, const char* name)
     return std::string(buffer.data(), length);
 }
 
+napi_value GetFirstArgument(napi_env env, napi_callback_info info)
+{
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    return argc > 0 ? args[0] : nullptr;
+}
+
 ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
 {
     size_t argc = 1;
@@ -244,26 +456,71 @@ napi_value Connect(napi_env env, napi_callback_info info)
     logs.push_back("username=" + params.username);
     logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
-    logs.push_back("FreeRDP probe is separate; RDP connect/auth loop starts in M4");
+    logs.push_back("starting native worker");
+
+    std::string message;
+    bool started = g_session.Connect(params, message);
+    if (!started) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", message);
+        logs.push_back("native worker start failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
 
     SetBool(env, result, "ok", true);
-    SetString(env, result, "state", "Bridge ready");
-    SetString(env, result, "message", "native bridge accepted connection parameters");
+    SetString(env, result, "state", "Resolving");
+    SetString(env, result, "message", message);
     SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
 }
 
 napi_value Disconnect(napi_env env, napi_callback_info info)
 {
+    g_session.Disconnect();
+    g_events.state.Emit("Disconnected");
+    g_events.log.Emit("native disconnect invoked");
+
     napi_value result = MakeObject(env);
     SetBool(env, result, "ok", true);
     SetString(env, result, "state", "Disconnected");
     SetString(env, result, "message", "native bridge session closed");
     SetNamed(env, result, "logs", MakeStringArray(env, {
         "native disconnect invoked",
-        "no FreeRDP session is active in M2"
+        "native worker stopped"
     }));
     return result;
+}
+
+napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name)
+{
+    napi_value callback = GetFirstArgument(env, info);
+    bool ok = callback != nullptr && sink.Set(env, callback, name);
+
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Idle" : "Failed");
+    SetString(env, result, "message", ok ? "callback registered" : "callback must be a function");
+    SetNamed(env, result, "logs", MakeStringArray(env, {
+        ok ? std::string(name) + " registered" : std::string(name) + " registration failed"
+    }));
+    return result;
+}
+
+napi_value OnState(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, g_events.state, "rdpStateCallback");
+}
+
+napi_value OnLog(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, g_events.log, "rdpLogCallback");
+}
+
+napi_value OnError(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, g_events.error, "rdpErrorCallback");
 }
 
 } // namespace
@@ -275,6 +532,9 @@ static napi_value Init(napi_env env, napi_value exports)
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

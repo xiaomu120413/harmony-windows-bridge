@@ -34,6 +34,7 @@ struct Index {
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
   @State private nativeProbeText: string = 'Native bridge not probed'
+  private callbacksRegistered: boolean = false
 
   private appendLog(line: string): void {
     this.logText = `${this.logText}\n${line}`
@@ -46,7 +47,33 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    this.registerNativeCallbacks()
     this.probeNative()
+  }
+
+  private registerNativeCallbacks(): void {
+    if (this.callbacksRegistered) {
+      return
+    }
+
+    try {
+      rdpNative.onState((state: string) => {
+        this.connectionState = this.toConnectionState(state)
+        if (state === 'Connected') {
+          this.currentTab = 'session'
+        }
+      })
+      rdpNative.onLog((line: string) => {
+        this.appendLog(line)
+      })
+      rdpNative.onError((message: string) => {
+        this.connectionState = 'Failed'
+        this.appendLog(`Native error: ${message}`)
+      })
+      this.callbacksRegistered = true
+    } catch (error) {
+      this.appendLog(`Native callback registration failed: ${JSON.stringify(error)}`)
+    }
   }
 
   private probeNative(): void {
@@ -104,6 +131,18 @@ struct Index {
   }
 
   private toConnectionState(value: string): ConnectionState {
+    if (value === 'Resolving') {
+      return 'Resolving'
+    }
+    if (value === 'TCP connected') {
+      return 'TCP connected'
+    }
+    if (value === 'Negotiating') {
+      return 'Negotiating'
+    }
+    if (value === 'Authenticating') {
+      return 'Authenticating'
+    }
     if (value === 'Bridge ready') {
       return 'Bridge ready'
     }
