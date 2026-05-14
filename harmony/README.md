@@ -16,7 +16,8 @@ Current milestone:
 - M5.1 registers the ArkUI `XComponent` surface with the native module and reports native surface lifecycle status.
 - M5.2 writes an RGBA test pattern into the `XComponent` NativeWindow buffer from C++.
 - M5.3 factors the NativeWindow write path into a reusable RGBA frame renderer for future FreeRDP updates.
-- Writing real FreeRDP frame updates into the surface buffer is still pending.
+- M5.4 registers FreeRDP GDI paint callbacks and routes the GDI primary framebuffer into the native RGBA renderer.
+- End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
 
@@ -83,6 +84,12 @@ M5.3 notes:
 - The surface bridge now has a `RenderRgbaFrame` path that accepts source pixels, dimensions, stride, and label, then handles native buffer mapping, row copy, RGBA/BGRA conversion, unmap, and flush.
 - `paintTestPattern()` now generates a synthetic RGBA frame and renders it through the same path that FreeRDP desktop frames will use.
 - The renderer still copies a full frame and does not scale or letterbox mismatched desktop/surface sizes yet.
+
+M5.4 notes:
+
+- `connect()` now configures FreeRDP software GDI and registers `PostConnect`, `PostDisconnect`, `BeginPaint`, `EndPaint`, and `DesktopResize` callbacks.
+- `PostConnect` initializes GDI with `PIXEL_FORMAT_RGBA32`; `EndPaint` wraps `rdpGdi::primary_buffer` as an RGBA frame and renders it through `RenderRgbaFrame`.
+- Real frame validation still depends on connecting to a reachable Windows host; current device verification only proves the callbacks build/package/load with the existing runtime libraries.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

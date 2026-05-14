@@ -27,11 +27,14 @@
 #include <native_window/external_window.h>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+#include <freerdp/codec/color.h>
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
 #include <freerdp/freerdp.h>
+#include <freerdp/gdi/gdi.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
+#include <freerdp/update.h>
 #include <winpr/synch.h>
 #endif
 
@@ -63,6 +66,23 @@ struct TcpConnectResult {
     bool ok = false;
     std::string message;
 };
+
+struct SurfacePaintResult {
+    bool ok = false;
+    std::string message;
+    std::vector<std::string> logs;
+};
+
+struct RgbaFrame {
+    const uint8_t* data = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    int32_t strideBytes = 0;
+    std::string label;
+};
+
+void EmitNativeLog(const std::string& line);
+SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
 
 std::string SystemErrorMessage(int errorCode)
 {
@@ -325,9 +345,13 @@ public:
             LoadFreerdpSymbol("freerdp_get_last_error", getLastError, error) &&
             LoadFreerdpSymbol("freerdp_get_last_error_name", getLastErrorName, error) &&
             LoadFreerdpSymbol("freerdp_get_last_error_string", getLastErrorString, error) &&
+            LoadFreerdpSymbol("freerdp_settings_get_uint32", settingsGetUint32, error) &&
             LoadFreerdpSymbol("freerdp_settings_set_string", settingsSetString, error) &&
             LoadFreerdpSymbol("freerdp_settings_set_uint32", settingsSetUint32, error) &&
             LoadFreerdpSymbol("freerdp_settings_set_bool", settingsSetBool, error) &&
+            LoadFreerdpSymbol("gdi_init", gdiInit, error) &&
+            LoadFreerdpSymbol("gdi_free", gdiFree, error) &&
+            LoadFreerdpSymbol("gdi_resize", gdiResize, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
@@ -344,9 +368,13 @@ public:
     using CheckEventHandlesFn = BOOL (*)(rdpContext*);
     using GetLastErrorFn = UINT32 (*)(const rdpContext*);
     using GetLastErrorTextFn = const char* (*)(UINT32);
+    using SettingsGetUint32Fn = UINT32 (*)(const rdpSettings*, FreeRDP_Settings_Keys_UInt32);
     using SettingsSetStringFn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_String, const char*);
     using SettingsSetUint32Fn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_UInt32, UINT32);
     using SettingsSetBoolFn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_Bool, BOOL);
+    using GdiInitFn = BOOL (*)(freerdp*, UINT32);
+    using GdiFreeFn = void (*)(freerdp*);
+    using GdiResizeFn = BOOL (*)(rdpGdi*, UINT32, UINT32);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -362,9 +390,13 @@ public:
     GetLastErrorFn getLastError = nullptr;
     GetLastErrorTextFn getLastErrorName = nullptr;
     GetLastErrorTextFn getLastErrorString = nullptr;
+    SettingsGetUint32Fn settingsGetUint32 = nullptr;
     SettingsSetStringFn settingsSetString = nullptr;
     SettingsSetUint32Fn settingsSetUint32 = nullptr;
     SettingsSetBoolFn settingsSetBool = nullptr;
+    GdiInitFn gdiInit = nullptr;
+    GdiFreeFn gdiFree = nullptr;
+    GdiResizeFn gdiResize = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -467,6 +499,118 @@ bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error)
     return api.Load(error);
 }
 
+std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
+
+BOOL HarmonyBeginPaint(rdpContext* context)
+{
+    if (context == nullptr || context->gdi == nullptr || context->gdi->primary == nullptr ||
+        context->gdi->primary->hdc == nullptr || context->gdi->primary->hdc->hwnd == nullptr ||
+        context->gdi->primary->hdc->hwnd->invalid == nullptr) {
+        return TRUE;
+    }
+
+    context->gdi->primary->hdc->hwnd->invalid->null = TRUE;
+    return TRUE;
+}
+
+BOOL HarmonyEndPaint(rdpContext* context)
+{
+    if (context == nullptr || context->gdi == nullptr) {
+        return TRUE;
+    }
+
+    rdpGdi* gdi = context->gdi;
+    if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
+        gdi->height <= 0 || gdi->stride == 0) {
+        return TRUE;
+    }
+
+    if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
+        gdi->primary->hdc->hwnd != nullptr) {
+        HGDI_WND hwnd = gdi->primary->hdc->hwnd;
+        if (hwnd->invalid != nullptr && hwnd->invalid->null) {
+            return TRUE;
+        }
+    }
+
+    RgbaFrame frame = {
+        gdi->primary_buffer,
+        static_cast<uint32_t>(gdi->width),
+        static_cast<uint32_t>(gdi->height),
+        static_cast<int32_t>(gdi->stride),
+        "freerdp gdi",
+    };
+    SurfacePaintResult paint = RenderSurfaceRgbaFrame(frame);
+    const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
+    if (!paint.ok) {
+        EmitNativeLog("FreeRDP GDI frame render skipped: " + paint.message);
+    } else if (frameCount <= 3 || frameCount % 60 == 0) {
+        EmitNativeLog(paint.message);
+    }
+
+    if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
+        gdi->primary->hdc->hwnd != nullptr) {
+        HGDI_WND hwnd = gdi->primary->hdc->hwnd;
+        if (hwnd->invalid != nullptr) {
+            hwnd->invalid->null = TRUE;
+        }
+        hwnd->ninvalid = 0;
+    }
+    return TRUE;
+}
+
+BOOL HarmonyDesktopResize(rdpContext* context)
+{
+    if (context == nullptr || context->settings == nullptr || context->gdi == nullptr) {
+        return FALSE;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    const uint32_t width = api.settingsGetUint32(context->settings, FreeRDP_DesktopWidth);
+    const uint32_t height = api.settingsGetUint32(context->settings, FreeRDP_DesktopHeight);
+    if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
+        EmitNativeLog("FreeRDP desktop resize failed");
+        return FALSE;
+    }
+
+    EmitNativeLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
+    return TRUE;
+}
+
+BOOL HarmonyPostConnect(freerdp* instance)
+{
+    if (instance == nullptr || instance->context == nullptr || instance->context->update == nullptr) {
+        return FALSE;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.gdiInit == nullptr || !api.gdiInit(instance, PIXEL_FORMAT_RGBA32)) {
+        EmitNativeLog("FreeRDP gdi_init failed");
+        return FALSE;
+    }
+
+    rdpUpdate* update = instance->context->update;
+    update->BeginPaint = HarmonyBeginPaint;
+    update->EndPaint = HarmonyEndPaint;
+    update->DesktopResize = HarmonyDesktopResize;
+    g_freerdpRenderedFrameCount.store(0);
+    EmitNativeLog("FreeRDP GDI callbacks registered");
+    return TRUE;
+}
+
+void HarmonyPostDisconnect(freerdp* instance)
+{
+    if (instance == nullptr || instance->context == nullptr || instance->context->gdi == nullptr) {
+        return;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.gdiFree != nullptr) {
+        api.gdiFree(instance);
+        EmitNativeLog("FreeRDP GDI resources released");
+    }
+}
+
 using FreerdpSetActiveFn = std::function<void(FreerdpRuntimeApi*, freerdp*, rdpContext*)>;
 using FreerdpClearActiveFn = std::function<void(freerdp*)>;
 using FreerdpLogFn = std::function<void(const std::string&)>;
@@ -555,6 +699,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         !SetFreerdpUint32(api, settings, FreeRDP_OsMinorType, OSMINORTYPE_NATIVE_WAYLAND, "OsMinorType", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AuthenticationOnly, false, "AuthenticationOnly", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_Authentication, true, "Authentication", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SoftwareGdi, true, "SoftwareGdi", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_NegotiateSecurityLayer, true, "NegotiateSecurityLayer", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_CertificateCallbackPreferPEM, true, "CertificateCallbackPreferPEM", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, acceptCertificate, "IgnoreCertificate", error) ||
@@ -573,8 +718,12 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
 
+    instance->PostConnect = HarmonyPostConnect;
+    instance->PostDisconnect = HarmonyPostDisconnect;
+
     log("FreeRDP target configured");
     log("FreeRDP mode=PersistentSession");
+    log("FreeRDP GDI renderer configured");
     if (!user.domain.empty()) {
         log("FreeRDP domain parsed from username");
     }
@@ -759,6 +908,11 @@ struct SessionEventHub {
 
 SessionEventHub g_events;
 
+void EmitNativeLog(const std::string& line)
+{
+    g_events.log.Emit(line);
+}
+
 struct SurfaceSnapshot {
     bool registered = false;
     bool ready = false;
@@ -771,20 +925,6 @@ struct SurfaceSnapshot {
     uint32_t touchCount = 0;
     uint32_t paintCount = 0;
     std::string lastPaintMessage;
-};
-
-struct SurfacePaintResult {
-    bool ok = false;
-    std::string message;
-    std::vector<std::string> logs;
-};
-
-struct RgbaFrame {
-    const uint8_t* data = nullptr;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    int32_t strideBytes = 0;
-    std::string label;
 };
 
 std::string ReadXComponentId(OH_NativeXComponent* component)
@@ -1268,6 +1408,11 @@ private:
 
 SurfaceBridge g_surface;
 
+SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
+{
+    return g_surface.RenderRgbaFrame(frame);
+}
+
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceCreated(component, window);
@@ -1711,7 +1856,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.5.2");
+    SetString(env, result, "bridgeVersion", "0.5.3");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
