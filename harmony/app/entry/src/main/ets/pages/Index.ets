@@ -114,6 +114,11 @@ struct Index {
     }
   }
 
+  private canPaintSurfaceTestPattern(): boolean {
+    return this.connectionState === 'Idle' || this.connectionState === 'Bridge ready' ||
+      this.connectionState === 'Disconnected' || this.connectionState === 'Failed'
+  }
+
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connectionState = 'Idle'
@@ -123,6 +128,7 @@ struct Index {
 
     try {
       this.connectionState = 'Resolving'
+      this.currentTab = 'session'
       this.appendLog(`Calling native connect for ${this.host}:${this.port}`)
       const result: NativeCommandResult = rdpNative.connect({
         host: this.host,
@@ -332,7 +338,9 @@ struct Index {
           .onLoad(() => {
             this.appendLog('XComponent loaded')
             this.probeNative()
-            this.paintSurfaceTestPattern()
+            if (this.canPaintSurfaceTestPattern()) {
+              this.paintSurfaceTestPattern()
+            }
           })
           .onDestroy(() => {
             this.appendLog('XComponent destroyed')

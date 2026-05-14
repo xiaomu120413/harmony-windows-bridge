@@ -17,6 +17,7 @@ Current milestone:
 - M5.2 writes an RGBA test pattern into the `XComponent` NativeWindow buffer from C++.
 - M5.3 factors the NativeWindow write path into a reusable RGBA frame renderer for future FreeRDP updates.
 - M5.4 registers FreeRDP GDI paint callbacks and routes the GDI primary framebuffer into the native RGBA renderer.
+- M5.5 switches to the Session tab before starting native connect and suppresses the automatic debug paint while a connection is active.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -90,6 +91,11 @@ M5.4 notes:
 - `connect()` now configures FreeRDP software GDI and registers `PostConnect`, `PostDisconnect`, `BeginPaint`, `EndPaint`, and `DesktopResize` callbacks.
 - `PostConnect` initializes GDI with `PIXEL_FORMAT_RGBA32`; `EndPaint` wraps `rdpGdi::primary_buffer` as an RGBA frame and renders it through `RenderRgbaFrame`.
 - Real frame validation still depends on connecting to a reachable Windows host; current device verification only proves the callbacks build/package/load with the existing runtime libraries.
+
+M5.5 notes:
+
+- The Connect action now moves the UI to the Session tab before invoking `native.connect()`, so the XComponent can be created while TCP negotiation/authentication are still in progress.
+- The XComponent `onLoad` debug paint only runs in idle/disconnected/failed states; active connection states leave the surface ready for FreeRDP frames.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 
