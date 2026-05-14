@@ -510,6 +510,7 @@ bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error)
 }
 
 std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
+std::atomic_uint32_t g_freerdpRenderSkipCount{0};
 std::atomic_uint32_t g_rdpDesktopWidth{0};
 std::atomic_uint32_t g_rdpDesktopHeight{0};
 
@@ -566,9 +567,15 @@ BOOL HarmonyEndPaint(rdpContext* context)
     SurfacePaintResult paint = RenderSurfaceRgbaFrame(frame);
     const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
     if (!paint.ok) {
-        EmitNativeLog("FreeRDP GDI frame render skipped: " + paint.message);
-    } else if (frameCount <= 3 || frameCount % 60 == 0) {
-        EmitNativeLog(paint.message);
+        const uint32_t skipCount = ++g_freerdpRenderSkipCount;
+        if (skipCount <= 3 || skipCount % 120 == 0) {
+            EmitNativeLog("FreeRDP GDI frame render skipped: " + paint.message);
+        }
+    } else {
+        g_freerdpRenderSkipCount.store(0);
+        if (frameCount <= 3 || frameCount % 60 == 0) {
+            EmitNativeLog(paint.message);
+        }
     }
 
     if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
@@ -954,6 +961,10 @@ struct SurfaceSnapshot {
     std::string id;
     uint32_t width = 0;
     uint32_t height = 0;
+    uint32_t viewportX = 0;
+    uint32_t viewportY = 0;
+    uint32_t viewportWidth = 0;
+    uint32_t viewportHeight = 0;
     uint32_t createdCount = 0;
     uint32_t changedCount = 0;
     uint32_t destroyedCount = 0;
@@ -999,6 +1010,7 @@ public:
             id_ = ReadXComponentId(component);
             width_ = static_cast<uint32_t>(width);
             height_ = static_cast<uint32_t>(height);
+            ClearViewportLocked();
             ++createdCount_;
             snapshot = SnapshotLocked();
         }
@@ -1022,6 +1034,7 @@ public:
             id_ = ReadXComponentId(component);
             width_ = static_cast<uint32_t>(width);
             height_ = static_cast<uint32_t>(height);
+            ClearViewportLocked();
             ++changedCount_;
             snapshot = SnapshotLocked();
         }
@@ -1041,6 +1054,7 @@ public:
             id_ = ReadXComponentId(component);
             width_ = 0;
             height_ = 0;
+            ClearViewportLocked();
             ++destroyedCount_;
             snapshot = SnapshotLocked();
         }
@@ -1091,6 +1105,13 @@ public:
     }
 
 private:
+    struct RenderViewport {
+        uint32_t x = 0;
+        uint32_t y = 0;
+        uint32_t width = 0;
+        uint32_t height = 0;
+    };
+
     SurfacePaintResult RenderRgbaFrameLocked(const RgbaFrame& frame)
     {
         SurfacePaintResult result;
@@ -1184,12 +1205,21 @@ private:
 
         const uint32_t bufferWidth = handle->width > 0 ? static_cast<uint32_t>(handle->width) : width_;
         const uint32_t bufferHeight = handle->height > 0 ? static_cast<uint32_t>(handle->height) : height_;
-        const uint32_t drawWidth = std::min({width_, bufferWidth, frame.width});
-        const uint32_t drawHeight = std::min({height_, bufferHeight, frame.height});
-        const int32_t rowBytes = ResolveRowBytes(*handle, drawWidth, drawHeight);
-        if (drawWidth == 0 || drawHeight == 0 || rowBytes <= 0) {
+        const uint32_t targetAreaWidth = std::min(width_, bufferWidth);
+        const uint32_t targetAreaHeight = std::min(height_, bufferHeight);
+        const int32_t rowBytes = ResolveRowBytes(*handle, targetAreaWidth, targetAreaHeight);
+        if (targetAreaWidth == 0 || targetAreaHeight == 0 || rowBytes <= 0) {
             OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
             result.message = "NativeWindow buffer geometry is invalid";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+        const RenderViewport viewport = FitFrameIntoTarget(
+            targetAreaWidth, targetAreaHeight, frame.width, frame.height);
+        if (viewport.width == 0 || viewport.height == 0) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "render viewport is invalid";
             result.logs.push_back(result.message);
             lastPaintMessage_ = result.message;
             return result;
@@ -1231,14 +1261,14 @@ private:
 
         OH_NativeBuffer_Config config = {};
         OH_NativeBuffer_GetConfig(nativeBuffer, &config);
-        if (mappedRowBytes <= 0 && config.stride >= static_cast<int32_t>(drawWidth * 4U)) {
+        if (mappedRowBytes <= 0 && config.stride >= static_cast<int32_t>(targetAreaWidth * 4U)) {
             mappedRowBytes = config.stride;
         }
         if (mappedRowBytes <= 0) {
             mappedRowBytes = rowBytes;
         }
 
-        if (mappedRowBytes < static_cast<int32_t>(drawWidth * 4U)) {
+        if (mappedRowBytes < static_cast<int32_t>(targetAreaWidth * 4U)) {
             OH_NativeBuffer_Unmap(nativeBuffer);
             OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
             result.message = "NativeBuffer row stride is invalid: " + std::to_string(mappedRowBytes);
@@ -1249,10 +1279,12 @@ private:
 
         BufferHandle mappedHandle = *handle;
         mappedHandle.virAddr = static_cast<uint8_t*>(mappedAddress) + mappedOffset;
-        CopyRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride, drawWidth, drawHeight);
+        FillNativeColor(mappedHandle, mappedRowBytes, targetAreaWidth, targetAreaHeight, 0, 0, 0, 0xFF);
+        CopyScaledRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride,
+            frame.width, frame.height, viewport);
         OH_NativeBuffer_Unmap(nativeBuffer);
 
-        Region::Rect dirtyRect = {0, 0, drawWidth, drawHeight};
+        Region::Rect dirtyRect = {0, 0, targetAreaWidth, targetAreaHeight};
         Region dirtyRegion = {&dirtyRect, 1};
         rc = OH_NativeWindow_NativeWindowFlushBuffer(nativeWindow, buffer, -1, dirtyRegion);
         if (rc != 0) {
@@ -1264,10 +1296,15 @@ private:
         }
 
         ++paintCount_;
+        viewportX_ = viewport.x;
+        viewportY_ = viewport.y;
+        viewportWidth_ = viewport.width;
+        viewportHeight_ = viewport.height;
         result.ok = true;
         const std::string frameLabel = frame.label.empty() ? "frame" : frame.label;
         result.message = "NativeWindow RGBA frame rendered: " + frameLabel + " " +
-            std::to_string(drawWidth) + "x" + std::to_string(drawHeight);
+            std::to_string(viewport.width) + "x" + std::to_string(viewport.height) +
+            " viewport=" + std::to_string(viewport.x) + "," + std::to_string(viewport.y);
         result.logs.push_back(result.message);
         result.logs.push_back("RGBA source=" + std::to_string(frame.width) + "x" +
             std::to_string(frame.height) + " stride=" + std::to_string(sourceStride));
@@ -1277,6 +1314,15 @@ private:
         lastPaintMessage_ = result.message;
         return result;
     }
+
+    void ClearViewportLocked()
+    {
+        viewportX_ = 0;
+        viewportY_ = 0;
+        viewportWidth_ = 0;
+        viewportHeight_ = 0;
+    }
+
     static void CloseFence(int fenceFd)
     {
         if (fenceFd >= 0) {
@@ -1337,6 +1383,33 @@ private:
         return 0;
     }
 
+    static RenderViewport FitFrameIntoTarget(uint32_t targetWidth, uint32_t targetHeight,
+        uint32_t sourceWidth, uint32_t sourceHeight)
+    {
+        RenderViewport viewport;
+        if (targetWidth == 0 || targetHeight == 0 || sourceWidth == 0 || sourceHeight == 0) {
+            return viewport;
+        }
+
+        const uint64_t targetBySourceHeight = static_cast<uint64_t>(targetWidth) * sourceHeight;
+        const uint64_t targetHeightBySourceWidth = static_cast<uint64_t>(targetHeight) * sourceWidth;
+        if (targetBySourceHeight <= targetHeightBySourceWidth) {
+            viewport.width = targetWidth;
+            viewport.height = static_cast<uint32_t>(
+                std::max<uint64_t>(1, targetBySourceHeight / sourceWidth));
+        } else {
+            viewport.height = targetHeight;
+            viewport.width = static_cast<uint32_t>(
+                std::max<uint64_t>(1, targetHeightBySourceWidth / sourceHeight));
+        }
+
+        viewport.width = std::min(viewport.width, targetWidth);
+        viewport.height = std::min(viewport.height, targetHeight);
+        viewport.x = (targetWidth - viewport.width) / 2U;
+        viewport.y = (targetHeight - viewport.height) / 2U;
+        return viewport;
+    }
+
     static void WriteRgbaPixel(uint8_t* pixel, uint8_t r, uint8_t g, uint8_t b)
     {
         pixel[0] = r;
@@ -1359,6 +1432,18 @@ private:
         pixel[1] = g;
         pixel[2] = b;
         pixel[3] = a;
+    }
+
+    static void FillNativeColor(const BufferHandle& handle, int32_t rowBytes,
+        uint32_t width, uint32_t height, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+    {
+        auto* target = static_cast<uint8_t*>(handle.virAddr);
+        for (uint32_t y = 0; y < height; ++y) {
+            uint8_t* targetRow = target + static_cast<int64_t>(rowBytes) * y;
+            for (uint32_t x = 0; x < width; ++x) {
+                CopyRgbaPixelToNative(targetRow + x * 4, handle.format, r, g, b, a);
+            }
+        }
     }
 
     static void FillTestPatternRgba(uint8_t* base, uint32_t width, uint32_t height,
@@ -1408,6 +1493,32 @@ private:
         }
     }
 
+    static void CopyScaledRgbaToNative(const BufferHandle& handle, int32_t rowBytes, const uint8_t* source,
+        int32_t sourceStride, uint32_t sourceWidth, uint32_t sourceHeight, const RenderViewport& viewport)
+    {
+        auto* target = static_cast<uint8_t*>(handle.virAddr);
+        if (sourceWidth == viewport.width && sourceHeight == viewport.height &&
+            viewport.x == 0 && viewport.y == 0) {
+            CopyRgbaToNative(handle, rowBytes, source, sourceStride, sourceWidth, sourceHeight);
+            return;
+        }
+
+        for (uint32_t y = 0; y < viewport.height; ++y) {
+            const uint32_t sourceY = static_cast<uint32_t>(
+                (static_cast<uint64_t>(y) * sourceHeight) / viewport.height);
+            uint8_t* targetRow = target + static_cast<int64_t>(rowBytes) * (viewport.y + y) +
+                static_cast<int64_t>(viewport.x) * 4;
+            const uint8_t* sourceRow = source + static_cast<int64_t>(sourceStride) * sourceY;
+            for (uint32_t x = 0; x < viewport.width; ++x) {
+                const uint32_t sourceX = static_cast<uint32_t>(
+                    (static_cast<uint64_t>(x) * sourceWidth) / viewport.width);
+                const uint8_t* sourcePixel = sourceRow + sourceX * 4;
+                CopyRgbaPixelToNative(targetRow + x * 4, handle.format, sourcePixel[0],
+                    sourcePixel[1], sourcePixel[2], sourcePixel[3]);
+            }
+        }
+    }
+
     SurfaceSnapshot SnapshotLocked() const
     {
         return SurfaceSnapshot{
@@ -1416,6 +1527,10 @@ private:
             id_.empty() ? "unknown" : id_,
             width_,
             height_,
+            viewportX_,
+            viewportY_,
+            viewportWidth_,
+            viewportHeight_,
             createdCount_,
             changedCount_,
             destroyedCount_,
@@ -1433,6 +1548,10 @@ private:
     std::string id_;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
+    uint32_t viewportX_ = 0;
+    uint32_t viewportY_ = 0;
+    uint32_t viewportWidth_ = 0;
+    uint32_t viewportHeight_ = 0;
     uint32_t createdCount_ = 0;
     uint32_t changedCount_ = 0;
     uint32_t destroyedCount_ = 0;
@@ -2063,7 +2182,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.3");
+    SetString(env, result, "bridgeVersion", "0.6.4");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -2076,6 +2195,10 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetString(env, result, "surfaceId", surface.id);
     SetUint32(env, result, "surfaceWidth", surface.width);
     SetUint32(env, result, "surfaceHeight", surface.height);
+    SetUint32(env, result, "surfaceViewportX", surface.viewportX);
+    SetUint32(env, result, "surfaceViewportY", surface.viewportY);
+    SetUint32(env, result, "surfaceViewportWidth", surface.viewportWidth);
+    SetUint32(env, result, "surfaceViewportHeight", surface.viewportHeight);
     SetUint32(env, result, "surfaceCreatedCount", surface.createdCount);
     SetUint32(env, result, "surfaceChangedCount", surface.changedCount);
     SetUint32(env, result, "surfaceDestroyedCount", surface.destroyedCount);
@@ -2101,6 +2224,11 @@ napi_value Probe(napi_env env, napi_callback_info info)
     if (surface.ready) {
         logs.push_back("XComponent surface ready: " + surface.id + " " +
             std::to_string(surface.width) + "x" + std::to_string(surface.height));
+        if (surface.viewportWidth > 0 && surface.viewportHeight > 0) {
+            logs.push_back("XComponent render viewport: " + std::to_string(surface.viewportX) + "," +
+                std::to_string(surface.viewportY) + " " + std::to_string(surface.viewportWidth) + "x" +
+                std::to_string(surface.viewportHeight));
+        }
         if (!surface.lastPaintMessage.empty()) {
             logs.push_back(surface.lastPaintMessage);
         }
