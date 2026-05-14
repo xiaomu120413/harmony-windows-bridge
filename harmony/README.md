@@ -23,6 +23,7 @@ Current milestone:
 - M6.2 adds toolbar latch state for Ctrl, Alt, and Win so follow-up key strokes can be sent as combinations.
 - M6.3 maps two-finger vertical drags on the remote surface to RDP mouse wheel events.
 - M6.4 adds long-press right click and defers left-click down until click release or drag threshold.
+- M6.5 scales touch coordinates from the XComponent surface size into the requested RDP desktop resolution.
 - End-to-end verification with a live Windows desktop frame is still pending.
 
 ## Native bridge
@@ -126,7 +127,7 @@ M6.3 notes:
 - The session `XComponent` now consumes two-finger vertical touch moves and sends `PTR_FLAGS_WHEEL` pointer events through the existing native `sendPointer()` bridge.
 - The first version uses a 24 px movement threshold and one wheel event per threshold crossing; downward finger movement is mapped to negative wheel direction.
 - If a second finger appears while a left-button drag is active, ArkTS releases the left button before starting wheel handling.
-- Horizontal wheel, text input, coordinate scaling, and finer gesture conflict handling are still pending.
+- Horizontal wheel, text input, and finer gesture conflict handling are still pending.
 
 M6.4 notes:
 
@@ -134,6 +135,13 @@ M6.4 notes:
 - Releasing before the drag threshold sends a left click; moving at least 8 px starts a left-button drag from the original touch point.
 - Holding for 550 ms sends a right click and suppresses the later left click.
 - Horizontal wheel, text input, coordinate scaling, and finer gesture conflict handling are still pending.
+
+M6.5 notes:
+
+- `probe()` surface dimensions are now stored in ArkTS and used to map touch coordinates into the connection form resolution, for example surface `2432x1077` to requested desktop `1280x720`.
+- The mapping clamps coordinates to the requested desktop bounds before calling native `sendPointer()`.
+- This is a first-pass client-side mapping; the native side still does not expose the actual negotiated desktop size after server-side adjustment.
+- Horizontal wheel, text input, actual negotiated desktop-size mapping, and finer gesture conflict handling are still pending.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

@@ -66,6 +66,8 @@ struct Index {
   @State private ctrlModifierDown: boolean = false
   @State private altModifierDown: boolean = false
   @State private winModifierDown: boolean = false
+  @State private surfacePixelWidth: number = 0
+  @State private surfacePixelHeight: number = 0
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
@@ -124,6 +126,8 @@ struct Index {
   private probeNative(): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
+      this.surfacePixelWidth = result.surfaceWidth
+      this.surfacePixelHeight = result.surfaceHeight
       const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
       const surfaceText = result.surfaceReady ? `surface ${result.surfaceWidth}x${result.surfaceHeight}` : 'surface pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
@@ -206,10 +210,12 @@ struct Index {
     }
 
     try {
+      const mappedX = this.mapPointerX(x)
+      const mappedY = this.mapPointerY(y)
       const result: NativeCommandResult = rdpNative.sendPointer({
         flags: flags,
-        x: Math.max(0, Math.round(x)),
-        y: Math.max(0, Math.round(y))
+        x: mappedX,
+        y: mappedY
       })
       if (!result.ok) {
         this.appendLog(result.message)
@@ -217,6 +223,44 @@ struct Index {
     } catch (error) {
       this.appendLog(`Native pointer input failed: ${JSON.stringify(error)}`)
     }
+  }
+
+  private parseResolutionPart(index: number): number {
+    const parts = this.resolution.toLowerCase().split('x')
+    if (parts.length !== 2) {
+      return 0
+    }
+
+    const value = Number(parts[index])
+    if (value > 0) {
+      return value
+    }
+    return 0
+  }
+
+  private getRequestedDesktopWidth(): number {
+    return this.parseResolutionPart(0)
+  }
+
+  private getRequestedDesktopHeight(): number {
+    return this.parseResolutionPart(1)
+  }
+
+  private mapPointerCoordinate(value: number, sourceSize: number, targetSize: number): number {
+    if (sourceSize <= 0 || targetSize <= 0) {
+      return Math.max(0, Math.round(value))
+    }
+
+    const mapped = Math.round(value * targetSize / sourceSize)
+    return Math.max(0, Math.min(targetSize - 1, mapped))
+  }
+
+  private mapPointerX(x: number): number {
+    return this.mapPointerCoordinate(x, this.surfacePixelWidth, this.getRequestedDesktopWidth())
+  }
+
+  private mapPointerY(y: number): number {
+    return this.mapPointerCoordinate(y, this.surfacePixelHeight, this.getRequestedDesktopHeight())
   }
 
   private sendWheel(deltaY: number, x: number, y: number): void {
