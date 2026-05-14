@@ -14,7 +14,8 @@ Current milestone:
 - M4.3 dynamically loads FreeRDP at runtime and verifies the authentication-only connect path after TCP succeeds.
 - M4.4 disables authentication-only mode, runs a persistent FreeRDP event loop, and lets `disconnect()` abort the active native context.
 - M5.1 registers the ArkUI `XComponent` surface with the native module and reports native surface lifecycle status.
-- Writing FreeRDP frames into the surface buffer is still pending.
+- M5.2 writes an RGBA test pattern into the `XComponent` NativeWindow buffer from C++.
+- Writing real FreeRDP frame updates into the surface buffer is still pending.
 
 ## Native bridge
 
@@ -25,6 +26,7 @@ Current exported calls:
 - `probe()` returns bridge version, ABI, FreeRDP, WinPR, and OpenSSL probe status.
 - `connect(params)` validates the basic connection fields, starts the native session worker, and returns the initial state.
 - `disconnect()` returns a native disconnect result.
+- `paintTestPattern()` writes a CPU-generated test frame into the current `XComponent` surface.
 - `onState(callback)` receives session states: `Resolving`, `TCP connected`, `Negotiating`, `Authenticating`, `Connected`, `Disconnected`, or `Failed`.
 - `onLog(callback)` receives native session log lines.
 - `onError(callback)` receives validation or worker errors.
@@ -38,7 +40,7 @@ M4.1 verification:
 Remaining issues carried forward:
 
 - M4.4 can hold a connected FreeRDP session loop, but FreeRDP desktop pixels are not rendered yet.
-- M5.1 only verifies the `XComponent` to native surface bridge; NativeWindow buffer writes start in the next rendering step.
+- M5.2 only proves NativeWindow buffer writes with a synthetic frame; FreeRDP frame callbacks are not wired to render yet.
 - Callback lifecycle is only smoke-tested for one connect/disconnect path; reconnect, page teardown, and app backgrounding still need stress testing.
 
 M4.2 notes:
@@ -67,6 +69,13 @@ M5.1 notes:
 - Native callbacks track surface created/changed/destroyed events, surface id, dimensions, and touch count.
 - `probe()` exposes the current surface status so the diagnostics page can confirm whether the native surface is ready.
 - The surface is mounted only while the Session tab is visible; switching away destroys it until the next M5 rendering step decides whether to keep it mounted.
+
+M5.2 notes:
+
+- Native code treats the XComponent callback `window` as an `OHNativeWindow*`, configures RGBA8888 geometry, requests a buffer, maps it through `OH_NativeBuffer_FromNativeWindowBuffer` plus `OH_NativeBuffer_Map`, writes a gradient/grid test pattern, unmaps, and flushes the dirty region.
+- `probe()` now exposes `surfacePaintCount` and `surfaceLastPaintMessage`; the Session page calls `paintTestPattern()` when the XComponent loads and also provides a temporary Paint button for manual verification.
+- The test renderer writes the full surface every time. Dirty rect rendering, double buffering strategy, and FreeRDP-to-RGBA conversion remain future work.
+- If the Session tab is not mounted, `paintTestPattern()` returns a non-fatal failure and logs that the XComponent surface is not ready.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

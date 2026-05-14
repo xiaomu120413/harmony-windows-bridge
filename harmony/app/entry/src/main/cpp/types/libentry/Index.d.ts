@@ -14,6 +14,8 @@ export interface NativeProbeResult {
   surfaceChangedCount: number;
   surfaceDestroyedCount: number;
   surfaceTouchCount: number;
+  surfacePaintCount: number;
+  surfaceLastPaintMessage: string;
   probeJson: string;
   probeError: string;
   logs: string[];
@@ -39,6 +41,7 @@ declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: NativeConnectParams): NativeCommandResult;
   disconnect(): NativeCommandResult;
+  paintTestPattern(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

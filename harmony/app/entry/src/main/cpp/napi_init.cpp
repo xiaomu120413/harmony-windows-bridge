@@ -1,5 +1,6 @@
 #include "napi/native_api.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -22,6 +23,8 @@
 #include <vector>
 
 #include <ace/xcomponent/native_interface_xcomponent.h>
+#include <native_buffer/native_buffer.h>
+#include <native_window/external_window.h>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/constants.h>
@@ -766,6 +769,14 @@ struct SurfaceSnapshot {
     uint32_t changedCount = 0;
     uint32_t destroyedCount = 0;
     uint32_t touchCount = 0;
+    uint32_t paintCount = 0;
+    std::string lastPaintMessage;
+};
+
+struct SurfacePaintResult {
+    bool ok = false;
+    std::string message;
+    std::vector<std::string> logs;
 };
 
 std::string ReadXComponentId(OH_NativeXComponent* component)
@@ -860,6 +871,177 @@ public:
         ++touchCount_;
     }
 
+    SurfacePaintResult PaintTestPattern()
+    {
+        SurfacePaintResult result;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!ready_ || window_ == nullptr || width_ == 0 || height_ == 0) {
+            result.message = "XComponent surface is not ready for paint";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        auto* nativeWindow = static_cast<OHNativeWindow*>(window_);
+        const int32_t targetWidth = static_cast<int32_t>(width_);
+        const int32_t targetHeight = static_cast<int32_t>(height_);
+
+        int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(
+            nativeWindow, SET_BUFFER_GEOMETRY, targetWidth, targetHeight);
+        if (rc != 0) {
+            result.message = "NativeWindow SET_BUFFER_GEOMETRY failed: " + std::to_string(rc);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        rc = OH_NativeWindow_NativeWindowHandleOpt(
+            nativeWindow, SET_FORMAT, static_cast<int32_t>(NATIVEBUFFER_PIXEL_FMT_RGBA_8888));
+        if (rc != 0) {
+            result.logs.push_back("NativeWindow SET_FORMAT warning: " + std::to_string(rc));
+        }
+
+        constexpr uint64_t usage = NATIVEBUFFER_USAGE_CPU_READ | NATIVEBUFFER_USAGE_CPU_WRITE |
+            NATIVEBUFFER_USAGE_MEM_DMA;
+        rc = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_USAGE, usage);
+        if (rc != 0) {
+            result.logs.push_back("NativeWindow SET_USAGE warning: " + std::to_string(rc));
+        }
+
+        OHNativeWindowBuffer* buffer = nullptr;
+        int fenceFd = -1;
+        rc = OH_NativeWindow_NativeWindowRequestBuffer(nativeWindow, &buffer, &fenceFd);
+        if (rc != 0 || buffer == nullptr) {
+            CloseFence(fenceFd);
+            result.message = "NativeWindow request buffer failed: " + std::to_string(rc);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        std::string fenceError;
+        if (!WaitFenceAndClose(fenceFd, fenceError)) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeWindow fence wait failed: " + fenceError;
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+        fenceFd = -1;
+
+        BufferHandle* handle = OH_NativeWindow_GetBufferHandleFromNative(buffer);
+        if (handle == nullptr || handle->virAddr == nullptr) {
+            result.logs.push_back("NativeWindow BufferHandle has no direct CPU address; using NativeBuffer map");
+        }
+        if (handle == nullptr) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeWindow buffer handle is null";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        if (!IsSupportedFourByteFormat(handle->format)) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeWindow buffer format is not supported: " + std::to_string(handle->format);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        const uint32_t bufferWidth = handle->width > 0 ? static_cast<uint32_t>(handle->width) : width_;
+        const uint32_t bufferHeight = handle->height > 0 ? static_cast<uint32_t>(handle->height) : height_;
+        const uint32_t drawWidth = std::min(width_, bufferWidth);
+        const uint32_t drawHeight = std::min(height_, bufferHeight);
+        const int32_t rowBytes = ResolveRowBytes(*handle, drawWidth, drawHeight);
+        if (drawWidth == 0 || drawHeight == 0 || rowBytes <= 0) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeWindow buffer geometry is invalid";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        OH_NativeBuffer* nativeBuffer = nullptr;
+        rc = OH_NativeBuffer_FromNativeWindowBuffer(buffer, &nativeBuffer);
+        if (rc != 0 || nativeBuffer == nullptr) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeBuffer conversion failed: " + std::to_string(rc);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        void* mappedAddress = nullptr;
+        OH_NativeBuffer_Planes planes = {};
+        int32_t mappedRowBytes = 0;
+        uint64_t mappedOffset = 0;
+        rc = OH_NativeBuffer_MapPlanes(nativeBuffer, &mappedAddress, &planes);
+        if (rc == 0 && mappedAddress != nullptr) {
+            if (planes.planeCount > 0 && planes.planes[0].rowStride > 0) {
+                mappedRowBytes = static_cast<int32_t>(planes.planes[0].rowStride);
+                mappedOffset = planes.planes[0].offset;
+            }
+            result.logs.push_back("NativeBuffer mapped with planes");
+        } else {
+            mappedAddress = nullptr;
+            rc = OH_NativeBuffer_Map(nativeBuffer, &mappedAddress);
+            if (rc != 0 || mappedAddress == nullptr) {
+                OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+                result.message = "NativeBuffer map failed: " + std::to_string(rc);
+                result.logs.push_back(result.message);
+                lastPaintMessage_ = result.message;
+                return result;
+            }
+            result.logs.push_back("NativeBuffer mapped");
+        }
+
+        OH_NativeBuffer_Config config = {};
+        OH_NativeBuffer_GetConfig(nativeBuffer, &config);
+        if (mappedRowBytes <= 0 && config.stride >= static_cast<int32_t>(drawWidth * 4U)) {
+            mappedRowBytes = config.stride;
+        }
+        if (mappedRowBytes <= 0) {
+            mappedRowBytes = rowBytes;
+        }
+
+        if (mappedRowBytes < static_cast<int32_t>(drawWidth * 4U)) {
+            OH_NativeBuffer_Unmap(nativeBuffer);
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeBuffer row stride is invalid: " + std::to_string(mappedRowBytes);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        BufferHandle mappedHandle = *handle;
+        mappedHandle.virAddr = static_cast<uint8_t*>(mappedAddress) + mappedOffset;
+        DrawTestPattern(mappedHandle, drawWidth, drawHeight, mappedRowBytes, paintCount_ + 1);
+        OH_NativeBuffer_Unmap(nativeBuffer);
+
+        Region::Rect dirtyRect = {0, 0, drawWidth, drawHeight};
+        Region dirtyRegion = {&dirtyRect, 1};
+        rc = OH_NativeWindow_NativeWindowFlushBuffer(nativeWindow, buffer, -1, dirtyRegion);
+        if (rc != 0) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeWindow flush buffer failed: " + std::to_string(rc);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+
+        ++paintCount_;
+        result.ok = true;
+        result.message = "NativeWindow test pattern painted: " + std::to_string(drawWidth) + "x" +
+            std::to_string(drawHeight);
+        result.logs.push_back(result.message);
+        result.logs.push_back("NativeWindow format=" + std::to_string(handle->format) +
+            " stride=" + std::to_string(handle->stride) +
+            " rowBytes=" + std::to_string(mappedRowBytes));
+        lastPaintMessage_ = result.message;
+        return result;
+    }
+
     SurfaceSnapshot Snapshot()
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -867,6 +1049,105 @@ public:
     }
 
 private:
+    static void CloseFence(int fenceFd)
+    {
+        if (fenceFd >= 0) {
+            ::close(fenceFd);
+        }
+    }
+
+    static bool WaitFenceAndClose(int fenceFd, std::string& error)
+    {
+        if (fenceFd < 0) {
+            return true;
+        }
+
+        pollfd fence = {fenceFd, POLLIN, 0};
+        int rc = ::poll(&fence, 1, 3000);
+        int savedErrno = errno;
+        CloseFence(fenceFd);
+        if (rc > 0) {
+            return true;
+        }
+        if (rc == 0) {
+            error = "timeout";
+            return false;
+        }
+        error = SystemErrorMessage(savedErrno);
+        return false;
+    }
+
+    static bool IsSupportedFourByteFormat(int32_t format)
+    {
+        return format == NATIVEBUFFER_PIXEL_FMT_RGBA_8888 ||
+            format == NATIVEBUFFER_PIXEL_FMT_RGBX_8888 ||
+            format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 ||
+            format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888;
+    }
+
+    static int32_t ResolveRowBytes(const BufferHandle& handle, uint32_t drawWidth, uint32_t drawHeight)
+    {
+        if (drawWidth == 0 || drawHeight == 0) {
+            return 0;
+        }
+
+        const int64_t tightRowBytes = static_cast<int64_t>(drawWidth) * 4;
+        const int64_t stride = handle.stride > 0 ? handle.stride : handle.width;
+        const int64_t pixelStrideRowBytes = stride * 4;
+        const int64_t byteStrideRowBytes = stride;
+        const int64_t size = handle.size;
+
+        if (byteStrideRowBytes >= tightRowBytes && (size <= 0 || byteStrideRowBytes * drawHeight <= size)) {
+            return static_cast<int32_t>(byteStrideRowBytes);
+        }
+        if (pixelStrideRowBytes >= tightRowBytes && (size <= 0 || pixelStrideRowBytes * drawHeight <= size)) {
+            return static_cast<int32_t>(pixelStrideRowBytes);
+        }
+        if (size <= 0 || tightRowBytes * drawHeight <= size) {
+            return static_cast<int32_t>(tightRowBytes);
+        }
+        return 0;
+    }
+
+    static void WritePixel(uint8_t* pixel, int32_t format, uint8_t r, uint8_t g, uint8_t b)
+    {
+        if (format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 || format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888) {
+            pixel[0] = b;
+            pixel[1] = g;
+            pixel[2] = r;
+            pixel[3] = 0xFF;
+            return;
+        }
+
+        pixel[0] = r;
+        pixel[1] = g;
+        pixel[2] = b;
+        pixel[3] = 0xFF;
+    }
+
+    static void DrawTestPattern(const BufferHandle& handle, uint32_t width, uint32_t height,
+        int32_t rowBytes, uint32_t frameIndex)
+    {
+        auto* base = static_cast<uint8_t*>(handle.virAddr);
+        const uint32_t safeWidth = std::max(width, 1U);
+        const uint32_t safeHeight = std::max(height, 1U);
+        for (uint32_t y = 0; y < height; ++y) {
+            uint8_t* row = base + static_cast<int64_t>(rowBytes) * y;
+            for (uint32_t x = 0; x < width; ++x) {
+                const bool grid = (x % 96U) < 3U || (y % 96U) < 3U;
+                uint8_t r = static_cast<uint8_t>((x * 255U) / safeWidth);
+                uint8_t g = static_cast<uint8_t>((y * 255U) / safeHeight);
+                uint8_t b = static_cast<uint8_t>(96U + ((x + y + frameIndex * 23U) % 128U));
+                if (grid) {
+                    r = 255;
+                    g = 255;
+                    b = 255;
+                }
+                WritePixel(row + x * 4, handle.format, r, g, b);
+            }
+        }
+    }
+
     SurfaceSnapshot SnapshotLocked() const
     {
         return SurfaceSnapshot{
@@ -879,6 +1160,8 @@ private:
             changedCount_,
             destroyedCount_,
             touchCount_,
+            paintCount_,
+            lastPaintMessage_,
         };
     }
 
@@ -894,6 +1177,8 @@ private:
     uint32_t changedCount_ = 0;
     uint32_t destroyedCount_ = 0;
     uint32_t touchCount_ = 0;
+    uint32_t paintCount_ = 0;
+    std::string lastPaintMessage_;
 };
 
 SurfaceBridge g_surface;
@@ -1341,7 +1626,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = g_surface.Snapshot();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.5.0");
+    SetString(env, result, "bridgeVersion", "0.5.1");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -1358,10 +1643,12 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetUint32(env, result, "surfaceChangedCount", surface.changedCount);
     SetUint32(env, result, "surfaceDestroyedCount", surface.destroyedCount);
     SetUint32(env, result, "surfaceTouchCount", surface.touchCount);
+    SetUint32(env, result, "surfacePaintCount", surface.paintCount);
+    SetString(env, result, "surfaceLastPaintMessage", surface.lastPaintMessage);
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect"
+        "Native calls are available: probe, connect, disconnect, paintTestPattern"
     };
     if (freerdp.linked) {
         logs.push_back("FreeRDP probe library loaded");
@@ -1374,6 +1661,9 @@ napi_value Probe(napi_env env, napi_callback_info info)
     if (surface.ready) {
         logs.push_back("XComponent surface ready: " + surface.id + " " +
             std::to_string(surface.width) + "x" + std::to_string(surface.height));
+        if (!surface.lastPaintMessage.empty()) {
+            logs.push_back(surface.lastPaintMessage);
+        }
     } else if (surface.registered) {
         logs.push_back("XComponent callback registered; surface not created");
     } else {
@@ -1439,6 +1729,19 @@ napi_value Disconnect(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value PaintTestPattern(napi_env env, napi_callback_info info)
+{
+    SurfacePaintResult paint = g_surface.PaintTestPattern();
+    g_events.log.Emit(paint.message);
+
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", paint.ok);
+    SetString(env, result, "state", paint.ok ? "Bridge ready" : "Failed");
+    SetString(env, result, "message", paint.message);
+    SetNamed(env, result, "logs", MakeStringArray(env, paint.logs));
+    return result;
+}
+
 napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name)
 {
     napi_value callback = GetFirstArgument(env, info);
@@ -1478,6 +1781,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"paintTestPattern", nullptr, PaintTestPattern, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

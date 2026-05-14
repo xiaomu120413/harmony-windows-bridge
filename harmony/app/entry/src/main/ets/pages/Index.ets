@@ -18,6 +18,8 @@ interface NativeProbeResult {
   surfaceChangedCount: number
   surfaceDestroyedCount: number
   surfaceTouchCount: number
+  surfacePaintCount: number
+  surfaceLastPaintMessage: string
   probeJson: string
   probeError: string
   logs: string[]
@@ -91,11 +93,24 @@ struct Index {
       const result: NativeProbeResult = rdpNative.probe()
       const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
       const surfaceText = result.surfaceReady ? `surface ${result.surfaceWidth}x${result.surfaceHeight}` : 'surface pending'
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText}`
+      const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${paintText}`
       this.appendNativeLogs(result.logs)
     } catch (error) {
       this.nativeProbeText = 'Native bridge probe failed'
       this.appendLog(`Native probe failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private paintSurfaceTestPattern(): void {
+    try {
+      const result: NativeCommandResult = rdpNative.paintTestPattern()
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+      this.probeNative()
+    } catch (error) {
+      this.connectionState = 'Failed'
+      this.appendLog(`Native paint failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -291,6 +306,14 @@ struct Index {
           .onClick(() => {
             this.disconnectNative()
           })
+        Button('Paint')
+          .height(36)
+          .margin({ left: 8 })
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
+          .onClick(() => {
+            this.paintSurfaceTestPattern()
+          })
       }
       .width('100%')
       .height(52)
@@ -309,6 +332,7 @@ struct Index {
           .onLoad(() => {
             this.appendLog('XComponent loaded')
             this.probeNative()
+            this.paintSurfaceTestPattern()
           })
           .onDestroy(() => {
             this.appendLog('XComponent destroyed')
