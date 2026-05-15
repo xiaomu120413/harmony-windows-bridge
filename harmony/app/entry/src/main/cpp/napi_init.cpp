@@ -33,6 +33,7 @@
 #include <database/udmf/udmf.h>
 #include <database/udmf/udmf_err_code.h>
 #include <database/udmf/uds.h>
+#include <hilog/log.h>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/addin.h>
@@ -99,6 +100,15 @@ struct RgbaFrame {
 
 void EmitNativeLog(const std::string& line);
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
+
+void EmitHilogInfo(const std::string& line)
+{
+    constexpr unsigned int kLogDomain = 0xF3D1;
+    constexpr const char* kLogTag = "FreeRDPBridge";
+    constexpr size_t kMaxHilogLine = 3500;
+    const std::string clipped = line.size() > kMaxHilogLine ? line.substr(0, kMaxHilogLine) : line;
+    OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
+}
 
 std::string SystemErrorMessage(int errorCode)
 {
@@ -1250,6 +1260,7 @@ private:
         if (bridge == nullptr || event == nullptr || event->name == nullptr) {
             return;
         }
+        bridge->Log("FreeRDP channel connected: " + std::string(event->name));
         if (std::strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
             bridge->AttachCliprdr(static_cast<CliprdrClientContext*>(event->pInterface));
         }
@@ -1261,6 +1272,7 @@ private:
         if (bridge == nullptr || event == nullptr || event->name == nullptr) {
             return;
         }
+        bridge->Log("FreeRDP channel disconnected: " + std::string(event->name));
         if (std::strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
             bridge->DetachCliprdr(static_cast<CliprdrClientContext*>(event->pInterface));
         }
@@ -1994,7 +2006,7 @@ public:
         Reset();
     }
 
-    bool Set(napi_env env, napi_value callback, const char* name)
+    bool Set(napi_env env, napi_value callback, const char* name, bool mirrorToHilog = false)
     {
         napi_valuetype type = napi_undefined;
         napi_typeof(env, callback, &type);
@@ -2027,11 +2039,16 @@ public:
             napi_release_threadsafe_function(function_, napi_tsfn_abort);
         }
         function_ = next;
+        mirrorToHilog_.store(mirrorToHilog);
         return true;
     }
 
     void Emit(const std::string& value)
     {
+        if (mirrorToHilog_.load()) {
+            EmitHilogInfo(value);
+        }
+
         napi_threadsafe_function current = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -2057,11 +2074,13 @@ public:
             napi_release_threadsafe_function(function_, napi_tsfn_abort);
             function_ = nullptr;
         }
+        mirrorToHilog_.store(false);
     }
 
 private:
     std::mutex mutex_;
     napi_threadsafe_function function_ = nullptr;
+    std::atomic_bool mirrorToHilog_{false};
 };
 
 struct SessionEventHub {
@@ -3853,10 +3872,11 @@ napi_value SendUnicode(napi_env env, napi_callback_info info)
     return result;
 }
 
-napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name)
+napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name,
+    bool mirrorToHilog = false)
 {
     napi_value callback = GetFirstArgument(env, info);
-    bool ok = callback != nullptr && sink.Set(env, callback, name);
+    bool ok = callback != nullptr && sink.Set(env, callback, name, mirrorToHilog);
 
     napi_value result = MakeObject(env);
     SetBool(env, result, "ok", ok);
@@ -3875,12 +3895,12 @@ napi_value OnState(napi_env env, napi_callback_info info)
 
 napi_value OnLog(napi_env env, napi_callback_info info)
 {
-    return RegisterCallback(env, info, g_events.log, "rdpLogCallback");
+    return RegisterCallback(env, info, g_events.log, "rdpLogCallback", true);
 }
 
 napi_value OnError(napi_env env, napi_callback_info info)
 {
-    return RegisterCallback(env, info, g_events.error, "rdpErrorCallback");
+    return RegisterCallback(env, info, g_events.error, "rdpErrorCallback", true);
 }
 
 } // namespace

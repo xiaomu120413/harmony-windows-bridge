@@ -27,4 +27,5 @@ target_link_libraries(entry PUBLIC
     libnative_buffer.so
     libpasteboard.so
     libudmf.so
+    libhilog_ndk.z.so
     libdl.so)
