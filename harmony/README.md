@@ -31,6 +31,7 @@ Current milestone:
 - M6.10 queues pointer/key/Unicode input on the FreeRDP worker thread, adds TOFU/strict/ignore certificate policies, and reports the disabled channel/codec feature set through `probe()`.
 - M6.11 switches the WSL FreeRDP build to the enhanced channel/codec profile: client channels, cliprdr, rdpdr, drive, printer, smartcard, rdpsnd, audin, disp, rdpgfx, TSMF, uriparser, OpenSLES, FFmpeg, and OpenH264 are compiled and packaged.
 - M6.12 adds a FreeRDP OHOS feature matrix check and compiles the WinPR smartcard PCSC backend into the enhanced runtime; CUPS and FUSE remain disabled because the current OHOS sysroot does not provide those backends.
+- M6.13 keeps the enhanced runtime packaged but disables optional channel and rdpgfx/H.264 negotiation by default so the current NativeWindow renderer receives stable software GDI frames again.
 - A live Windows desktop frame has been verified on device; current follow-up validation is focused on reliable remote operation and lifecycle stress.
 
 ## Native bridge
@@ -59,7 +60,7 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- FreeRDP channels and H.264/FFmpeg/OpenH264 are now compiled into the enhanced WSL build, but several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, smartcard PCSC backend, RD Gateway UI/settings, and display-control resize PDUs.
+- FreeRDP channels and H.264/FFmpeg/OpenH264 are now compiled into the enhanced WSL build, but optional channel and rdpgfx/H.264 runtime negotiation is kept off until the matching native bridge is wired. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, smartcard PCSC backend, RD Gateway UI/settings, and display-control resize PDUs.
 - IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
 - Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 

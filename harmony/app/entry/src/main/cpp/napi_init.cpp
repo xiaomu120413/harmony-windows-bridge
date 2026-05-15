@@ -851,15 +851,15 @@ bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
 bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const FreerdpLogFn& log, std::string& error)
 {
-    if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, true, "SupportGraphicsPipeline", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, true, "GfxH264", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, true, "GfxAVC444", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, true, "GfxAVC444v2", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, true, "DeviceRedirection", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, true, "AudioPlayback", error) ||
+    if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, false, "SupportDynamicChannels", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, false, "SupportDisplayControl", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, false, "SupportGraphicsPipeline", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, false, "GfxH264", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false, "GfxAVC444", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, false, "GfxAVC444v2", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, false, "RedirectClipboard", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, false, "DeviceRedirection", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, false, "AudioPlayback", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectDrives, false, "RedirectDrives", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectPrinters, false, "RedirectPrinters", error) ||
@@ -867,7 +867,8 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         return false;
     }
 
-    log("FreeRDP enhanced channels requested: cliprdr, rdpgfx/h264, disp, rdpdr, rdpsnd");
+    log("FreeRDP enhanced runtime libraries packaged; optional channels disabled by default");
+    log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     log("FreeRDP redirect devices compiled; drive/printer/smartcard runtime toggles remain disabled by default");
     return true;
 }
@@ -2559,10 +2560,11 @@ napi_value Probe(napi_env env, napi_callback_info info)
     const std::string featureSummary =
         "core RDP/TLS/NLA + software GDI; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
-        "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled";
+        "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
+        "optional channel/runtime negotiation off until each native bridge is wired";
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.6");
+    SetString(env, result, "bridgeVersion", "0.6.8");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
