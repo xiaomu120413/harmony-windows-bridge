@@ -15,6 +15,11 @@ const RDP_WHEEL_DELTA_NEGATIVE: number = 0x0088
 const TOUCH_DRAG_THRESHOLD: number = 8
 const TOUCH_WHEEL_THRESHOLD: number = 24
 const LONG_PRESS_TIMEOUT_MS: number = 550
+const DOUBLE_TAP_TIMEOUT_MS: number = 320
+const DOUBLE_TAP_DISTANCE: number = 24
+const POINTER_FAILURE_LOG_INTERVAL_MS: number = 800
+const INPUT_PROBE_DELAY_MS: number = 200
+const INPUT_PROBE_INTERVAL_MS: number = 350
 
 const RDP_SCANCODE_ESCAPE: number = 0x01
 const RDP_SCANCODE_BACKSPACE: number = 0x0E
@@ -107,6 +112,17 @@ interface PointerMapping {
   ok: boolean
   x: number
   y: number
+  surfaceX: number
+  surfaceY: number
+  scaleX: number
+  scaleY: number
+  viewportX: number
+  viewportY: number
+  viewportWidth: number
+  viewportHeight: number
+  desktopWidth: number
+  desktopHeight: number
+  reason: string
 }
 
 interface NativeCommandResult {
@@ -134,6 +150,8 @@ struct Index {
   @State private winModifierDown: boolean = false
   @State private surfacePixelWidth: number = 0
   @State private surfacePixelHeight: number = 0
+  @State private surfaceLayoutWidth: number = 0
+  @State private surfaceLayoutHeight: number = 0
   @State private surfaceViewportX: number = 0
   @State private surfaceViewportY: number = 0
   @State private surfaceViewportWidth: number = 0
@@ -162,6 +180,11 @@ struct Index {
   private twoFingerLastX: number = 0
   private twoFingerLastY: number = 0
   private mouseButtonFlags: number = 0
+  private lastTapAtMs: number = 0
+  private lastTapX: number = 0
+  private lastTapY: number = 0
+  private lastPointerFailureLogAtMs: number = 0
+  private lastInputProbeAtMs: number = 0
   private surfaceController: XComponentController = new XComponentController()
 
   private deferUiUpdate(task: () => void): void {
@@ -227,7 +250,7 @@ struct Index {
     }
   }
 
-  private probeNative(): void {
+  private probeNative(appendLogs: boolean = true): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
       this.surfacePixelWidth = result.surfaceWidth
@@ -249,16 +272,33 @@ struct Index {
       const viewportText = result.surfaceViewportWidth > 0 && result.surfaceViewportHeight > 0 ?
         `viewport ${result.surfaceViewportX},${result.surfaceViewportY} ${result.surfaceViewportWidth}x${result.surfaceViewportHeight}` :
         'viewport pending'
+      const layoutText = this.surfaceLayoutWidth > 0 && this.surfaceLayoutHeight > 0 ?
+        `layout ${this.formatNumber(this.surfaceLayoutWidth)}x${this.formatNumber(this.surfaceLayoutHeight)}` :
+        'layout pending'
       const desktopText = result.desktopWidth > 0 && result.desktopHeight > 0 ?
         `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
       const inputText = `input ${result.inputDispatchMode} q=${result.inputQueueDepth} sent=${result.inputSentCount} drop=${result.inputDroppedCount}`
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${viewportText} | ${desktopText} | ${paintText} | ${inputText}`
-      this.appendNativeLogs(result.logs)
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${inputText}`
+      if (appendLogs) {
+        this.appendNativeLogs(result.logs)
+      }
     } catch (error) {
       this.nativeProbeText = 'Native bridge probe failed'
       this.appendLog(`Native probe failed: ${JSON.stringify(error)}`)
     }
+  }
+
+  private scheduleInputProbe(): void {
+    const now = Date.now()
+    if (now - this.lastInputProbeAtMs < INPUT_PROBE_INTERVAL_MS) {
+      return
+    }
+    this.lastInputProbeAtMs = now
+    setTimeout((): void => {
+      this.probeNative(false)
+      this.appendLog(`Input counters: q=${this.inputQueueDepth} sent=${this.inputSentCount} drop=${this.inputDroppedCount}`)
+    }, INPUT_PROBE_DELAY_MS)
   }
 
   private paintSurfaceTestPattern(): void {
@@ -359,14 +399,93 @@ struct Index {
     return this.connectionState === 'Connected'
   }
 
-  private sendPointer(flags: number, x: number, y: number, allowClamp: boolean = false): boolean {
+  private formatNumber(value: number): string {
+    return `${Math.round(value * 10) / 10}`
+  }
+
+  private formatPointerFlags(flags: number): string {
+    return `0x${flags.toString(16).toUpperCase()}`
+  }
+
+  private areaLengthToNumber(value: Length): number {
+    if (typeof value === 'number') {
+      return value
+    }
+
+    const text = `${value}`
+    const unitIndex = text.search(/[a-zA-Z%]/)
+    const numericText = unitIndex >= 0 ? text.substring(0, unitIndex) : text
+    const numeric = Number(numericText)
+    return numeric > 0 ? numeric : 0
+  }
+
+  private updateSurfaceLayout(width: Length, height: Length): void {
+    const nextWidth = this.areaLengthToNumber(width)
+    const nextHeight = this.areaLengthToNumber(height)
+    if (nextWidth <= 0 || nextHeight <= 0) {
+      return
+    }
+    this.surfaceLayoutWidth = nextWidth
+    this.surfaceLayoutHeight = nextHeight
+  }
+
+  private getPointerScaleX(): number {
+    if (this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
+      return this.surfacePixelWidth / this.surfaceLayoutWidth
+    }
+    return 1
+  }
+
+  private getPointerScaleY(): number {
+    if (this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
+      return this.surfacePixelHeight / this.surfaceLayoutHeight
+    }
+    return 1
+  }
+
+  private pointerMappingFailureShouldLog(traceLabel: string): boolean {
+    if (traceLabel.length > 0) {
+      return true
+    }
+
+    const now = Date.now()
+    if (now - this.lastPointerFailureLogAtMs >= POINTER_FAILURE_LOG_INTERVAL_MS) {
+      this.lastPointerFailureLogAtMs = now
+      return true
+    }
+    return false
+  }
+
+  private describePointerMapping(flags: number, eventX: number, eventY: number, mapped: PointerMapping): string {
+    const inputText = `event=${this.formatNumber(eventX)},${this.formatNumber(eventY)}`
+    const surfaceText = `surface=${this.formatNumber(mapped.surfaceX)},${this.formatNumber(mapped.surfaceY)}`
+    const scaleText = `scale=${this.formatNumber(mapped.scaleX)}x${this.formatNumber(mapped.scaleY)}`
+    const viewportText = `viewport=${mapped.viewportX},${mapped.viewportY} ${mapped.viewportWidth}x${mapped.viewportHeight}`
+    const desktopText = `desktop=${mapped.desktopWidth}x${mapped.desktopHeight}`
+    const remoteText = mapped.ok ? ` remote=${mapped.x},${mapped.y}` : ''
+    return `flags=${this.formatPointerFlags(flags)} ${inputText} ${surfaceText} ${scaleText} ${viewportText} ${desktopText}${remoteText}`
+  }
+
+  private logPointerDiagnostic(label: string, flags: number, x: number, y: number, mapped: PointerMapping): void {
+    const status = mapped.ok ? 'mapped' : `blocked: ${mapped.reason}`
+    this.appendLog(`Pointer ${label} ${status}: ${this.describePointerMapping(flags, x, y, mapped)}`)
+  }
+
+  private sendPointer(flags: number, x: number, y: number, allowClamp: boolean = false,
+    traceLabel: string = '', logSuccess: boolean = false): boolean {
     if (!this.isConnected()) {
+      if (this.pointerMappingFailureShouldLog(traceLabel)) {
+        this.appendLog(`Pointer ${traceLabel || 'input'} skipped: no active FreeRDP session`)
+      }
       return false
     }
 
     try {
       const mapped = this.mapPointerToDesktop(x, y, allowClamp)
       if (!mapped.ok) {
+        if (this.pointerMappingFailureShouldLog(traceLabel)) {
+          this.logPointerDiagnostic(traceLabel || 'input', flags, x, y, mapped)
+        }
         return false
       }
       const result: NativeCommandResult = rdpNative.sendPointer({
@@ -375,11 +494,18 @@ struct Index {
         y: mapped.y
       })
       if (!result.ok) {
-        this.appendLog(result.message)
+        this.appendLog(`Pointer ${traceLabel || 'input'} failed: ${result.message}; ${this.describePointerMapping(flags, x, y, mapped)}`)
+        this.scheduleInputProbe()
+        return false
       }
+      if (logSuccess) {
+        this.appendLog(`Pointer ${traceLabel || 'input'} queued: ${this.describePointerMapping(flags, x, y, mapped)}`)
+      }
+      this.scheduleInputProbe()
       return result.ok
     } catch (error) {
-      this.appendLog(`Native pointer input failed: ${JSON.stringify(error)}`)
+      this.appendLog(`Native pointer input failed (${traceLabel || 'input'}): ${JSON.stringify(error)}`)
+      this.scheduleInputProbe()
       return false
     }
   }
@@ -432,6 +558,8 @@ struct Index {
   }
 
   private isPointInRemoteViewport(x: number, y: number): boolean {
+    const surfaceX = x * this.getPointerScaleX()
+    const surfaceY = y * this.getPointerScaleY()
     const viewportX = this.getRemoteViewportX()
     const viewportY = this.getRemoteViewportY()
     const viewportWidth = this.getRemoteViewportWidth()
@@ -439,58 +567,85 @@ struct Index {
     if (viewportWidth <= 0 || viewportHeight <= 0) {
       return false
     }
-    return x >= viewportX && x < viewportX + viewportWidth && y >= viewportY && y < viewportY + viewportHeight
+    return surfaceX >= viewportX && surfaceX < viewportX + viewportWidth &&
+      surfaceY >= viewportY && surfaceY < viewportY + viewportHeight
   }
 
   private mapPointerToDesktop(x: number, y: number, allowClamp: boolean): PointerMapping {
+    const scaleX = this.getPointerScaleX()
+    const scaleY = this.getPointerScaleY()
+    const surfaceX = x * scaleX
+    const surfaceY = y * scaleY
     const viewportX = this.getRemoteViewportX()
     const viewportY = this.getRemoteViewportY()
     const viewportWidth = this.getRemoteViewportWidth()
     const viewportHeight = this.getRemoteViewportHeight()
     const desktopWidth = this.getRequestedDesktopWidth()
     const desktopHeight = this.getRequestedDesktopHeight()
+    const base: PointerMapping = {
+      ok: false,
+      x: 0,
+      y: 0,
+      surfaceX: surfaceX,
+      surfaceY: surfaceY,
+      scaleX: scaleX,
+      scaleY: scaleY,
+      viewportX: viewportX,
+      viewportY: viewportY,
+      viewportWidth: viewportWidth,
+      viewportHeight: viewportHeight,
+      desktopWidth: desktopWidth,
+      desktopHeight: desktopHeight,
+      reason: ''
+    }
     if (viewportWidth <= 0 || viewportHeight <= 0 || desktopWidth <= 0 || desktopHeight <= 0) {
-      return { ok: false, x: 0, y: 0 }
+      base.reason = 'surface viewport or remote desktop size is not ready'
+      return base
     }
 
-    const localX = x - viewportX
-    const localY = y - viewportY
+    const localX = surfaceX - viewportX
+    const localY = surfaceY - viewportY
     const inside = localX >= 0 && localX < viewportWidth && localY >= 0 && localY < viewportHeight
     if (!inside && !allowClamp) {
-      return { ok: false, x: 0, y: 0 }
+      base.reason = 'point is outside rendered remote viewport'
+      return base
     }
 
     const clampedX = this.clampInt(localX, 0, viewportWidth - 1)
     const clampedY = this.clampInt(localY, 0, viewportHeight - 1)
     const mappedX = this.clampInt(clampedX * desktopWidth / viewportWidth, 0, desktopWidth - 1)
     const mappedY = this.clampInt(clampedY * desktopHeight / viewportHeight, 0, desktopHeight - 1)
-    return { ok: true, x: mappedX, y: mappedY }
+    base.ok = true
+    base.x = mappedX
+    base.y = mappedY
+    base.reason = 'ok'
+    return base
   }
 
   private sendWheel(deltaY: number, x: number, y: number): void {
     const flags = deltaY > 0 ?
       PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
       PTR_FLAGS_WHEEL | RDP_WHEEL_DELTA
-    this.sendPointer(flags, x, y)
+    this.sendPointer(flags, x, y, false, 'wheel.vertical', true)
   }
 
   private sendHorizontalWheel(deltaX: number, x: number, y: number): void {
     const flags = deltaX > 0 ?
       PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
       PTR_FLAGS_HWHEEL | RDP_WHEEL_DELTA
-    this.sendPointer(flags, x, y)
+    this.sendPointer(flags, x, y, false, 'wheel.horizontal', true)
   }
 
-  private sendLeftClick(x: number, y: number): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y)
-    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y)
-    this.sendPointer(PTR_FLAGS_BUTTON1, x, y)
+  private sendLeftClick(x: number, y: number, label: string = 'tap.left'): void {
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
+    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
+    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, false, `${label}.up`, true)
   }
 
-  private sendRightClick(x: number, y: number): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y)
-    this.sendPointer(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y)
-    this.sendPointer(PTR_FLAGS_BUTTON2, x, y)
+  private sendRightClick(x: number, y: number, label: string = 'longPress.right'): void {
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
+    this.sendPointer(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
+    this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`, true)
   }
 
   private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true): boolean {
@@ -588,6 +743,7 @@ struct Index {
     this.twoFingerScrollActive = false
     this.touchGestureSuppressed = false
     this.mouseButtonFlags = 0
+    this.lastTapAtMs = 0
   }
 
   private releasePointerButtons(): void {
@@ -730,6 +886,9 @@ struct Index {
 
   private handleSurfaceMouse(event: MouseEvent): void {
     if (!this.isConnected()) {
+      if (this.pointerMappingFailureShouldLog('')) {
+        this.appendLog('Mouse input skipped: no active FreeRDP session')
+      }
       return
     }
     if (Date.now() - this.lastTouchEventAtMs < 350) {
@@ -739,18 +898,21 @@ struct Index {
     this.lastTouchY = event.y
     const buttonFlag = this.mouseButtonToPointerFlag(event.button)
     if (event.action === MouseAction.Press) {
+      this.logPointerDiagnostic('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
+        this.mapPointerToDesktop(event.x, event.y, false))
       if (buttonFlag === 0 || !this.isPointInRemoteViewport(event.x, event.y)) {
+        this.appendLog(`Mouse press skipped: button=${buttonFlag} inside=${this.isPointInRemoteViewport(event.x, event.y)}`)
         return
       }
       this.mouseButtonFlags |= buttonFlag
-      this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y)
-      this.sendPointer(PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y)
+      this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, false, 'mouse.press.move', true)
+      this.sendPointer(PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down', true)
       return
     }
     if (event.action === MouseAction.Release) {
       const releaseFlag = buttonFlag !== 0 ? buttonFlag : this.mouseButtonFlags
       if (releaseFlag !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE | releaseFlag, event.x, event.y, true)
+        this.sendPointer(PTR_FLAGS_MOVE | releaseFlag, event.x, event.y, true, 'mouse.release.up', true)
         this.mouseButtonFlags &= ~releaseFlag
       }
       return
@@ -758,7 +920,7 @@ struct Index {
     if (event.action === MouseAction.Move || event.action === MouseAction.Hover) {
       const pressedFlags = this.getPressedMouseButtonFlags(event)
       if (pressedFlags !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE | pressedFlags | PTR_FLAGS_DOWN, event.x, event.y, true)
+        this.sendPointer(PTR_FLAGS_MOVE | pressedFlags | PTR_FLAGS_DOWN, event.x, event.y, true, 'mouse.drag.move')
       } else {
         this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y)
       }
@@ -766,7 +928,7 @@ struct Index {
     }
     if (event.action === MouseAction.CANCEL) {
       if (this.mouseButtonFlags !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE | this.mouseButtonFlags, event.x, event.y, true)
+        this.sendPointer(PTR_FLAGS_MOVE | this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release', true)
       }
       this.mouseButtonFlags = 0
     }
@@ -789,6 +951,7 @@ struct Index {
   }
 
   private startPendingTouch(x: number, y: number): void {
+    this.logPointerDiagnostic('touch.down', PTR_FLAGS_MOVE, x, y, this.mapPointerToDesktop(x, y, false))
     if (!this.isPointInRemoteViewport(x, y)) {
       this.cancelPendingTouch()
       return
@@ -828,10 +991,28 @@ struct Index {
     this.cancelLongPressTimer()
     this.pendingTouchActive = false
     this.pointerDown = true
-    this.sendPointer(PTR_FLAGS_MOVE, this.pendingTouchStartX, this.pendingTouchStartY)
+    this.sendPointer(PTR_FLAGS_MOVE, this.pendingTouchStartX, this.pendingTouchStartY, false, 'touch.drag.start.move',
+      true)
     this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, this.pendingTouchStartX,
-      this.pendingTouchStartY)
-    this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true)
+      this.pendingTouchStartY, false, 'touch.drag.start.down', true)
+    this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true, 'touch.drag.move')
+  }
+
+  private isDoubleTap(x: number, y: number): boolean {
+    const now = Date.now()
+    if (now - this.lastTapAtMs > DOUBLE_TAP_TIMEOUT_MS) {
+      return false
+    }
+
+    const dx = x - this.lastTapX
+    const dy = y - this.lastTapY
+    return Math.abs(dx) <= DOUBLE_TAP_DISTANCE && Math.abs(dy) <= DOUBLE_TAP_DISTANCE
+  }
+
+  private recordTap(x: number, y: number): void {
+    this.lastTapAtMs = Date.now()
+    this.lastTapX = x
+    this.lastTapY = y
   }
 
   private finishSingleTouch(x: number, y: number, cancelled: boolean): void {
@@ -847,14 +1028,21 @@ struct Index {
     if (this.pendingTouchActive) {
       this.pendingTouchActive = false
       if (!cancelled) {
-        this.sendLeftClick(x, y)
+        if (this.isDoubleTap(x, y)) {
+          this.appendLog(`Touch double tap: event=${this.formatNumber(x)},${this.formatNumber(y)}`)
+          this.lastTapAtMs = 0
+          this.sendLeftClick(x, y, 'tap.double')
+        } else {
+          this.recordTap(x, y)
+          this.sendLeftClick(x, y)
+        }
       }
       return
     }
 
     if (this.pointerDown) {
       this.pointerDown = false
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y, true)
+      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y, true, 'touch.drag.release', true)
     }
   }
 
@@ -907,7 +1095,7 @@ struct Index {
       }
 
       if (this.pointerDown) {
-        this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true)
+        this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true, 'touch.drag.move')
       } else {
         this.sendPointer(PTR_FLAGS_MOVE, x, y)
       }
@@ -935,7 +1123,8 @@ struct Index {
 
     if (this.pointerDown) {
       this.pointerDown = false
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, firstTouch.x, firstTouch.y, true)
+      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, firstTouch.x, firstTouch.y, true,
+        'touch.scroll.releaseDrag', true)
     }
 
     if (event.type === TouchType.Down || !this.twoFingerScrollActive) {
@@ -1200,13 +1389,11 @@ struct Index {
               this.probeNative()
             })
           })
-          .onAreaChange(() => {
+          .onAreaChange((oldArea: Area, newArea: Area) => {
+            this.updateSurfaceLayout(newArea.width, newArea.height)
             this.deferUiUpdate(() => {
               this.probeNative()
             })
-          })
-          .onTouch((event: TouchEvent) => {
-            this.handleSurfaceTouch(event)
           })
 
         if (!this.isConnected()) {
@@ -1220,6 +1407,9 @@ struct Index {
       .backgroundColor('#101828')
       .focusable(true)
       .focusOnTouch(true)
+      .onTouch((event: TouchEvent) => {
+        this.handleSurfaceTouch(event)
+      })
       .onKeyEvent((event: KeyEvent): boolean => {
         return this.handleSurfaceKeyEvent(event)
       })
