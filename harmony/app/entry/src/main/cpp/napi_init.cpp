@@ -3154,7 +3154,8 @@ private:
                 std::to_string(viewport.width) + "x" + std::to_string(viewport.height) +
                 " viewport=" + std::to_string(viewport.x) + "," + std::to_string(viewport.y) +
                 " source=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-                " upload=" + (usingStagingBuffer_ ? "staged" : "direct");
+                " upload=" + (uploadMode_.empty() ?
+                    (usingStagingBuffer_ ? "staged" : "direct") : uploadMode_);
             result.logs.push_back(result.message);
             return true;
         }
@@ -3371,26 +3372,25 @@ private:
         bool UploadTexture(const RgbaFrame& frame, int32_t sourceStride, SurfacePaintResult& result)
         {
             const size_t tightRowBytes = static_cast<size_t>(frame.width) * 4U;
-            const uint8_t* upload = frame.data;
+            const uint8_t* upload = nullptr;
             usingStagingBuffer_ = false;
-            if (sourceStride != static_cast<int32_t>(tightRowBytes)) {
-                const size_t required = tightRowBytes * frame.height;
-                uploadBuffer_.resize(required);
-                for (uint32_t y = 0; y < frame.height; ++y) {
-                    std::memcpy(uploadBuffer_.data() + tightRowBytes * y,
-                        frame.data + static_cast<int64_t>(sourceStride) * y, tightRowBytes);
-                }
-                upload = uploadBuffer_.data();
-                usingStagingBuffer_ = true;
-            }
+            uploadMode_ = "full-direct";
 
             glBindTexture(GL_TEXTURE_2D, texture_);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            if (textureWidth_ != frame.width || textureHeight_ != frame.height) {
+            const bool textureSizeChanged = textureWidth_ != frame.width || textureHeight_ != frame.height;
+            DirtyFrameStats dirty = frame.dirty;
+            const bool uploadDirty = !textureSizeChanged && CanUploadDirty(frame, dirty);
+            if (!uploadDirty) {
+                upload = PrepareFullUpload(frame, sourceStride, tightRowBytes);
+            }
+            if (textureSizeChanged) {
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(frame.width),
                     static_cast<GLsizei>(frame.height), 0, GL_RGBA, GL_UNSIGNED_BYTE, upload);
                 textureWidth_ = frame.width;
                 textureHeight_ = frame.height;
+            } else if (uploadDirty) {
+                UploadDirtyTexture(frame, sourceStride, dirty);
             } else {
                 glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(frame.width),
                     static_cast<GLsizei>(frame.height), GL_RGBA, GL_UNSIGNED_BYTE, upload);
@@ -3402,6 +3402,72 @@ private:
             }
             result.logs.push_back("GLES texture upload failed: " + Hex32(static_cast<uint32_t>(glError)));
             return false;
+        }
+
+        const uint8_t* PrepareFullUpload(const RgbaFrame& frame, int32_t sourceStride, size_t tightRowBytes)
+        {
+            if (sourceStride == static_cast<int32_t>(tightRowBytes)) {
+                usingStagingBuffer_ = false;
+                uploadMode_ = "full-direct";
+                return frame.data;
+            }
+
+            const size_t required = tightRowBytes * frame.height;
+            uploadBuffer_.resize(required);
+            for (uint32_t y = 0; y < frame.height; ++y) {
+                std::memcpy(uploadBuffer_.data() + tightRowBytes * y,
+                    frame.data + static_cast<int64_t>(sourceStride) * y, tightRowBytes);
+            }
+            usingStagingBuffer_ = true;
+            uploadMode_ = "full-staged";
+            return uploadBuffer_.data();
+        }
+
+        bool CanUploadDirty(const RgbaFrame& frame, DirtyFrameStats& dirty) const
+        {
+            constexpr uint32_t kMaxDirtyUploadAreaPermille = 850;
+            if (!dirty.valid || dirty.width == 0 || dirty.height == 0 ||
+                dirty.areaPermille > kMaxDirtyUploadAreaPermille) {
+                return false;
+            }
+            if (dirty.x >= frame.width || dirty.y >= frame.height) {
+                return false;
+            }
+            if (dirty.x + dirty.width > frame.width) {
+                dirty.width = frame.width - dirty.x;
+            }
+            if (dirty.y + dirty.height > frame.height) {
+                dirty.height = frame.height - dirty.y;
+            }
+            return dirty.width > 0 && dirty.height > 0;
+        }
+
+        void UploadDirtyTexture(const RgbaFrame& frame, int32_t sourceStride, const DirtyFrameStats& dirty)
+        {
+            const size_t dirtyRowBytes = static_cast<size_t>(dirty.width) * 4U;
+            const uint8_t* upload = nullptr;
+            if (dirty.x == 0 && dirty.width == frame.width &&
+                sourceStride == static_cast<int32_t>(dirtyRowBytes)) {
+                upload = frame.data + static_cast<size_t>(dirty.y) * dirtyRowBytes;
+                usingStagingBuffer_ = false;
+                uploadMode_ = "dirty-direct";
+            } else {
+                const size_t required = dirtyRowBytes * dirty.height;
+                uploadBuffer_.resize(required);
+                for (uint32_t y = 0; y < dirty.height; ++y) {
+                    const uint8_t* src = frame.data +
+                        static_cast<int64_t>(dirty.y + y) * sourceStride +
+                        static_cast<size_t>(dirty.x) * 4U;
+                    std::memcpy(uploadBuffer_.data() + dirtyRowBytes * y, src, dirtyRowBytes);
+                }
+                upload = uploadBuffer_.data();
+                usingStagingBuffer_ = true;
+                uploadMode_ = "dirty-staged";
+            }
+
+            glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(dirty.x),
+                static_cast<GLint>(dirty.y), static_cast<GLsizei>(dirty.width),
+                static_cast<GLsizei>(dirty.height), GL_RGBA, GL_UNSIGNED_BYTE, upload);
         }
 
         EGLDisplay display_ = EGL_NO_DISPLAY;
@@ -3419,6 +3485,7 @@ private:
         GLint texCoordAttrib_ = -1;
         GLint textureUniform_ = -1;
         bool usingStagingBuffer_ = false;
+        std::string uploadMode_;
         std::vector<uint8_t> uploadBuffer_;
     };
 
