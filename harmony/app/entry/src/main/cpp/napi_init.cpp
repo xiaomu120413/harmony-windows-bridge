@@ -45,13 +45,16 @@
 #include <freerdp/client/channels.h>
 #include <freerdp/client/cliprdr.h>
 #include <freerdp/client/disp.h>
+#include <freerdp/client/rdpgfx.h>
 #include <freerdp/channels/cliprdr.h>
 #include <freerdp/channels/disp.h>
+#include <freerdp/channels/rdpgfx.h>
 #include <freerdp/codec/color.h>
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
 #include <freerdp/event.h>
 #include <freerdp/freerdp.h>
+#include <freerdp/gdi/gfx.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/input.h>
 #include <freerdp/settings.h>
@@ -70,6 +73,7 @@ struct ConnectParams {
     std::string password;
     std::string resolution;
     std::string certPolicy;
+    std::string graphicsMode;
     std::string appFilesDir;
 };
 
@@ -140,6 +144,19 @@ struct RenderStatsSnapshot {
     uint32_t targetFrameIntervalMs = 0;
 };
 
+struct GraphicsPipelineConfig {
+    bool enabled = false;
+    bool h264 = false;
+    std::string mode = "gdi";
+};
+
+std::atomic_bool g_rdpgfxRuntimeRequested{false};
+std::atomic_bool g_rdpgfxH264Requested{false};
+std::atomic_bool g_rdpgfxBridgeAttached{false};
+std::atomic_uint32_t g_rdpgfxConnectedCount{0};
+std::atomic_uint32_t g_rdpgfxDisconnectedCount{0};
+std::atomic_uint32_t g_rdpgfxInitFailedCount{0};
+
 std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
 {
     if (!dirty.valid) {
@@ -202,6 +219,7 @@ void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::stri
 void StartRenderPipeline();
 void StopRenderPipeline();
 std::string BuildRenderStatsLog();
+std::string BuildGraphicsPipelineStatsLog();
 std::string BuildOHAudioStatsLog();
 
 void EmitHilogInfo(const std::string& line)
@@ -522,6 +540,10 @@ public:
             LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         if (loaded_) {
+            LoadOptionalFreerdpSymbol("gdi_graphics_pipeline_init", gdiGraphicsPipelineInit);
+            LoadOptionalFreerdpSymbol("gdi_graphics_pipeline_uninit", gdiGraphicsPipelineUninit);
+            LoadOptionalClientSymbol("rdpgfx_client_context_new", rdpgfxClientContextNew);
+            LoadOptionalClientSymbol("rdpgfx_client_context_free", rdpgfxClientContextFree);
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_diagnostics", rdpsndOhosGetDiagnostics);
             LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);
@@ -558,6 +580,10 @@ public:
     using ClientAddDynamicChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
     using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
+    using GdiGraphicsPipelineInitFn = BOOL (*)(rdpGdi*, RdpgfxClientContext*);
+    using GdiGraphicsPipelineUninitFn = void (*)(rdpGdi*, RdpgfxClientContext*);
+    using RdpgfxClientContextNewFn = RdpgfxClientContext* (*)(rdpContext*);
+    using RdpgfxClientContextFreeFn = void (*)(RdpgfxClientContext*);
     using RdpsndOhosGetStatsFn = BOOL (*)(UINT64*, UINT64*, UINT64*, UINT64*, UINT64*, UINT64*,
         UINT64*, UINT64*, UINT32*, UINT16*, UINT16*, UINT32*);
     using RdpsndOhosGetDiagnosticsFn = const char* (*)();
@@ -594,6 +620,10 @@ public:
     ClientAddDynamicChannelFn clientAddDynamicChannel = nullptr;
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
+    GdiGraphicsPipelineInitFn gdiGraphicsPipelineInit = nullptr;
+    GdiGraphicsPipelineUninitFn gdiGraphicsPipelineUninit = nullptr;
+    RdpgfxClientContextNewFn rdpgfxClientContextNew = nullptr;
+    RdpgfxClientContextFreeFn rdpgfxClientContextFree = nullptr;
     RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
@@ -610,6 +640,20 @@ private:
     bool LoadClientSymbol(const char* name, Fn& target, std::string& error)
     {
         return LoadSymbolFrom(freerdpClientHandle_, "libfreerdp-client3.so", name, target, error);
+    }
+
+    template <typename Fn>
+    void LoadOptionalFreerdpSymbol(const char* name, Fn& target)
+    {
+        if (freerdpHandle_ == nullptr) {
+            return;
+        }
+
+        dlerror();
+        void* symbol = dlsym(freerdpHandle_, name);
+        if (dlerror() == nullptr && symbol != nullptr) {
+            target = reinterpret_cast<Fn>(symbol);
+        }
     }
 
     template <typename Fn>
@@ -855,6 +899,32 @@ CertificatePolicy ParseCertificatePolicy(const std::string& value)
         return CertificatePolicy::Strict;
     }
     return CertificatePolicy::Tofu;
+}
+
+GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
+{
+    GraphicsPipelineConfig config;
+    std::string mode = ToLowerAscii(TrimAscii(params.graphicsMode));
+    if (mode.empty()) {
+        const char* envMode = std::getenv("FREERDP_OHOS_GRAPHICS");
+        if (envMode != nullptr) {
+            mode = ToLowerAscii(TrimAscii(envMode));
+        }
+    }
+
+    if (mode == "rdpgfx" || mode == "gfx" || mode == "on") {
+        config.enabled = true;
+        config.mode = "rdpgfx";
+    } else if (mode == "rdpgfx-h264" || mode == "gfx-h264" || mode == "h264") {
+        config.enabled = true;
+        config.h264 = true;
+        config.mode = "rdpgfx-h264";
+    } else {
+        config.enabled = false;
+        config.h264 = false;
+        config.mode = "gdi";
+    }
+    return config;
 }
 
 std::string SafeCString(const char* value)
@@ -1194,13 +1264,16 @@ bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
 }
 
 bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const GraphicsPipelineConfig& graphicsConfig,
     const FreerdpLogFn& log, std::string& error)
 {
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DynamicResolutionUpdate, true, "DynamicResolutionUpdate", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, false, "SupportGraphicsPipeline", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, false, "GfxH264", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, graphicsConfig.enabled,
+            "SupportGraphicsPipeline", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, graphicsConfig.enabled && graphicsConfig.h264,
+            "GfxH264", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false, "GfxAVC444", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, false, "GfxAVC444v2", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
@@ -1219,9 +1292,48 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
 
     log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection enabled");
     log("FreeRDP display-control dynamic resolution enabled");
-    log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
+    if (graphicsConfig.enabled) {
+        log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
+            " h264=" + std::string(graphicsConfig.h264 ? "on" : "off") +
+            " fallback=manual-gdi-toggle");
+    } else {
+        log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
+    }
     log("FreeRDP audio playback is requested through explicit rdpsnd sys:ohos channels");
     log("FreeRDP rdpdr base channel enabled; drive/printer/smartcard runtime toggles remain disabled by default");
+    return true;
+}
+
+bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const GraphicsPipelineConfig& graphicsConfig, const FreerdpLogFn& log, std::string& error)
+{
+    g_rdpgfxRuntimeRequested.store(graphicsConfig.enabled);
+    g_rdpgfxH264Requested.store(graphicsConfig.enabled && graphicsConfig.h264);
+    g_rdpgfxBridgeAttached.store(false);
+
+    if (!graphicsConfig.enabled) {
+        log("FreeRDP rdpgfx dynamic channel not requested: graphicsMode=gdi");
+        log(BuildGraphicsPipelineStatsLog());
+        return true;
+    }
+
+    if (api.clientAddDynamicChannel == nullptr) {
+        error = "FreeRDP rdpgfx dynamic channel helper is not loaded";
+        return false;
+    }
+    if (api.gdiGraphicsPipelineInit == nullptr || api.gdiGraphicsPipelineUninit == nullptr) {
+        error = "FreeRDP GDI graphics pipeline symbols are not loaded";
+        return false;
+    }
+
+    const char* params[] = {RDPGFX_CHANNEL_NAME};
+    if (!api.clientAddDynamicChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set rdpgfx dynamic channel failed";
+        return false;
+    }
+
+    log("FreeRDP rdpgfx requested: dynamic channel + GDI graphics pipeline bridge");
+    log(BuildGraphicsPipelineStatsLog());
     return true;
 }
 
@@ -2181,6 +2293,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     UserParts user = SplitDomainUsername(params.username);
     const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);
     const bool ignoreCertificate = certificatePolicy == CertificatePolicy::Ignore;
+    const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
 
     if (!SetFreerdpString(api, settings, FreeRDP_ServerHostname, params.host, "ServerHostname", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_ServerPort, port, "ServerPort", error) ||
@@ -2213,7 +2326,14 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
 
-    if (!ConfigureEnhancedRdpSettings(api, settings, log, error)) {
+    if (!ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!ConfigureGraphicsPipelineChannel(api, settings, graphicsConfig, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -4161,6 +4281,7 @@ private:
             activeInstance_ = instance;
             activeContext_ = context;
             activeDisp_ = nullptr;
+            activeGfx_ = nullptr;
             displayControlCapsReady_ = false;
             lastDynamicResizeWidth_ = 0;
             lastDynamicResizeHeight_ = 0;
@@ -4185,6 +4306,7 @@ private:
 
         oldContext = activeContext_;
         oldApi = activeApi_;
+        DetachGraphicsPipelineLocked(activeGfx_);
         if (oldApi != nullptr && oldApi->pubSubUnsubscribe != nullptr && oldContext != nullptr &&
             oldContext->pubSub != nullptr) {
             (void)oldApi->pubSubUnsubscribe(oldContext->pubSub, "ChannelConnected", OnChannelConnected);
@@ -4195,6 +4317,7 @@ private:
         activeInstance_ = nullptr;
         activeContext_ = nullptr;
         activeDisp_ = nullptr;
+        activeGfx_ = nullptr;
         displayControlCapsReady_ = false;
         lastDynamicResizeWidth_ = 0;
         lastDynamicResizeHeight_ = 0;
@@ -4252,27 +4375,42 @@ private:
                 std::strcmp(name, DISP_DVC_CHANNEL_NAME) == 0);
     }
 
+    static bool IsGraphicsPipelineChannel(const char* name)
+    {
+        return name != nullptr && std::strcmp(name, RDPGFX_DVC_CHANNEL_NAME) == 0;
+    }
+
     static void OnChannelConnected(void* context, const ChannelConnectedEventArgs* event)
     {
-        if (context == nullptr || event == nullptr || !IsDisplayControlChannel(event->name)) {
+        if (context == nullptr || event == nullptr || event->name == nullptr) {
             return;
         }
 
         RdpSession* session = FindSession(static_cast<rdpContext*>(context));
-        if (session != nullptr) {
+        if (session == nullptr) {
+            return;
+        }
+        if (IsDisplayControlChannel(event->name)) {
             session->AttachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
+        } else if (IsGraphicsPipelineChannel(event->name)) {
+            session->AttachGraphicsPipeline(static_cast<RdpgfxClientContext*>(event->pInterface));
         }
     }
 
     static void OnChannelDisconnected(void* context, const ChannelDisconnectedEventArgs* event)
     {
-        if (context == nullptr || event == nullptr || !IsDisplayControlChannel(event->name)) {
+        if (context == nullptr || event == nullptr || event->name == nullptr) {
             return;
         }
 
         RdpSession* session = FindSession(static_cast<rdpContext*>(context));
-        if (session != nullptr) {
+        if (session == nullptr) {
+            return;
+        }
+        if (IsDisplayControlChannel(event->name)) {
             session->DetachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
+        } else if (IsGraphicsPipelineChannel(event->name)) {
+            session->DetachGraphicsPipeline(static_cast<RdpgfxClientContext*>(event->pInterface));
         }
     }
 
@@ -4357,6 +4495,70 @@ private:
             EmitLog("display-control disconnected from HarmonyOS window resize bridge");
         }
     }
+
+    void AttachGraphicsPipeline(RdpgfxClientContext* gfx)
+    {
+        std::string message;
+        bool attached = false;
+        {
+            std::lock_guard<std::mutex> lock(activeMutex_);
+            if (gfx == nullptr) {
+                message = "rdpgfx connected without client context";
+            } else if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->gdi == nullptr) {
+                g_rdpgfxInitFailedCount.fetch_add(1);
+                message = "rdpgfx connected before GDI context was ready";
+            } else if (activeApi_->gdiGraphicsPipelineInit == nullptr) {
+                g_rdpgfxInitFailedCount.fetch_add(1);
+                message = "rdpgfx GDI pipeline init symbol unavailable";
+            } else {
+                if (activeGfx_ != nullptr && activeGfx_ != gfx) {
+                    DetachGraphicsPipelineLocked(activeGfx_);
+                }
+                if (activeApi_->gdiGraphicsPipelineInit(activeContext_->gdi, gfx)) {
+                    activeGfx_ = gfx;
+                    g_rdpgfxBridgeAttached.store(true);
+                    g_rdpgfxConnectedCount.fetch_add(1);
+                    attached = true;
+                    message = "rdpgfx connected to FreeRDP GDI graphics pipeline";
+                } else {
+                    g_rdpgfxInitFailedCount.fetch_add(1);
+                    message = "rdpgfx GDI graphics pipeline init failed";
+                }
+            }
+        }
+
+        EmitLog(message);
+        if (attached) {
+            RequestSurfaceRepaint("rdpgfx connected");
+        }
+    }
+
+    void DetachGraphicsPipeline(RdpgfxClientContext* gfx)
+    {
+        bool detached = false;
+        {
+            std::lock_guard<std::mutex> lock(activeMutex_);
+            detached = DetachGraphicsPipelineLocked(gfx);
+        }
+        if (detached) {
+            EmitLog("rdpgfx disconnected from FreeRDP GDI graphics pipeline");
+        }
+    }
+
+    bool DetachGraphicsPipelineLocked(RdpgfxClientContext* gfx)
+    {
+        if (activeGfx_ == nullptr || activeGfx_ != gfx) {
+            return false;
+        }
+        if (activeApi_ != nullptr && activeApi_->gdiGraphicsPipelineUninit != nullptr &&
+            activeContext_ != nullptr && activeContext_->gdi != nullptr) {
+            activeApi_->gdiGraphicsPipelineUninit(activeContext_->gdi, activeGfx_);
+        }
+        activeGfx_ = nullptr;
+        g_rdpgfxBridgeAttached.store(false);
+        g_rdpgfxDisconnectedCount.fetch_add(1);
+        return true;
+    }
 #else
     void RequestNativeDisconnect() {}
 #endif
@@ -4365,6 +4567,7 @@ private:
     {
         EmitLog("native worker accepted params");
         EmitLog("target=" + params.host + ":" + params.port);
+        EmitLog("graphicsMode=" + ParseGraphicsPipelineConfig(params).mode);
 
         if (!running_.load()) {
             EmitState("Disconnected");
@@ -4504,6 +4707,7 @@ private:
     freerdp* activeInstance_ = nullptr;
     rdpContext* activeContext_ = nullptr;
     DispClientContext* activeDisp_ = nullptr;
+    RdpgfxClientContext* activeGfx_ = nullptr;
     bool displayControlCapsReady_ = false;
     uint32_t lastDynamicResizeWidth_ = 0;
     uint32_t lastDynamicResizeHeight_ = 0;
@@ -4776,6 +4980,7 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.password = GetStringProperty(env, args[0], "password");
     params.resolution = GetStringProperty(env, args[0], "resolution");
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
+    params.graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
 }
@@ -4790,6 +4995,33 @@ std::string CurrentAbi()
     return "armeabi-v7a";
 #else
     return "unknown";
+#endif
+}
+
+std::string BuildGraphicsPipelineStatsLog()
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    std::string error;
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
+        return "rdpgfx stats unavailable: " + error;
+    }
+
+    std::ostringstream out;
+    out << "rdpgfx stats: compiled=yes"
+        << " runtime=" << (g_rdpgfxRuntimeRequested.load() ? "requested" : "off")
+        << " h264=" << (g_rdpgfxH264Requested.load() ? "requested" : "off")
+        << " bridge=" << (g_rdpgfxBridgeAttached.load() ? "attached" : "detached")
+        << " connected=" << g_rdpgfxConnectedCount.load()
+        << " disconnected=" << g_rdpgfxDisconnectedCount.load()
+        << " initFailed=" << g_rdpgfxInitFailedCount.load()
+        << " symbols=gdiInit:" << (api.gdiGraphicsPipelineInit != nullptr ? "yes" : "no")
+        << ",gdiUninit:" << (api.gdiGraphicsPipelineUninit != nullptr ? "yes" : "no")
+        << ",ctxNew:" << (api.rdpgfxClientContextNew != nullptr ? "yes" : "no")
+        << ",ctxFree:" << (api.rdpgfxClientContextFree != nullptr ? "yes" : "no");
+    return out.str();
+#else
+    return "rdpgfx stats unavailable: FreeRDP headers not found at build time";
 #endif
 }
 
@@ -4863,13 +5095,14 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
         "static cliprdr text bridge, disp dynamic resolution, and rdpsnd/OHAudio playback requested; "
-        "other optional channel negotiation off";
+        "rdpgfx runtime gated by graphicsMode; other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
     const std::string renderStats = BuildRenderStatsLog();
+    const std::string graphicsStats = BuildGraphicsPipelineStatsLog();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.8.2");
+    SetString(env, result, "bridgeVersion", "0.8.3");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -4877,6 +5110,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetString(env, result, "featureSummary", featureSummary);
     SetString(env, result, "audioStats", audioStats);
     SetString(env, result, "renderStats", renderStats);
+    SetString(env, result, "graphicsStats", graphicsStats);
     SetString(env, result, "inputDispatchMode", "worker-thread-queue");
     SetString(env, result, "probeJson", freerdp.json);
     SetString(env, result, "probeError", freerdp.error);
@@ -4911,6 +5145,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
         renderStats,
+        graphicsStats,
         audioStats,
         "Certificate policy: tofu stores first untrusted certificate through FreeRDP, strict rejects untrusted certificates"
     };

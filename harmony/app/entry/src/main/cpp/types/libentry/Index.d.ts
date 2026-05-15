@@ -7,6 +7,7 @@ export interface NativeProbeResult {
   featureSummary: string;
   audioStats: string;
   renderStats: string;
+  graphicsStats: string;
   inputDispatchMode: string;
   freeRdpLinked: boolean;
   surfaceRegistered: boolean;
@@ -43,6 +44,7 @@ export interface NativeConnectParams {
   password: string;
   resolution: string;
   certPolicy: string;
+  graphicsMode?: string;
   appFilesDir?: string;
 }
 

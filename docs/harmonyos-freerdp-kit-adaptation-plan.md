@@ -932,6 +932,57 @@ static UINT ohos_cliprdr_server_format_data_request(
 
 - 解决视频场景卡顿。
 
+#### S5-1：rdpgfx 运行时预检和 GDI pipeline 桥
+
+目标：
+
+- 在不改变默认连接路径的前提下，把 `rdpgfx` 后续启用需要的符号、动态通道和 GDI graphics pipeline 绑定点补齐。
+- 默认 `graphicsMode=gdi`，继续走 S4 已验证的软件 GDI renderer。
+
+修改范围：
+
+- `harmony/app/entry/src/main/cpp/napi_init.cpp`
+  - 读取 `graphicsMode` 连接参数。
+  - 运行时探测 `gdi_graphics_pipeline_init/uninit`、`rdpgfx_client_context_new/free`。
+  - 新增 `rdpgfx stats` 到 `probe()` 返回和日志。
+  - 订阅 `Microsoft::Windows::RDS::Graphics` channel 事件，后续启用时把 `RdpgfxClientContext` 绑定到 FreeRDP GDI graphics pipeline。
+- `harmony/app/entry/src/main/ets/pages/Index.ets`
+  - 保留隐藏状态 `graphicsMode='gdi'`，连接时透传给 native。
+- `harmony/app/entry/src/main/cpp/types/libentry/Index.d.ts`
+  - 补充 `graphicsStats` 和 `graphicsMode` 类型。
+
+伪码：
+
+```cpp
+graphicsConfig = ParseGraphicsPipelineConfig(params.graphicsMode)
+SetBool(SupportGraphicsPipeline, graphicsConfig.enabled)
+SetBool(GfxH264, graphicsConfig.enabled && graphicsConfig.h264)
+
+if graphicsConfig.enabled:
+    freerdp_client_add_dynamic_channel(settings, "rdpgfx")
+
+OnChannelConnected(name, pInterface):
+    if name == RDPGFX_DVC_CHANNEL_NAME:
+        gdi_graphics_pipeline_init(context->gdi, (RdpgfxClientContext*)pInterface)
+
+OnChannelDisconnected(name, pInterface):
+    if name == RDPGFX_DVC_CHANNEL_NAME:
+        gdi_graphics_pipeline_uninit(context->gdi, (RdpgfxClientContext*)pInterface)
+```
+
+验收标准：
+
+- HAP 构建通过。
+- `probe()` 日志能看到 `rdpgfx stats`，并能明确符号是否存在。
+- 默认连接仍输出 `graphicsMode=gdi`、`rdpgfx dynamic channel not requested`，远程桌面不黑屏。
+- S4 的 full/dirty-bbox/pacing 日志仍存在。
+
+遗留问题和影响：
+
+- 这一阶段不默认启用 `rdpgfx`，所以视频卡顿不会立刻根治。
+- 启用 `rdpgfx` 后仍可能遇到 surface lifetime、frame ack、H.264 解码 CPU 压力，需要 S5-2 真机开关验证。
+- 当前 fallback 是手动回到 `graphicsMode=gdi`，不是会话内自动降级。
+
 修改点：
 
 - FreeRDP `client/ohos/ohos_gfx.*`。

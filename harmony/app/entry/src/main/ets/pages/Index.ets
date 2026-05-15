@@ -118,6 +118,7 @@ interface NativeProbeResult {
   featureSummary: string
   audioStats: string
   renderStats: string
+  graphicsStats: string
   inputDispatchMode: string
   freeRdpLinked: boolean
   surfaceRegistered: boolean
@@ -180,6 +181,7 @@ struct Index {
   @State private password: string = 'aaaa'
   @State private resolution: string = 'auto'
   @State private certPolicy: string = 'ignore'
+  @State private graphicsMode: string = 'gdi'
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
@@ -404,9 +406,10 @@ struct Index {
         `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
       const renderText = result.renderStats
+      const graphicsText = result.graphicsStats
       const inputText = `input ${result.inputDispatchMode} q=${result.inputQueueDepth} sent=${result.inputSentCount} drop=${result.inputDroppedCount}`
       const audioText = result.audioStats.replace('OHAudio stats: ', 'audio ')
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${renderText} | ${inputText} | ${audioText}`
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${renderText} | ${graphicsText} | ${inputText} | ${audioText}`
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }
@@ -470,6 +473,7 @@ struct Index {
         password: this.password,
         resolution: this.resolution,
         certPolicy: policy,
+        graphicsMode: this.graphicsMode,
         appFilesDir: this.getAppFilesDir()
       })
       this.connectionState = this.toConnectionState(result.state)
