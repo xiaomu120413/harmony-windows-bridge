@@ -1206,6 +1206,50 @@ for mode in modes:
 - 用 HarmonyOS 媒体能力降低 H.264 视频 CPU。
 - 硬解码应放在 FreeRDP OHOS codec/backend 适配里，不放在 ArkTS 页面层；ArkTS 只控制连接策略和接收状态。
 
+#### S6-1：FreeRDP OHOS AVCodec probe subsystem
+
+目标：
+
+- 先把硬解码放进 FreeRDP H.264 subsystem 顺序中，验证 OHOS NDK 头文件、系统库链接和真机 AVCodec 创建能力。
+- 当前只做 probe，不接管实际解码；probe 成功后仍返回失败，让 OpenH264/FFmpeg 软件路径继续工作，避免半成品硬解路径影响桌面显示。
+
+修改范围：
+
+- `harmony/third_party/FreeRDP`
+  - 新增 `WITH_OHOS_AVCODEC` CMake option。
+  - `libfreerdp/codec/h264.c` 中把 `g_Subsystem_OHOS_AVCodec` 放在 OpenH264/FFmpeg 前面尝试。
+  - 新增 `libfreerdp/codec/h264_ohos_avcodec.c`，调用 `OH_VideoDecoder_CreateByMime(OH_AVCODEC_MIMETYPE_VIDEO_AVC)` 做一次进程级 probe。
+  - 链接 `libnative_media_vdec.so`、`libnative_media_codecbase.so`、`libnative_media_core.so`。
+- `harmony/scripts/wsl/build-freerdp-ohos.sh`
+  - 默认启用 `ENABLE_OHOS_AVCODEC=1`。
+  - 构建前检查 AVCodec 头文件和系统库。
+  - manifest/feature profile 记录 `with_ohos_avcodec=ON`。
+
+伪码：
+
+```cpp
+if (!h264->Compressor && ProbeOnce()) {
+    decoder = OH_VideoDecoder_CreateByMime(OH_AVCODEC_MIMETYPE_VIDEO_AVC)
+    log("OHOS AVCodec H264 decoder probe ok")
+    OH_VideoDecoder_Destroy(decoder)
+}
+
+return FALSE // keep OpenH264/FFmpeg software fallback active
+```
+
+验收记录：
+
+- WSL 交叉编译通过，`libfreerdp3.so` 的 ELF 依赖包含 `libnative_media_vdec.so`、`libnative_media_codecbase.so`、`libnative_media_core.so`。
+- HAP 构建和安装通过。
+- 真机连接成功，日志出现一次 `OHOS AVCodec H264 decoder probe ok: valid=1 rc=0; software fallback remains active`。
+- 同一会话继续进入 `state=Connected`、`graphics mode selected: rdpgfx-h264`、`rdpgfx connected to FreeRDP GDI graphics pipeline`。
+
+遗留问题和影响：
+
+- 这一步还没有硬解实际帧，只证明 AVCodec 可创建并能安全回退软件解码。
+- 当前服务端仍主要下发 `CLEARCODEC(8)`，`avc420=0`，所以还不能评估硬解帧率收益。
+- 下一步需要接 `OH_VideoDecoder_RegisterCallback` / input buffer / output buffer / `NativeWindow` surface，并处理异步队列和 surface lifetime。
+
 修改点：
 
 - 新增 OHOS AVCodec decoder adapter。

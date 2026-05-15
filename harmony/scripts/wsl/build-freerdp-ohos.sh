@@ -29,6 +29,7 @@ ENABLE_URIPARSER="${ENABLE_URIPARSER:-1}"
 ENABLE_OPENH264="${ENABLE_OPENH264:-1}"
 ENABLE_FFMPEG="${ENABLE_FFMPEG:-1}"
 ENABLE_OHAUDIO="${ENABLE_OHAUDIO:-1}"
+ENABLE_OHOS_AVCODEC="${ENABLE_OHOS_AVCODEC:-1}"
 ENABLE_OPENSLES="${ENABLE_OPENSLES:-0}"
 ENABLE_CUPS="${ENABLE_CUPS:-0}"
 ENABLE_PCSC="${ENABLE_PCSC:-0}"
@@ -36,8 +37,9 @@ ENABLE_SMARTCARD_PCSC="${ENABLE_SMARTCARD_PCSC:-1}"
 ENABLE_FUSE="${ENABLE_FUSE:-0}"
 
 WITH_OHAUDIO=OFF
+WITH_OHOS_AVCODEC=OFF
 WITH_OPENSLES=OFF
-FREERDP_FEATURE_PROFILE="channels-codecs-ohos-audio-v1"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-probe-v1"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -173,6 +175,22 @@ detect_optional_backends() {
     }
   fi
 
+  WITH_OHOS_AVCODEC="$(cmake_bool "$ENABLE_OHOS_AVCODEC")"
+  if [[ "$WITH_OHOS_AVCODEC" == "ON" ]]; then
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/multimedia/player_framework/native_avcodec_videodecoder.h" ]] || {
+      printf 'AVCodec video decoder header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/multimedia/player_framework" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libnative_media_vdec.so" ]] || {
+      printf 'AVCodec video decoder library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libnative_media_codecbase.so" ]] || {
+      printf 'AVCodec codecbase library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+      exit 1
+    }
+  fi
+
   if is_auto "$ENABLE_OPENSLES"; then
     if find "$OHOS_NDK_HOME" \( -path '*/SLES/OpenSLES.h' -o -name 'libOpenSLES.so' \) -print -quit | grep -q .; then
       WITH_OPENSLES=ON
@@ -184,8 +202,8 @@ detect_optional_backends() {
   fi
 
   log "optional backends"
-  printf 'OHAudio=%s OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
-    "$WITH_OHAUDIO" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
+  printf 'OHAudio=%s OHOS_AVCodec=%s OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
+    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
 }
 
 install_ohos_opensles_android_shim() {
@@ -485,6 +503,7 @@ freerdp_feature_profile() {
     printf 'uriparser=%s:%s\n' "$(cmake_bool "$ENABLE_URIPARSER")" "$URIPARSER_VERSION"
     printf 'openh264=%s:%s\n' "$(cmake_bool "$ENABLE_OPENH264")" "$OPENH264_VERSION"
     printf 'ffmpeg=%s:%s\n' "$(cmake_bool "$ENABLE_FFMPEG")" "$FFMPEG_VERSION"
+    printf 'ohos_avcodec=%s\n' "$WITH_OHOS_AVCODEC"
     printf 'opensles=%s\n' "$WITH_OPENSLES"
     printf 'cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
@@ -559,6 +578,7 @@ build_freerdp() {
     -DWITH_CAIRO=OFF \
     -DWITH_JPEG=OFF \
     -DWITH_OPENH264="$(cmake_bool "$ENABLE_OPENH264")" \
+    -DWITH_OHOS_AVCODEC="$WITH_OHOS_AVCODEC" \
     -DWITH_GFX_AV1=OFF \
     -DWITH_ALSA=OFF \
     -DWITH_PULSE=OFF \
@@ -798,6 +818,7 @@ write_manifest() {
     printf 'openh264_version=%s\n' "$OPENH264_VERSION"
     printf 'ffmpeg_version=%s\n' "$FFMPEG_VERSION"
     printf 'with_ohaudio=%s\n' "$WITH_OHAUDIO"
+    printf 'with_ohos_avcodec=%s\n' "$WITH_OHOS_AVCODEC"
     printf 'with_opensles=%s\n' "$WITH_OPENSLES"
     printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
