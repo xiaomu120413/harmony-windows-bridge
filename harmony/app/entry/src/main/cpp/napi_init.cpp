@@ -976,7 +976,15 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         return false;
     }
 
-    const char* params[] = {"rdpsnd", "sys:ohos"};
+    const char* params[] = {
+        "rdpsnd",
+        "sys:ohos",
+        "format:1",
+        "rate:44100",
+        "channel:2",
+        "latency:100",
+        "quality:high"
+    };
     if (!api.clientAddStaticChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
         error = "set rdpsnd static channel failed";
         return false;
@@ -986,7 +994,7 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         return false;
     }
 
-    log("FreeRDP audio playback requested with CLI-compatible /sound:sys:ohos channel ordering");
+    log("FreeRDP audio playback requested with rdpsnd sys:ohos PCM 44.1kHz stereo latency 100ms");
     log("FreeRDP microphone capture remains disabled");
     return true;
 }
