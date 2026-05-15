@@ -100,6 +100,7 @@ struct RgbaFrame {
 
 void EmitNativeLog(const std::string& line);
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
+std::string BuildOHAudioStatsLog();
 
 void EmitHilogInfo(const std::string& line)
 {
@@ -1930,9 +1931,15 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     result.message = "FreeRDP session connected";
     onConnected();
     log("FreeRDP event loop started");
+    auto nextAudioDiagnosticsLog = std::chrono::steady_clock::now();
 
     while (running.load() && !api.shallDisconnectContext(instance->context)) {
         pumpInput(&api, instance->context);
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= nextAudioDiagnosticsLog) {
+            EmitHilogInfo("FreeRDP audio diagnostics: " + BuildOHAudioStatsLog());
+            nextAudioDiagnosticsLog = now + std::chrono::seconds(2);
+        }
 
         HANDLE handles[MAXIMUM_WAIT_OBJECTS] = {};
         DWORD count = api.getEventHandles(instance->context, handles, MAXIMUM_WAIT_OBJECTS);
