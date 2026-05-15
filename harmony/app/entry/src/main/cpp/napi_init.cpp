@@ -1534,6 +1534,9 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig,
     const FreerdpLogFn& log, std::string& error)
 {
+    constexpr uint32_t kGfxOnlyCap107Filter = 0x000003FF;
+    const uint32_t gfxCapsFilter = graphicsConfig.enabled && graphicsConfig.h264 ? kGfxOnlyCap107Filter : 0;
+
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DynamicResolutionUpdate, true, "DynamicResolutionUpdate", error) ||
@@ -1541,8 +1544,11 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             "SupportGraphicsPipeline", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxH264, graphicsConfig.enabled && graphicsConfig.h264,
             "GfxH264", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false, "GfxAVC444", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, false, "GfxAVC444v2", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, graphicsConfig.enabled && graphicsConfig.h264,
+            "GfxAVC444", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, graphicsConfig.enabled && graphicsConfig.h264,
+            "GfxAVC444v2", error) ||
+        !SetFreerdpUint32(api, settings, FreeRDP_GfxCapsFilter, gfxCapsFilter, "GfxCapsFilter", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_ClipboardFeatureMask,
             CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL,
@@ -1562,6 +1568,8 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     if (graphicsConfig.enabled) {
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
             " h264=" + std::string(graphicsConfig.h264 ? "on" : "off") +
+            " avc444=" + std::string(graphicsConfig.h264 ? "on" : "off") +
+            " capsFilter=" + Hex32(gfxCapsFilter) +
             " fallback=manual-gdi-toggle");
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
