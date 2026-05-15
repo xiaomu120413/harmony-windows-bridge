@@ -37,6 +37,7 @@ $requiredNames = @(
   "libcrypto.so.3",
   "libfreerdp-client3.so",
   "libfreerdp3.so",
+  "libohaudio.so",
   "libssl.so.3",
   "libwinpr3.so",
   "libz.so.1",

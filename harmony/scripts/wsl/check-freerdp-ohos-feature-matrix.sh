@@ -46,26 +46,6 @@ safe_rm_rf() {
   esac
 }
 
-install_ohos_opensles_android_shim() {
-  local shim_dir="$PREFIX/include/SLES"
-  local shim="$shim_dir/OpenSLES_Android.h"
-  mkdir -p "$shim_dir"
-  cat > "$shim" <<'EOF'
-#ifndef OHOS_FREERDP_OPENSLES_ANDROID_COMPAT_H
-#define OHOS_FREERDP_OPENSLES_ANDROID_COMPAT_H
-
-#include <SLES/OpenSLES.h>
-
-typedef SLBufferQueueItf SLAndroidSimpleBufferQueueItf;
-typedef SLDataLocator_BufferQueue SLDataLocator_AndroidSimpleBufferQueue;
-
-#define SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE SL_DATALOCATOR_BUFFERQUEUE
-#define SL_IID_ANDROIDSIMPLEBUFFERQUEUE SL_IID_BUFFERQUEUE
-
-#endif
-EOF
-}
-
 require_base_runtime() {
   local missing=0
   for path in \
@@ -148,7 +128,8 @@ prepare_cmake_args() {
     -DWITH_ALSA=OFF
     -DWITH_PULSE=OFF
     -DWITH_OSS=OFF
-    -DWITH_OPENSLES=ON
+    -DWITH_OHAUDIO=ON
+    -DWITH_OPENSLES=OFF
     "-DOpenSLES_INCLUDE_DIR=$OHOS_NDK_HOME/sysroot/usr/include"
     "-DOpenSLES_LIBRARY=$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libOpenSLES.so"
     -DWITH_GSSAPI=OFF
@@ -268,7 +249,6 @@ run_case() {
 main() {
   load_ohos_env
   require_base_runtime
-  install_ohos_opensles_android_shim
   prepare_cmake_args
 
   safe_rm_rf "$MATRIX_DIR"
@@ -280,7 +260,7 @@ main() {
     printf '%s\n\n' "- Matrix build: \`$MATRIX_BUILD\`"
     printf '| Case | Status | Scope | Reason |\n'
     printf '| --- | --- | --- | --- |\n'
-    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, rdpgfx, rdpsnd, audin, rdpdr/drive, printer channel, smartcard channel, WinPR smartcard PCSC backend, TSMF, FFmpeg, OpenH264, OpenSLES | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
+    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel, smartcard channel, WinPR smartcard PCSC backend, TSMF, FFmpeg, OpenH264 | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
   } > "$MATRIX_DIR/report.md"
 
   run_case "cups" "Enable CUPS printer backend in addition to printer channel" \

@@ -900,13 +900,13 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         return false;
     }
 
-    const char* params[] = {"rdpsnd", "sys:opensles"};
+    const char* params[] = {"rdpsnd", "sys:ohos"};
     if (!api.clientAddStaticChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
         error = "set rdpsnd static channel failed";
         return false;
     }
 
-    log("FreeRDP audio playback requested: static rdpsnd sys:opensles");
+    log("FreeRDP audio playback requested: static rdpsnd sys:ohos");
     log("FreeRDP dynamic channels remain disabled; microphone capture remains disabled");
     return true;
 }
@@ -2606,10 +2606,10 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "core RDP/TLS/NLA + software GDI; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
-        "static rdpsnd/OpenSLES playback requested; other optional channel negotiation off";
+        "static rdpsnd/OHAudio playback requested; other optional channel negotiation off";
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.9");
+    SetString(env, result, "bridgeVersion", "0.7.0");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);

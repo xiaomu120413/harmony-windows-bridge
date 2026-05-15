@@ -28,14 +28,16 @@ FORCE_REBUILD="${FORCE_REBUILD:-0}"
 ENABLE_URIPARSER="${ENABLE_URIPARSER:-1}"
 ENABLE_OPENH264="${ENABLE_OPENH264:-1}"
 ENABLE_FFMPEG="${ENABLE_FFMPEG:-1}"
-ENABLE_OPENSLES="${ENABLE_OPENSLES:-auto}"
+ENABLE_OHAUDIO="${ENABLE_OHAUDIO:-1}"
+ENABLE_OPENSLES="${ENABLE_OPENSLES:-0}"
 ENABLE_CUPS="${ENABLE_CUPS:-0}"
 ENABLE_PCSC="${ENABLE_PCSC:-0}"
 ENABLE_SMARTCARD_PCSC="${ENABLE_SMARTCARD_PCSC:-1}"
 ENABLE_FUSE="${ENABLE_FUSE:-0}"
 
+WITH_OHAUDIO=OFF
 WITH_OPENSLES=OFF
-FREERDP_FEATURE_PROFILE="channels-codecs-v1"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-audio-v1"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -159,6 +161,18 @@ extract_tarball() {
 }
 
 detect_optional_backends() {
+  WITH_OHAUDIO="$(cmake_bool "$ENABLE_OHAUDIO")"
+  if [[ "$WITH_OHAUDIO" == "ON" ]]; then
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/ohaudio/native_audiorenderer.h" ]] || {
+      printf 'OHAudio header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/ohaudio" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libohaudio.so" ]] || {
+      printf 'OHAudio library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+      exit 1
+    }
+  fi
+
   if is_auto "$ENABLE_OPENSLES"; then
     if find "$OHOS_NDK_HOME" \( -path '*/SLES/OpenSLES.h' -o -name 'libOpenSLES.so' \) -print -quit | grep -q .; then
       WITH_OPENSLES=ON
@@ -170,8 +184,8 @@ detect_optional_backends() {
   fi
 
   log "optional backends"
-  printf 'OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
-    "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
+  printf 'OHAudio=%s OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
+    "$WITH_OHAUDIO" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
 }
 
 install_ohos_opensles_android_shim() {
@@ -535,6 +549,7 @@ build_freerdp() {
     -DWITH_ALSA=OFF \
     -DWITH_PULSE=OFF \
     -DWITH_OSS=OFF \
+    -DWITH_OHAUDIO="$WITH_OHAUDIO" \
     -DWITH_OPENSLES="$WITH_OPENSLES" \
     -DOpenSLES_INCLUDE_DIR="$OHOS_NDK_HOME/sysroot/usr/include" \
     -DOpenSLES_LIBRARY="$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libOpenSLES.so" \
@@ -670,6 +685,10 @@ stage_runtime_libs() {
     copy_ohos_runtime_lib "libOpenSLES.so" 1
   fi
 
+  if [[ "$WITH_OHAUDIO" == "ON" ]]; then
+    copy_ohos_runtime_lib "libohaudio.so" 1
+  fi
+
   if is_enabled "$ENABLE_OPENH264"; then
     copy_ohos_runtime_lib "libc++_shared.so" 1
   fi
@@ -764,6 +783,7 @@ write_manifest() {
     printf 'uriparser_version=%s\n' "$URIPARSER_VERSION"
     printf 'openh264_version=%s\n' "$OPENH264_VERSION"
     printf 'ffmpeg_version=%s\n' "$FFMPEG_VERSION"
+    printf 'with_ohaudio=%s\n' "$WITH_OHAUDIO"
     printf 'with_opensles=%s\n' "$WITH_OPENSLES"
     printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
