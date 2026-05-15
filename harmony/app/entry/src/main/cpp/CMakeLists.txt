@@ -25,6 +25,7 @@ target_link_libraries(entry PUBLIC
     libace_ndk.z.so
     libEGL.so
     libGLESv3.so
+    libnative_image.so
     libnative_window.so
     libnative_buffer.so
     libpasteboard.so

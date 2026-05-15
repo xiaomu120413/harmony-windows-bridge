@@ -33,6 +33,7 @@
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <native_buffer/native_buffer.h>
+#include <native_image/native_image.h>
 #include <native_window/external_window.h>
 #include <database/pasteboard/oh_pasteboard.h>
 #include <database/pasteboard/oh_pasteboard_err_code.h>
@@ -67,6 +68,10 @@
 #endif
 
 namespace {
+
+#ifndef GL_TEXTURE_EXTERNAL_OES
+#define GL_TEXTURE_EXTERNAL_OES 0x8D65
+#endif
 
 struct ConnectParams {
     std::string host;
@@ -158,6 +163,17 @@ struct DecoderSurfaceTarget {
     uint32_t height = 0;
 };
 
+struct Avc444SurfaceTargets {
+    OHNativeWindow* lumaWindow = nullptr;
+    OHNativeWindow* chromaWindow = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t lumaTexture = 0;
+    uint32_t chromaTexture = 0;
+    uint64_t lumaSurfaceId = 0;
+    uint64_t chromaSurfaceId = 0;
+};
+
 std::atomic_bool g_rdpgfxRuntimeRequested{false};
 std::atomic_bool g_rdpgfxH264Requested{false};
 std::atomic_bool g_rdpgfxBridgeAttached{false};
@@ -237,6 +253,8 @@ DirtyFrameStats MergeDirtyStats(const DirtyFrameStats& first, const DirtyFrameSt
     return merged;
 }
 
+class FreerdpRuntimeApi;
+
 void EmitNativeLog(const std::string& line);
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
 bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender = false);
@@ -245,6 +263,8 @@ void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::stri
 void StartRenderPipeline();
 void StopRenderPipeline();
 DecoderSurfaceTarget SnapshotDecoderSurfaceTarget();
+bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
+    const std::function<void(const std::string&)>& log);
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 std::string BuildRenderStatsLog();
 std::string BuildGraphicsPipelineStatsLog();
@@ -577,6 +597,8 @@ public:
             LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);
             LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
                 ohosAvcodecSetOutputSurface);
+            LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",
+                ohosAvcodecSetAvc444OutputSurfaces);
         }
         return loaded_;
     }
@@ -619,6 +641,7 @@ public:
     using RdpsndOhosGetDiagnosticsFn = const char* (*)();
     using RdpsndClientGetDiagnosticsFn = const char* (*)();
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
+    using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -659,6 +682,7 @@ public:
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
+    OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -1694,6 +1718,9 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
         if (api.ohosAvcodecSetOutputSurface != nullptr) {
             api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
         }
+        if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+            api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        }
         return true;
     }
 
@@ -1714,6 +1741,7 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     }
 
     g_avc420SurfaceOutputEnabled.store(true);
+    RegisterAvc444DecodeSurfaces(api, target.width, target.height, log);
     StopRenderPipeline();
     log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
@@ -2676,6 +2704,9 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         if (api.ohosAvcodecSetOutputSurface != nullptr) {
             api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
         }
+        if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+            api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        }
         clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
         UnregisterCertificatePolicy(instance);
@@ -3190,6 +3221,17 @@ public:
         return {static_cast<OHNativeWindow*>(window_), width_, height_};
     }
 
+    bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets,
+        std::string& error)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!ready_ || window_ == nullptr) {
+            error = "XComponent surface is not ready";
+            return false;
+        }
+        return avc444Surfaces_.Ensure(width, height, targets, error);
+    }
+
 private:
     struct RenderViewport {
         uint32_t x = 0;
@@ -3649,6 +3691,214 @@ private:
         std::vector<uint8_t> uploadBuffer_;
     };
 
+    class GpuAvc444SurfacePool {
+    public:
+        ~GpuAvc444SurfacePool()
+        {
+            Destroy();
+        }
+
+        void Destroy()
+        {
+            if (display_ != EGL_NO_DISPLAY) {
+                if (context_ != EGL_NO_CONTEXT && pbufferSurface_ != EGL_NO_SURFACE) {
+                    eglMakeCurrent(display_, pbufferSurface_, pbufferSurface_, context_);
+                    DestroyDecodeSurface(luma_);
+                    DestroyDecodeSurface(chroma_);
+                    eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                } else {
+                    DestroyDecodeSurface(luma_);
+                    DestroyDecodeSurface(chroma_);
+                }
+
+                if (context_ != EGL_NO_CONTEXT) {
+                    eglDestroyContext(display_, context_);
+                }
+                if (pbufferSurface_ != EGL_NO_SURFACE) {
+                    eglDestroySurface(display_, pbufferSurface_);
+                }
+                eglTerminate(display_);
+            }
+
+            display_ = EGL_NO_DISPLAY;
+            config_ = nullptr;
+            context_ = EGL_NO_CONTEXT;
+            pbufferSurface_ = EGL_NO_SURFACE;
+            width_ = 0;
+            height_ = 0;
+        }
+
+        bool Ensure(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets, std::string& error)
+        {
+            if (width == 0 || height == 0) {
+                error = "AVC444 decode surface size is invalid";
+                return false;
+            }
+            if (!EnsureContext(error)) {
+                return false;
+            }
+            if (!eglMakeCurrent(display_, pbufferSurface_, pbufferSurface_, context_)) {
+                error = "AVC444 pbuffer make current failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                Destroy();
+                return false;
+            }
+
+            if (width_ != width || height_ != height || luma_.window == nullptr || chroma_.window == nullptr) {
+                DestroyDecodeSurface(luma_);
+                DestroyDecodeSurface(chroma_);
+                width_ = 0;
+                height_ = 0;
+                if (!CreateDecodeSurface("luma", luma_, error) ||
+                    !CreateDecodeSurface("chroma", chroma_, error)) {
+                    eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                    Destroy();
+                    return false;
+                }
+                width_ = width;
+                height_ = height;
+            }
+
+            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            targets.lumaWindow = luma_.window;
+            targets.chromaWindow = chroma_.window;
+            targets.width = width_;
+            targets.height = height_;
+            targets.lumaTexture = luma_.texture;
+            targets.chromaTexture = chroma_.texture;
+            targets.lumaSurfaceId = luma_.surfaceId;
+            targets.chromaSurfaceId = chroma_.surfaceId;
+            return true;
+        }
+
+    private:
+        struct DecodeSurface {
+            GLuint texture = 0;
+            OH_NativeImage* image = nullptr;
+            OHNativeWindow* window = nullptr;
+            uint64_t surfaceId = 0;
+        };
+
+        bool EnsureContext(std::string& error)
+        {
+            if (display_ != EGL_NO_DISPLAY && context_ != EGL_NO_CONTEXT &&
+                pbufferSurface_ != EGL_NO_SURFACE) {
+                return true;
+            }
+
+            Destroy();
+            display_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+            if (display_ == EGL_NO_DISPLAY) {
+                error = "AVC444 EGL get display failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                return false;
+            }
+            if (!eglInitialize(display_, nullptr, nullptr)) {
+                error = "AVC444 EGL initialize failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                Destroy();
+                return false;
+            }
+            if (!eglBindAPI(EGL_OPENGL_ES_API)) {
+                error = "AVC444 EGL bind GLES API failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                Destroy();
+                return false;
+            }
+
+            const EGLint configAttribs[] = {
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+                EGL_SURFACE_TYPE, EGL_PBUFFER_BIT | EGL_WINDOW_BIT,
+                EGL_RED_SIZE, 8,
+                EGL_GREEN_SIZE, 8,
+                EGL_BLUE_SIZE, 8,
+                EGL_ALPHA_SIZE, 8,
+                EGL_NONE,
+            };
+            EGLint configCount = 0;
+            if (!eglChooseConfig(display_, configAttribs, &config_, 1, &configCount) || configCount <= 0) {
+                error = "AVC444 EGL choose config failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                Destroy();
+                return false;
+            }
+
+            const EGLint pbufferAttribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+            pbufferSurface_ = eglCreatePbufferSurface(display_, config_, pbufferAttribs);
+            if (pbufferSurface_ == EGL_NO_SURFACE) {
+                error = "AVC444 EGL create pbuffer failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                Destroy();
+                return false;
+            }
+
+            const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
+            context_ = eglCreateContext(display_, config_, EGL_NO_CONTEXT, contextAttribs);
+            if (context_ == EGL_NO_CONTEXT) {
+                error = "AVC444 EGL create context failed: " + Hex32(static_cast<uint32_t>(eglGetError()));
+                Destroy();
+                return false;
+            }
+            return true;
+        }
+
+        bool CreateDecodeSurface(const char* name, DecodeSurface& surface, std::string& error)
+        {
+            glGenTextures(1, &surface.texture);
+            if (surface.texture == 0) {
+                error = std::string("AVC444 ") + name + " texture allocation failed";
+                return false;
+            }
+
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, surface.texture);
+            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            const GLenum glError = glGetError();
+            if (glError != GL_NO_ERROR) {
+                error = std::string("AVC444 ") + name +
+                    " external texture setup failed: " + Hex32(static_cast<uint32_t>(glError));
+                DestroyDecodeSurface(surface);
+                return false;
+            }
+
+            surface.image = OH_NativeImage_Create(surface.texture, GL_TEXTURE_EXTERNAL_OES);
+            if (surface.image == nullptr) {
+                error = std::string("AVC444 ") + name + " NativeImage create failed";
+                DestroyDecodeSurface(surface);
+                return false;
+            }
+
+            surface.window = OH_NativeImage_AcquireNativeWindow(surface.image);
+            if (surface.window == nullptr) {
+                error = std::string("AVC444 ") + name + " NativeImage window acquire failed";
+                DestroyDecodeSurface(surface);
+                return false;
+            }
+
+            (void)OH_NativeImage_GetSurfaceId(surface.image, &surface.surfaceId);
+            return true;
+        }
+
+        static void DestroyDecodeSurface(DecodeSurface& surface)
+        {
+            if (surface.image != nullptr) {
+                OH_NativeImage_Destroy(&surface.image);
+            }
+            if (surface.texture != 0) {
+                GLuint texture = surface.texture;
+                glDeleteTextures(1, &texture);
+            }
+            surface.texture = 0;
+            surface.window = nullptr;
+            surface.surfaceId = 0;
+        }
+
+        EGLDisplay display_ = EGL_NO_DISPLAY;
+        EGLConfig config_ = nullptr;
+        EGLContext context_ = EGL_NO_CONTEXT;
+        EGLSurface pbufferSurface_ = EGL_NO_SURFACE;
+        uint32_t width_ = 0;
+        uint32_t height_ = 0;
+        DecodeSurface luma_;
+        DecodeSurface chroma_;
+    };
+
     static constexpr size_t kDirtyHistoryLimit = 240;
 
     SurfacePaintResult RenderRgbaFrameLocked(const RgbaFrame& frame)
@@ -3924,6 +4174,7 @@ private:
     void ClearNativeWindowConfigLocked()
     {
         gpuRenderer_.Destroy();
+        avc444Surfaces_.Destroy();
         gpuFallbackLogged_ = false;
         configuredWindow_ = nullptr;
         configuredWidth_ = 0;
@@ -4338,6 +4589,7 @@ private:
     int32_t configuredFormat_ = 0;
     uint64_t configuredUsage_ = 0;
     GpuRgbaRenderer gpuRenderer_;
+    GpuAvc444SurfacePool avc444Surfaces_;
     bool gpuFallbackLogged_ = false;
     std::unordered_map<uintptr_t, uint64_t> bufferFrameSequences_;
     std::deque<DirtyHistoryEntry> dirtyHistory_;
@@ -4351,6 +4603,39 @@ SurfaceBridge g_surface;
 DecoderSurfaceTarget SnapshotDecoderSurfaceTarget()
 {
     return g_surface.DecoderSurface();
+}
+
+bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets,
+    std::string& error)
+{
+    return g_surface.EnsureAvc444SurfaceTargets(width, height, targets, error);
+}
+
+bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
+    const FreerdpLogFn& log)
+{
+    if (api.ohosAvcodecSetAvc444OutputSurfaces == nullptr) {
+        log("OHOS AVC444 NativeImage surface registration skipped: FreeRDP symbol unavailable");
+        return false;
+    }
+
+    Avc444SurfaceTargets targets;
+    std::string error;
+    if (!EnsureAvc444SurfaceTargets(width, height, targets, error)) {
+        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        log("OHOS AVC444 NativeImage surface registration failed: " + error);
+        return false;
+    }
+
+    api.ohosAvcodecSetAvc444OutputSurfaces(
+        targets.lumaWindow, targets.chromaWindow, targets.width, targets.height, TRUE);
+    log("OHOS AVC444 NativeImage decode surfaces registered: " +
+        std::to_string(targets.width) + "x" + std::to_string(targets.height) +
+        " lumaTex=" + std::to_string(targets.lumaTexture) +
+        " chromaTex=" + std::to_string(targets.chromaTexture) +
+        " lumaSurface=" + std::to_string(targets.lumaSurfaceId) +
+        " chromaSurface=" + std::to_string(targets.chromaSurfaceId));
+    return true;
 }
 
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
@@ -4369,11 +4654,15 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
     const DecoderSurfaceTarget target = SnapshotDecoderSurfaceTarget();
     if (target.window == nullptr || target.width == 0 || target.height == 0) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+        if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+            api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        }
         EmitNativeLog("AVC420 surface output disabled after " + reason + ": XComponent surface unavailable");
         return;
     }
 
     api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
+    RegisterAvc444DecodeSurfaces(api, target.width, target.height, EmitNativeLog);
     EmitNativeLog("AVC420 surface output updated after " + reason + ": " +
         std::to_string(target.width) + "x" + std::to_string(target.height));
 }
