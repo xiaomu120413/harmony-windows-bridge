@@ -994,8 +994,12 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         error = "set rdpsnd dynamic channel failed";
         return false;
     }
+    if (!SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, true, "AudioPlayback", error)) {
+        return false;
+    }
 
     log("FreeRDP audio playback requested with rdpsnd sys:ohos PCM 44.1kHz stereo latency 100ms");
+    log("FreeRDP AudioPlayback enabled so the logon Info Packet does not request no-audio playback");
     log("FreeRDP microphone capture remains disabled");
     return true;
 }
