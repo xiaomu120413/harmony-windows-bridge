@@ -36,7 +36,7 @@ FreeRDP 的 CMake 顶层通过 `WIN32`、`UNIX`、`ANDROID`、`APPLE`、`IOS` �
 - `cmake/ConfigOptions.cmake` 默认启用 `WITH_CLIENT_COMMON`、`WITH_CLIENT`、`WITH_CLIENT_SDL`、`WITH_SERVER`、`WITH_CHANNELS`、`WITH_CLIENT_CHANNELS`，并按平台查找 ALSA/PulseAudio/OSS 等音频后端。
 - `cmake/ConfigOptionsAndroid.cmake` 单独提供 Android 的 `WITH_OPENSLES`、`WITH_MEDIACODEC`。
 
-对 HarmonyOS 的影响：不能沿用默认配置。HarmonyOS App 不需要任何桌面 client binary，也不需要 server binary。当前脚本关闭 `WITH_CLIENT`、`WITH_SERVER`、`WITH_X11`、`WITH_WAYLAND`、`WITH_ALSA`、`WITH_PULSE`、`WITH_FFMPEG`、`WITH_OPENH264` 等，是合理的最小化构建策略。
+对 HarmonyOS 的影响：不能沿用默认配置。HarmonyOS App 不需要任何桌面 client binary，也不需要 server binary。当前脚本仍关闭 `WITH_CLIENT`、`WITH_SERVER`、`WITH_X11`、`WITH_WAYLAND`、`WITH_ALSA`、`WITH_PULSE` 等桌面前端/桌面音频后端，但已经切到增强 profile：编译 FreeRDP client channels、RDPGFX、FFmpeg、OpenH264、uriparser，并在 OHOS NDK 提供 OpenSLES 时编译音频通道后端。
 
 ### 2. WinPR：Windows API 到 POSIX 的系统抽象
 
@@ -123,7 +123,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
    - 当前增强构建仍关闭桌面前端/服务端：`WITH_CLIENT`、`WITH_SERVER`、`WITH_X11`、`WITH_WAYLAND`、`WITH_ALSA`、`WITH_PULSE` 等；已打开 `WITH_CHANNELS`、`WITH_CLIENT_CHANNELS`、`WITH_FFMPEG`、`WITH_SWSCALE`、`WITH_OPENH264`、`WITH_URIPARSER` 和 OHOS NDK 可用时的 `WITH_OPENSLES`。
    - `WITH_CUPS`、`WITH_FUSE`、`WITH_PCSC` 仍作为可选编译开关保留，默认不启用，因为普通 HarmonyOS 应用没有现成 Linux CUPS/PCSC/FUSE 服务。
 4. Runtime 打包链路已存在：
-   - `harmony/out/ohos-arm64/runtime-libs/` 产出 `libfreerdp3.so`、`libwinpr3.so`、`libssl.so.3`、`libcrypto.so.3`、`libz.so.1`、`libcjson.so.1`。
+   - `harmony/out/ohos-arm64/runtime-libs/` 产出 `libfreerdp3.so`、`libfreerdp-client3.so`、`libwinpr3.so`、`libssl.so.3`、`libcrypto.so.3`、`libz.so.1`、`libcjson.so.1`，以及 uriparser、OpenH264、FFmpeg、OpenSLES、`libc++_shared.so` 等增强依赖。
    - `harmony/scripts/windows/sync-freerdp-runtime.ps1` 同步到 `harmony/app/entry/libs/arm64-v8a/`。
    - `elf-report.txt` 显示 arm64 产物为 ELF64 AArch64，依赖关系基本闭合。
 5. Harmony App 已具备 native bridge：
@@ -377,8 +377,8 @@ WindowStage
 | --- | --- | --- | --- |
 | 键盘 | 必须 | ArkTS `onKeyEvent`、工具栏快捷键、N-API `sendKey/sendUnicode` 和 native 输入队列已有骨架 | 继续完善 keycode/scancode 映射、中文输入、软键盘、组合键和窗口失焦释放 modifier |
 | 鼠标/触摸 | 必须 | ArkTS `onTouch/onMouse/onAxisEvent`、坐标映射和 N-API `sendPointer` 已有骨架 | 继续验证触摸手势、右键、滚轮、viewport 外点击丢弃、窗口 resize 后坐标正确 |
-| 音频播放 | 产品化通常需要，首个闭环可延后 | `rdpsnd` 已编译，OHOS NDK 有 OpenSLES 时启用 FreeRDP OpenSLES backend | 先实机验证 OpenSLES 播放；如果稳定性不足，再新增 OHOS AudioRenderer backend；处理采样率、通道数、缓冲、静音和后台生命周期 |
-| 麦克风 | 可选，取决于会议/语音场景 | `audin` 未构建 | 打开 `audin` 后新增 `audin-client-ohos` backend，用 Harmony AudioCapturer 采集 PCM，再按 FreeRDP audin 协议送给服务端；需要麦克风权限和隐私提示 |
+| 音频播放 | 产品化通常需要，首个闭环可延后 | `rdpsnd` 已编译，OHOS NDK 有 OpenSLES 时启用 FreeRDP OpenSLES backend，并用兼容 shim 处理 Android simple buffer queue 头文件差异 | 先实机验证 OpenSLES 播放；如果稳定性不足，再新增 OHOS AudioRenderer backend；处理采样率、通道数、缓冲、静音和后台生命周期 |
+| 麦克风 | 可选，取决于会议/语音场景 | `audin` 已编译，但还没有 OHOS AudioCapturer 采集后端和权限/UI 闭环 | 接 `audin-client-ohos` backend，用 Harmony AudioCapturer 采集 PCM，再按 FreeRDP audin 协议送给服务端；需要麦克风权限和隐私提示 |
 | 桌面图形 | 必须 | `PostConnect/gdi_init/EndPaint` 到 `NativeWindow` CPU copy 已有骨架 | 继续做真机验证、dirty rect 优化、掉帧策略、surface destroy/resize 稳定性和高分辨率性能测试 |
 | RDPGFX/H.264 | 性能增强 | `rdpgfx`、FFmpeg、OpenH264 已编译并打包 | 先用软件解码验证协议和稳定性，再考虑 OHOS AVCodec 硬件解码 |
 | 硬件视频解码 | 非首版，性能专项 | FreeRDP 现有硬件路径是 MediaFoundation/MediaCodec/VAAPI/VideoToolbox 等，不覆盖 OHOS | 需要新增 OHOS 专用 `H264_CONTEXT_SUBSYSTEM`，用 AVCodec `OH_VideoDecoder`；输出到 YUV/RGBA buffer 再合成到桌面 surface，或谨慎走 decoder surface。不能直接启用 Android `WITH_MEDIACODEC` |
@@ -441,54 +441,60 @@ FreeRDP 音频不是“系统自动播放”，需要启用并接平台后端：
 
 ## 当前脚本配置建议
 
-短期继续保留：
+当前 WSL 增强 profile 保留“无桌面前端、无服务端”的边界，但已经打开通道和软件编解码：
 
 ```text
 WITH_CLIENT_COMMON=ON
 WITH_CLIENT=OFF
 WITH_SERVER=OFF
-WITH_CHANNELS=OFF
-WITH_CLIENT_CHANNELS=OFF
+WITH_CHANNELS=ON
+WITH_CLIENT_CHANNELS=ON
 WITH_X11=OFF
 WITH_WAYLAND=OFF
 WITH_OPENSSL=ON
 WITH_UNICODE_BUILTIN=ON
-WITH_FFMPEG=OFF
-WITH_OPENH264=OFF
+WITH_FFMPEG=ON
+WITH_DSP_FFMPEG=ON
+WITH_VIDEO_FFMPEG=ON
+WITH_OPENH264=ON
+WITH_URIPARSER=ON
 WITH_ALSA=OFF
 WITH_PULSE=OFF
+WITH_OPENSLES=ON when OHOS NDK provides it
 WITH_CUPS=OFF
 WITH_FUSE=OFF
 WITH_PCSC=OFF
 ```
 
-M5/M6 如果只用基础 GDI 和输入，仍可保持 `WITH_CHANNELS=OFF`。
-
-后续要做剪贴板/动态分辨率/rdpgfx 时再谨慎打开：
+当前已显式启用这些目标 client channels：
 
 ```text
-WITH_CHANNELS=ON
-WITH_CLIENT_CHANNELS=ON
 CHANNEL_CLIPRDR_CLIENT=ON
+CHANNEL_DRDYNVC_CLIENT=ON
 CHANNEL_DISP_CLIENT=ON
 CHANNEL_RDPGFX_CLIENT=ON
+CHANNEL_RDPSND_CLIENT=ON
+CHANNEL_AUDIN_CLIENT=ON
+CHANNEL_RDPDR_CLIENT=ON
+CHANNEL_DRIVE_CLIENT=ON
+CHANNEL_PRINTER_CLIENT=ON
+CHANNEL_SMARTCARD_CLIENT=ON
+CHANNEL_TSMF_CLIENT=ON
 ```
 
-但不要一次性打开全部默认通道，否则会引入音频、打印、智能卡、USB、文件重定向等平台依赖和权限风险。
+仍然不要一次性打开全部默认通道。`urbdrc`、摄像头、串口、并口、RAIL、remdesk、sshagent、telemetry 等非目标通道会引入 libusb、设备 API、桌面 shell 或额外权限风险，当前继续关闭。
 
-后续做音频时建议单独建配置 profile，而不是和图形增强混在一起：
+音频当前只做到“编译进包并可加载”的阶段：
 
 ```text
-WITH_CHANNELS=ON
-WITH_CLIENT_CHANNELS=ON
 CHANNEL_RDPSND_CLIENT=ON
 CHANNEL_AUDIN_CLIENT=ON
 WITH_ALSA=OFF
 WITH_PULSE=OFF
-WITH_OPENSLES=OFF
+WITH_OPENSLES=ON when available
 ```
 
-同时在 FreeRDP channel 构建中新增 OHOS audio subsystem，例如 `rdpsnd/client/ohos` 和 `audin/client/ohos`，链接 Harmony 音频 native 库。OpenSLES 是 Android 路线，不是 HarmonyOS 路线。
+FreeRDP 现有 OpenSLES backend 是 Android 风格实现，当前脚本通过 `OpenSLES_Android.h` 兼容 shim 让它在 OHOS NDK 下编译。它可以作为短期验证路径；产品化仍建议新增 `rdpsnd/client/ohos` 和 `audin/client/ohos`，直接链接 Harmony AudioRenderer/AudioCapturer。
 
 后续做 H.264/硬件解码时建议分两步：
 

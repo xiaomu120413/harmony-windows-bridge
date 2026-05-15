@@ -12,6 +12,7 @@ PROBE_DIR="$OUT_DIR/probe"
 RUNTIME_DIR="$OUT_DIR/runtime-libs"
 
 OHOS_ARCH="${OHOS_ARCH:-arm64-v8a}"
+OHOS_TRIPLE="${OHOS_TRIPLE:-aarch64-linux-ohos}"
 WORK_DIR="${OHOS_BUILD_WORKDIR:-$HOME/.cache/demo-ohos-${OHOS_ARCH}}"
 SRC_DIR="$WORK_DIR/src"
 BUILD_DIR="$WORK_DIR/build"
@@ -170,6 +171,36 @@ detect_optional_backends() {
   log "optional backends"
   printf 'OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
     "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
+}
+
+install_ohos_opensles_android_shim() {
+  if [[ "$WITH_OPENSLES" != "ON" ]]; then
+    return 0
+  fi
+
+  local shim_dir="$PREFIX/include/SLES"
+  local shim="$shim_dir/OpenSLES_Android.h"
+  mkdir -p "$shim_dir"
+  cat > "$shim" <<'EOF'
+#ifndef OHOS_FREERDP_OPENSLES_ANDROID_COMPAT_H
+#define OHOS_FREERDP_OPENSLES_ANDROID_COMPAT_H
+
+#include <SLES/OpenSLES.h>
+
+/*
+ * FreeRDP's OpenSLES backend is written for Android's simple buffer queue API.
+ * HarmonyOS exposes standard OpenSL ES buffer queues instead, so this shim lets
+ * the existing backend compile for the OHOS NDK while a dedicated AudioRenderer
+ * backend is still pending.
+ */
+typedef SLBufferQueueItf SLAndroidSimpleBufferQueueItf;
+typedef SLDataLocator_BufferQueue SLDataLocator_AndroidSimpleBufferQueue;
+
+#define SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE SL_DATALOCATOR_BUFFERQUEUE
+#define SL_IID_ANDROIDSIMPLEBUFFERQUEUE SL_IID_BUFFERQUEUE
+
+#endif
+EOF
 }
 
 prepare_sources() {
@@ -503,7 +534,7 @@ build_freerdp() {
     -DWITH_OSS=OFF \
     -DWITH_OPENSLES="$WITH_OPENSLES" \
     -DOpenSLES_INCLUDE_DIR="$OHOS_NDK_HOME/sysroot/usr/include" \
-    -DOpenSLES_LIBRARY="$OHOS_NDK_HOME/sysroot/usr/lib/aarch64-linux-ohos/libOpenSLES.so" \
+    -DOpenSLES_LIBRARY="$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libOpenSLES.so" \
     -DWITH_CUPS="$(cmake_bool "$ENABLE_CUPS")" \
     -DWITH_FUSE="$(cmake_bool "$ENABLE_FUSE")" \
     -DWITH_GSSAPI=OFF \
@@ -586,6 +617,30 @@ copy_runtime_lib_pattern() {
   fi
 }
 
+copy_ohos_runtime_lib() {
+  local name="$1"
+  local required="${2:-0}"
+  local copied=0
+  local candidates=(
+    "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/$name"
+    "$OHOS_LLVM_HOME/lib/$OHOS_TRIPLE/$name"
+    "$OHOS_LLVM_HOME/lib/$OHOS_TRIPLE/c++/$name"
+  )
+
+  for lib in "${candidates[@]}"; do
+    if [[ -f "$lib" ]]; then
+      cp -L "$lib" "$RUNTIME_DIR/$name"
+      copied=1
+      break
+    fi
+  done
+
+  if [[ "$required" == "1" && "$copied" != "1" ]]; then
+    printf 'Missing required OHOS runtime library: %s\n' "$name" >&2
+    exit 1
+  fi
+}
+
 stage_runtime_libs() {
   log "stage runtime shared libraries"
   safe_rm_rf "$RUNTIME_DIR"
@@ -601,10 +656,20 @@ stage_runtime_libs() {
   copy_runtime_lib_pattern "liburiparser.so*" "$(is_enabled "$ENABLE_URIPARSER" && printf 1 || printf 0)"
   copy_runtime_lib_pattern "libopenh264.so*" "$(is_enabled "$ENABLE_OPENH264" && printf 1 || printf 0)"
   copy_runtime_lib_pattern "libavcodec.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libavdevice.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libavfilter.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
   copy_runtime_lib_pattern "libavformat.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
   copy_runtime_lib_pattern "libavutil.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
   copy_runtime_lib_pattern "libswresample.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
   copy_runtime_lib_pattern "libswscale.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+
+  if [[ "$WITH_OPENSLES" == "ON" ]]; then
+    copy_ohos_runtime_lib "libOpenSLES.so" 1
+  fi
+
+  if is_enabled "$ENABLE_OPENH264"; then
+    copy_ohos_runtime_lib "libc++_shared.so" 1
+  fi
 
   if [[ -f "$PREFIX/lib/ossl-modules/legacy.so" ]]; then
     cp -L "$PREFIX/lib/ossl-modules/legacy.so" "$RUNTIME_DIR/ossl-modules/legacy.so"
@@ -749,6 +814,7 @@ main() {
   prepare_sources
   prepare_cmake_args
   detect_optional_backends
+  install_ohos_opensles_android_shim
 
   build_openssl
   build_zlib

@@ -196,7 +196,7 @@ M6.11 notes:
 - FreeRDP source adaptations are tracked in the `harmony/third_party/FreeRDP` submodule on the `ohos-port` branch; the current submodule commit disables WinPR `pthread_cancel` on `__OHOS__`.
 - The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, `printer`, `smartcard`, and `tsmf`.
 - `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264, display-control, and rdpsnd at session start.
-- Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser shared libraries, instead of a fixed minimal list.
+- Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser/OpenSLES/`libc++_shared.so` shared libraries, instead of a fixed minimal list. Use a clean HAP build after changing the native library set so hvigor does not reuse stale package metadata.
 - Remaining risk: CUPS, PCSC, and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer, physical smartcard, and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
