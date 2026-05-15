@@ -20,6 +20,7 @@ const DOUBLE_TAP_DISTANCE: number = 24
 const POINTER_FAILURE_LOG_INTERVAL_MS: number = 800
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
+const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 250
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
 
 const RDP_SCANCODE_ESCAPE: number = 0x01
@@ -27,8 +28,13 @@ const RDP_SCANCODE_BACKSPACE: number = 0x0E
 const RDP_SCANCODE_TAB: number = 0x0F
 const RDP_SCANCODE_ENTER: number = 0x1C
 const RDP_SCANCODE_LCONTROL: number = 0x1D
+const RDP_SCANCODE_RCONTROL: number = 0x011D
 const RDP_SCANCODE_LMENU: number = 0x38
+const RDP_SCANCODE_RMENU: number = 0x0138
 const RDP_SCANCODE_LWIN: number = 0x015B
+const RDP_SCANCODE_RWIN: number = 0x015C
+const RDP_SCANCODE_LSHIFT: number = 0x2A
+const RDP_SCANCODE_RSHIFT: number = 0x36
 const RDP_SCANCODE_INSERT: number = 0x0152
 const RDP_SCANCODE_DELETE: number = 0x0153
 const RDP_SCANCODE_UP: number = 0x0148
@@ -186,6 +192,14 @@ struct Index {
   @State private nativeFeatureSummary: string = ''
   @State private nativeInputDispatchMode: string = ''
   @State private remoteTextInput: string = ''
+  private rightCtrlModifierDown: boolean = false
+  private rightAltModifierDown: boolean = false
+  private rightWinModifierDown: boolean = false
+  private leftShiftModifierDown: boolean = false
+  private rightShiftModifierDown: boolean = false
+  private remoteTextBridgeValue: string = ''
+  private bridgePrintableKeyCode: number = 0
+  private bridgePrintableKeyAtMs: number = 0
   private callbacksRegistered: boolean = false
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
@@ -252,6 +266,7 @@ struct Index {
           } else if (nextState !== 'Connected') {
             this.clearModifierState()
             this.clearPointerState()
+            this.clearRemoteInputBridge()
           }
         })
       })
@@ -693,10 +708,11 @@ struct Index {
     }
   }
 
-  private sendKeyStroke(scancode: number): void {
+  private sendKeyStroke(scancode: number): boolean {
     if (this.sendKeyEvent(scancode, true)) {
-      this.sendKeyEvent(scancode, false)
+      return this.sendKeyEvent(scancode, false)
     }
+    return false
   }
 
   private sendUnicodeEvent(code: number, down: boolean): boolean {
@@ -720,10 +736,11 @@ struct Index {
     }
   }
 
-  private sendUnicodeStroke(code: number): void {
+  private sendUnicodeStroke(code: number): boolean {
     if (this.sendUnicodeEvent(code, true)) {
-      this.sendUnicodeEvent(code, false)
+      return this.sendUnicodeEvent(code, false)
     }
+    return false
   }
 
   private focusRemoteInputBridge(): void {
@@ -738,37 +755,52 @@ struct Index {
     })
   }
 
-  private sendRemoteTextValue(value: string): void {
-    if (!value.length) {
-      return
-    }
-    this.remoteTextInput = value
-    this.sendRemoteText()
-    this.scheduleInputProbe()
-  }
-
   private handleRemoteTextInputChange(value: string): void {
-    if (!value.length) {
-      this.remoteTextInput = ''
+    const oldValue = this.remoteTextBridgeValue
+    if (value === oldValue) {
       return
     }
-    this.sendRemoteTextValue(value)
+
+    let prefixLength = 0
+    while (prefixLength < oldValue.length && prefixLength < value.length &&
+      oldValue.charAt(prefixLength) === value.charAt(prefixLength)) {
+      prefixLength++
+    }
+
+    let suffixLength = 0
+    while (suffixLength < oldValue.length - prefixLength &&
+      suffixLength < value.length - prefixLength &&
+      oldValue.charAt(oldValue.length - 1 - suffixLength) === value.charAt(value.length - 1 - suffixLength)) {
+      suffixLength++
+    }
+
+    const deleteCount = oldValue.length - prefixLength - suffixLength
+    const insertedText = value.substring(prefixLength, value.length - suffixLength)
+
+    for (let i = 0; i < deleteCount; i++) {
+      this.sendKeyStroke(RDP_SCANCODE_BACKSPACE)
+    }
+    this.sendRemoteTextFragment(insertedText)
+
+    this.remoteTextBridgeValue = value
+    this.remoteTextInput = value
   }
 
-  private sendRemoteText(): void {
-    if (!this.remoteTextInput.length) {
-      return
+  private sendRemoteTextFragment(value: string): boolean {
+    if (!value.length) {
+      return false
     }
     if (!this.isConnected()) {
       this.appendLog('Text input skipped: no active FreeRDP session')
-      return
+      return false
     }
 
-    for (let i = 0; i < this.remoteTextInput.length; i++) {
-      const code = this.remoteTextInput.charCodeAt(i)
+    let sent = false
+    for (let i = 0; i < value.length; i++) {
+      const code = value.charCodeAt(i)
       if (code >= 0xD800 && code <= 0xDBFF) {
-        if (i + 1 < this.remoteTextInput.length) {
-          const nextCode = this.remoteTextInput.charCodeAt(i + 1)
+        if (i + 1 < value.length) {
+          const nextCode = value.charCodeAt(i + 1)
           if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
             this.appendLog('Text input skipped: non-BMP character is not supported yet')
             i++
@@ -780,9 +812,14 @@ struct Index {
         this.appendLog('Text input skipped: unmatched UTF-16 surrogate')
         continue
       }
-      this.sendUnicodeStroke(code)
+      sent = this.sendUnicodeStroke(code) || sent
     }
 
+    return sent
+  }
+
+  private clearRemoteInputBridge(): void {
+    this.remoteTextBridgeValue = ''
     this.remoteTextInput = ''
   }
 
@@ -790,6 +827,11 @@ struct Index {
     this.ctrlModifierDown = false
     this.altModifierDown = false
     this.winModifierDown = false
+    this.rightCtrlModifierDown = false
+    this.rightAltModifierDown = false
+    this.rightWinModifierDown = false
+    this.leftShiftModifierDown = false
+    this.rightShiftModifierDown = false
   }
 
   private clearPointerState(): void {
@@ -826,34 +868,28 @@ struct Index {
     if (this.winModifierDown) {
       this.sendKeyEvent(RDP_SCANCODE_LWIN, false, false)
     }
+    if (this.rightWinModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_RWIN, false, false)
+    }
     if (this.altModifierDown) {
       this.sendKeyEvent(RDP_SCANCODE_LMENU, false, false)
+    }
+    if (this.rightAltModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_RMENU, false, false)
     }
     if (this.ctrlModifierDown) {
       this.sendKeyEvent(RDP_SCANCODE_LCONTROL, false, false)
     }
+    if (this.rightCtrlModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_RCONTROL, false, false)
+    }
+    if (this.leftShiftModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_LSHIFT, false, false)
+    }
+    if (this.rightShiftModifierDown) {
+      this.sendKeyEvent(RDP_SCANCODE_RSHIFT, false, false)
+    }
     this.clearModifierState()
-  }
-
-  private toggleCtrlModifier(): void {
-    const nextDown = !this.ctrlModifierDown
-    if (this.sendKeyEvent(RDP_SCANCODE_LCONTROL, nextDown)) {
-      this.ctrlModifierDown = nextDown
-    }
-  }
-
-  private toggleAltModifier(): void {
-    const nextDown = !this.altModifierDown
-    if (this.sendKeyEvent(RDP_SCANCODE_LMENU, nextDown)) {
-      this.altModifierDown = nextDown
-    }
-  }
-
-  private toggleWinModifier(): void {
-    const nextDown = !this.winModifierDown
-    if (this.sendKeyEvent(RDP_SCANCODE_LWIN, nextDown)) {
-      this.winModifierDown = nextDown
-    }
   }
 
   private mapArkKeyCodeToRdpScancode(keyCode: number): number {
@@ -899,13 +935,13 @@ struct Index {
       [OH_KEYCODE_MOVE_HOME, RDP_SCANCODE_HOME],
       [OH_KEYCODE_MOVE_END, RDP_SCANCODE_END],
       [OH_KEYCODE_CTRL_LEFT, RDP_SCANCODE_LCONTROL],
-      [OH_KEYCODE_CTRL_RIGHT, 0x011D],
+      [OH_KEYCODE_CTRL_RIGHT, RDP_SCANCODE_RCONTROL],
       [OH_KEYCODE_ALT_LEFT, RDP_SCANCODE_LMENU],
-      [OH_KEYCODE_ALT_RIGHT, 0x0138],
+      [OH_KEYCODE_ALT_RIGHT, RDP_SCANCODE_RMENU],
       [OH_KEYCODE_META_LEFT, RDP_SCANCODE_LWIN],
-      [OH_KEYCODE_META_RIGHT, 0x015C],
-      [OH_KEYCODE_SHIFT_LEFT, 0x2A],
-      [OH_KEYCODE_SHIFT_RIGHT, 0x36],
+      [OH_KEYCODE_META_RIGHT, RDP_SCANCODE_RWIN],
+      [OH_KEYCODE_SHIFT_LEFT, RDP_SCANCODE_LSHIFT],
+      [OH_KEYCODE_SHIFT_RIGHT, RDP_SCANCODE_RSHIFT],
       [OH_KEYCODE_GRAVE, 0x29],
       [OH_KEYCODE_MINUS, 0x0C],
       [OH_KEYCODE_EQUALS, 0x0D],
@@ -961,9 +997,42 @@ struct Index {
     return false
   }
 
+  private updateModifierState(scancode: number, down: boolean): void {
+    if (scancode === RDP_SCANCODE_LCONTROL) {
+      this.ctrlModifierDown = down
+    } else if (scancode === RDP_SCANCODE_RCONTROL) {
+      this.rightCtrlModifierDown = down
+    } else if (scancode === RDP_SCANCODE_LMENU) {
+      this.altModifierDown = down
+    } else if (scancode === RDP_SCANCODE_RMENU) {
+      this.rightAltModifierDown = down
+    } else if (scancode === RDP_SCANCODE_LWIN) {
+      this.winModifierDown = down
+    } else if (scancode === RDP_SCANCODE_RWIN) {
+      this.rightWinModifierDown = down
+    } else if (scancode === RDP_SCANCODE_LSHIFT) {
+      this.leftShiftModifierDown = down
+    } else if (scancode === RDP_SCANCODE_RSHIFT) {
+      this.rightShiftModifierDown = down
+    }
+  }
+
+  private sendMappedKeyEvent(scancode: number, down: boolean): boolean {
+    const sent = this.sendKeyEvent(scancode, down, false)
+    if (sent) {
+      this.updateModifierState(scancode, down)
+    }
+    return sent
+  }
+
   private hasRemoteShortcutModifier(event: KeyEvent): boolean {
-    return this.ctrlModifierDown || this.altModifierDown ||
-      this.isModifierPressed(event, 'ctrl') || this.isModifierPressed(event, 'alt')
+    return this.ctrlModifierDown || this.rightCtrlModifierDown ||
+      this.altModifierDown || this.rightAltModifierDown ||
+      this.winModifierDown || this.rightWinModifierDown ||
+      this.isModifierPressed(event, 'ctrl') ||
+      this.isModifierPressed(event, 'alt') ||
+      this.isModifierPressed(event, 'meta') ||
+      this.isModifierPressed(event, 'win')
   }
 
   private getEventUnicode(event: KeyEvent): number {
@@ -976,7 +1045,39 @@ struct Index {
     return 0
   }
 
-  private handleSurfaceKeyEvent(event: KeyEvent): boolean {
+  private rememberInputBridgePrintableKey(event: KeyEvent): void {
+    if (event.type === KeyType.Down) {
+      this.bridgePrintableKeyCode = event.keyCode
+      this.bridgePrintableKeyAtMs = Date.now()
+    }
+  }
+
+  private shouldSkipBridgedPrintableKey(event: KeyEvent, printable: boolean, shortcut: boolean): boolean {
+    if (event.type !== KeyType.Down || !printable || shortcut) {
+      return false
+    }
+    if (event.keyCode !== this.bridgePrintableKeyCode) {
+      return false
+    }
+    if (Date.now() - this.bridgePrintableKeyAtMs > BRIDGE_PRINTABLE_KEY_GUARD_MS) {
+      return false
+    }
+    this.bridgePrintableKeyCode = 0
+    this.bridgePrintableKeyAtMs = 0
+    return true
+  }
+
+  private handleInputBridgeKeyEvent(event: KeyEvent): boolean {
+    const printable = this.isPrintableArkKeyCode(event.keyCode)
+    const shortcut = this.hasRemoteShortcutModifier(event)
+    if (printable && !shortcut) {
+      this.rememberInputBridgePrintableKey(event)
+      return false
+    }
+    return this.handleSurfaceKeyEvent(event, true)
+  }
+
+  private handleSurfaceKeyEvent(event: KeyEvent, fromInputBridge: boolean = false): boolean {
     if (!this.isConnected()) {
       return false
     }
@@ -984,9 +1085,12 @@ struct Index {
     const down = event.type === KeyType.Down
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const shortcut = this.hasRemoteShortcutModifier(event)
+    if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
+      return true
+    }
 
     if (scancode > 0 && (!printable || shortcut)) {
-      return this.sendKeyEvent(scancode, down, false)
+      return this.sendMappedKeyEvent(scancode, down)
     }
 
     if (!down) {
@@ -1461,18 +1565,6 @@ struct Index {
   }
 
   @Builder
-  private keyButton(label: string, scancode: number) {
-    Button(label)
-      .layoutWeight(1)
-      .fontSize(13)
-      .backgroundColor('#E8EEF7')
-      .fontColor('#1D2433')
-      .onClick(() => {
-        this.sendKeyStroke(scancode)
-      })
-  }
-
-  @Builder
   private buildSessionPage() {
     Column() {
       Row() {
@@ -1556,11 +1648,10 @@ struct Index {
             this.handleRemoteTextInputChange(value)
           })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
-            this.remoteTextInput = ''
             this.sendKeyStroke(RDP_SCANCODE_ENTER)
           })
           .onKeyEvent((event: KeyEvent): boolean => {
-            return this.handleSurfaceKeyEvent(event)
+            return this.handleInputBridgeKeyEvent(event)
           })
 
         if (!this.isConnected()) {
