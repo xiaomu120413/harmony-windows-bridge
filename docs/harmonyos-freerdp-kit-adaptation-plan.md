@@ -1250,12 +1250,52 @@ return FALSE // keep OpenH264/FFmpeg software fallback active
 - 当前服务端仍主要下发 `CLEARCODEC(8)`，`avc420=0`，所以还不能评估硬解帧率收益。
 - 下一步需要接 `OH_VideoDecoder_RegisterCallback` / input buffer / output buffer / `NativeWindow` surface，并处理异步队列和 surface lifetime。
 
+#### S6-2：FreeRDP OHOS AVCodec 实际解码路径
+
+目标：
+
+- 把 S6-1 的 probe 升级为实际 H.264 decode subsystem。
+- 使用 WSL OHOS NDK 当前可用的异步 `OH_VideoDecoder_RegisterCallback` / `OH_AVBuffer` API，不依赖 Windows DevEco 头文件里更新的同步 `QueryInputBuffer` API。
+- 先把硬解输出拷回 FreeRDP 既有 I420/YUV 管线，保证桌面合成正确；后续再评估 GPU texture / surface 直连减少拷贝。
+
 修改点：
 
 - 新增 OHOS AVCodec decoder adapter。
 - 对接 FreeRDP codec pipeline，优先处理 AVC420，再评估 AVC444/AVC444v2。
 - 初始化 `OH_VideoDecoder`，配置 H.264/AVC 格式，把 FreeRDP `rdpgfx` H.264 bitstream 输入解码器。
-- 输出优先走可控的 NativeWindow/GPU texture 路线；初始化失败或设备不支持时 fallback 到 FFmpeg/OpenH264 软件解码。
+- `onNeedInputBuffer` 保存可用输入 buffer 队列，`Decompress()` 里写入 RDPGFX H.264 bitstream 并 `PushInputBuffer`。
+- `onNewOutputBuffer` 读取输出 `OH_AVBuffer`，支持 `YUVI420` / `NV12` / `NV21`，转成 FreeRDP 需要的 I420 平面数据。
+- 初始化失败或设备不支持时 fallback 到 FFmpeg/OpenH264 软件解码。
+
+伪码：
+
+```c
+Init(h264):
+    decoder = OH_VideoDecoder_CreateByMime(H264)
+    RegisterCallback(onNeedInputBuffer, onNewOutputBuffer, onError, onStreamChanged)
+    Configure(width, height, pixelFormat=I420/NV12/NV21, lowLatency=1)
+    Prepare()
+    Start()
+
+Decompress(h264, bitstream):
+    input = wait_input_buffer()
+    copy bitstream -> input.buffer
+    set attr(size, pts)
+    OH_VideoDecoder_PushInputBuffer(input.index)
+
+    if wait_output_buffer():
+        copy callback YUV -> display YUV
+        h264->pYUVData = display YUV planes
+        return 1
+
+    return 0 // no output yet, keep session alive
+
+onNewOutputBuffer(buffer):
+    read output description: pixelFormat / stride / sliceHeight
+    convert YUVI420/NV12/NV21 -> I420 callback buffer
+    signal Decompress()
+    OH_VideoDecoder_FreeOutputBuffer(index)
+```
 
 验收：
 
@@ -1264,11 +1304,20 @@ return FALSE // keep OpenH264/FFmpeg software fallback active
 - 画面同步正常。
 - 解码器不可用时仍能显示桌面，不影响 GDI fallback。
 
+当前完成记录：
+
+- WSL 交叉编译通过。
+- HAP 构建通过并安装到真机。
+- `libfreerdp3.so` 已链接 `libnative_media_vdec.so`、`libnative_media_codecbase.so`、`libnative_media_core.so`。
+- 真机验证被网络阻塞：设备 `100.70.107.214` 和 Windows 当前地址 `100.70.107.210` 在同一网段，但旧目标 `172.20.10.2:3389` 从设备 ping 100% 丢包，App 日志显示 `tcp check failed: connect timed out`，未进入 RDPGFX/H.264 阶段。
+
 风险：
 
 - 硬解异步模型、buffer ownership、surface lifetime 都复杂。
 - 服务端当前真机会话实际下发 `CLEARCODEC(8)`，未必会进入 AVC420；需要用视频场景、服务端策略或不同 Windows 版本触发 H.264 才能验硬解路径。
 - AVCodec 接口、NativeWindow、FreeRDP surface lifetime 三方生命周期不一致，是本阶段最大风险。
+- 当前实现仍有两次 CPU 拷贝：AVCodec 输出转 I420 callback buffer，再复制到 FreeRDP display buffer。它能验证硬解和降低 H.264 解码 CPU，但还不是 GPU 零拷贝。
+- 若 AVCodec 运行时出现持续异步错误，当前策略是保活返回 `0`，避免直接断开；长期需要补 runtime fallback 到 OpenH264/FFmpeg。
 
 ## 总体验收矩阵
 
