@@ -198,6 +198,7 @@ std::atomic_uint32_t g_rdpgfxLastSurfaceId{0};
 std::atomic_uint32_t g_rdpgfxLastCommandWidth{0};
 std::atomic_uint32_t g_rdpgfxLastCommandHeight{0};
 std::atomic_bool g_avc420SurfaceOutputEnabled{false};
+std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
 
 std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
 {
@@ -265,6 +266,8 @@ void StopRenderPipeline();
 DecoderSurfaceTarget SnapshotDecoderSurfaceTarget();
 bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
     const std::function<void(const std::string&)>& log);
+void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t height,
+    uint32_t op, uint32_t codecId, void*);
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 std::string BuildRenderStatsLog();
 std::string BuildGraphicsPipelineStatsLog();
@@ -599,6 +602,10 @@ public:
                 ohosAvcodecSetOutputSurface);
             LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",
                 ohosAvcodecSetAvc444OutputSurfaces);
+            LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_surface_route_enabled",
+                ohosAvcodecSetAvc444SurfaceRouteEnabled);
+            LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_frame_callback",
+                ohosAvcodecSetAvc444FrameCallback);
         }
         return loaded_;
     }
@@ -642,6 +649,9 @@ public:
     using RdpsndClientGetDiagnosticsFn = const char* (*)();
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
+    using OhosAvc444FrameCallbackFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, void*);
+    using OhosAvcodecSetAvc444SurfaceRouteEnabledFn = BOOL (*)(BOOL);
+    using OhosAvcodecSetAvc444FrameCallbackFn = BOOL (*)(OhosAvc444FrameCallbackFn, void*);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -683,6 +693,8 @@ public:
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;
+    OhosAvcodecSetAvc444SurfaceRouteEnabledFn ohosAvcodecSetAvc444SurfaceRouteEnabled = nullptr;
+    OhosAvcodecSetAvc444FrameCallbackFn ohosAvcodecSetAvc444FrameCallback = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -1721,6 +1733,12 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
         if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
             api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
         }
+        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+        }
         return true;
     }
 
@@ -2706,6 +2724,12 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         }
         if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
             api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
         }
         clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
@@ -4611,6 +4635,19 @@ bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTa
     return g_surface.EnsureAvc444SurfaceTargets(width, height, targets, error);
 }
 
+void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t height,
+    uint32_t op, uint32_t codecId, void*)
+{
+    const uint64_t count = ++g_avc444SurfaceFrameCallbackCount;
+    if (count <= 3 || (count % 120) == 0) {
+        EmitNativeLog("OHOS AVC444 surface frame callback: count=" + std::to_string(count) +
+            " surfaceId=" + std::to_string(surfaceId) +
+            " size=" + std::to_string(width) + "x" + std::to_string(height) +
+            " op=" + std::to_string(op) +
+            " codec=" + Hex32(codecId));
+    }
+}
+
 bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
     const FreerdpLogFn& log)
 {
@@ -4623,18 +4660,31 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
     std::string error;
     if (!EnsureAvc444SurfaceTargets(width, height, targets, error)) {
         api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+        }
         log("OHOS AVC444 NativeImage surface registration failed: " + error);
         return false;
     }
 
     api.ohosAvcodecSetAvc444OutputSurfaces(
         targets.lumaWindow, targets.chromaWindow, targets.width, targets.height, TRUE);
+    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+        api.ohosAvcodecSetAvc444FrameCallback(OnAvc444SurfaceFrameDecoded, nullptr);
+    }
+    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+    }
     log("OHOS AVC444 NativeImage decode surfaces registered: " +
         std::to_string(targets.width) + "x" + std::to_string(targets.height) +
         " lumaTex=" + std::to_string(targets.lumaTexture) +
         " chromaTex=" + std::to_string(targets.chromaTexture) +
         " lumaSurface=" + std::to_string(targets.lumaSurfaceId) +
-        " chromaSurface=" + std::to_string(targets.chromaSurfaceId));
+        " chromaSurface=" + std::to_string(targets.chromaSurfaceId) +
+        " route=disabled-until-compositor");
     return true;
 }
 
@@ -4656,6 +4706,12 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
         if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
             api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
         }
         EmitNativeLog("AVC420 surface output disabled after " + reason + ": XComponent surface unavailable");
         return;
