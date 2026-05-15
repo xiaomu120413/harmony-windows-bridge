@@ -400,6 +400,7 @@ public:
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         if (loaded_) {
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
+            LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_diagnostics", rdpsndOhosGetDiagnostics);
         }
         return loaded_;
     }
@@ -434,6 +435,7 @@ public:
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
     using RdpsndOhosGetStatsFn = BOOL (*)(UINT64*, UINT64*, UINT64*, UINT64*, UINT64*, UINT64*,
         UINT64*, UINT64*, UINT32*, UINT16*, UINT16*, UINT32*);
+    using RdpsndOhosGetDiagnosticsFn = const char* (*)();
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -466,6 +468,7 @@ public:
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
+    RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -3483,6 +3486,12 @@ std::string BuildOHAudioStatsLog()
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (!EnsureFreerdpRuntimeLoaded(api, error)) {
         return "OHAudio stats unavailable: " + error;
+    }
+    if (api.rdpsndOhosGetDiagnostics != nullptr) {
+        const char* diagnostics = api.rdpsndOhosGetDiagnostics();
+        if (diagnostics != nullptr && diagnostics[0] != '\0') {
+            return diagnostics;
+        }
     }
     if (api.rdpsndOhosGetStats == nullptr) {
         return "OHAudio stats unavailable: backend symbol not exported";
