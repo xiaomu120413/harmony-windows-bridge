@@ -6,6 +6,7 @@ export interface NativeProbeResult {
   opensslVersion: string;
   featureSummary: string;
   audioStats: string;
+  renderStats: string;
   inputDispatchMode: string;
   freeRdpLinked: boolean;
   surfaceRegistered: boolean;
@@ -42,6 +43,7 @@ export interface NativeConnectParams {
   password: string;
   resolution: string;
   certPolicy: string;
+  appFilesDir?: string;
 }
 
 export interface NativeCommandResult {

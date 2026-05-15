@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -16,9 +17,11 @@
 #include <memory>
 #include <mutex>
 #include <netdb.h>
+#include <new>
 #include <poll.h>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <thread>
 #include <unordered_map>
@@ -66,6 +69,7 @@ struct ConnectParams {
     std::string password;
     std::string resolution;
     std::string certPolicy;
+    std::string appFilesDir;
 };
 
 struct FreerdpProbeResult {
@@ -100,8 +104,29 @@ struct RgbaFrame {
     std::string label;
 };
 
+struct RenderStatsSnapshot {
+    bool running = false;
+    uint64_t queued = 0;
+    uint64_t rendered = 0;
+    uint64_t failed = 0;
+    uint64_t replaced = 0;
+    uint64_t throttled = 0;
+    uint32_t pending = 0;
+    uint32_t lastWidth = 0;
+    uint32_t lastHeight = 0;
+    uint32_t lastCopyUs = 0;
+    uint32_t lastRenderUs = 0;
+    uint32_t avgCopyUs = 0;
+    uint32_t avgRenderUs = 0;
+    uint32_t fpsX100 = 0;
+};
+
 void EmitNativeLog(const std::string& line);
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
+bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message);
+void StartRenderPipeline();
+void StopRenderPipeline();
+std::string BuildRenderStatsLog();
 std::string BuildOHAudioStatsLog();
 
 void EmitHilogInfo(const std::string& line)
@@ -661,6 +686,87 @@ std::string TrimAscii(const std::string& value)
     return value.substr(start, end - start);
 }
 
+std::string TrimTrailingSlashes(std::string value)
+{
+    while (value.size() > 1 && value.back() == '/') {
+        value.pop_back();
+    }
+    return value;
+}
+
+std::string JoinPath(const std::string& base, const std::string& child)
+{
+    if (base.empty()) {
+        return child;
+    }
+    if (child.empty()) {
+        return base;
+    }
+    if (base.back() == '/') {
+        return base + child;
+    }
+    return base + "/" + child;
+}
+
+bool EnsureDirectory(const std::string& path, std::string& error)
+{
+    if (path.empty()) {
+        error = "empty directory path";
+        return false;
+    }
+    std::string current;
+    size_t index = 0;
+    if (path[0] == '/') {
+        current = "/";
+        index = 1;
+    }
+    while (index <= path.size()) {
+        const size_t next = path.find('/', index);
+        const std::string part = path.substr(index, next == std::string::npos ? std::string::npos : next - index);
+        if (!part.empty()) {
+            if (!current.empty() && current.back() != '/') {
+                current += "/";
+            }
+            current += part;
+            if (mkdir(current.c_str(), 0700) != 0 && errno != EEXIST) {
+                error = "mkdir " + current + " failed: " + SystemErrorMessage(errno);
+                return false;
+            }
+        }
+        if (next == std::string::npos) {
+            break;
+        }
+        index = next + 1;
+    }
+    return true;
+}
+
+bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const ConnectParams& params, const std::function<void(const std::string&)>& log, std::string& error)
+{
+    std::string filesDir = TrimTrailingSlashes(TrimAscii(params.appFilesDir));
+    if (filesDir.empty()) {
+        error = "appFilesDir is required for FreeRDP certificate storage";
+        return false;
+    }
+
+    const std::string configPath = JoinPath(filesDir, "freerdp");
+    if (!EnsureDirectory(configPath, error) ||
+        !EnsureDirectory(JoinPath(configPath, "certs"), error) ||
+        !EnsureDirectory(JoinPath(configPath, "server"), error)) {
+        return false;
+    }
+
+    setenv("HOME", filesDir.c_str(), 1);
+    setenv("XDG_CONFIG_HOME", filesDir.c_str(), 1);
+    if (!SetFreerdpString(api, settings, FreeRDP_HomePath, filesDir, "HomePath", error) ||
+        !SetFreerdpString(api, settings, FreeRDP_ConfigPath, configPath, "ConfigPath", error)) {
+        return false;
+    }
+    log("FreeRDP storage path configured: " + configPath);
+    return true;
+}
+
 CertificatePolicy ParseCertificatePolicy(const std::string& value)
 {
     const std::string normalized = ToLowerAscii(TrimAscii(value));
@@ -763,6 +869,7 @@ DWORD HarmonyVerifyChangedCertificateEx(freerdp* instance, const char* host, UIN
 
 std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
 std::atomic_uint32_t g_freerdpRenderSkipCount{0};
+std::atomic_uint32_t g_freerdpRenderThrottleCount{0};
 std::atomic_uint32_t g_rdpDesktopWidth{0};
 std::atomic_uint32_t g_rdpDesktopHeight{0};
 
@@ -816,17 +923,24 @@ BOOL HarmonyEndPaint(rdpContext* context)
         static_cast<int32_t>(gdi->stride),
         "freerdp gdi",
     };
-    SurfacePaintResult paint = RenderSurfaceRgbaFrame(frame);
     const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
-    if (!paint.ok) {
-        const uint32_t skipCount = ++g_freerdpRenderSkipCount;
-        if (skipCount <= 3 || skipCount % 120 == 0) {
-            EmitNativeLog("FreeRDP GDI frame render skipped: " + paint.message);
+    std::string queueMessage;
+    if (!QueueSurfaceRgbaFrame(frame, queueMessage)) {
+        if (queueMessage == "render throttled") {
+            const uint32_t throttleCount = ++g_freerdpRenderThrottleCount;
+            if (throttleCount % 300 == 0) {
+                EmitNativeLog("FreeRDP GDI frame queue throttled: " + std::to_string(throttleCount));
+            }
+        } else {
+            const uint32_t skipCount = ++g_freerdpRenderSkipCount;
+            if (skipCount <= 3 || skipCount % 120 == 0) {
+                EmitNativeLog("FreeRDP GDI frame queue skipped: " + queueMessage);
+            }
         }
     } else {
         g_freerdpRenderSkipCount.store(0);
         if (frameCount <= 3 || frameCount % 60 == 0) {
-            EmitNativeLog(paint.message);
+            EmitNativeLog("FreeRDP GDI frame queued: " + queueMessage);
         }
     }
 
@@ -850,12 +964,15 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     const uint32_t width = api.settingsGetUint32(context->settings, FreeRDP_DesktopWidth);
     const uint32_t height = api.settingsGetUint32(context->settings, FreeRDP_DesktopHeight);
+    StopRenderPipeline();
     if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
+        StartRenderPipeline();
         EmitNativeLog("FreeRDP desktop resize failed");
         return FALSE;
     }
 
     SetRdpDesktopSize(width, height);
+    StartRenderPipeline();
     EmitNativeLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
     return TRUE;
 }
@@ -876,7 +993,10 @@ BOOL HarmonyPostConnect(freerdp* instance)
     update->BeginPaint = HarmonyBeginPaint;
     update->EndPaint = HarmonyEndPaint;
     update->DesktopResize = HarmonyDesktopResize;
+    StartRenderPipeline();
     g_freerdpRenderedFrameCount.store(0);
+    g_freerdpRenderSkipCount.store(0);
+    g_freerdpRenderThrottleCount.store(0);
     if (instance->context->settings != nullptr) {
         const uint32_t width = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopWidth);
         const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);
@@ -891,7 +1011,9 @@ BOOL HarmonyPostConnect(freerdp* instance)
 
 void HarmonyPostDisconnect(freerdp* instance)
 {
+    StopRenderPipeline();
     if (instance == nullptr || instance->context == nullptr || instance->context->gdi == nullptr) {
+        ClearRdpDesktopSize();
         return;
     }
 
@@ -1869,6 +1991,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         if (contextCreated && instance->context != nullptr) {
             api.abortConnectContext(instance->context);
             api.disconnect(instance);
+            StopRenderPipeline();
             api.contextFree(instance);
         }
         api.freerdpFree(instance);
@@ -1919,6 +2042,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, ignoreCertificate, "IgnoreCertificate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AutoAcceptCertificate, false, "AutoAcceptCertificate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AutoDenyCertificate, false, "AutoDenyCertificate", error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!ConfigureFreerdpStoragePaths(api, settings, params, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -2363,8 +2493,8 @@ private:
         }
 
         auto* nativeWindow = static_cast<OHNativeWindow*>(window_);
-        const int32_t targetWidth = static_cast<int32_t>(width_);
-        const int32_t targetHeight = static_cast<int32_t>(height_);
+        const int32_t targetWidth = static_cast<int32_t>(frame.width);
+        const int32_t targetHeight = static_cast<int32_t>(frame.height);
 
         if (!ConfigureNativeWindowLocked(nativeWindow, targetWidth, targetHeight, result)) {
             return result;
@@ -2423,9 +2553,9 @@ private:
             lastPaintMessage_ = result.message;
             return result;
         }
-        const RenderViewport viewport = FitFrameIntoTarget(
+        const RenderViewport bufferViewport = FitFrameIntoTarget(
             targetAreaWidth, targetAreaHeight, frame.width, frame.height);
-        if (viewport.width == 0 || viewport.height == 0) {
+        if (bufferViewport.width == 0 || bufferViewport.height == 0) {
             OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
             result.message = "render viewport is invalid";
             result.logs.push_back(result.message);
@@ -2434,37 +2564,40 @@ private:
         }
 
         OH_NativeBuffer* nativeBuffer = nullptr;
-        rc = OH_NativeBuffer_FromNativeWindowBuffer(buffer, &nativeBuffer);
-        if (rc != 0 || nativeBuffer == nullptr) {
-            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
-            result.message = "NativeBuffer conversion failed: " + std::to_string(rc);
-            result.logs.push_back(result.message);
-            lastPaintMessage_ = result.message;
-            return result;
-        }
+        void* mappedAddress = handle->virAddr;
+        int32_t mappedRowBytes = rowBytes;
+        bool mappedNativeBuffer = false;
+        if (mappedAddress == nullptr) {
+            rc = OH_NativeBuffer_FromNativeWindowBuffer(buffer, &nativeBuffer);
+            if (rc != 0 || nativeBuffer == nullptr) {
+                OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+                result.message = "NativeBuffer conversion failed: " + std::to_string(rc);
+                result.logs.push_back(result.message);
+                lastPaintMessage_ = result.message;
+                return result;
+            }
 
-        void* mappedAddress = nullptr;
-        int32_t mappedRowBytes = 0;
-        rc = OH_NativeBuffer_Map(nativeBuffer, &mappedAddress);
-        if (rc != 0 || mappedAddress == nullptr) {
-            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
-            result.message = "NativeBuffer map failed: " + std::to_string(rc);
-            result.logs.push_back(result.message);
-            lastPaintMessage_ = result.message;
-            return result;
-        }
+            rc = OH_NativeBuffer_Map(nativeBuffer, &mappedAddress);
+            if (rc != 0 || mappedAddress == nullptr) {
+                OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+                result.message = "NativeBuffer map failed: " + std::to_string(rc);
+                result.logs.push_back(result.message);
+                lastPaintMessage_ = result.message;
+                return result;
+            }
+            mappedNativeBuffer = true;
 
-        OH_NativeBuffer_Config config = {};
-        OH_NativeBuffer_GetConfig(nativeBuffer, &config);
-        if (mappedRowBytes <= 0 && config.stride >= static_cast<int32_t>(targetAreaWidth * 4U)) {
-            mappedRowBytes = config.stride;
-        }
-        if (mappedRowBytes <= 0) {
-            mappedRowBytes = rowBytes;
+            OH_NativeBuffer_Config config = {};
+            OH_NativeBuffer_GetConfig(nativeBuffer, &config);
+            if (config.stride >= static_cast<int32_t>(targetAreaWidth * 4U)) {
+                mappedRowBytes = config.stride;
+            }
         }
 
         if (mappedRowBytes < static_cast<int32_t>(targetAreaWidth * 4U)) {
-            OH_NativeBuffer_Unmap(nativeBuffer);
+            if (mappedNativeBuffer) {
+                OH_NativeBuffer_Unmap(nativeBuffer);
+            }
             OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
             result.message = "NativeBuffer row stride is invalid: " + std::to_string(mappedRowBytes);
             result.logs.push_back(result.message);
@@ -2475,10 +2608,12 @@ private:
         BufferHandle mappedHandle = *handle;
         mappedHandle.virAddr = mappedAddress;
         FillNativeLetterbox(mappedHandle, mappedRowBytes, targetAreaWidth, targetAreaHeight,
-            viewport, 0, 0, 0, 0xFF);
+            bufferViewport, 0, 0, 0, 0xFF);
         CopyScaledRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride,
-            frame.width, frame.height, viewport);
-        OH_NativeBuffer_Unmap(nativeBuffer);
+            frame.width, frame.height, bufferViewport);
+        if (mappedNativeBuffer) {
+            OH_NativeBuffer_Unmap(nativeBuffer);
+        }
 
         Region::Rect dirtyRect = {0, 0, targetAreaWidth, targetAreaHeight};
         Region dirtyRegion = {&dirtyRect, 1};
@@ -2492,21 +2627,24 @@ private:
         }
 
         ++paintCount_;
-        viewportX_ = viewport.x;
-        viewportY_ = viewport.y;
-        viewportWidth_ = viewport.width;
-        viewportHeight_ = viewport.height;
+        viewportX_ = 0;
+        viewportY_ = 0;
+        viewportWidth_ = width_;
+        viewportHeight_ = height_;
         result.ok = true;
         const std::string frameLabel = frame.label.empty() ? "frame" : frame.label;
         result.message = "NativeWindow RGBA frame rendered: " + frameLabel + " " +
-            std::to_string(viewport.width) + "x" + std::to_string(viewport.height) +
-            " viewport=" + std::to_string(viewport.x) + "," + std::to_string(viewport.y);
+            std::to_string(bufferViewport.width) + "x" + std::to_string(bufferViewport.height) +
+            " bufferViewport=" + std::to_string(bufferViewport.x) + "," +
+            std::to_string(bufferViewport.y) + " displayViewport=0,0 " +
+            std::to_string(viewportWidth_) + "x" + std::to_string(viewportHeight_);
         result.logs.push_back(result.message);
         result.logs.push_back("RGBA source=" + std::to_string(frame.width) + "x" +
             std::to_string(frame.height) + " stride=" + std::to_string(sourceStride));
         result.logs.push_back("NativeWindow format=" + std::to_string(handle->format) +
             " stride=" + std::to_string(handle->stride) +
-            " rowBytes=" + std::to_string(mappedRowBytes));
+            " rowBytes=" + std::to_string(mappedRowBytes) +
+            " directVirAddr=" + std::string(mappedNativeBuffer ? "false" : "true"));
         lastPaintMessage_ = result.message;
         return result;
     }
@@ -2562,8 +2700,8 @@ private:
             }
         }
 
-        constexpr uint64_t usage = NATIVEBUFFER_USAGE_CPU_READ | NATIVEBUFFER_USAGE_CPU_WRITE |
-            NATIVEBUFFER_USAGE_MEM_DMA;
+        constexpr uint64_t usage = NATIVEBUFFER_USAGE_CPU_WRITE | NATIVEBUFFER_USAGE_MEM_DMA |
+            NATIVEBUFFER_USAGE_HW_TEXTURE;
         if (configuredUsage_ != usage) {
             const int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_USAGE, usage);
             if (rc != 0) {
@@ -2845,6 +2983,288 @@ SurfaceBridge g_surface;
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
     return g_surface.RenderRgbaFrame(frame);
+}
+
+class LatestFrameRenderer {
+public:
+    void Start()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (running_) {
+            return;
+        }
+
+        ResetStatsLocked();
+        running_ = true;
+        worker_ = std::thread([this]() { WorkerLoop(); });
+    }
+
+    void Stop()
+    {
+        std::thread worker;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!running_ && !worker_.joinable()) {
+                pending_.pixels.clear();
+                hasPending_ = false;
+                return;
+            }
+            running_ = false;
+            pending_.pixels.clear();
+            hasPending_ = false;
+            worker = std::move(worker_);
+        }
+
+        condition_.notify_all();
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+
+    bool Enqueue(const RgbaFrame& frame, std::string& message)
+    {
+        const int32_t sourceStride = frame.strideBytes > 0 ? frame.strideBytes :
+            static_cast<int32_t>(frame.width * 4U);
+        if (frame.data == nullptr || frame.width == 0 || frame.height == 0 ||
+            sourceStride < static_cast<int32_t>(frame.width * 4U)) {
+            message = "invalid frame";
+            return false;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!running_) {
+                message = "render thread not running";
+                return false;
+            }
+            const bool sizeChanged = frame.width != lastQueuedWidth_ || frame.height != lastQueuedHeight_;
+            if (!sizeChanged && queuedCount_ > 0 &&
+                now - lastQueuedAt_ < std::chrono::milliseconds(kTargetFrameIntervalMs)) {
+                ++throttledCount_;
+                message = "render throttled";
+                return false;
+            }
+        }
+
+        PendingFrame next;
+        next.width = frame.width;
+        next.height = frame.height;
+        next.strideBytes = sourceStride;
+        next.label = frame.label.empty() ? "freerdp gdi queued" : frame.label + " queued";
+        next.data = frame.data;
+        const uint32_t copyUs = 0;
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!running_) {
+                message = "render thread stopped";
+                return false;
+            }
+            if (hasPending_) {
+                ++replacedCount_;
+            }
+            pending_ = std::move(next);
+            hasPending_ = true;
+            lastQueuedAt_ = now;
+            lastQueuedWidth_ = frame.width;
+            lastQueuedHeight_ = frame.height;
+            lastCopyUs_ = copyUs;
+            totalCopyUs_ += copyUs;
+            ++queuedCount_;
+            message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+                " direct-gdi";
+        }
+
+        condition_.notify_one();
+        return true;
+    }
+
+    RenderStatsSnapshot Snapshot()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        RenderStatsSnapshot snapshot;
+        snapshot.running = running_;
+        snapshot.queued = queuedCount_;
+        snapshot.rendered = renderedCount_;
+        snapshot.failed = failedCount_;
+        snapshot.replaced = replacedCount_;
+        snapshot.throttled = throttledCount_;
+        snapshot.pending = hasPending_ ? 1U : 0U;
+        snapshot.lastWidth = lastRenderedWidth_;
+        snapshot.lastHeight = lastRenderedHeight_;
+        snapshot.lastCopyUs = lastCopyUs_;
+        snapshot.lastRenderUs = lastRenderUs_;
+        snapshot.avgCopyUs = queuedCount_ == 0 ? 0 :
+            static_cast<uint32_t>(totalCopyUs_ / queuedCount_);
+        snapshot.avgRenderUs = renderedCount_ == 0 ? 0 :
+            static_cast<uint32_t>(totalRenderUs_ / renderedCount_);
+        const uint64_t elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - statsStartedAt_).count();
+        if (elapsedMs > 0) {
+            snapshot.fpsX100 = static_cast<uint32_t>((renderedCount_ * 100000ULL) / elapsedMs);
+        }
+        return snapshot;
+    }
+
+private:
+    struct PendingFrame {
+        std::vector<uint8_t> pixels;
+        const uint8_t* data = nullptr;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        int32_t strideBytes = 0;
+        std::string label;
+    };
+
+    static constexpr uint32_t kTargetFrameIntervalMs = 33;
+
+    void ResetStatsLocked()
+    {
+        pending_.pixels.clear();
+        hasPending_ = false;
+        queuedCount_ = 0;
+        renderedCount_ = 0;
+        failedCount_ = 0;
+        replacedCount_ = 0;
+        throttledCount_ = 0;
+        totalCopyUs_ = 0;
+        totalRenderUs_ = 0;
+        lastCopyUs_ = 0;
+        lastRenderUs_ = 0;
+        lastQueuedWidth_ = 0;
+        lastQueuedHeight_ = 0;
+        lastRenderedWidth_ = 0;
+        lastRenderedHeight_ = 0;
+        lastQueuedAt_ = std::chrono::steady_clock::time_point{};
+        statsStartedAt_ = std::chrono::steady_clock::now();
+    }
+
+    void WorkerLoop()
+    {
+        for (;;) {
+            PendingFrame frame;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                condition_.wait(lock, [this]() { return !running_ || hasPending_; });
+                if (!running_ && !hasPending_) {
+                    return;
+                }
+                frame = std::move(pending_);
+                pending_.pixels.clear();
+                hasPending_ = false;
+            }
+
+            RgbaFrame view = {
+                frame.data != nullptr ? frame.data : frame.pixels.data(),
+                frame.width,
+                frame.height,
+                frame.strideBytes,
+                frame.label,
+            };
+            const auto renderStart = std::chrono::steady_clock::now();
+            SurfacePaintResult paint = RenderSurfaceRgbaFrame(view);
+            const auto renderEnd = std::chrono::steady_clock::now();
+            const uint32_t renderUs = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(renderEnd - renderStart).count());
+
+            uint64_t rendered = 0;
+            uint64_t failed = 0;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                lastRenderUs_ = renderUs;
+                lastRenderedWidth_ = frame.width;
+                lastRenderedHeight_ = frame.height;
+                if (paint.ok) {
+                    ++renderedCount_;
+                    totalRenderUs_ += renderUs;
+                } else {
+                    ++failedCount_;
+                }
+                rendered = renderedCount_;
+                failed = failedCount_;
+            }
+
+            if (paint.ok) {
+                if (rendered <= 3 || rendered % 60 == 0) {
+                    EmitNativeLog("Render thread painted frame " + std::to_string(rendered) +
+                        " render=" + std::to_string(renderUs / 1000.0) + "ms");
+                }
+            } else if (failed <= 3 || failed % 120 == 0) {
+                EmitNativeLog("Render thread paint failed: " + paint.message);
+            }
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::thread worker_;
+    PendingFrame pending_;
+    bool running_ = false;
+    bool hasPending_ = false;
+    uint64_t queuedCount_ = 0;
+    uint64_t renderedCount_ = 0;
+    uint64_t failedCount_ = 0;
+    uint64_t replacedCount_ = 0;
+    uint64_t throttledCount_ = 0;
+    uint64_t totalCopyUs_ = 0;
+    uint64_t totalRenderUs_ = 0;
+    uint32_t lastCopyUs_ = 0;
+    uint32_t lastRenderUs_ = 0;
+    uint32_t lastQueuedWidth_ = 0;
+    uint32_t lastQueuedHeight_ = 0;
+    uint32_t lastRenderedWidth_ = 0;
+    uint32_t lastRenderedHeight_ = 0;
+    std::chrono::steady_clock::time_point lastQueuedAt_;
+    std::chrono::steady_clock::time_point statsStartedAt_ = std::chrono::steady_clock::now();
+};
+
+LatestFrameRenderer g_frameRenderer;
+
+bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message)
+{
+    return g_frameRenderer.Enqueue(frame, message);
+}
+
+void StartRenderPipeline()
+{
+    g_frameRenderer.Start();
+}
+
+void StopRenderPipeline()
+{
+    g_frameRenderer.Stop();
+}
+
+std::string BuildRenderStatsLog()
+{
+    const RenderStatsSnapshot stats = g_frameRenderer.Snapshot();
+    std::ostringstream out;
+    out << "render "
+        << (stats.running ? "running" : "stopped")
+        << " queued=" << stats.queued
+        << " rendered=" << stats.rendered
+        << " failed=" << stats.failed
+        << " replaced=" << stats.replaced
+        << " throttled=" << stats.throttled
+        << " pending=" << stats.pending
+        << " fps=" << (stats.fpsX100 / 100) << "."
+        << std::setw(2) << std::setfill('0') << (stats.fpsX100 % 100)
+        << std::setfill(' ')
+        << " copyMs=" << (stats.lastCopyUs / 1000) << "."
+        << std::setw(3) << std::setfill('0') << (stats.lastCopyUs % 1000)
+        << std::setfill(' ')
+        << " avgCopyMs=" << (stats.avgCopyUs / 1000) << "."
+        << std::setw(3) << std::setfill('0') << (stats.avgCopyUs % 1000)
+        << std::setfill(' ')
+        << " renderMs=" << (stats.lastRenderUs / 1000) << "."
+        << std::setw(3) << std::setfill('0') << (stats.lastRenderUs % 1000)
+        << std::setfill(' ')
+        << " avgRenderMs=" << (stats.avgRenderUs / 1000) << "."
+        << std::setw(3) << std::setfill('0') << (stats.avgRenderUs % 1000)
+        << std::setfill(' ')
+        << " last=" << stats.lastWidth << "x" << stats.lastHeight;
+    return out.str();
 }
 
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
@@ -3654,6 +4074,7 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.password = GetStringProperty(env, args[0], "password");
     params.resolution = GetStringProperty(env, args[0], "resolution");
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
+    params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
 }
 
@@ -3875,22 +4296,24 @@ napi_value Probe(napi_env env, napi_callback_info info)
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
     SurfaceSnapshot surface = g_surface.Snapshot();
     const std::string featureSummary =
-        "core RDP/TLS/NLA + software GDI; client channels on; "
+        "core RDP/TLS/NLA + queued software GDI renderer; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
         "static cliprdr text bridge and rdpsnd/OHAudio playback requested; "
         "other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
+    const std::string renderStats = BuildRenderStatsLog();
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.8.1");
+    SetString(env, result, "bridgeVersion", "0.8.2");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
     SetString(env, result, "opensslVersion", freerdp.opensslVersion);
     SetString(env, result, "featureSummary", featureSummary);
     SetString(env, result, "audioStats", audioStats);
+    SetString(env, result, "renderStats", renderStats);
     SetString(env, result, "inputDispatchMode", "worker-thread-queue");
     SetString(env, result, "probeJson", freerdp.json);
     SetString(env, result, "probeError", freerdp.error);
@@ -3924,6 +4347,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "FreeRDP input dispatch: worker-thread queue",
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
+        renderStats,
         audioStats,
         "Certificate policy: tofu stores first untrusted certificate through FreeRDP, strict rejects untrusted certificates"
     };
@@ -3980,6 +4404,7 @@ napi_value Connect(napi_env env, napi_callback_info info)
     logs.push_back("username=" + params.username);
     logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
+    logs.push_back("appFilesDir=" + params.appFilesDir);
     logs.push_back("starting native worker");
 
     std::string message;

@@ -117,6 +117,7 @@ interface NativeProbeResult {
   opensslVersion: string
   featureSummary: string
   audioStats: string
+  renderStats: string
   inputDispatchMode: string
   freeRdpLinked: boolean
   surfaceRegistered: boolean
@@ -400,9 +401,10 @@ struct Index {
       const desktopText = result.desktopWidth > 0 && result.desktopHeight > 0 ?
         `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
+      const renderText = result.renderStats
       const inputText = `input ${result.inputDispatchMode} q=${result.inputQueueDepth} sent=${result.inputSentCount} drop=${result.inputDroppedCount}`
       const audioText = result.audioStats.replace('OHAudio stats: ', 'audio ')
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${inputText} | ${audioText}`
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${renderText} | ${inputText} | ${audioText}`
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }
@@ -468,6 +470,16 @@ struct Index {
     return 'tofu'
   }
 
+  private getAppFilesDir(): string {
+    try {
+      const context = getContext(this) as common.UIAbilityContext
+      return context.filesDir
+    } catch (error) {
+      this.appendLog(`App files dir unavailable: ${JSON.stringify(error)}`)
+      return ''
+    }
+  }
+
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connectionState = 'Idle'
@@ -487,7 +499,8 @@ struct Index {
         username: this.username,
         password: this.password,
         resolution: this.resolution,
-        certPolicy: policy
+        certPolicy: policy,
+        appFilesDir: this.getAppFilesDir()
       })
       this.connectionState = this.toConnectionState(result.state)
       this.appendLog(result.message)

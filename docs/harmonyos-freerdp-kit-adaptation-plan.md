@@ -597,6 +597,33 @@ static UINT ohos_cliprdr_server_format_data_request(
 
 ## 问题 4：整体卡顿
 
+### 当前记录
+
+2026-05-15 真机验证后，当前最严重问题已经从“无声音/不可连接”转为“会话整体卡顿”。表现为远程桌面视频和高频画面变化时画面刷新不连续，输入响应也可能被拖慢。
+
+当前必须区分两条路线：
+
+- 短期治理：继续使用 FreeRDP software GDI，但把渲染从 RDP 回调线程拆出去，做 latest-frame queue、限帧、指标、dirty rect，避免 NativeWindow map/copy/flush 拖慢协议处理。
+- 长期治理：接 `rdpgfx/H.264 -> OHOS AVCodec -> NativeWindow/GPU texture`，这才是真正的 GPU 直连/少拷贝路线。当前 GDI framebuffer 本身是 CPU 内存，不能直接做到严格零拷贝。
+
+影响：
+
+- 如果先不做短期治理，直接打开 `rdpgfx/H.264`，会重新遇到此前增强图形管线黑屏、frame ack、surface lifetime 和回退策略不完整的问题。
+- 如果只做 GDI 优化，视频仍可能不如硬解流畅，但能先降低协议线程阻塞、输入延迟和整体 App 卡顿。
+
+本轮先落地 S4-1：
+
+- `HarmonyEndPaint` 不再直接执行 NativeWindow map/copy/flush。
+- 增加 latest-frame render thread，RDP 线程只投递最新 GDI frame。
+- NativeWindow buffer 按远端帧尺寸申请，缩放交给系统合成器/GPU，避免每帧 CPU 放大。
+- 入队使用 direct GDI pointer，去掉 RDP 线程里的整帧 snapshot copy。
+- Diagnostics 增加 render queued/rendered/replaced/throttled/fps/copyMs/renderMs。
+
+遗留风险：
+
+- direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。
+- 当前仍不是完整 GPU 零拷贝，render thread 仍需把 GDI framebuffer 写入 NativeWindow buffer。彻底解决视频高负载还需要 `rdpgfx/H.264 -> OHOS AVCodec -> NativeWindow/GPU texture`。
+
 ### 根因
 
 整体卡顿不是单点问题，是渲染、协议、输入和 UI 日志叠加：
