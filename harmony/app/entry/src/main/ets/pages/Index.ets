@@ -64,6 +64,8 @@ const OH_KEYCODE_DPAD_DOWN: number = 2013
 const OH_KEYCODE_DPAD_LEFT: number = 2014
 const OH_KEYCODE_DPAD_RIGHT: number = 2015
 const OH_KEYCODE_A: number = 2017
+const OH_KEYCODE_C: number = OH_KEYCODE_A + 2
+const OH_KEYCODE_V: number = OH_KEYCODE_A + 21
 const OH_KEYCODE_Z: number = 2042
 const OH_KEYCODE_COMMA: number = 2043
 const OH_KEYCODE_PERIOD: number = 2044
@@ -210,6 +212,8 @@ struct Index {
   private bridgePrintableKeyCode: number = 0
   private bridgePrintableKeyAtMs: number = 0
   private remoteShortcutPrintableKeysDown: number[] = []
+  private dispatchedRemoteKeyEvents: string[] = []
+  private remotePressedScancodes: number[] = []
   private callbacksRegistered: boolean = false
   private pasteboardPermissionRequested: boolean = false
   private pasteboardPermissionInFlight: boolean = false
@@ -433,6 +437,21 @@ struct Index {
   private canPaintSurfaceTestPattern(): boolean {
     return this.connectionState === 'Idle' || this.connectionState === 'Bridge ready' ||
       this.connectionState === 'Disconnected' || this.connectionState === 'Failed'
+  }
+
+  private audioSelfTestNative(): void {
+    try {
+      const result: NativeCommandResult = rdpNative.audioSelfTest()
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+      if (!result.ok) {
+        this.connectionState = 'Failed'
+      }
+      this.probeNative(false)
+    } catch (error) {
+      this.connectionState = 'Failed'
+      this.appendLog(`Native audio self-test failed: ${JSON.stringify(error)}`)
+    }
   }
 
   private normalizeCertPolicy(value: string): string {
@@ -786,7 +805,8 @@ struct Index {
     this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`, true)
   }
 
-  private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true): boolean {
+  private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true,
+    repeat: boolean = false): boolean {
     if (!this.isConnected()) {
       if (logDisconnected) {
         this.appendLog('Key input skipped: no active FreeRDP session')
@@ -795,7 +815,7 @@ struct Index {
     }
 
     try {
-      const result: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: down })
+      const result: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: down, repeat: repeat })
       if (!result.ok) {
         this.appendLog(result.message)
       }
@@ -934,6 +954,7 @@ struct Index {
     this.leftShiftModifierDown = false
     this.rightShiftModifierDown = false
     this.remoteShortcutPrintableKeysDown = []
+    this.remotePressedScancodes = []
   }
 
   private clearPointerState(): void {
@@ -1143,10 +1164,28 @@ struct Index {
     }
   }
 
-  private sendMappedKeyEvent(scancode: number, down: boolean): boolean {
-    const sent = this.sendKeyEvent(scancode, down, false)
+  private isRemoteScancodePressed(scancode: number): boolean {
+    return this.remotePressedScancodes.indexOf(scancode) >= 0
+  }
+
+  private setRemoteScancodePressed(scancode: number, down: boolean): void {
+    const index = this.remotePressedScancodes.indexOf(scancode)
+    if (down) {
+      if (index < 0) {
+        this.remotePressedScancodes.push(scancode)
+      }
+      return
+    }
+    if (index >= 0) {
+      this.remotePressedScancodes.splice(index, 1)
+    }
+  }
+
+  private sendMappedKeyEvent(scancode: number, down: boolean, repeat: boolean = false): boolean {
+    const sent = this.sendKeyEvent(scancode, down, false, repeat)
     if (sent) {
       this.updateModifierState(scancode, down)
+      this.setRemoteScancodePressed(scancode, down)
     }
     return sent
   }
@@ -1176,9 +1215,38 @@ struct Index {
     return keyCode >= OH_KEYCODE_F1 && keyCode <= OH_KEYCODE_F12
   }
 
+  private isClipboardShortcutKey(keyCode: number): boolean {
+    return keyCode === OH_KEYCODE_C || keyCode === OH_KEYCODE_V
+  }
+
+  private keyEventId(event: KeyEvent): string {
+    return `${event.timestamp}:${event.keyCode}:${event.type}`
+  }
+
+  private rememberDispatchedRemoteKeyEvent(event: KeyEvent): void {
+    this.dispatchedRemoteKeyEvents.push(this.keyEventId(event))
+    if (this.dispatchedRemoteKeyEvents.length > 32) {
+      this.dispatchedRemoteKeyEvents.shift()
+    }
+  }
+
+  private consumeDispatchedRemoteKeyEvent(event: KeyEvent): boolean {
+    const index = this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event))
+    if (index < 0) {
+      return false
+    }
+    this.dispatchedRemoteKeyEvents.splice(index, 1)
+    return true
+  }
+
+  private hasDispatchedRemoteKeyEvent(event: KeyEvent): boolean {
+    return this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event)) >= 0
+  }
+
   private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
     trackedShortcut: boolean, fromInputBridge: boolean): void {
-    if (!shortcut && !trackedShortcut && !this.isFunctionKey(event.keyCode)) {
+    if (!shortcut && !trackedShortcut && !this.isFunctionKey(event.keyCode) &&
+      !this.isClipboardShortcutKey(event.keyCode)) {
       return
     }
     this.logInputEvent('key',
@@ -1220,7 +1288,48 @@ struct Index {
     return true
   }
 
+  private stopKeyPropagation(event: KeyEvent): void {
+    try {
+      event.stopPropagation()
+    } catch (error) {
+      this.logInputEvent('key.stop', `failed ${JSON.stringify(error)}`, true)
+    }
+  }
+
+  private shouldDispatchRemoteKey(event: KeyEvent): boolean {
+    if (!this.isConnected()) {
+      return false
+    }
+    const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
+    if (scancode <= 0) {
+      return false
+    }
+    const printable = this.isPrintableArkKeyCode(event.keyCode)
+    const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
+    return !printable || this.hasRemoteShortcutModifier(event) || trackedShortcut
+  }
+
+  private handleRemoteKeyDispatch(event: KeyEvent, fromInputBridge: boolean): boolean {
+    if (this.hasDispatchedRemoteKeyEvent(event)) {
+      this.stopKeyPropagation(event)
+      return true
+    }
+    if (!this.shouldDispatchRemoteKey(event)) {
+      return false
+    }
+    const sent = this.handleSurfaceKeyEvent(event, fromInputBridge)
+    if (!sent) {
+      return false
+    }
+    this.rememberDispatchedRemoteKeyEvent(event)
+    this.stopKeyPropagation(event)
+    return true
+  }
+
   private handleInputBridgeKeyEvent(event: KeyEvent): boolean {
+    if (this.consumeDispatchedRemoteKeyEvent(event)) {
+      return true
+    }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const shortcut = this.hasRemoteShortcutModifier(event)
     if (printable && !shortcut) {
@@ -1231,6 +1340,9 @@ struct Index {
   }
 
   private handleSurfaceKeyEvent(event: KeyEvent, fromInputBridge: boolean = false): boolean {
+    if (!fromInputBridge && this.consumeDispatchedRemoteKeyEvent(event)) {
+      return true
+    }
     if (!this.isConnected()) {
       return false
     }
@@ -1248,7 +1360,8 @@ struct Index {
     }
 
     if (scancode > 0 && (!printable || shortcut)) {
-      const sent = this.sendMappedKeyEvent(scancode, down)
+      const repeat = down && this.isRemoteScancodePressed(scancode)
+      const sent = this.sendMappedKeyEvent(scancode, down, repeat)
       if (sent && printable) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
       }
@@ -1811,6 +1924,14 @@ struct Index {
           .onClick(() => {
             this.resizeNative()
           })
+        Button('Audio')
+          .height(36)
+          .margin({ left: 8 })
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
+          .onClick(() => {
+            this.audioSelfTestNative()
+          })
         Button('Paint')
           .height(36)
           .margin({ left: 8 })
@@ -1870,6 +1991,7 @@ struct Index {
           .backgroundColor('#00000000')
           .caretColor('#00000000')
           .focusable(true)
+          .copyOption(CopyOptions.None)
           .onChange((value: string) => {
             this.handleRemoteTextInputChange(value)
           })
@@ -1878,10 +2000,13 @@ struct Index {
             this.logInputEvent('paste', `hidden TextInput default paste suppressed len=${content.length}`, true)
           })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
-            this.sendKeyStroke(RDP_SCANCODE_ENTER)
+            this.logInputEvent('key.submit', 'hidden TextInput submit suppressed; hardware Enter uses key dispatch', true)
           })
           .onKeyEvent((event: KeyEvent): boolean => {
             return this.handleInputBridgeKeyEvent(event)
+          })
+          .onKeyEventDispatch((event: KeyEvent): boolean => {
+            return this.handleRemoteKeyDispatch(event, true)
           })
           .onAxisEvent((event: AxisEvent) => {
             this.handleSurfaceAxis(event)
@@ -1903,6 +2028,9 @@ struct Index {
       })
       .onKeyEvent((event: KeyEvent): boolean => {
         return this.handleSurfaceKeyEvent(event)
+      })
+      .onKeyEventDispatch((event: KeyEvent): boolean => {
+        return this.handleRemoteKeyDispatch(event, false)
       })
       .onMouse((event: MouseEvent) => {
         this.handleSurfaceMouse(event)
@@ -1966,5 +2094,12 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor('#F2F4F7')
+    .focusable(true)
+    .onKeyEvent((event: KeyEvent): boolean => {
+      return this.handleSurfaceKeyEvent(event)
+    })
+    .onKeyEventDispatch((event: KeyEvent): boolean => {
+      return this.handleRemoteKeyDispatch(event, false)
+    })
   }
 }

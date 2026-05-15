@@ -28,6 +28,8 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <native_buffer/native_buffer.h>
 #include <native_window/external_window.h>
+#include <ohaudio/native_audiorenderer.h>
+#include <ohaudio/native_audiostreambuilder.h>
 #include <database/pasteboard/oh_pasteboard.h>
 #include <database/pasteboard/oh_pasteboard_err_code.h>
 #include <database/udmf/udmf.h>
@@ -109,6 +111,15 @@ void EmitHilogInfo(const std::string& line)
     constexpr size_t kMaxHilogLine = 3500;
     const std::string clipped = line.size() > kMaxHilogLine ? line.substr(0, kMaxHilogLine) : line;
     OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
+}
+
+void EmitHilogError(const std::string& line)
+{
+    constexpr unsigned int kLogDomain = 0xF3D1;
+    constexpr const char* kLogTag = "FreeRDPBridge";
+    constexpr size_t kMaxHilogLine = 3500;
+    const std::string clipped = line.size() > kMaxHilogLine ? line.substr(0, kMaxHilogLine) : line;
+    OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
 }
 
 std::string SystemErrorMessage(int errorCode)
@@ -1581,7 +1592,7 @@ private:
         std::vector<BYTE> data;
         if (ok && request.requestedFormatId == CF_UNICODETEXT) {
             data = Utf8ToUtf16LeClipboard(text);
-        } else if (ok && request.requestedFormatId == CF_TEXT) {
+        } else if (ok && (request.requestedFormatId == CF_TEXT || request.requestedFormatId == CF_OEMTEXT)) {
             data.assign(text.begin(), text.end());
             data.push_back(0);
         }
@@ -2902,6 +2913,7 @@ class RdpSession {
         uint32_t scancode = 0;
         uint32_t code = 0;
         bool down = false;
+        bool repeat = false;
     };
 #endif
 
@@ -2987,7 +2999,7 @@ public:
 #endif
     }
 
-    bool SendKey(uint32_t rdpScancode, bool down, std::string& message)
+    bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected_.load()) {
@@ -2998,6 +3010,7 @@ public:
         event.type = QueuedInputType::Key;
         event.scancode = rdpScancode;
         event.down = down;
+        event.repeat = repeat;
         return EnqueueInput(event, down ? "key down queued" : "key up queued", message);
 #else
         message = "FreeRDP headers not found at build time";
@@ -3219,7 +3232,8 @@ private:
                 }
             } else if (event.type == QueuedInputType::Key) {
                 if (api->inputSendKeyboardEventEx != nullptr) {
-                    ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE, FALSE,
+                    ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
+                        event.repeat ? TRUE : FALSE,
                         event.scancode);
                 }
             } else {
@@ -3716,6 +3730,145 @@ std::string BuildOHAudioStatsLog()
 #endif
 }
 
+struct AudioTestToneState {
+    std::vector<int16_t> samples;
+    size_t offset = 0;
+    uint32_t callbacks = 0;
+    uint32_t copiedBytes = 0;
+};
+
+OH_AudioData_Callback_Result OnAudioTestToneWrite(
+    OH_AudioRenderer* renderer, void* userData, void* audioData, int32_t audioDataSize)
+{
+    (void)renderer;
+    auto* state = static_cast<AudioTestToneState*>(userData);
+    if (state == nullptr || audioData == nullptr || audioDataSize <= 0) {
+        return AUDIO_DATA_CALLBACK_RESULT_INVALID;
+    }
+
+    auto* dst = static_cast<uint8_t*>(audioData);
+    const size_t requested = static_cast<size_t>(audioDataSize);
+    const size_t availableBytes = (state->samples.size() - std::min(state->offset, state->samples.size())) *
+        sizeof(int16_t);
+    const size_t copied = std::min(requested, availableBytes);
+    if (copied > 0) {
+        std::memcpy(dst, state->samples.data() + state->offset, copied);
+        state->offset += copied / sizeof(int16_t);
+    }
+    if (copied < requested) {
+        std::memset(dst + copied, 0, requested - copied);
+    }
+    state->callbacks++;
+    state->copiedBytes += static_cast<uint32_t>(std::min(copied, static_cast<size_t>(UINT32_MAX)));
+    return AUDIO_DATA_CALLBACK_RESULT_VALID;
+}
+
+bool PlayAudioTestTone(std::vector<std::string>& logs, std::string& message)
+{
+    constexpr int32_t sampleRate = 44100;
+    constexpr int32_t channelCount = 2;
+    constexpr int32_t durationMs = 900;
+    constexpr int32_t toneHz = 880;
+    constexpr int16_t amplitude = 9000;
+    constexpr int32_t frameSize = 1024;
+
+    AudioTestToneState state;
+    const size_t frameCount = static_cast<size_t>(sampleRate) * durationMs / 1000U;
+    state.samples.resize(frameCount * channelCount);
+    const int32_t halfPeriod = std::max(1, sampleRate / (toneHz * 2));
+    for (size_t frame = 0; frame < frameCount; ++frame) {
+        const int16_t sample = ((static_cast<int32_t>(frame) / halfPeriod) % 2) == 0 ? amplitude : -amplitude;
+        state.samples[frame * channelCount] = sample;
+        state.samples[frame * channelCount + 1] = sample;
+    }
+
+    OH_AudioStreamBuilder* builder = nullptr;
+    OH_AudioRenderer* renderer = nullptr;
+    OH_AudioStream_Result rc = OH_AudioStreamBuilder_Create(&builder, AUDIOSTREAM_TYPE_RENDERER);
+    auto fail = [&](const char* stage, OH_AudioStream_Result result) {
+        if (renderer != nullptr) {
+            (void)OH_AudioRenderer_Stop(renderer);
+            (void)OH_AudioRenderer_Release(renderer);
+            renderer = nullptr;
+        }
+        if (builder != nullptr) {
+            (void)OH_AudioStreamBuilder_Destroy(builder);
+            builder = nullptr;
+        }
+        message = std::string("OHAudio self-test failed at ") + stage + ": " +
+            std::to_string(static_cast<int32_t>(result));
+        logs.push_back(message);
+        EmitHilogError(message);
+        return false;
+    };
+
+    if (rc != AUDIOSTREAM_SUCCESS) {
+        return fail("OH_AudioStreamBuilder_Create", rc);
+    }
+    if ((rc = OH_AudioStreamBuilder_SetSamplingRate(builder, sampleRate)) != AUDIOSTREAM_SUCCESS) {
+        return fail("SetSamplingRate", rc);
+    }
+    if ((rc = OH_AudioStreamBuilder_SetChannelCount(builder, channelCount)) != AUDIOSTREAM_SUCCESS) {
+        return fail("SetChannelCount", rc);
+    }
+    if ((rc = OH_AudioStreamBuilder_SetSampleFormat(builder, AUDIOSTREAM_SAMPLE_S16LE)) != AUDIOSTREAM_SUCCESS) {
+        return fail("SetSampleFormat", rc);
+    }
+    if ((rc = OH_AudioStreamBuilder_SetEncodingType(builder, AUDIOSTREAM_ENCODING_TYPE_RAW)) != AUDIOSTREAM_SUCCESS) {
+        return fail("SetEncodingType", rc);
+    }
+    if ((rc = OH_AudioStreamBuilder_SetLatencyMode(builder, AUDIOSTREAM_LATENCY_MODE_NORMAL)) != AUDIOSTREAM_SUCCESS) {
+        logs.push_back("OHAudio self-test latency mode fallback result=" + std::to_string(static_cast<int32_t>(rc)));
+    }
+    if ((rc = OH_AudioStreamBuilder_SetRendererInfo(builder, AUDIOSTREAM_USAGE_MUSIC)) != AUDIOSTREAM_SUCCESS) {
+        logs.push_back("OHAudio self-test renderer info result=" + std::to_string(static_cast<int32_t>(rc)));
+    }
+    if ((rc = OH_AudioStreamBuilder_SetRendererInterruptMode(
+        builder, AUDIOSTREAM_INTERRUPT_MODE_INDEPENDENT)) != AUDIOSTREAM_SUCCESS) {
+        logs.push_back("OHAudio self-test interrupt mode result=" + std::to_string(static_cast<int32_t>(rc)));
+    }
+    if ((rc = OH_AudioStreamBuilder_SetFrameSizeInCallback(builder, frameSize)) != AUDIOSTREAM_SUCCESS) {
+        logs.push_back("OHAudio self-test frame size result=" + std::to_string(static_cast<int32_t>(rc)));
+    }
+    if ((rc = OH_AudioStreamBuilder_SetRendererWriteDataCallback(
+        builder, OnAudioTestToneWrite, &state)) != AUDIOSTREAM_SUCCESS) {
+        return fail("SetRendererWriteDataCallback", rc);
+    }
+    if ((rc = OH_AudioStreamBuilder_GenerateRenderer(builder, &renderer)) != AUDIOSTREAM_SUCCESS) {
+        return fail("GenerateRenderer", rc);
+    }
+    if ((rc = OH_AudioRenderer_Start(renderer)) != AUDIOSTREAM_SUCCESS) {
+        return fail("OH_AudioRenderer_Start", rc);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(durationMs + 250));
+    (void)OH_AudioRenderer_Stop(renderer);
+    (void)OH_AudioRenderer_Release(renderer);
+    renderer = nullptr;
+    (void)OH_AudioStreamBuilder_Destroy(builder);
+    builder = nullptr;
+
+    message = "OHAudio self-test tone completed: callbacks=" + std::to_string(state.callbacks) +
+        " copiedBytes=" + std::to_string(state.copiedBytes);
+    logs.push_back(message);
+    EmitHilogInfo(message);
+    return state.callbacks > 0 && state.copiedBytes > 0;
+}
+
+napi_value AudioSelfTest(napi_env env, napi_callback_info info)
+{
+    std::vector<std::string> logs = {"OHAudio self-test invoked"};
+    std::string message;
+    const bool ok = PlayAudioTestTone(logs, message);
+
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Bridge ready" : "Failed");
+    SetString(env, result, "message", message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
@@ -3766,7 +3919,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, sendPointer, sendKey, sendUnicode",
+        "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, audioSelfTest, sendPointer, sendKey, sendUnicode",
         "FreeRDP input dispatch: worker-thread queue",
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
@@ -3969,10 +4122,12 @@ napi_value SendKey(napi_env env, napi_callback_info info)
 
     const uint32_t scancode = GetUint32Property(env, arg, "scancode");
     const bool down = GetBoolProperty(env, arg, "down");
-    logs.push_back("scancode=" + std::to_string(scancode) + (down ? " down" : " up"));
+    const bool repeat = GetBoolProperty(env, arg, "repeat");
+    logs.push_back("scancode=" + std::to_string(scancode) + (down ? " down" : " up") +
+        (repeat ? " repeat" : ""));
 
     std::string message;
-    const bool ok = g_session.SendKey(scancode, down, message);
+    const bool ok = g_session.SendKey(scancode, down, repeat, message);
     g_events.log.Emit(message);
 
     SetBool(env, result, "ok", ok);
@@ -4060,6 +4215,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"resize", nullptr, Resize, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"paintTestPattern", nullptr, PaintTestPattern, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"audioSelfTest", nullptr, AudioSelfTest, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
