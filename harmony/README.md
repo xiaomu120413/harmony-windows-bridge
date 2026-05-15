@@ -30,6 +30,7 @@ Current milestone:
 - M6.9 adds the `resize(width, height)` N-API surface and reports that dynamic resize is blocked by the current no-channel FreeRDP build.
 - M6.10 queues pointer/key/Unicode input on the FreeRDP worker thread, adds TOFU/strict/ignore certificate policies, and reports the disabled channel/codec feature set through `probe()`.
 - M6.11 switches the WSL FreeRDP build to the enhanced channel/codec profile: client channels, cliprdr, rdpdr, drive, printer, smartcard, rdpsnd, audin, disp, rdpgfx, TSMF, uriparser, OpenSLES, FFmpeg, and OpenH264 are compiled and packaged.
+- M6.12 adds a FreeRDP OHOS feature matrix check and compiles the WinPR smartcard PCSC backend into the enhanced runtime; CUPS and FUSE remain disabled because the current OHOS sysroot does not provide those backends.
 - A live Windows desktop frame has been verified on device; current follow-up validation is focused on reliable remote operation and lifecycle stress.
 
 ## Native bridge
@@ -198,6 +199,14 @@ M6.11 notes:
 - `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264, display-control, and rdpsnd at session start.
 - Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser/OpenSLES/`libc++_shared.so` shared libraries, instead of a fixed minimal list. Use a clean HAP build after changing the native library set so hvigor does not reuse stale package metadata.
 - Remaining risk: CUPS, PCSC, and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer, physical smartcard, and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable.
+
+M6.12 notes:
+
+- `harmony/scripts/wsl/check-freerdp-ohos-feature-matrix.sh` records compile/configure status for CUPS, PCSC, FUSE, and the current enhanced runtime without modifying the main build output.
+- `WITH_SMARTCARD_PCSC=ON` is now part of the default enhanced FreeRDP build. The WinPR PCSC code compiles into `libwinpr3.so` and loads `libpcsclite.so.1`/`libpcsclite.so` at runtime when smartcard is used.
+- `WITH_CUPS=ON` still fails at configure time because the OHOS sysroot does not provide CUPS headers/libraries.
+- `WITH_FUSE=ON` still fails at configure time because `fuse3` is not available in the OHOS cross sysroot.
+- The detailed matrix and true-device checklist are in `docs/freerdp-ohos-feature-matrix.md`.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 

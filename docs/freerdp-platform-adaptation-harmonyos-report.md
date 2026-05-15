@@ -120,8 +120,8 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
    - 当前子模块改动对 `winpr/libwinpr/thread/thread.c` 增加 `__OHOS__` 分支，避免 OHOS 上走 `pthread_cancel`。
 3. FreeRDP CMake 配置已经最小化：
    - 保留：`WITH_OPENSSL=ON`、`WITH_CLIENT_COMMON=ON`、`WITH_UNICODE_BUILTIN=ON`。
-   - 当前增强构建仍关闭桌面前端/服务端：`WITH_CLIENT`、`WITH_SERVER`、`WITH_X11`、`WITH_WAYLAND`、`WITH_ALSA`、`WITH_PULSE` 等；已打开 `WITH_CHANNELS`、`WITH_CLIENT_CHANNELS`、`WITH_FFMPEG`、`WITH_SWSCALE`、`WITH_OPENH264`、`WITH_URIPARSER` 和 OHOS NDK 可用时的 `WITH_OPENSLES`。
-   - `WITH_CUPS`、`WITH_FUSE`、`WITH_PCSC` 仍作为可选编译开关保留，默认不启用，因为普通 HarmonyOS 应用没有现成 Linux CUPS/PCSC/FUSE 服务。
+   - 当前增强构建仍关闭桌面前端/服务端：`WITH_CLIENT`、`WITH_SERVER`、`WITH_X11`、`WITH_WAYLAND`、`WITH_ALSA`、`WITH_PULSE` 等；已打开 `WITH_CHANNELS`、`WITH_CLIENT_CHANNELS`、`WITH_FFMPEG`、`WITH_SWSCALE`、`WITH_OPENH264`、`WITH_URIPARSER`、`WITH_SMARTCARD_PCSC` 和 OHOS NDK 可用时的 `WITH_OPENSLES`。
+   - `WITH_CUPS`、`WITH_FUSE` 仍默认不启用，因为当前 OHOS sysroot 没有 CUPS/fuse3；`WITH_PCSC` 的外部库发现仍关闭，但 WinPR smartcard PCSC backend 已编译，运行时动态加载 `libpcsclite`。
 4. Runtime 打包链路已存在：
    - `harmony/out/ohos-arm64/runtime-libs/` 产出 `libfreerdp3.so`、`libfreerdp-client3.so`、`libwinpr3.so`、`libssl.so.3`、`libcrypto.so.3`、`libz.so.1`、`libcjson.so.1`，以及 uriparser、OpenH264、FFmpeg、OpenSLES、`libc++_shared.so` 等增强依赖。
    - `harmony/scripts/windows/sync-freerdp-runtime.ps1` 同步到 `harmony/app/entry/libs/arm64-v8a/`。
@@ -164,7 +164,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 | 音频 | ALSA/Pulse/OSS/OpenSLES | 首个可交互版本可不做，产品化通常需要 | 继续关闭到 M6；后续打开 `rdpsnd/audin`，用 Harmony AudioRenderer/AudioCapturer 写 OHOS backend，不能直接用 ALSA/Pulse/OpenSLES |
 | 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是性能增强；独立视频通道按需 | 首版先用基础 GDI/bitmap 到 `NativeWindow`；性能不足再打开 `rdpgfx` 和软件 H.264；硬件解码需新增 OHOS AVCodec backend，不要直接套 Android MediaCodec |
 | 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | `drive`/`rdpdr` 已编译；后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径。FUSE 文件复制仍是可选专项 |
-| 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | printer/smartcard channel 已编译；真实打印和物理智能卡仍需 CUPS/PCSC 端口或 OHOS 专用后端 |
+| 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | printer/smartcard channel 已编译；WinPR smartcard PCSC backend 已编译但需要运行时 `libpcsclite` 或 OHOS 专用后端；真实打印仍需 CUPS 端口或 Harmony Print 后端 |
 | 证书校验 | Windows 可用系统证书；Linux/Android 用 OpenSSL/known_hosts/回调 | 需要 | 实现 `VerifyCertificateEx/VerifyChangedCertificateEx` 回调到 ArkTS；做 TOFU 指纹存储；生产默认不使用 ignore |
 | 日志 | Console/file/syslog/Android log | 需要 | N-API 回调继续保留；建议补 `hilog` 输出，App UI 只显示脱敏摘要 |
 | 生命周期 | 各 client 自己管理事件循环 | 需要 | 页面销毁/后台/断网时统一进入 `Disconnecting`，调用 `freerdp_abort_connect_context`，等待 worker join，释放 surface |
@@ -458,6 +458,7 @@ WITH_DSP_FFMPEG=ON
 WITH_VIDEO_FFMPEG=ON
 WITH_OPENH264=ON
 WITH_URIPARSER=ON
+WITH_SMARTCARD_PCSC=ON
 WITH_ALSA=OFF
 WITH_PULSE=OFF
 WITH_OPENSLES=ON when OHOS NDK provides it

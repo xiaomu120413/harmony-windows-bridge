@@ -31,6 +31,7 @@ ENABLE_FFMPEG="${ENABLE_FFMPEG:-1}"
 ENABLE_OPENSLES="${ENABLE_OPENSLES:-auto}"
 ENABLE_CUPS="${ENABLE_CUPS:-0}"
 ENABLE_PCSC="${ENABLE_PCSC:-0}"
+ENABLE_SMARTCARD_PCSC="${ENABLE_SMARTCARD_PCSC:-1}"
 ENABLE_FUSE="${ENABLE_FUSE:-0}"
 
 WITH_OPENSLES=OFF
@@ -257,6 +258,7 @@ prepare_cmake_args() {
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_PREFIX_PATH=$PREFIX"
     "-DCMAKE_FIND_ROOT_PATH=$PREFIX;$OHOS_NDK_HOME"
+    "-DPKG_CONFIG_EXECUTABLE=$(command -v pkg-config)"
   )
 }
 
@@ -466,6 +468,7 @@ freerdp_feature_profile() {
     printf 'opensles=%s\n' "$WITH_OPENSLES"
     printf 'cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
+    printf 'smartcard_pcsc=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD_PCSC")"
     printf 'fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"
   }
 }
@@ -544,7 +547,7 @@ build_freerdp() {
     -DWITH_PCSC_WINPR="$(cmake_bool "$ENABLE_PCSC")" \
     -DWITH_SMARTCARD_EMULATE=ON \
     -DWITH_SMARTCARD_INSPECT=ON \
-    -DWITH_SMARTCARD_PCSC="$(cmake_bool "$ENABLE_PCSC")" \
+    -DWITH_SMARTCARD_PCSC="$(cmake_bool "$ENABLE_SMARTCARD_PCSC")" \
     -DWITH_WINPR_TOOLS=OFF \
     -DWITH_URIPARSER="$(cmake_bool "$ENABLE_URIPARSER")" \
     -DWITH_UNICODE_BUILTIN=ON \
@@ -764,6 +767,7 @@ write_manifest() {
     printf 'with_opensles=%s\n' "$WITH_OPENSLES"
     printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
+    printf 'with_smartcard_pcsc=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD_PCSC")"
     printf 'with_fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"
     printf '\n[libs]\n'
     find "$PREFIX/lib" "$PROBE_DIR" -maxdepth 2 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
@@ -810,6 +814,7 @@ main() {
   require_tool make
   require_tool tar
   require_tool curl
+  require_tool pkg-config
 
   prepare_sources
   prepare_cmake_args
