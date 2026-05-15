@@ -59,11 +59,6 @@ export interface NativePointerInput {
   y: number;
 }
 
-export interface NativeResizeInput {
-  width: number;
-  height: number;
-}
-
 export interface NativeKeyInput {
   scancode: number;
   down: boolean;
@@ -79,9 +74,6 @@ declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: NativeConnectParams): NativeCommandResult;
   disconnect(): NativeCommandResult;
-  resize(input: NativeResizeInput): NativeCommandResult;
-  paintTestPattern(): NativeCommandResult;
-  audioSelfTest(): NativeCommandResult;
   sendPointer(input: NativePointerInput): NativeCommandResult;
   sendKey(input: NativeKeyInput): NativeCommandResult;
   sendUnicode(input: NativeUnicodeInput): NativeCommandResult;

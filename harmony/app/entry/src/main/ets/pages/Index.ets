@@ -426,38 +426,6 @@ struct Index {
     }, INPUT_PROBE_DELAY_MS)
   }
 
-  private paintSurfaceTestPattern(): void {
-    try {
-      const result: NativeCommandResult = rdpNative.paintTestPattern()
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-      this.probeNative()
-    } catch (error) {
-      this.connectionState = 'Failed'
-      this.appendLog(`Native paint failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private canPaintSurfaceTestPattern(): boolean {
-    return this.connectionState === 'Idle' || this.connectionState === 'Bridge ready' ||
-      this.connectionState === 'Disconnected' || this.connectionState === 'Failed'
-  }
-
-  private audioSelfTestNative(): void {
-    try {
-      const result: NativeCommandResult = rdpNative.audioSelfTest()
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-      if (!result.ok) {
-        this.connectionState = 'Failed'
-      }
-      this.probeNative(false)
-    } catch (error) {
-      this.connectionState = 'Failed'
-      this.appendLog(`Native audio self-test failed: ${JSON.stringify(error)}`)
-    }
-  }
-
   private normalizeCertPolicy(value: string): string {
     const normalized = value.trim().toLowerCase()
     if (normalized === 'strict' || normalized === 'verify' || normalized === 'valid-ca' ||
@@ -525,24 +493,6 @@ struct Index {
     } catch (error) {
       this.connectionState = 'Failed'
       this.appendLog(`Native disconnect failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private resizeNative(): void {
-    const width = this.parseResolutionPart(0)
-    const height = this.parseResolutionPart(1)
-    if (width <= 0 || height <= 0) {
-      this.appendLog(`Invalid resolution: ${this.resolution}`)
-      return
-    }
-
-    try {
-      const result: NativeCommandResult = rdpNative.resize({ width: width, height: height })
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-      this.probeNative()
-    } catch (error) {
-      this.appendLog(`Native resize failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -1953,30 +1903,6 @@ struct Index {
           .onClick(() => {
             this.disconnectNative()
           })
-        Button('Resize')
-          .height(36)
-          .margin({ left: 8 })
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .onClick(() => {
-            this.resizeNative()
-          })
-        Button('Audio')
-          .height(36)
-          .margin({ left: 8 })
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .onClick(() => {
-            this.audioSelfTestNative()
-          })
-        Button('Paint')
-          .height(36)
-          .margin({ left: 8 })
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .onClick(() => {
-            this.paintSurfaceTestPattern()
-          })
       }
       .width('100%')
       .height(52)
@@ -1996,9 +1922,6 @@ struct Index {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent loaded')
               this.probeNative()
-              if (this.canPaintSurfaceTestPattern()) {
-                this.paintSurfaceTestPattern()
-              }
             })
           })
           .onDestroy(() => {

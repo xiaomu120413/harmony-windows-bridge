@@ -31,8 +31,6 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <native_buffer/native_buffer.h>
 #include <native_window/external_window.h>
-#include <ohaudio/native_audiorenderer.h>
-#include <ohaudio/native_audiostreambuilder.h>
 #include <database/pasteboard/oh_pasteboard.h>
 #include <database/pasteboard/oh_pasteboard_err_code.h>
 #include <database/udmf/udmf.h>
@@ -2424,30 +2422,6 @@ public:
         ++touchCount_;
     }
 
-    SurfacePaintResult PaintTestPattern()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!ready_ || window_ == nullptr || width_ == 0 || height_ == 0) {
-            SurfacePaintResult result;
-            result.message = "XComponent surface is not ready for paint";
-            result.logs.push_back(result.message);
-            lastPaintMessage_ = result.message;
-            return result;
-        }
-
-        std::vector<uint8_t> pixels(static_cast<size_t>(width_) * height_ * 4U);
-        const int32_t strideBytes = static_cast<int32_t>(width_ * 4U);
-        FillTestPatternRgba(pixels.data(), width_, height_, strideBytes, paintCount_ + 1);
-        RgbaFrame frame = {
-            pixels.data(),
-            width_,
-            height_,
-            strideBytes,
-            "test pattern",
-        };
-        return RenderRgbaFrameLocked(frame);
-    }
-
     SurfacePaintResult RenderRgbaFrame(const RgbaFrame& frame)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -2856,28 +2830,6 @@ private:
         if (rightX < width) {
             FillNativeRect(handle, rowBytes, rightX, viewport.y, width - rightX,
                 viewport.height, r, g, b, a);
-        }
-    }
-
-    static void FillTestPatternRgba(uint8_t* base, uint32_t width, uint32_t height,
-        int32_t rowBytes, uint32_t frameIndex)
-    {
-        const uint32_t safeWidth = std::max(width, 1U);
-        const uint32_t safeHeight = std::max(height, 1U);
-        for (uint32_t y = 0; y < height; ++y) {
-            uint8_t* row = base + static_cast<int64_t>(rowBytes) * y;
-            for (uint32_t x = 0; x < width; ++x) {
-                const bool grid = (x % 96U) < 3U || (y % 96U) < 3U;
-                uint8_t r = static_cast<uint8_t>((x * 255U) / safeWidth);
-                uint8_t g = static_cast<uint8_t>((y * 255U) / safeHeight);
-                uint8_t b = static_cast<uint8_t>(96U + ((x + y + frameIndex * 23U) % 128U));
-                if (grid) {
-                    r = 255;
-                    g = 255;
-                    b = 255;
-                }
-                WriteRgbaPixel(row + x * 4, r, g, b);
-            }
         }
     }
 
@@ -3378,26 +3330,6 @@ public:
     bool IsConnected() const
     {
         return connected_.load();
-    }
-
-    bool Resize(uint32_t width, uint32_t height, std::string& message)
-    {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-        if (width < 320 || height < 200 || width > 8192 || height > 8192) {
-            message = "resize requires width 320-8192 and height 200-8192";
-            return false;
-        }
-        if (!connected_.load()) {
-            message = "no active FreeRDP session";
-            return false;
-        }
-
-        message = "dynamic resize is not available in this build: FreeRDP display-control channel is disabled";
-        return false;
-#else
-        message = "FreeRDP headers not found at build time";
-        return false;
-#endif
     }
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
@@ -4152,145 +4084,6 @@ std::string BuildOHAudioStatsLog()
 #endif
 }
 
-struct AudioTestToneState {
-    std::vector<int16_t> samples;
-    size_t offset = 0;
-    uint32_t callbacks = 0;
-    uint32_t copiedBytes = 0;
-};
-
-OH_AudioData_Callback_Result OnAudioTestToneWrite(
-    OH_AudioRenderer* renderer, void* userData, void* audioData, int32_t audioDataSize)
-{
-    (void)renderer;
-    auto* state = static_cast<AudioTestToneState*>(userData);
-    if (state == nullptr || audioData == nullptr || audioDataSize <= 0) {
-        return AUDIO_DATA_CALLBACK_RESULT_INVALID;
-    }
-
-    auto* dst = static_cast<uint8_t*>(audioData);
-    const size_t requested = static_cast<size_t>(audioDataSize);
-    const size_t availableBytes = (state->samples.size() - std::min(state->offset, state->samples.size())) *
-        sizeof(int16_t);
-    const size_t copied = std::min(requested, availableBytes);
-    if (copied > 0) {
-        std::memcpy(dst, state->samples.data() + state->offset, copied);
-        state->offset += copied / sizeof(int16_t);
-    }
-    if (copied < requested) {
-        std::memset(dst + copied, 0, requested - copied);
-    }
-    state->callbacks++;
-    state->copiedBytes += static_cast<uint32_t>(std::min(copied, static_cast<size_t>(UINT32_MAX)));
-    return AUDIO_DATA_CALLBACK_RESULT_VALID;
-}
-
-bool PlayAudioTestTone(std::vector<std::string>& logs, std::string& message)
-{
-    constexpr int32_t sampleRate = 44100;
-    constexpr int32_t channelCount = 2;
-    constexpr int32_t durationMs = 900;
-    constexpr int32_t toneHz = 880;
-    constexpr int16_t amplitude = 9000;
-    constexpr int32_t frameSize = 1024;
-
-    AudioTestToneState state;
-    const size_t frameCount = static_cast<size_t>(sampleRate) * durationMs / 1000U;
-    state.samples.resize(frameCount * channelCount);
-    const int32_t halfPeriod = std::max(1, sampleRate / (toneHz * 2));
-    for (size_t frame = 0; frame < frameCount; ++frame) {
-        const int16_t sample = ((static_cast<int32_t>(frame) / halfPeriod) % 2) == 0 ? amplitude : -amplitude;
-        state.samples[frame * channelCount] = sample;
-        state.samples[frame * channelCount + 1] = sample;
-    }
-
-    OH_AudioStreamBuilder* builder = nullptr;
-    OH_AudioRenderer* renderer = nullptr;
-    OH_AudioStream_Result rc = OH_AudioStreamBuilder_Create(&builder, AUDIOSTREAM_TYPE_RENDERER);
-    auto fail = [&](const char* stage, OH_AudioStream_Result result) {
-        if (renderer != nullptr) {
-            (void)OH_AudioRenderer_Stop(renderer);
-            (void)OH_AudioRenderer_Release(renderer);
-            renderer = nullptr;
-        }
-        if (builder != nullptr) {
-            (void)OH_AudioStreamBuilder_Destroy(builder);
-            builder = nullptr;
-        }
-        message = std::string("OHAudio self-test failed at ") + stage + ": " +
-            std::to_string(static_cast<int32_t>(result));
-        logs.push_back(message);
-        EmitHilogError(message);
-        return false;
-    };
-
-    if (rc != AUDIOSTREAM_SUCCESS) {
-        return fail("OH_AudioStreamBuilder_Create", rc);
-    }
-    if ((rc = OH_AudioStreamBuilder_SetSamplingRate(builder, sampleRate)) != AUDIOSTREAM_SUCCESS) {
-        return fail("SetSamplingRate", rc);
-    }
-    if ((rc = OH_AudioStreamBuilder_SetChannelCount(builder, channelCount)) != AUDIOSTREAM_SUCCESS) {
-        return fail("SetChannelCount", rc);
-    }
-    if ((rc = OH_AudioStreamBuilder_SetSampleFormat(builder, AUDIOSTREAM_SAMPLE_S16LE)) != AUDIOSTREAM_SUCCESS) {
-        return fail("SetSampleFormat", rc);
-    }
-    if ((rc = OH_AudioStreamBuilder_SetEncodingType(builder, AUDIOSTREAM_ENCODING_TYPE_RAW)) != AUDIOSTREAM_SUCCESS) {
-        return fail("SetEncodingType", rc);
-    }
-    if ((rc = OH_AudioStreamBuilder_SetLatencyMode(builder, AUDIOSTREAM_LATENCY_MODE_NORMAL)) != AUDIOSTREAM_SUCCESS) {
-        logs.push_back("OHAudio self-test latency mode fallback result=" + std::to_string(static_cast<int32_t>(rc)));
-    }
-    if ((rc = OH_AudioStreamBuilder_SetRendererInfo(builder, AUDIOSTREAM_USAGE_MUSIC)) != AUDIOSTREAM_SUCCESS) {
-        logs.push_back("OHAudio self-test renderer info result=" + std::to_string(static_cast<int32_t>(rc)));
-    }
-    if ((rc = OH_AudioStreamBuilder_SetRendererInterruptMode(
-        builder, AUDIOSTREAM_INTERRUPT_MODE_INDEPENDENT)) != AUDIOSTREAM_SUCCESS) {
-        logs.push_back("OHAudio self-test interrupt mode result=" + std::to_string(static_cast<int32_t>(rc)));
-    }
-    if ((rc = OH_AudioStreamBuilder_SetFrameSizeInCallback(builder, frameSize)) != AUDIOSTREAM_SUCCESS) {
-        logs.push_back("OHAudio self-test frame size result=" + std::to_string(static_cast<int32_t>(rc)));
-    }
-    if ((rc = OH_AudioStreamBuilder_SetRendererWriteDataCallback(
-        builder, OnAudioTestToneWrite, &state)) != AUDIOSTREAM_SUCCESS) {
-        return fail("SetRendererWriteDataCallback", rc);
-    }
-    if ((rc = OH_AudioStreamBuilder_GenerateRenderer(builder, &renderer)) != AUDIOSTREAM_SUCCESS) {
-        return fail("GenerateRenderer", rc);
-    }
-    if ((rc = OH_AudioRenderer_Start(renderer)) != AUDIOSTREAM_SUCCESS) {
-        return fail("OH_AudioRenderer_Start", rc);
-    }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(durationMs + 250));
-    (void)OH_AudioRenderer_Stop(renderer);
-    (void)OH_AudioRenderer_Release(renderer);
-    renderer = nullptr;
-    (void)OH_AudioStreamBuilder_Destroy(builder);
-    builder = nullptr;
-
-    message = "OHAudio self-test tone completed: callbacks=" + std::to_string(state.callbacks) +
-        " copiedBytes=" + std::to_string(state.copiedBytes);
-    logs.push_back(message);
-    EmitHilogInfo(message);
-    return state.callbacks > 0 && state.copiedBytes > 0;
-}
-
-napi_value AudioSelfTest(napi_env env, napi_callback_info info)
-{
-    std::vector<std::string> logs = {"OHAudio self-test invoked"};
-    std::string message;
-    const bool ok = PlayAudioTestTone(logs, message);
-
-    napi_value result = MakeObject(env);
-    SetBool(env, result, "ok", ok);
-    SetString(env, result, "state", ok ? "Bridge ready" : "Failed");
-    SetString(env, result, "message", message);
-    SetNamed(env, result, "logs", MakeStringArray(env, logs));
-    return result;
-}
-
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
@@ -4343,7 +4136,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, audioSelfTest, sendPointer, sendKey, sendUnicode",
+        "Native calls are available: probe, connect, disconnect, sendPointer, sendKey, sendUnicode",
         "FreeRDP input dispatch: worker-thread queue",
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
@@ -4439,54 +4232,6 @@ napi_value Disconnect(napi_env env, napi_callback_info info)
         "native disconnect invoked",
         "native worker stopped"
     }));
-    return result;
-}
-
-napi_value PaintTestPattern(napi_env env, napi_callback_info info)
-{
-    SurfacePaintResult paint = g_surface.PaintTestPattern();
-    g_events.log.Emit(paint.message);
-
-    napi_value result = MakeObject(env);
-    SetBool(env, result, "ok", paint.ok);
-    SetString(env, result, "state", paint.ok ? "Bridge ready" : "Failed");
-    SetString(env, result, "message", paint.message);
-    SetNamed(env, result, "logs", MakeStringArray(env, paint.logs));
-    return result;
-}
-
-napi_value Resize(napi_env env, napi_callback_info info)
-{
-    napi_value arg = GetFirstArgument(env, info);
-    napi_valuetype type = napi_undefined;
-    if (arg != nullptr) {
-        napi_typeof(env, arg, &type);
-    }
-
-    std::vector<std::string> logs = {"native resize invoked"};
-    napi_value result = MakeObject(env);
-    if (arg == nullptr || type != napi_object) {
-        SetBool(env, result, "ok", false);
-        SetString(env, result, "state", "Disconnected");
-        SetString(env, result, "message", "resize requires an object argument");
-        logs.push_back("parameter validation failed");
-        SetNamed(env, result, "logs", MakeStringArray(env, logs));
-        return result;
-    }
-
-    const uint32_t width = GetUint32Property(env, arg, "width");
-    const uint32_t height = GetUint32Property(env, arg, "height");
-    logs.push_back("size=" + std::to_string(width) + "x" + std::to_string(height));
-
-    std::string message;
-    const bool ok = g_session.Resize(width, height, message);
-    g_events.log.Emit(message);
-
-    SetBool(env, result, "ok", ok);
-    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
-    SetString(env, result, "message", message);
-    logs.push_back(message);
-    SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
 }
 
@@ -4639,9 +4384,6 @@ static napi_value Init(napi_env env, napi_value exports)
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"resize", nullptr, Resize, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"paintTestPattern", nullptr, PaintTestPattern, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"audioSelfTest", nullptr, AudioSelfTest, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
