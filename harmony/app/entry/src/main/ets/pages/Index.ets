@@ -106,6 +106,7 @@ interface NativeProbeResult {
   winprVersion: string
   opensslVersion: string
   featureSummary: string
+  audioStats: string
   inputDispatchMode: string
   freeRdpLinked: boolean
   surfaceRegistered: boolean
@@ -316,7 +317,8 @@ struct Index {
         `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
       const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
       const inputText = `input ${result.inputDispatchMode} q=${result.inputQueueDepth} sent=${result.inputSentCount} drop=${result.inputDroppedCount}`
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${inputText}`
+      const audioText = result.audioStats.replace('OHAudio stats: ', 'audio ')
+      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${inputText} | ${audioText}`
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }

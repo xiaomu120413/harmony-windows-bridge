@@ -398,6 +398,9 @@ public:
             LoadWinprSymbol("PubSub_Subscribe", pubSubSubscribe, error) &&
             LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
+        if (loaded_) {
+            LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
+        }
         return loaded_;
     }
 
@@ -429,6 +432,8 @@ public:
     using ClientAddStaticChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
     using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
+    using RdpsndOhosGetStatsFn = BOOL (*)(UINT64*, UINT64*, UINT64*, UINT64*, UINT64*, UINT64*,
+        UINT64*, UINT64*, UINT32*, UINT16*, UINT16*, UINT32*);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -460,6 +465,7 @@ public:
     ClientAddStaticChannelFn clientAddStaticChannel = nullptr;
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
+    RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -473,6 +479,20 @@ private:
     bool LoadClientSymbol(const char* name, Fn& target, std::string& error)
     {
         return LoadSymbolFrom(freerdpClientHandle_, "libfreerdp-client3.so", name, target, error);
+    }
+
+    template <typename Fn>
+    void LoadOptionalClientSymbol(const char* name, Fn& target)
+    {
+        if (freerdpClientHandle_ == nullptr) {
+            return;
+        }
+
+        dlerror();
+        void* symbol = dlsym(freerdpClientHandle_, name);
+        if (dlerror() == nullptr && symbol != nullptr) {
+            target = reinterpret_cast<Fn>(symbol);
+        }
     }
 
     template <typename Fn>
@@ -3456,6 +3476,53 @@ std::string CurrentAbi()
 #endif
 }
 
+std::string BuildOHAudioStatsLog()
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    std::string error;
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
+        return "OHAudio stats unavailable: " + error;
+    }
+    if (api.rdpsndOhosGetStats == nullptr) {
+        return "OHAudio stats unavailable: backend symbol not exported";
+    }
+
+    UINT64 registeredCount = 0;
+    UINT64 openCount = 0;
+    UINT64 closeCount = 0;
+    UINT64 playCount = 0;
+    UINT64 playBytes = 0;
+    UINT64 callbackCount = 0;
+    UINT64 renderedBytes = 0;
+    UINT64 underrunBytes = 0;
+    UINT32 lastRate = 0;
+    UINT16 lastChannels = 0;
+    UINT16 lastBits = 0;
+    UINT32 lastLatencyMs = 0;
+    if (!api.rdpsndOhosGetStats(&registeredCount, &openCount, &closeCount, &playCount,
+        &playBytes, &callbackCount, &renderedBytes, &underrunBytes, &lastRate, &lastChannels,
+        &lastBits, &lastLatencyMs)) {
+        return "OHAudio stats unavailable: backend query failed";
+    }
+
+    std::ostringstream out;
+    out << "OHAudio stats: registered=" << registeredCount
+        << " open=" << openCount
+        << " close=" << closeCount
+        << " playCalls=" << playCount
+        << " playBytes=" << playBytes
+        << " callbacks=" << callbackCount
+        << " renderedBytes=" << renderedBytes
+        << " underrunBytes=" << underrunBytes
+        << " lastFormat=" << lastRate << "Hz/" << lastChannels << "ch/" << lastBits
+        << "bit latency=" << lastLatencyMs << "ms";
+    return out.str();
+#else
+    return "OHAudio stats unavailable: FreeRDP headers not found at build time";
+#endif
+}
+
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
@@ -3467,13 +3534,16 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "static cliprdr text bridge and rdpsnd/OHAudio playback requested; "
         "other optional channel negotiation off";
 
+    const std::string audioStats = BuildOHAudioStatsLog();
+
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.8.0");
+    SetString(env, result, "bridgeVersion", "0.8.1");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
     SetString(env, result, "opensslVersion", freerdp.opensslVersion);
     SetString(env, result, "featureSummary", featureSummary);
+    SetString(env, result, "audioStats", audioStats);
     SetString(env, result, "inputDispatchMode", "worker-thread-queue");
     SetString(env, result, "probeJson", freerdp.json);
     SetString(env, result, "probeError", freerdp.error);
@@ -3507,6 +3577,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "FreeRDP input dispatch: worker-thread queue",
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
+        audioStats,
         "Certificate policy: tofu stores first untrusted certificate through FreeRDP, strict rejects untrusted certificates"
     };
     if (freerdp.linked) {

@@ -5,6 +5,7 @@ export interface NativeProbeResult {
   winprVersion: string;
   opensslVersion: string;
   featureSummary: string;
+  audioStats: string;
   inputDispatchMode: string;
   freeRdpLinked: boolean;
   surfaceRegistered: boolean;
