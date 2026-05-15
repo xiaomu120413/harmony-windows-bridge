@@ -395,6 +395,7 @@ public:
             LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
             LoadClientSymbol("freerdp_client_load_channels", clientLoadChannels, error) &&
             LoadClientSymbol("freerdp_client_add_static_channel", clientAddStaticChannel, error) &&
+            LoadClientSymbol("freerdp_client_add_dynamic_channel", clientAddDynamicChannel, error) &&
             LoadWinprSymbol("PubSub_Subscribe", pubSubSubscribe, error) &&
             LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
@@ -431,6 +432,7 @@ public:
     using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
     using ClientLoadChannelsFn = BOOL (*)(freerdp*);
     using ClientAddStaticChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
+    using ClientAddDynamicChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
     using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
     using RdpsndOhosGetStatsFn = BOOL (*)(UINT64*, UINT64*, UINT64*, UINT64*, UINT64*, UINT64*,
@@ -465,6 +467,7 @@ public:
     ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;
     ClientLoadChannelsFn clientLoadChannels = nullptr;
     ClientAddStaticChannelFn clientAddStaticChannel = nullptr;
+    ClientAddDynamicChannelFn clientAddDynamicChannel = nullptr;
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
@@ -918,7 +921,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         !SetFreerdpUint32(api, settings, FreeRDP_ClipboardFeatureMask,
             CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL,
             "ClipboardFeatureMask", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, false, "DeviceRedirection", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, true, "DeviceRedirection", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, true, "AudioPlayback", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectDrives, false, "RedirectDrives", error) ||
@@ -929,7 +932,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
 
     log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection and audio playback enabled");
     log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
-    log("FreeRDP redirect devices compiled; drive/printer/smartcard runtime toggles remain disabled by default");
+    log("FreeRDP rdpdr base channel enabled for rdpsnd; drive/printer/smartcard runtime toggles remain disabled by default");
     return true;
 }
 
@@ -954,8 +957,8 @@ bool ConfigureClipboardChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
 bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     const FreerdpLogFn& log, std::string& error)
 {
-    if (api.clientAddStaticChannel == nullptr) {
-        error = "FreeRDP static channel helper is not loaded";
+    if (api.clientAddStaticChannel == nullptr || api.clientAddDynamicChannel == nullptr) {
+        error = "FreeRDP audio channel helpers are not loaded";
         return false;
     }
 
@@ -964,9 +967,13 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         error = "set rdpsnd static channel failed";
         return false;
     }
+    if (!api.clientAddDynamicChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set rdpsnd dynamic channel failed";
+        return false;
+    }
 
-    log("FreeRDP audio playback requested: static rdpsnd sys:ohos");
-    log("FreeRDP dynamic channels remain disabled; microphone capture remains disabled");
+    log("FreeRDP audio playback requested: static/dynamic rdpsnd sys:ohos");
+    log("FreeRDP microphone capture remains disabled");
     return true;
 }
 
