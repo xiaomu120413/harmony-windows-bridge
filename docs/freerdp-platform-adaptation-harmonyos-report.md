@@ -1,6 +1,6 @@
 # FreeRDP Windows/Linux 适配点与 HarmonyOS 移植报告
 
-日期：2026-05-14
+日期：2026-05-14；2026-05-15 补充窗口、输入、音视频和硬件编解码专项
 
 ## 结论摘要
 
@@ -16,7 +16,8 @@ FreeRDP 的跨平台能力主要分两层：
 本报告基于本地仓库：
 
 - FreeRDP 源码：`harmony/third_party/FreeRDP`
-- FreeRDP commit：`1ab2572f17f5056f967727707d75f88e2e12270b`
+- FreeRDP commit：`bc58aed6635c`（`ohos-port`，基于 upstream `1ab2572f17f5056f967727707d75f88e2e12270b`）
+- FreeRDP OHOS 分支：`harmony/third_party/FreeRDP` 子模块内 `ohos-port`
 - Harmony 构建脚本：`harmony/scripts/wsl/build-freerdp-ohos.sh`
 - Harmony App native bridge：`harmony/app/entry/src/main/cpp/napi_init.cpp`
 - Harmony App 页面：`harmony/app/entry/src/main/ets/pages/Index.ets`
@@ -102,7 +103,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 - 设备重定向：`drive`、`printer`、`smartcard`、`serial`、`parallel`、`urbdrc`、`rdpdr`。
 - 其他：`rail`、`remdesk`、`sshagent`、`location`、`rdp2tcp` 等。
 
-对 HarmonyOS 的影响：第一版应关闭大多数通道。剪贴板、动态分辨率、rdpgfx 可以在基础可用后再逐步打开；音频、文件、打印、智能卡、USB 重定向都需要 HarmonyOS 专用权限和系统服务适配，不应混入首个闭环版本。
+对 HarmonyOS 的影响：第一版先用最小通道闭环是合理的；当前增强构建已把 cliprdr、disp、rdpgfx、rdpdr/drive、rdpsnd/audin、printer、smartcard 和 TSMF 编译进 FreeRDP，但产品可用性仍取决于 HarmonyOS 侧的剪贴板、音频、文件选择/沙箱、打印和智能卡后端。
 
 ## 当前 HarmonyOS 适配现状
 
@@ -113,35 +114,43 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
    - zlib 1.3.1
    - cJSON 1.7.18
    - FreeRDP/WinPR arm64-v8a
-2. 构建脚本阶段性补丁：
+2. FreeRDP 源码适配由子模块分支管理：
    - 复制 FreeRDP 源码到 build workdir。
-   - 对 `winpr/libwinpr/thread/thread.c` 应用 `__OHOS__` 兼容补丁，避免 OHOS 上走 `pthread_cancel`。
+   - OHOS 改动直接提交在 FreeRDP 子模块的 `ohos-port` 分支上，主仓库通过 submodule 指针固定对应 commit。
+   - 当前子模块改动对 `winpr/libwinpr/thread/thread.c` 增加 `__OHOS__` 分支，避免 OHOS 上走 `pthread_cancel`。
 3. FreeRDP CMake 配置已经最小化：
    - 保留：`WITH_OPENSSL=ON`、`WITH_CLIENT_COMMON=ON`、`WITH_UNICODE_BUILTIN=ON`。
-   - 关闭：`WITH_CLIENT`、`WITH_SERVER`、`WITH_CHANNELS`、`WITH_CLIENT_CHANNELS`、`WITH_X11`、`WITH_WAYLAND`、`WITH_FFMPEG`、`WITH_SWSCALE`、`WITH_OPENH264`、`WITH_ALSA`、`WITH_PULSE`、`WITH_CUPS`、`WITH_FUSE`、`WITH_PCSC` 等。
+   - 当前增强构建仍关闭桌面前端/服务端：`WITH_CLIENT`、`WITH_SERVER`、`WITH_X11`、`WITH_WAYLAND`、`WITH_ALSA`、`WITH_PULSE` 等；已打开 `WITH_CHANNELS`、`WITH_CLIENT_CHANNELS`、`WITH_FFMPEG`、`WITH_SWSCALE`、`WITH_OPENH264`、`WITH_URIPARSER` 和 OHOS NDK 可用时的 `WITH_OPENSLES`。
+   - `WITH_CUPS`、`WITH_FUSE`、`WITH_PCSC` 仍作为可选编译开关保留，默认不启用，因为普通 HarmonyOS 应用没有现成 Linux CUPS/PCSC/FUSE 服务。
 4. Runtime 打包链路已存在：
    - `harmony/out/ohos-arm64/runtime-libs/` 产出 `libfreerdp3.so`、`libwinpr3.so`、`libssl.so.3`、`libcrypto.so.3`、`libz.so.1`、`libcjson.so.1`。
    - `harmony/scripts/windows/sync-freerdp-runtime.ps1` 同步到 `harmony/app/entry/libs/arm64-v8a/`。
    - `elf-report.txt` 显示 arm64 产物为 ELF64 AArch64，依赖关系基本闭合。
 5. Harmony App 已具备 native bridge：
    - `module.json5` 仅声明 `ohos.permission.INTERNET`。
-   - `Index.ets` 调用 `libentry.so` 的 `probe/connect/disconnect/onState/onLog/onError`。
+   - `Index.ets` 调用 `libentry.so` 的 `probe/connect/disconnect/resize/paintTestPattern/sendPointer/sendKey/sendUnicode/onState/onLog/onError`。
+   - `Index.ets` 已使用 `XComponent(id: 'rdpSurface', type: SURFACE, libraryname: 'entry')` 承载远端桌面区域，并在 ArkTS 侧处理 touch、mouse、axis、key 事件。
    - `napi_init.cpp` 已经做 TCP reachability check、运行期 `dlopen`、FreeRDP settings 映射、worker thread、FreeRDP event loop、线程安全回调。
+   - `napi_init.cpp` 已注册 `OH_NativeXComponent_Callback`，维护 surface created/changed/destroyed 计数，保存 `NativeWindow`，并提供 `PaintTestPattern` 与 FreeRDP GDI frame 到 `NativeWindow` 的 CPU copy 渲染路径。
+   - `napi_init.cpp` 已注册 FreeRDP `PostConnect/PostDisconnect/BeginPaint/EndPaint/DesktopResize`，`PostConnect` 中调用 `gdi_init(..., PIXEL_FORMAT_RGBA32)`，`EndPaint` 中把 `gdi->primary_buffer` 渲染到 XComponent surface。
+   - native 侧已经有输入事件队列，ArkTS 侧可通过 `sendPointer/sendKey/sendUnicode` 入队，RDP worker loop 消费后发送 FreeRDP input PDU。
    - `napi_init.cpp` 会设置 `OPENSSL_MODULES` 到打包的 `ossl-modules`，这是 OpenSSL 3 provider 场景下 NLA/NTLM 的关键点。
 
 ### 仍未完成的关键闭环
 
-1. **渲染没有接入**：`Index.ets` 有 `XComponent(id: 'rdpSurface')` 占位，但 native 侧尚未注册 `OH_NativeXComponent` surface 生命周期，也没有把 FreeRDP frame 写入 `NativeWindow`。
-2. **输入没有接入**：页面上的 Ctrl/Alt/Win/Esc/Tab 只是按钮，还没有 N-API `sendPointer/sendKey`，native 侧也没有输入事件队列。
-3. **证书策略仍偏 demo**：当前 `certPolicy != "deny"` 时设置 `IgnoreCertificate/AutoAcceptCertificate`，第一版产品不能这样默认放行，应改成 TOFU 或严格校验。
-4. **通道关闭导致能力有限**：没有剪贴板、动态分辨率、音频、文件、打印、智能卡等。
-5. **生命周期需要压测**：断开、页面销毁、App 后台、重复连接、网络抖动都需要验证 worker、FreeRDP context、dlopen runtime 的释放策略。
+1. **窗口/渲染已有骨架，但需要实机压测和性能优化**：当前已能注册 XComponent surface、写 `NativeWindow` buffer、按比例 letterbox/pillarbox 缩放 FreeRDP GDI frame；仍需验证真实设备上的 buffer format、stride、fence、后台/前台、窗口尺寸变化和高分辨率帧率。
+2. **输入已有骨架，但需要补齐映射和焦点策略**：ArkTS 已有 touch/mouse/axis/key 入口，native 已有输入队列；仍需专项验证中文输入、组合键、软键盘、右键/滚轮、窗口失焦时释放按键、resize 后坐标映射。
+3. **动态远端分辨率未完成**：当前 `resize()` 会明确返回 display-control channel disabled。窗口变化只能本地缩放，不能通知远端桌面真实变更。后续要打开 `disp` channel 或接受固定远端分辨率。
+4. **证书策略已改成 TOFU/Strict/Ignore，但还要做产品化存储与提示**：TOFU 已通过 FreeRDP 证书回调接入，后续需要做证书详情展示、替换确认和严格模式默认策略。
+5. **FreeRDP 源码层 OHOS 后端仍未完整**：当前只有 WinPR 线程兼容分支改动；后续剪贴板、音频、硬件解码、日志、文件/打印/智能卡等能力需要继续在 FreeRDP 或 bridge 层增加 OHOS 专用后端。
+6. **增强通道已编译，但还没有全部业务闭环**：剪贴板文本、动态分辨率、音频、文件、打印、智能卡、RD Gateway 都需要继续接 HarmonyOS UI、权限、系统 API 或专用后端。
+7. **生命周期需要压测**：断开、页面销毁、surface 销毁、App 后台、重复连接、网络抖动都需要验证 worker、FreeRDP context、dlopen runtime、NativeWindow 引用和输入队列的释放策略。
 
 ## HarmonyOS 是否需要这些适配，以及怎么适配
 
 | FreeRDP 适配点 | Windows/Linux/Android 当前做法 | HarmonyOS 是否需要 | 建议适配方式 |
 | --- | --- | --- | --- |
-| WinPR 线程/事件/等待 | Windows 用原生 HANDLE；Linux/Android 用 pthread、eventfd/pipe、poll | 需要 | 复用 POSIX 路径；保留 `pthread_cancel` 禁用补丁；优先用 `abortConnectContext` 和自有 `running` 标志停止线程 |
+| WinPR 线程/事件/等待 | Windows 用原生 HANDLE；Linux/Android 用 pthread、eventfd/pipe、poll | 需要 | 复用 POSIX 路径；通过 FreeRDP 子模块 `ohos-port` 分支保留 `pthread_cancel` 禁用改动；优先用 `abortConnectContext` 和自有 `running` 标志停止线程 |
 | WinPR socket/TCP | Windows Winsock；Linux POSIX socket | 需要 | 复用 POSIX socket；保留 App `INTERNET` 权限；继续用 TCP probe 区分网络失败和 RDP 失败 |
 | WinPR 文件/路径/HOME | Windows AppData；Linux XDG/HOME；Android app files dir | 需要，但要收口 | App 启动时设置 HOME/XDG 到应用沙箱目录；证书、known_hosts、日志、缓存都放应用私有目录 |
 | 动态库加载 | Windows `LoadLibrary`；Linux/Android `dlopen` | 需要 | 当前 `dlopen` runtime 可继续；注意库加载顺序、`RTLD_GLOBAL`、OpenSSL provider 路径；runtime 不要中途 `dlclose` |
@@ -151,11 +160,11 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 | Android JNI client | JNI、AndroidBitmap、Android event queue | 需要参考，不直接复用 | 重写为 N-API；保留“native worker + event queue + GDI buffer + UI 回调”的架构思想 |
 | 渲染 | Windows GDI/X11 image/AndroidBitmap | 需要重写 | `XComponent` 获取 surface，C++ 注册 `OH_NativeXComponent_Callback`，用 `NativeWindow` request/flush buffer，FreeRDP frame 转 `RGBA8888` |
 | 输入 | Windows/X11/Android 各自把本地键鼠转 FreeRDP input | 需要重写 | ArkUI touch/key -> N-API -> native event queue -> `freerdp_input_send_mouse_event/keyboard_event/unicode_keyboard_event` |
-| 剪贴板 | `cliprdr` + 平台 clipboard | 首版可不需要，后续需要 | 先关闭；后续打开 `CHANNEL_CLIPRDR_CLIENT`，接 Harmony clipboard API，只做文本，再扩展文件 |
+| 剪贴板 | `cliprdr` + 平台 clipboard | 首版可不需要，后续需要 | `CHANNEL_CLIPRDR_CLIENT` 已编译；下一步接 Harmony clipboard API，先做文本，再评估文件 |
 | 音频 | ALSA/Pulse/OSS/OpenSLES | 首个可交互版本可不做，产品化通常需要 | 继续关闭到 M6；后续打开 `rdpsnd/audin`，用 Harmony AudioRenderer/AudioCapturer 写 OHOS backend，不能直接用 ALSA/Pulse/OpenSLES |
 | 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是性能增强；独立视频通道按需 | 首版先用基础 GDI/bitmap 到 `NativeWindow`；性能不足再打开 `rdpgfx` 和软件 H.264；硬件解码需新增 OHOS AVCodec backend，不要直接套 Android MediaCodec |
-| 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | 后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径 |
-| 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | 默认关闭；只有明确产品需求时再按 Harmony 能力专项适配 |
+| 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | `drive`/`rdpdr` 已编译；后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径。FUSE 文件复制仍是可选专项 |
+| 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | printer/smartcard channel 已编译；真实打印和物理智能卡仍需 CUPS/PCSC 端口或 OHOS 专用后端 |
 | 证书校验 | Windows 可用系统证书；Linux/Android 用 OpenSSL/known_hosts/回调 | 需要 | 实现 `VerifyCertificateEx/VerifyChangedCertificateEx` 回调到 ArkTS；做 TOFU 指纹存储；生产默认不使用 ignore |
 | 日志 | Console/file/syslog/Android log | 需要 | N-API 回调继续保留；建议补 `hilog` 输出，App UI 只显示脱敏摘要 |
 | 生命周期 | 各 client 自己管理事件循环 | 需要 | 页面销毁/后台/断网时统一进入 `Disconnecting`，调用 `freerdp_abort_connect_context`，等待 worker join，释放 surface |
@@ -168,7 +177,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 
 建议：
 
-- 把 `pthread_cancel` 兼容补丁固化成可维护 patch 文件，而不是只在脚本里 `perl` 替换。至少在报告/脚本中记录 upstream 文件、匹配片段和原因。
+- 后续 FreeRDP 源码改动都继续提交到 FreeRDP 子模块的 OHOS 适配分支，主仓库只更新 submodule 指针，不再用构建脚本维护 patch 队列。
 - 为 FreeRDP instance 注册必要 callbacks：
   - `AuthenticateEx`：后续可避免把密码长期留在 settings 中。
   - `VerifyCertificateEx` / `VerifyChangedCertificateEx`：用于 TOFU 和严格证书策略。
@@ -229,6 +238,104 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 - 横竖屏或窗口尺寸变化不崩溃。
 - 颜色通道正确，鼠标光标/桌面背景能分辨。
 
+### M5.5：窗口对接方案
+
+这里的“窗口”建议拆成两类处理：
+
+1. **本地 Harmony App 窗口**：HAP 的 `WindowStage`、页面布局、`XComponent`、`NativeWindow`、焦点、尺寸变化和生命周期。这是首版必须完成的窗口对接。
+2. **远端 Windows 独立窗口/RemoteApp/RAIL**：把远端单个应用窗口映射成本地多窗口。这需要 RAIL channel、窗口管理、z-order、最小化/最大化、焦点同步、图标和任务栏语义，不建议首版做。
+
+当前仓库更适合走“一个 Harmony App 窗口承载一个完整远端桌面”的路线。
+
+#### 当前代码基础
+
+- `module.json5` 当前配置：
+  - `supportWindowMode`: `fullscreen`、`floating`
+  - `minWindowWidth`: `1280`
+  - `minWindowHeight`: `760`
+- `EntryAbility.ets` 在 `onWindowStageCreate` 中 `loadContent('pages/Index')`，但还没有订阅 `windowStageEvent`，也没有在 `onForeground/onBackground/onWindowStageDestroy` 中通知 native 暂停或断开。
+- `Index.ets` 使用 `Stack + XComponent` 作为远端桌面区域，`XComponent` 已指定 `libraryname: 'entry'`，并通过 `onAreaChange/onLoad/onDestroy` 触发 probe。
+- `napi_init.cpp` 已经注册 `OH_NativeXComponent_Callback`，保存 surface/window 指针，并通过 `NativeWindow` request/map/flush buffer 绘制测试图和 FreeRDP GDI frame。
+- 当前 `SurfaceBridge::RenderRgbaFrameLocked` 会按比例把远端桌面缩放到本地 surface，中间区域渲染，周边填黑；这适合 fixed remote resolution + local scale 的首版模型。
+
+#### 推荐窗口模型
+
+首版采用单窗口、单 surface、固定远端桌面分辨率：
+
+```text
+WindowStage
+  -> Index.ets root layout
+    -> Stack/session area
+      -> XComponent(id='rdpSurface', type=SURFACE, libraryname='entry')
+        -> OH_NativeXComponent surface callbacks
+          -> NativeWindow buffer
+            -> FreeRDP GDI frame copy
+```
+
+这个模型有几个优点：
+
+- 不需要 X11/Wayland/SDL，也不需要本地多窗口管理。
+- 不需要第一阶段打开 `disp` 动态分辨率 channel。
+- App 窗口尺寸变化时只改本地 viewport，输入坐标按 viewport 映射回远端桌面。
+- surface 销毁时 native 只需要停止写 window，不一定马上断开 RDP 会话；是否断开由产品策略决定。
+
+#### 尺寸与缩放策略
+
+建议把尺寸分三层保存，不要混在一起：
+
+- `appWindowSize`：Harmony WindowStage/页面可用区域尺寸。
+- `surfaceSize`：XComponent 实际像素尺寸，由 `OH_NativeXComponent_GetXComponentSize` 得到。
+- `remoteDesktopSize`：FreeRDP 协商的远端桌面尺寸，即 `DesktopWidth/DesktopHeight` 或 `DesktopResize` 回调后的尺寸。
+
+首版使用本地缩放：
+
+- `remoteDesktopSize` 固定为连接参数里的 `resolution`。
+- `surfaceSize` 改变时重新计算 viewport，不重连、不通知服务端。
+- 输入事件先判断是否落在 viewport 内，再按比例映射到 `remoteDesktopSize`。
+- viewport 外的 letterbox/pillarbox 区域不发送点击。
+
+后续如果要真实改变远端分辨率，再打开 `disp` dynamic channel：
+
+- CMake 打开 `WITH_CHANNELS=ON`、`WITH_CLIENT_CHANNELS=ON`、`CHANNEL_DISP_CLIENT=ON`。
+- 在 XComponent size/window size 变化后，向服务端发送 display-control monitor layout。
+- 远端回调 `DesktopResize` 后再更新 `remoteDesktopSize` 和 GDI buffer。
+- 需要 debounce，避免拖动窗口大小时连续发送大量 resize。
+
+#### WindowStage 生命周期建议
+
+建议在 `EntryAbility.ets` 里补 `windowStage.on('windowStageEvent', ...)`，把窗口状态转给页面或 native：
+
+- `ACTIVE`：允许输入，必要时恢复刷新。
+- `INACTIVE`：释放 Ctrl/Alt/Win 等本地保持的 modifier，避免远端卡键。
+- `HIDDEN` 或 `onBackground`：暂停主动刷新/丢弃输入。产品策略可以选择保持连接或自动断开；首版建议后台超过超时再断开。
+- `onWindowStageDestroy` / `onDestroy`：调用 native `disconnect()`，等待 worker join，并清空 surface/window 引用。
+
+当前 native 渲染是在 RDP worker 的 `EndPaint` 路径调用 `RenderSurfaceRgbaFrame`，`SurfaceBridge` 用 mutex 保护 window 指针。这个模型可用，但要注意：
+
+- 不要在持有 surface mutex 时做过长阻塞；高分辨率全帧 copy 会影响 surface destroy 等待。
+- surface 销毁后渲染要快速返回，不继续 request buffer。
+- 连续窗口 resize 时应丢弃旧帧，只保留最后一帧。
+- `NativeWindow` buffer format/stride 不稳定时要记录日志并 fallback。
+
+#### `module.json5` 窗口模式建议
+
+当前只支持 `fullscreen` 和 `floating`。建议按目标设备调整：
+
+- 如果目标主要是 2in1/平板，`floating` + `fullscreen` 合理。
+- 如果要支持分屏，多窗口办公场景，应评估加入 `split`，同时降低 `minWindowWidth/minWindowHeight`，否则分屏下可能无法进入合理布局。
+- `minWindowWidth=1280`、`minWindowHeight=760` 对小屏或分屏偏高。建议把 UI 做成响应式后，再按真实设备调整到更低门槛。
+- RDP surface 区域必须始终有稳定尺寸约束，避免 toolbar、诊断面板、软键盘出现时挤压到 0 高度。
+
+#### RemoteApp/RAIL 边界
+
+不要把 Windows/X11 的多窗口 client 逻辑直接搬到 Harmony：
+
+- 普通远程桌面模式只需要一个本地 surface。
+- RAIL/RemoteApp 需要 `rail` channel、远端窗口创建/销毁/移动/最小化/最大化、菜单、图标、z-order、焦点和本地窗口映射。
+- Harmony HAP 的窗口能力、任务管理和权限模型与桌面 Windows/X11 不同，RAIL 应作为单独产品方向评估。
+
+首版建议明确不支持 RemoteApp，只支持 full desktop session。
+
 ### M6：输入事件适配
 
 目标：能基础操作远端桌面。
@@ -268,12 +375,12 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 
 | 能力 | 是否必须 | 当前状态 | HarmonyOS 适配建议 |
 | --- | --- | --- | --- |
-| 键盘 | 必须 | UI 有快捷键按钮，但没有 native 输入通道 | `XComponent`/ArkTS key event -> N-API `sendKey/sendUnicode` -> native event queue -> `freerdp_input_send_keyboard_event_ex` 或 `freerdp_input_send_unicode_keyboard_event` |
-| 鼠标/触摸 | 必须 | `XComponent` 还没有触摸、鼠标、滚轮转发 | touch/mouse event -> 远端坐标换算 -> `freerdp_input_send_mouse_event`、`freerdp_input_send_extended_mouse_event`；首版支持点击、拖动、滚轮、右键 |
-| 音频播放 | 产品化通常需要，首个闭环可延后 | `WITH_CHANNELS=OFF`，`rdpsnd` 未构建 | 打开 `rdpsnd` 后新增 `rdpsnd-client-ohos` backend，把远端 PCM/解码后音频写入 Harmony AudioRenderer；处理采样率、通道数、缓冲、静音和后台生命周期 |
+| 键盘 | 必须 | ArkTS `onKeyEvent`、工具栏快捷键、N-API `sendKey/sendUnicode` 和 native 输入队列已有骨架 | 继续完善 keycode/scancode 映射、中文输入、软键盘、组合键和窗口失焦释放 modifier |
+| 鼠标/触摸 | 必须 | ArkTS `onTouch/onMouse/onAxisEvent`、坐标映射和 N-API `sendPointer` 已有骨架 | 继续验证触摸手势、右键、滚轮、viewport 外点击丢弃、窗口 resize 后坐标正确 |
+| 音频播放 | 产品化通常需要，首个闭环可延后 | `rdpsnd` 已编译，OHOS NDK 有 OpenSLES 时启用 FreeRDP OpenSLES backend | 先实机验证 OpenSLES 播放；如果稳定性不足，再新增 OHOS AudioRenderer backend；处理采样率、通道数、缓冲、静音和后台生命周期 |
 | 麦克风 | 可选，取决于会议/语音场景 | `audin` 未构建 | 打开 `audin` 后新增 `audin-client-ohos` backend，用 Harmony AudioCapturer 采集 PCM，再按 FreeRDP audin 协议送给服务端；需要麦克风权限和隐私提示 |
-| 桌面图形 | 必须 | 连接逻辑已有，渲染未接入 | M5 先做 FreeRDP GDI buffer -> `NativeWindow` CPU copy，保证可见、稳定、可交互 |
-| RDPGFX/H.264 | 性能增强 | 当前 `WITH_CHANNELS=OFF`、`WITH_OPENH264=OFF`、`WITH_FFMPEG=OFF` | 高分辨率或视频播放卡顿时再打开 `rdpgfx` 和 H.264；先用 OpenH264/FFmpeg 软件解码验证协议，再考虑硬件解码 |
+| 桌面图形 | 必须 | `PostConnect/gdi_init/EndPaint` 到 `NativeWindow` CPU copy 已有骨架 | 继续做真机验证、dirty rect 优化、掉帧策略、surface destroy/resize 稳定性和高分辨率性能测试 |
+| RDPGFX/H.264 | 性能增强 | `rdpgfx`、FFmpeg、OpenH264 已编译并打包 | 先用软件解码验证协议和稳定性，再考虑 OHOS AVCodec 硬件解码 |
 | 硬件视频解码 | 非首版，性能专项 | FreeRDP 现有硬件路径是 MediaFoundation/MediaCodec/VAAPI/VideoToolbox 等，不覆盖 OHOS | 需要新增 OHOS 专用 `H264_CONTEXT_SUBSYSTEM`，用 AVCodec `OH_VideoDecoder`；输出到 YUV/RGBA buffer 再合成到桌面 surface，或谨慎走 decoder surface。不能直接启用 Android `WITH_MEDIACODEC` |
 | 硬件视频编码 | RDP 客户端显示远端桌面通常不需要 | 当前无需求 | 只有做 RDP server、摄像头重定向、视频上行等场景才评估；普通 client 主要是解码，不是编码 |
 
@@ -413,7 +520,7 @@ WITH_MEDIACODEC=OFF
 ## 推荐任务拆分
 
 1. **连接稳定化**
-   - 固化 OHOS patch。
+   - 维护 FreeRDP 子模块 OHOS 分支。
    - 增加 FreeRDP callbacks。
    - 做错误分类和 TOFU 设计。
 2. **Native surface**
@@ -443,12 +550,14 @@ WITH_MEDIACODEC=OFF
 ## 参考资料
 
 - 本地 FreeRDP 源码：`harmony/third_party/FreeRDP`
+- 本地 FreeRDP OHOS 分支：`harmony/third_party/FreeRDP` 子模块内 `ohos-port`
 - 本地 OHOS 构建脚本：`harmony/scripts/wsl/build-freerdp-ohos.sh`
 - 本地 Harmony native bridge：`harmony/app/entry/src/main/cpp/napi_init.cpp`
 - 本地 Harmony 页面：`harmony/app/entry/src/main/ets/pages/Index.ets`
 - OpenHarmony NativeWindow 文档：https://gitee.com/openharmony/docs/blob/673f3471596850245bdcce9e61d8589da49ddee9/en/application-dev/napi/native_window-guidelines.md
 - OpenHarmony Native XComponent API 文档：https://gitee.com/openharmony/docs/blob/43726785b4033887cd1a838aaaca5e255897a71e/en/application-dev/reference/apis-arkui/native__interface__xcomponent_8h.md
 - OpenHarmony XComponent/NAPI 指南：https://gitee.com/openharmony/docs/blob/54a84aefd5b06fd937a20063d39ee73444b41344/zh-cn/application-dev/ui/napi-xcomponent-guidelines.md
+- OpenHarmony UIAbility/WindowStage 生命周期文档：https://gitee.com/openharmony/docs/blob/115c3238e4c0cd4534bf2543c0b722819e889ba4/en/application-dev/application-models/uiability-lifecycle.md
 - OpenHarmony AudioRenderer 文档：https://gitee.com/openharmony/docs/blob/990f9a43dac9610fdecfd9e70f503329b64ac7d7/zh-cn/application-dev/media/audio/using-audiorenderer-for-playback.md
 - OpenHarmony AudioCapturer 文档：https://gitee.com/openharmony/docs/blob/dc58ead6628a294cbc0e7b17faca3f5dca74103b/zh-cn/application-dev/media/audio/using-audiocapturer-for-recording.md
 - OpenHarmony 视频解码/AVCodec 文档：https://gitee.com/openharmony/docs/blob/master/zh-cn/application-dev/media/avcodec/video-decoding.md

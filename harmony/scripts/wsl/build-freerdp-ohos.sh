@@ -19,8 +19,21 @@ BUILD_DIR="$WORK_DIR/build"
 OPENSSL_VERSION="${OPENSSL_VERSION:-3.3.2}"
 ZLIB_VERSION="${ZLIB_VERSION:-1.3.1}"
 CJSON_VERSION="${CJSON_VERSION:-1.7.18}"
+URIPARSER_VERSION="${URIPARSER_VERSION:-0.9.8}"
+OPENH264_VERSION="${OPENH264_VERSION:-2.4.1}"
+FFMPEG_VERSION="${FFMPEG_VERSION:-6.1.1}"
 JOBS="${JOBS:-$(nproc)}"
 FORCE_REBUILD="${FORCE_REBUILD:-0}"
+ENABLE_URIPARSER="${ENABLE_URIPARSER:-1}"
+ENABLE_OPENH264="${ENABLE_OPENH264:-1}"
+ENABLE_FFMPEG="${ENABLE_FFMPEG:-1}"
+ENABLE_OPENSLES="${ENABLE_OPENSLES:-auto}"
+ENABLE_CUPS="${ENABLE_CUPS:-0}"
+ENABLE_PCSC="${ENABLE_PCSC:-0}"
+ENABLE_FUSE="${ENABLE_FUSE:-0}"
+
+WITH_OPENSLES=OFF
+FREERDP_FEATURE_PROFILE="channels-codecs-v1"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -30,6 +43,25 @@ require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
     printf 'Missing required tool: %s\n' "$1" >&2
     exit 1
+  fi
+}
+
+is_enabled() {
+  case "${1:-0}" in
+    1|ON|on|On|true|TRUE|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_auto() {
+  [[ "${1:-}" == "auto" || "${1:-}" == "AUTO" ]]
+}
+
+cmake_bool() {
+  if is_enabled "$1"; then
+    printf 'ON'
+  else
+    printf 'OFF'
   fi
 }
 
@@ -75,7 +107,7 @@ load_ohos_env() {
   }
 }
 
-download_tarball() {
+download_archive() {
   local output="$1"
   shift
 
@@ -96,13 +128,48 @@ download_tarball() {
   exit 1
 }
 
-extract_tarball() {
+download_tarball() {
+  download_archive "$@"
+}
+
+extract_archive() {
   local archive="$1"
   local directory="$2"
 
   [[ -d "$directory" ]] && return 0
   log "extract $(basename "$archive")"
-  tar -xzf "$archive" -C "$SRC_DIR"
+  case "$archive" in
+    *.tar.gz|*.tgz)
+      tar -xzf "$archive" -C "$SRC_DIR"
+      ;;
+    *.tar.xz|*.txz)
+      tar -xJf "$archive" -C "$SRC_DIR"
+      ;;
+    *)
+      printf 'Unsupported archive type: %s\n' "$archive" >&2
+      exit 1
+      ;;
+  esac
+}
+
+extract_tarball() {
+  extract_archive "$@"
+}
+
+detect_optional_backends() {
+  if is_auto "$ENABLE_OPENSLES"; then
+    if find "$OHOS_NDK_HOME" \( -path '*/SLES/OpenSLES.h' -o -name 'libOpenSLES.so' \) -print -quit | grep -q .; then
+      WITH_OPENSLES=ON
+    else
+      WITH_OPENSLES=OFF
+    fi
+  else
+    WITH_OPENSLES="$(cmake_bool "$ENABLE_OPENSLES")"
+  fi
+
+  log "optional backends"
+  printf 'OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
+    "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
 }
 
 prepare_sources() {
@@ -122,6 +189,24 @@ prepare_sources() {
   download_tarball "$SRC_DIR/cjson-$CJSON_VERSION.tar.gz" \
     "https://github.com/DaveGamble/cJSON/archive/refs/tags/v$CJSON_VERSION.tar.gz"
   extract_tarball "$SRC_DIR/cjson-$CJSON_VERSION.tar.gz" "$SRC_DIR/cJSON-$CJSON_VERSION"
+
+  if is_enabled "$ENABLE_URIPARSER"; then
+    download_archive "$SRC_DIR/uriparser-$URIPARSER_VERSION.tar.xz" \
+      "https://github.com/uriparser/uriparser/releases/download/uriparser-$URIPARSER_VERSION/uriparser-$URIPARSER_VERSION.tar.xz"
+    extract_archive "$SRC_DIR/uriparser-$URIPARSER_VERSION.tar.xz" "$SRC_DIR/uriparser-$URIPARSER_VERSION"
+  fi
+
+  if is_enabled "$ENABLE_OPENH264"; then
+    download_tarball "$SRC_DIR/openh264-$OPENH264_VERSION.tar.gz" \
+      "https://github.com/cisco/openh264/archive/refs/tags/v$OPENH264_VERSION.tar.gz"
+    extract_tarball "$SRC_DIR/openh264-$OPENH264_VERSION.tar.gz" "$SRC_DIR/openh264-$OPENH264_VERSION"
+  fi
+
+  if is_enabled "$ENABLE_FFMPEG"; then
+    download_archive "$SRC_DIR/ffmpeg-$FFMPEG_VERSION.tar.xz" \
+      "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
+    extract_archive "$SRC_DIR/ffmpeg-$FFMPEG_VERSION.tar.xz" "$SRC_DIR/ffmpeg-$FFMPEG_VERSION"
+  fi
 
   [[ -f "$FREE_RDP_SRC/CMakeLists.txt" ]] || {
     printf 'FreeRDP source is missing: %s\n' "$FREE_RDP_SRC" >&2
@@ -148,15 +233,10 @@ prepare_freerdp_build_source() {
   FREERDP_BUILD_SRC="$BUILD_DIR/freerdp-src"
   safe_rm_rf "$FREERDP_BUILD_SRC"
   mkdir -p "$FREERDP_BUILD_SRC"
-  cp -a "$FREE_RDP_SRC/." "$FREERDP_BUILD_SRC/"
-
-  local thread_file="$FREERDP_BUILD_SRC/winpr/libwinpr/thread/thread.c"
-  if ! grep -q '__OHOS__' "$thread_file"; then
-    perl -0pi -e 's/#ifndef ANDROID\s+pthread_cancel\(thread->thread\);\s+#else/#if !defined(ANDROID) \&\& !defined(__OHOS__)\n\tpthread_cancel(thread->thread);\n#else/s' "$thread_file"
-    grep -q '__OHOS__' "$thread_file" || {
-      printf 'Failed to apply OHOS pthread_cancel compatibility patch to %s\n' "$thread_file" >&2
-      exit 1
-    }
+  if git -C "$FREE_RDP_SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$FREE_RDP_SRC" archive --format=tar HEAD | tar -x -C "$FREERDP_BUILD_SRC"
+  else
+    cp -a "$FREE_RDP_SRC/." "$FREERDP_BUILD_SRC/"
   fi
 }
 
@@ -229,10 +309,142 @@ build_cjson() {
   cmake --install "$build" 2>&1 | tee "$LOG_DIR/cjson-install.log"
 }
 
+build_uriparser() {
+  if ! is_enabled "$ENABLE_URIPARSER"; then
+    log "uriparser disabled"
+    return 0
+  fi
+
+  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/liburiparser.so" && -f "$PREFIX/include/uriparser/Uri.h" ]]; then
+    log "uriparser already installed"
+    return 0
+  fi
+
+  local build="$BUILD_DIR/uriparser-$URIPARSER_VERSION"
+  log "build uriparser $URIPARSER_VERSION for $OHOS_ARCH"
+  cmake -S "$SRC_DIR/uriparser-$URIPARSER_VERSION" -B "$build" "${cmake_common_args[@]}" \
+    -DBUILD_SHARED_LIBS=ON \
+    -DURIPARSER_BUILD_DOCS=OFF \
+    -DURIPARSER_BUILD_TESTS=OFF \
+    -DURIPARSER_BUILD_TOOLS=OFF \
+    2>&1 | tee "$LOG_DIR/uriparser-configure.log"
+  cmake --build "$build" --parallel "$JOBS" 2>&1 | tee "$LOG_DIR/uriparser-build.log"
+  cmake --install "$build" 2>&1 | tee "$LOG_DIR/uriparser-install.log"
+}
+
+build_openh264() {
+  if ! is_enabled "$ENABLE_OPENH264"; then
+    log "OpenH264 disabled"
+    return 0
+  fi
+
+  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libopenh264.so" && -f "$PREFIX/include/wels/codec_api.h" ]]; then
+    log "OpenH264 already installed"
+    return 0
+  fi
+
+  local src="$SRC_DIR/openh264-$OPENH264_VERSION"
+  local build="$BUILD_DIR/openh264-$OPENH264_VERSION"
+  safe_rm_rf "$build"
+  mkdir -p "$build"
+  cp -a "$src/." "$build/"
+
+  log "build OpenH264 $OPENH264_VERSION for $OHOS_ARCH"
+  (
+    cd "$build"
+    make -j"$JOBS" \
+      OS=linux \
+      ARCH=arm64 \
+      CC="$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang" \
+      CXX="$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang++" \
+      AR="$OHOS_LLVM_HOME/bin/llvm-ar" \
+      PREFIX="$PREFIX" \
+      2>&1 | tee "$LOG_DIR/openh264-build.log"
+    make install-shared \
+      OS=linux \
+      ARCH=arm64 \
+      CC="$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang" \
+      CXX="$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang++" \
+      AR="$OHOS_LLVM_HOME/bin/llvm-ar" \
+      PREFIX="$PREFIX" \
+      2>&1 | tee "$LOG_DIR/openh264-install.log"
+  )
+}
+
+build_ffmpeg() {
+  if ! is_enabled "$ENABLE_FFMPEG"; then
+    log "FFmpeg disabled"
+    return 0
+  fi
+
+  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libavcodec.so" && -f "$PREFIX/lib/libavutil.so" ]]; then
+    log "FFmpeg already installed"
+    return 0
+  fi
+
+  local src="$SRC_DIR/ffmpeg-$FFMPEG_VERSION"
+  local build="$BUILD_DIR/ffmpeg-$FFMPEG_VERSION"
+  safe_rm_rf "$build"
+  mkdir -p "$build"
+  cp -a "$src/." "$build/"
+
+  log "build FFmpeg $FFMPEG_VERSION for $OHOS_ARCH"
+  (
+    cd "$build"
+    export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig"
+    export PKG_CONFIG_SYSROOT_DIR=
+    ./configure \
+      --prefix="$PREFIX" \
+      --enable-cross-compile \
+      --target-os=linux \
+      --arch=aarch64 \
+      --cc="$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang" \
+      --cxx="$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang++" \
+      --ar="$OHOS_LLVM_HOME/bin/llvm-ar" \
+      --ranlib="$OHOS_LLVM_HOME/bin/llvm-ranlib" \
+      --nm="$OHOS_LLVM_HOME/bin/llvm-nm" \
+      --strip="$OHOS_LLVM_HOME/bin/llvm-strip" \
+      --pkg-config=pkg-config \
+      --extra-cflags="-fPIC -D__MUSL__ -I$PREFIX/include" \
+      --extra-ldflags="-L$PREFIX/lib" \
+      --enable-pic \
+      --enable-shared \
+      --disable-static \
+      --disable-programs \
+      --disable-doc \
+      --disable-debug \
+      --disable-autodetect \
+      --disable-iconv \
+      --disable-bzlib \
+      --disable-lzma \
+      --disable-sdl2 \
+      --disable-xlib \
+      --enable-zlib \
+      2>&1 | tee "$LOG_DIR/ffmpeg-configure.log"
+    make -j"$JOBS" 2>&1 | tee "$LOG_DIR/ffmpeg-build.log"
+    make install 2>&1 | tee "$LOG_DIR/ffmpeg-install.log"
+  )
+}
+
+freerdp_feature_profile() {
+  {
+    printf 'profile=%s\n' "$FREERDP_FEATURE_PROFILE"
+    printf 'uriparser=%s:%s\n' "$(cmake_bool "$ENABLE_URIPARSER")" "$URIPARSER_VERSION"
+    printf 'openh264=%s:%s\n' "$(cmake_bool "$ENABLE_OPENH264")" "$OPENH264_VERSION"
+    printf 'ffmpeg=%s:%s\n' "$(cmake_bool "$ENABLE_FFMPEG")" "$FFMPEG_VERSION"
+    printf 'opensles=%s\n' "$WITH_OPENSLES"
+    printf 'cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
+    printf 'pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
+    printf 'fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"
+  }
+}
+
 build_freerdp() {
   local build="$BUILD_DIR/freerdp"
+  local feature_stamp="$PREFIX/.freerdp-feature-profile"
 
-  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libfreerdp3.so" && -f "$PREFIX/lib/libwinpr3.so" ]]; then
+  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libfreerdp3.so" && -f "$PREFIX/lib/libwinpr3.so" &&
+        -f "$feature_stamp" && "$(freerdp_feature_profile)" == "$(cat "$feature_stamp")" ]]; then
     log "FreeRDP already installed"
     return 0
   fi
@@ -260,11 +472,11 @@ build_freerdp() {
     -DWITH_SAMPLE=OFF \
     -DWITH_SERVER=OFF \
     -DWITH_SERVER_INTERFACE=OFF \
-    -DWITH_CHANNELS=OFF \
+    -DWITH_CHANNELS=ON \
     -DWITH_CLIENT_COMMON=ON \
     -DWITH_CLIENT=OFF \
     -DWITH_CLIENT_SDL=OFF \
-    -DWITH_CLIENT_CHANNELS=OFF \
+    -DWITH_CLIENT_CHANNELS=ON \
     -DWITH_THIRD_PARTY=OFF \
     -DWITH_OPENSSL=ON \
     -DWITH_MBEDTLS=OFF \
@@ -277,37 +489,101 @@ build_freerdp() {
     -DZLIB_LIBRARY="$PREFIX/lib/libz.so" \
     -DWITH_JSON_DISABLED=OFF \
     -DWITH_CJSON_REQUIRED=ON \
-    -DWITH_AAD=OFF \
-    -DWITH_FFMPEG=OFF \
-    -DWITH_DSP_FFMPEG=OFF \
-    -DWITH_VIDEO_FFMPEG=OFF \
-    -DWITH_SWSCALE=OFF \
+    -DWITH_AAD=ON \
+    -DWITH_FFMPEG="$(cmake_bool "$ENABLE_FFMPEG")" \
+    -DWITH_DSP_FFMPEG="$(cmake_bool "$ENABLE_FFMPEG")" \
+    -DWITH_VIDEO_FFMPEG="$(cmake_bool "$ENABLE_FFMPEG")" \
+    -DWITH_SWSCALE="$(cmake_bool "$ENABLE_FFMPEG")" \
     -DWITH_CAIRO=OFF \
     -DWITH_JPEG=OFF \
-    -DWITH_OPENH264=OFF \
+    -DWITH_OPENH264="$(cmake_bool "$ENABLE_OPENH264")" \
     -DWITH_GFX_AV1=OFF \
     -DWITH_ALSA=OFF \
     -DWITH_PULSE=OFF \
     -DWITH_OSS=OFF \
-    -DWITH_CUPS=OFF \
-    -DWITH_FUSE=OFF \
+    -DWITH_OPENSLES="$WITH_OPENSLES" \
+    -DOpenSLES_INCLUDE_DIR="$OHOS_NDK_HOME/sysroot/usr/include" \
+    -DOpenSLES_LIBRARY="$OHOS_NDK_HOME/sysroot/usr/lib/aarch64-linux-ohos/libOpenSLES.so" \
+    -DWITH_CUPS="$(cmake_bool "$ENABLE_CUPS")" \
+    -DWITH_FUSE="$(cmake_bool "$ENABLE_FUSE")" \
     -DWITH_GSSAPI=OFF \
     -DWITH_KRB5=OFF \
     -DWITH_PKCS11=OFF \
-    -DWITH_PCSC=OFF \
-    -DWITH_PCSC_WINPR=OFF \
-    -DWITH_SMARTCARD_EMULATE=OFF \
-    -DWITH_SMARTCARD_INSPECT=OFF \
-    -DWITH_SMARTCARD_PCSC=OFF \
+    -DWITH_PCSC="$(cmake_bool "$ENABLE_PCSC")" \
+    -DWITH_PCSC_WINPR="$(cmake_bool "$ENABLE_PCSC")" \
+    -DWITH_SMARTCARD_EMULATE=ON \
+    -DWITH_SMARTCARD_INSPECT=ON \
+    -DWITH_SMARTCARD_PCSC="$(cmake_bool "$ENABLE_PCSC")" \
     -DWITH_WINPR_TOOLS=OFF \
-    -DWITH_URIPARSER=OFF \
+    -DWITH_URIPARSER="$(cmake_bool "$ENABLE_URIPARSER")" \
     -DWITH_UNICODE_BUILTIN=ON \
     -DWITH_X11=OFF \
     -DWITH_WAYLAND=OFF \
+    -DCHANNEL_CLIPRDR=ON \
+    -DCHANNEL_CLIPRDR_CLIENT=ON \
+    -DCHANNEL_DRDYNVC=ON \
+    -DCHANNEL_DRDYNVC_CLIENT=ON \
+    -DCHANNEL_DISP=ON \
+    -DCHANNEL_DISP_CLIENT=ON \
+    -DCHANNEL_RDPGFX=ON \
+    -DCHANNEL_RDPGFX_CLIENT=ON \
+    -DCHANNEL_RDPSND=ON \
+    -DCHANNEL_RDPSND_CLIENT=ON \
+    -DCHANNEL_AUDIN=ON \
+    -DCHANNEL_AUDIN_CLIENT=ON \
+    -DCHANNEL_RDPDR=ON \
+    -DCHANNEL_RDPDR_CLIENT=ON \
+    -DCHANNEL_DRIVE=ON \
+    -DCHANNEL_DRIVE_CLIENT=ON \
+    -DCHANNEL_PRINTER=ON \
+    -DCHANNEL_PRINTER_CLIENT=ON \
+    -DCHANNEL_SMARTCARD=ON \
+    -DCHANNEL_SMARTCARD_CLIENT=ON \
+    -DCHANNEL_TSMF=ON \
+    -DCHANNEL_TSMF_CLIENT=ON \
+    -DCHANNEL_AINPUT=OFF \
+    -DCHANNEL_ECHO=OFF \
+    -DCHANNEL_ENCOMSP=OFF \
+    -DCHANNEL_GEOMETRY=OFF \
+    -DCHANNEL_GFXREDIR=OFF \
+    -DCHANNEL_LOCATION=OFF \
+    -DCHANNEL_PARALLEL=OFF \
+    -DCHANNEL_RAIL=OFF \
+    -DCHANNEL_RDP2TCP=OFF \
+    -DCHANNEL_RDPEAR=OFF \
+    -DCHANNEL_RDPECAM=OFF \
+    -DCHANNEL_RDPEI=OFF \
+    -DCHANNEL_RDPEMSC=OFF \
+    -DCHANNEL_RDPEWA=OFF \
+    -DCHANNEL_REMDESK=OFF \
+    -DCHANNEL_SERIAL=OFF \
+    -DCHANNEL_SSHAGENT=OFF \
+    -DCHANNEL_TELEMETRY=OFF \
+    -DCHANNEL_URBDRC=OFF \
+    -DCHANNEL_VIDEO=OFF \
     2>&1 | tee "$LOG_DIR/freerdp-configure.log"
 
   cmake --build "$build" --parallel "$JOBS" 2>&1 | tee "$LOG_DIR/freerdp-build.log"
   cmake --install "$build" 2>&1 | tee "$LOG_DIR/freerdp-install.log"
+  freerdp_feature_profile > "$feature_stamp"
+}
+
+copy_runtime_lib_pattern() {
+  local pattern="$1"
+  local required="${2:-0}"
+  local copied=0
+  shopt -s nullglob
+  for lib in "$PREFIX/lib"/$pattern; do
+    [[ -f "$lib" ]] || continue
+    cp -L "$lib" "$RUNTIME_DIR/$(basename "$lib")"
+    copied=1
+  done
+  shopt -u nullglob
+
+  if [[ "$required" == "1" && "$copied" != "1" ]]; then
+    printf 'Missing required runtime library pattern: %s\n' "$pattern" >&2
+    exit 1
+  fi
 }
 
 stage_runtime_libs() {
@@ -315,13 +591,20 @@ stage_runtime_libs() {
   safe_rm_rf "$RUNTIME_DIR"
   mkdir -p "$RUNTIME_DIR/ossl-modules"
 
-  cp -L "$PREFIX/lib/libfreerdp3.so" "$RUNTIME_DIR/libfreerdp3.so"
-  cp -L "$PREFIX/lib/libfreerdp-client3.so" "$RUNTIME_DIR/libfreerdp-client3.so"
-  cp -L "$PREFIX/lib/libwinpr3.so" "$RUNTIME_DIR/libwinpr3.so"
-  cp -L "$PREFIX/lib/libssl.so.3" "$RUNTIME_DIR/libssl.so.3"
-  cp -L "$PREFIX/lib/libcrypto.so.3" "$RUNTIME_DIR/libcrypto.so.3"
-  cp -L "$PREFIX/lib/libcjson.so.1" "$RUNTIME_DIR/libcjson.so.1"
-  cp -L "$PREFIX/lib/libz.so.1" "$RUNTIME_DIR/libz.so.1"
+  copy_runtime_lib_pattern "libfreerdp3.so" 1
+  copy_runtime_lib_pattern "libfreerdp-client3.so" 1
+  copy_runtime_lib_pattern "libwinpr3.so" 1
+  copy_runtime_lib_pattern "libssl.so.3" 1
+  copy_runtime_lib_pattern "libcrypto.so.3" 1
+  copy_runtime_lib_pattern "libcjson.so.1" 1
+  copy_runtime_lib_pattern "libz.so.1" 1
+  copy_runtime_lib_pattern "liburiparser.so*" "$(is_enabled "$ENABLE_URIPARSER" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libopenh264.so*" "$(is_enabled "$ENABLE_OPENH264" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libavcodec.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libavformat.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libavutil.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libswresample.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_lib_pattern "libswscale.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
 
   if [[ -f "$PREFIX/lib/ossl-modules/legacy.so" ]]; then
     cp -L "$PREFIX/lib/ossl-modules/legacy.so" "$RUNTIME_DIR/ossl-modules/legacy.so"
@@ -391,7 +674,8 @@ EOF
     -I"$PREFIX/include/winpr3" \
     -L"$PREFIX/lib" \
     -Wl,-rpath,'$ORIGIN/../sysroot/lib' \
-    -lfreerdp3 -lwinpr3 -lssl -lcrypto -lcjson -lz \
+    -Wl,-rpath-link,"$PREFIX/lib" \
+    -lfreerdp-client3 -lfreerdp3 -lwinpr3 -lssl -lcrypto -lcjson -lz \
     2>&1 | tee "$LOG_DIR/probe-build.log"
 }
 
@@ -409,8 +693,15 @@ write_manifest() {
     printf 'openssl_version=%s\n' "$OPENSSL_VERSION"
     printf 'zlib_version=%s\n' "$ZLIB_VERSION"
     printf 'cjson_version=%s\n' "$CJSON_VERSION"
+    printf 'uriparser_version=%s\n' "$URIPARSER_VERSION"
+    printf 'openh264_version=%s\n' "$OPENH264_VERSION"
+    printf 'ffmpeg_version=%s\n' "$FFMPEG_VERSION"
+    printf 'with_opensles=%s\n' "$WITH_OPENSLES"
+    printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
+    printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
+    printf 'with_fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"
     printf '\n[libs]\n'
-    find "$PREFIX/lib" "$PROBE_DIR" -maxdepth 1 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
+    find "$PREFIX/lib" "$PROBE_DIR" -maxdepth 2 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
     printf '\n[runtime-libs]\n'
     find "$RUNTIME_DIR" -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
   } > "$manifest"
@@ -429,6 +720,10 @@ verify_elf_outputs() {
     "$PREFIX/lib"/libcrypto*.so* \
     "$PREFIX/lib"/libcjson*.so* \
     "$PREFIX/lib"/libz*.so* \
+    "$PREFIX/lib"/liburiparser*.so* \
+    "$PREFIX/lib"/libopenh264*.so* \
+    "$PREFIX/lib"/libav*.so* \
+    "$PREFIX/lib"/libsw*.so* \
     "$PROBE_DIR"/libfreerdp_ohos_probe.so \
     "$RUNTIME_DIR"/*.so* \
     "$RUNTIME_DIR"/ossl-modules/*.so*; do
@@ -445,18 +740,22 @@ main() {
   load_ohos_env
   require_tool cmake
   require_tool ninja
+  require_tool git
   require_tool perl
   require_tool make
-  require_tool curl
   require_tool tar
-  require_tool git
+  require_tool curl
 
   prepare_sources
   prepare_cmake_args
+  detect_optional_backends
 
   build_openssl
   build_zlib
   build_cjson
+  build_uriparser
+  build_openh264
+  build_ffmpeg
   build_freerdp
   stage_runtime_libs
   build_probe

@@ -30,6 +30,9 @@
 #include <native_window/external_window.h>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+#include <freerdp/addin.h>
+#include <freerdp/client.h>
+#include <freerdp/client/channels.h>
 #include <freerdp/codec/color.h>
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
@@ -317,6 +320,7 @@ public:
             "libcjson.so.1",
             "libwinpr3.so",
             "libfreerdp3.so",
+            "libfreerdp-client3.so",
         };
 
         for (const char* library : libraries) {
@@ -334,10 +338,14 @@ public:
             if (std::strcmp(library, "libfreerdp3.so") == 0) {
                 freerdpHandle_ = handle;
             }
+            if (std::strcmp(library, "libfreerdp-client3.so") == 0) {
+                freerdpClientHandle_ = handle;
+            }
         }
 
         loaded_ = LoadFreerdpSymbol("freerdp_new", freerdpNew, error) &&
             LoadFreerdpSymbol("freerdp_free", freerdpFree, error) &&
+            LoadFreerdpSymbol("freerdp_register_addin_provider", registerAddinProvider, error) &&
             LoadFreerdpSymbol("freerdp_context_new", contextNew, error) &&
             LoadFreerdpSymbol("freerdp_context_free", contextFree, error) &&
             LoadFreerdpSymbol("freerdp_connect", connect, error) &&
@@ -359,12 +367,15 @@ public:
             LoadFreerdpSymbol("freerdp_input_send_mouse_event", inputSendMouseEvent, error) &&
             LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
             LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
+            LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
+            LoadClientSymbol("freerdp_client_load_channels", clientLoadChannels, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
 
     using FreerdpNewFn = freerdp* (*)();
     using FreerdpFreeFn = void (*)(freerdp*);
+    using RegisterAddinProviderFn = int (*)(FREERDP_LOAD_CHANNEL_ADDIN_ENTRY_FN, DWORD);
     using ContextNewFn = BOOL (*)(freerdp*);
     using ContextFreeFn = void (*)(freerdp*);
     using ConnectFn = BOOL (*)(freerdp*);
@@ -385,10 +396,13 @@ public:
     using InputSendMouseEventFn = BOOL (*)(rdpInput*, UINT16, UINT16, UINT16);
     using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
     using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
+    using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
+    using ClientLoadChannelsFn = BOOL (*)(freerdp*);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
     FreerdpFreeFn freerdpFree = nullptr;
+    RegisterAddinProviderFn registerAddinProvider = nullptr;
     ContextNewFn contextNew = nullptr;
     ContextFreeFn contextFree = nullptr;
     ConnectFn connect = nullptr;
@@ -410,6 +424,8 @@ public:
     InputSendMouseEventFn inputSendMouseEvent = nullptr;
     InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
     InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
+    ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;
+    ClientLoadChannelsFn clientLoadChannels = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -417,6 +433,12 @@ private:
     bool LoadFreerdpSymbol(const char* name, Fn& target, std::string& error)
     {
         return LoadSymbolFrom(freerdpHandle_, "libfreerdp3.so", name, target, error);
+    }
+
+    template <typename Fn>
+    bool LoadClientSymbol(const char* name, Fn& target, std::string& error)
+    {
+        return LoadSymbolFrom(freerdpClientHandle_, "libfreerdp-client3.so", name, target, error);
     }
 
     template <typename Fn>
@@ -449,6 +471,7 @@ private:
     std::vector<void*> handles_;
     void* winprHandle_ = nullptr;
     void* freerdpHandle_ = nullptr;
+    void* freerdpClientHandle_ = nullptr;
     bool loaded_ = false;
 };
 
@@ -801,6 +824,54 @@ using FreerdpLogFn = std::function<void(const std::string&)>;
 using FreerdpConnectedFn = std::function<void()>;
 using FreerdpInputPumpFn = std::function<void(FreerdpRuntimeApi*, rdpContext*)>;
 
+bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (instance == nullptr) {
+        error = "FreeRDP instance unavailable for channel setup";
+        return false;
+    }
+    if (api.registerAddinProvider == nullptr || api.channelsLoadStaticAddinEntry == nullptr ||
+        api.clientLoadChannels == nullptr) {
+        error = "FreeRDP client channel symbols are not loaded";
+        return false;
+    }
+
+    int rc = api.registerAddinProvider(api.channelsLoadStaticAddinEntry, 0);
+    if (rc != 0) {
+        error = "freerdp_register_addin_provider failed: " + std::to_string(rc);
+        return false;
+    }
+
+    instance->LoadChannels = api.clientLoadChannels;
+    log("FreeRDP client channel loader registered");
+    return true;
+}
+
+bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, true, "SupportGraphicsPipeline", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, true, "GfxH264", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, true, "GfxAVC444", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, true, "GfxAVC444v2", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, true, "DeviceRedirection", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, true, "AudioPlayback", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RedirectDrives, false, "RedirectDrives", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RedirectPrinters, false, "RedirectPrinters", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RedirectSmartCards, false, "RedirectSmartCards", error)) {
+        return false;
+    }
+
+    log("FreeRDP enhanced channels requested: cliprdr, rdpgfx/h264, disp, rdpdr, rdpsnd");
+    log("FreeRDP redirect devices compiled; drive/printer/smartcard runtime toggles remain disabled by default");
+    return true;
+}
+
 RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
     const FreerdpSetActiveFn& setActive, const FreerdpClearActiveFn& clearActive,
     const FreerdpLogFn& log, const FreerdpConnectedFn& onConnected,
@@ -862,6 +933,12 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
     contextCreated = true;
+    if (!EnableFreerdpClientChannels(api, instance, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
     setActive(&api, instance, instance->context);
 
     rdpSettings* settings = instance->context == nullptr ? nullptr : instance->context->settings;
@@ -894,6 +971,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, ignoreCertificate, "IgnoreCertificate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AutoAcceptCertificate, false, "AutoAcceptCertificate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AutoDenyCertificate, false, "AutoDenyCertificate", error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!ConfigureEnhancedRdpSettings(api, settings, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -2473,11 +2557,12 @@ napi_value Probe(napi_env env, napi_callback_info info)
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
     SurfaceSnapshot surface = g_surface.Snapshot();
     const std::string featureSummary =
-        "core RDP/TLS/NLA + software GDI; channels off; H264/FFmpeg/OpenH264 off; "
-        "clipboard/audio/drive/printer/smartcard/RD Gateway off";
+        "core RDP/TLS/NLA + software GDI; client channels on; "
+        "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
+        "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled";
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.5");
+    SetString(env, result, "bridgeVersion", "0.6.6");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
@@ -2514,6 +2599,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "N-API bridge loaded",
         "Native calls are available: probe, connect, disconnect, resize, paintTestPattern, sendPointer, sendKey, sendUnicode",
         "FreeRDP input dispatch: worker-thread queue",
+        "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
         "Certificate policy: tofu stores first untrusted certificate through FreeRDP, strict rejects untrusted certificates"
     };

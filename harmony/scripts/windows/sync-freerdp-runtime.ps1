@@ -9,32 +9,45 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $source = Resolve-Path (Join-Path $repoRoot $SourceRoot)
 $target = Join-Path $repoRoot $TargetRoot
 
-$required = @(
-  "runtime-libs/libcjson.so.1",
-  "runtime-libs/libcrypto.so.3",
-  "runtime-libs/libfreerdp-client3.so",
-  "runtime-libs/libfreerdp3.so",
-  "runtime-libs/libssl.so.3",
-  "runtime-libs/libwinpr3.so",
-  "runtime-libs/libz.so.1",
-  "probe/libfreerdp_ohos_probe.so"
-)
+$runtimeSource = Join-Path $source "runtime-libs"
+$probeSource = Join-Path $source "probe/libfreerdp_ohos_probe.so"
+
+if (-not (Test-Path -LiteralPath $runtimeSource)) {
+  throw "Missing runtime library directory: $runtimeSource"
+}
+
+if (-not (Test-Path -LiteralPath $probeSource)) {
+  throw "Missing probe library: $probeSource"
+}
 
 New-Item -ItemType Directory -Force -Path $target | Out-Null
 
-foreach ($relative in $required) {
-  $from = Join-Path $source $relative
-  if (-not (Test-Path -LiteralPath $from)) {
-    throw "Missing runtime library: $from"
-  }
-  Copy-Item -LiteralPath $from -Destination $target -Force
+$targetResolved = (Resolve-Path -LiteralPath $target).Path
+$repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
+if (-not $targetResolved.StartsWith($repoResolved, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Refusing to clean target outside repository: $targetResolved"
 }
 
-$osslSource = Join-Path $source "runtime-libs/ossl-modules"
-if (Test-Path -LiteralPath $osslSource) {
-  $osslTarget = Join-Path $target "ossl-modules"
-  New-Item -ItemType Directory -Force -Path $osslTarget | Out-Null
-  Copy-Item -LiteralPath (Join-Path $osslSource "legacy.so") -Destination $osslTarget -Force
+Get-ChildItem -LiteralPath $target -Force | Remove-Item -Recurse -Force
+Copy-Item -Path (Join-Path $runtimeSource "*") -Destination $target -Recurse -Force
+Copy-Item -LiteralPath $probeSource -Destination $target -Force
+
+$requiredNames = @(
+  "libcjson.so.1",
+  "libcrypto.so.3",
+  "libfreerdp-client3.so",
+  "libfreerdp3.so",
+  "libssl.so.3",
+  "libwinpr3.so",
+  "libz.so.1",
+  "libfreerdp_ohos_probe.so"
+)
+
+foreach ($name in $requiredNames) {
+  $path = Join-Path $target $name
+  if (-not (Test-Path -LiteralPath $path)) {
+    throw "Missing synced runtime library: $path"
+  }
 }
 
 Get-ChildItem -Recurse -File $target | Select-Object FullName, Length

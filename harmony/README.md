@@ -29,6 +29,7 @@ Current milestone:
 - M6.8 maps two-finger horizontal drags on the remote surface to RDP horizontal wheel events.
 - M6.9 adds the `resize(width, height)` N-API surface and reports that dynamic resize is blocked by the current no-channel FreeRDP build.
 - M6.10 queues pointer/key/Unicode input on the FreeRDP worker thread, adds TOFU/strict/ignore certificate policies, and reports the disabled channel/codec feature set through `probe()`.
+- M6.11 switches the WSL FreeRDP build to the enhanced channel/codec profile: client channels, cliprdr, rdpdr, drive, printer, smartcard, rdpsnd, audin, disp, rdpgfx, TSMF, uriparser, OpenSLES, FFmpeg, and OpenH264 are compiled and packaged.
 - A live Windows desktop frame has been verified on device; current follow-up validation is focused on reliable remote operation and lifecycle stress.
 
 ## Native bridge
@@ -40,7 +41,7 @@ Current exported calls:
 - `probe()` returns bridge version, ABI, FreeRDP, WinPR, and OpenSSL probe status.
 - `connect(params)` validates the basic connection fields, starts the native session worker, and returns the initial state.
 - `disconnect()` returns a native disconnect result.
-- `resize(input)` validates a target size and returns an explicit unsupported message until the FreeRDP display-control channel is enabled.
+- `resize(input)` validates a target size and still returns an explicit unsupported message until display-control monitor-layout PDUs are wired.
 - `paintTestPattern()` writes a CPU-generated test frame into the current `XComponent` surface.
 - `sendPointer(input)` queues RDP pointer, button, and wheel events for dispatch on the FreeRDP worker thread.
 - `sendKey(input)` queues RDP scancode key events for dispatch on the FreeRDP worker thread.
@@ -57,7 +58,7 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- The current FreeRDP build still disables channels and advanced codecs, so clipboard, audio, drive redirection, printer, smartcard, RD Gateway, live display-control resize, and H.264/FFmpeg/OpenH264 paths are unavailable.
+- FreeRDP channels and H.264/FFmpeg/OpenH264 are now compiled into the enhanced WSL build, but several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, smartcard PCSC backend, RD Gateway UI/settings, and display-control resize PDUs.
 - IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
 - Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 
@@ -68,7 +69,7 @@ M4.2 notes:
 
 M4.3 notes:
 
-- `libentry.so` dynamically loads `libfreerdp3.so`, `libwinpr3.so`, OpenSSL, zlib, and cJSON from the packaged runtime libraries.
+- `libentry.so` dynamically loads `libfreerdp3.so`, `libfreerdp-client3.so`, `libwinpr3.so`, OpenSSL, zlib, cJSON, and the packaged codec/channel runtime dependencies.
 - `OPENSSL_MODULES` is set to the packaged `ossl-modules` directory before FreeRDP starts, so NTLM/NLA can use OpenSSL providers.
 - Runtime libraries are kept loaded for the process lifetime because WinPR registers thread-local destructors.
 - Tested negative path on device `3QC0124C11000711`: TCP to `35.180.139.74:3389` succeeds, FreeRDP fails cleanly with `ERRCONNECT_SECURITY_NEGO_CONNECT_FAILED`, and the app remains alive.
@@ -188,6 +189,15 @@ M6.10 notes:
 - The diagnostics probe reports worker-thread input mode, input queued/sent/dropped counters, and the current minimal FreeRDP feature set.
 - Touch/mouse conflict handling now suppresses duplicate mouse events shortly after touch input, and two-finger scroll suppresses the remaining single-finger gesture until fingers are lifted.
 - `aboutToDisappear()` releases active pointer buttons and latched Ctrl/Alt/Win modifiers to reduce stuck input during page teardown.
+
+M6.11 notes:
+
+- `harmony/scripts/wsl/build-freerdp-ohos.sh` now builds uriparser, OpenH264, and FFmpeg before FreeRDP, then configures FreeRDP with `WITH_CHANNELS=ON`, `WITH_CLIENT_CHANNELS=ON`, `WITH_FFMPEG=ON`, `WITH_OPENH264=ON`, `WITH_URIPARSER=ON`, and OpenSLES when the OHOS NDK provides it.
+- FreeRDP source adaptations are tracked in the `harmony/third_party/FreeRDP` submodule on the `ohos-port` branch; the current submodule commit disables WinPR `pthread_cancel` on `__OHOS__`.
+- The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, `printer`, `smartcard`, and `tsmf`.
+- `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264, display-control, and rdpsnd at session start.
+- Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser shared libraries, instead of a fixed minimal list.
+- Remaining risk: CUPS, PCSC, and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer, physical smartcard, and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable.
 
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 
