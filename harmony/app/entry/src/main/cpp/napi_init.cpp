@@ -252,13 +252,29 @@ struct UserParts {
     std::string username;
 };
 
+std::string TrimAscii(const std::string& value);
+
 UserParts SplitDomainUsername(const std::string& value)
 {
     size_t separator = value.find('\\');
-    if (separator == std::string::npos || separator == 0 || separator + 1 >= value.size()) {
-        return {"", value};
+    size_t separatorLength = 1;
+    const size_t ideographicSeparator = value.find("\xE3\x80\x81");
+    if (separator == std::string::npos ||
+        (ideographicSeparator != std::string::npos && ideographicSeparator < separator)) {
+        separator = ideographicSeparator;
+        separatorLength = 3;
     }
-    return {value.substr(0, separator), value.substr(separator + 1)};
+
+    if (separator == std::string::npos || separator == 0 || separator + separatorLength >= value.size()) {
+        return {"", TrimAscii(value)};
+    }
+
+    std::string domain = TrimAscii(value.substr(0, separator));
+    std::string username = TrimAscii(value.substr(separator + separatorLength));
+    if (domain.empty() || username.empty()) {
+        return {"", TrimAscii(value)};
+    }
+    return {domain, username};
 }
 
 std::string Hex32(uint32_t value)
@@ -369,6 +385,7 @@ public:
             LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
             LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
             LoadClientSymbol("freerdp_client_load_channels", clientLoadChannels, error) &&
+            LoadClientSymbol("freerdp_client_add_static_channel", clientAddStaticChannel, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
@@ -398,6 +415,7 @@ public:
     using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
     using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
     using ClientLoadChannelsFn = BOOL (*)(freerdp*);
+    using ClientAddStaticChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -426,6 +444,7 @@ public:
     InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
     ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;
     ClientLoadChannelsFn clientLoadChannels = nullptr;
+    ClientAddStaticChannelFn clientAddStaticChannel = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -873,6 +892,25 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     return true;
 }
 
+bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (api.clientAddStaticChannel == nullptr) {
+        error = "FreeRDP static channel helper is not loaded";
+        return false;
+    }
+
+    const char* params[] = {"rdpsnd", "sys:opensles"};
+    if (!api.clientAddStaticChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set rdpsnd static channel failed";
+        return false;
+    }
+
+    log("FreeRDP audio playback requested: static rdpsnd sys:opensles");
+    log("FreeRDP dynamic channels remain disabled; microphone capture remains disabled");
+    return true;
+}
+
 RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
     const FreerdpSetActiveFn& setActive, const FreerdpClearActiveFn& clearActive,
     const FreerdpLogFn& log, const FreerdpConnectedFn& onConnected,
@@ -979,6 +1017,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     if (!ConfigureEnhancedRdpSettings(api, settings, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!ConfigureAudioPlaybackChannel(api, settings, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -2561,10 +2606,10 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "core RDP/TLS/NLA + software GDI; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
-        "optional channel/runtime negotiation off until each native bridge is wired";
+        "static rdpsnd/OpenSLES playback requested; other optional channel negotiation off";
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.6.8");
+    SetString(env, result, "bridgeVersion", "0.6.9");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);

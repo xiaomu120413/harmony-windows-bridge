@@ -162,12 +162,12 @@ interface NativeCommandResult {
 @Entry
 @Component
 struct Index {
-  @State private host: string = ''
+  @State private host: string = '172.20.10.2'
   @State private port: string = '3389'
-  @State private username: string = ''
-  @State private password: string = ''
+  @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
+  @State private password: string = 'aaaa'
   @State private resolution: string = '1280x720'
-  @State private certPolicy: string = 'tofu'
+  @State private certPolicy: string = 'ignore'
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
