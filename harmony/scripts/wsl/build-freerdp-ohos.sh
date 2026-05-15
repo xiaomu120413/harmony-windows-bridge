@@ -699,10 +699,6 @@ stage_runtime_libs() {
     copy_ohos_runtime_lib "libOpenSLES.so" 1
   fi
 
-  if [[ "$WITH_OHAUDIO" == "ON" ]]; then
-    copy_ohos_runtime_lib "libohaudio.so" 1
-  fi
-
   if is_enabled "$ENABLE_OPENH264"; then
     copy_ohos_runtime_lib "libc++_shared.so" 1
   fi

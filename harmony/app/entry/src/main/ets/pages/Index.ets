@@ -1,3 +1,5 @@
+import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit'
+import { hilog } from '@kit.PerformanceAnalysisKit'
 import rdpNative from 'libentry.so'
 
 type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Bridge ready' | 'Disconnected' | 'Failed'
@@ -18,9 +20,14 @@ const LONG_PRESS_TIMEOUT_MS: number = 550
 const DOUBLE_TAP_TIMEOUT_MS: number = 320
 const DOUBLE_TAP_DISTANCE: number = 24
 const POINTER_FAILURE_LOG_INTERVAL_MS: number = 800
+const INPUT_EVENT_LOG_INTERVAL_MS: number = 650
+const SYNTHETIC_MOUSE_SUPPRESS_MS: number = 80
+const AXIS_EVENT_DEDUP_MS: number = 12
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 250
+const HILOG_DOMAIN: number = 0xF3D1
+const HILOG_TAG: string = 'FreeRDPUi'
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
 
 const RDP_SCANCODE_ESCAPE: number = 0x01
@@ -98,6 +105,7 @@ const OH_KEYCODE_NUMPAD_SUBTRACT: number = 2115
 const OH_KEYCODE_NUMPAD_ADD: number = 2116
 const OH_KEYCODE_NUMPAD_DOT: number = 2117
 const OH_KEYCODE_NUMPAD_ENTER: number = 2119
+const READ_PASTEBOARD_PERMISSION: Permissions = 'ohos.permission.READ_PASTEBOARD'
 
 interface NativeProbeResult {
   bridgeVersion: string
@@ -201,7 +209,10 @@ struct Index {
   private remoteTextBridgeValue: string = ''
   private bridgePrintableKeyCode: number = 0
   private bridgePrintableKeyAtMs: number = 0
+  private remoteShortcutPrintableKeysDown: number[] = []
   private callbacksRegistered: boolean = false
+  private pasteboardPermissionRequested: boolean = false
+  private pasteboardPermissionInFlight: boolean = false
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
   private longPressTriggered: boolean = false
@@ -220,6 +231,13 @@ struct Index {
   private lastTapX: number = 0
   private lastTapY: number = 0
   private lastPointerFailureLogAtMs: number = 0
+  private lastInputEventLogAtMs: number = 0
+  private lastAxisEventAtMs: number = 0
+  private lastAxisAction: number = -1
+  private lastAxisX: number = 0
+  private lastAxisY: number = 0
+  private lastAxisDeltaX: number = 0
+  private lastAxisDeltaY: number = 0
   private lastInputProbeAtMs: number = 0
   private surfaceController: XComponentController = new XComponentController()
   private remoteInputController: TextInputController = new TextInputController()
@@ -234,6 +252,11 @@ struct Index {
     this.logText = `${this.logText}\n${line}`
   }
 
+  private appendPasteboardPermissionLog(line: string): void {
+    this.appendLog(line)
+    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
+  }
+
   private appendNativeLogs(lines: string[]): void {
     for (let i = 0; i < lines.length; i++) {
       this.appendLog(lines[i])
@@ -242,6 +265,7 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerNativeCallbacks()
+    this.ensurePasteboardReadPermission('page appear')
     this.probeNative()
   }
 
@@ -286,6 +310,60 @@ struct Index {
     } catch (error) {
       this.appendLog(`Native callback registration failed: ${JSON.stringify(error)}`)
     }
+  }
+
+  private getSelfAccessTokenId(): number {
+    const bundleInfo = bundleManager.getBundleInfoForSelfSync(
+      bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION
+    )
+    return bundleInfo.appInfo.accessTokenId
+  }
+
+  private hasPasteboardReadPermission(): boolean {
+    try {
+      const atManager = abilityAccessCtrl.createAtManager()
+      const status = atManager.checkAccessTokenSync(this.getSelfAccessTokenId(), READ_PASTEBOARD_PERMISSION)
+      return status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
+    } catch (error) {
+      this.appendPasteboardPermissionLog(`Pasteboard permission check failed: ${JSON.stringify(error)}`)
+      return false
+    }
+  }
+
+  private ensurePasteboardReadPermission(trigger: string): void {
+    if (this.hasPasteboardReadPermission()) {
+      this.appendPasteboardPermissionLog(`Pasteboard read permission granted: ${trigger}`)
+      return
+    }
+    if (this.pasteboardPermissionRequested || this.pasteboardPermissionInFlight) {
+      return
+    }
+
+    let context: common.UIAbilityContext
+    try {
+      context = getContext(this) as common.UIAbilityContext
+    } catch (error) {
+      this.appendPasteboardPermissionLog(`Pasteboard permission request skipped: no UIAbilityContext; ${JSON.stringify(error)}`)
+      return
+    }
+
+    this.pasteboardPermissionRequested = true
+    this.pasteboardPermissionInFlight = true
+    const atManager = abilityAccessCtrl.createAtManager()
+    atManager.requestPermissionsFromUser(context, [READ_PASTEBOARD_PERMISSION])
+      .then((result) => {
+        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
+          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
+        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
+          this.hasPasteboardReadPermission()
+        this.appendPasteboardPermissionLog(`Pasteboard read permission request result: granted=${granted} auth=${authResult}`)
+      })
+      .catch((error: Error) => {
+        this.appendPasteboardPermissionLog(`Pasteboard read permission request failed: ${JSON.stringify(error)}`)
+      })
+      .finally(() => {
+        this.pasteboardPermissionInFlight = false
+      })
   }
 
   private probeNative(appendLogs: boolean = true): void {
@@ -510,6 +588,17 @@ struct Index {
     this.appendLog(`Pointer ${label} ${status}: ${this.describePointerMapping(flags, x, y, mapped)}`)
   }
 
+  private logInputEvent(label: string, detail: string, force: boolean = false): void {
+    const now = Date.now()
+    if (!force && now - this.lastInputEventLogAtMs < INPUT_EVENT_LOG_INTERVAL_MS) {
+      return
+    }
+    this.lastInputEventLogAtMs = now
+    const line = `Input ${label}: ${detail}`
+    this.appendLog(line)
+    console.info(line)
+  }
+
   private sendPointer(flags: number, x: number, y: number, allowClamp: boolean = false,
     traceLabel: string = '', logSuccess: boolean = false): boolean {
     if (!this.isConnected()) {
@@ -675,6 +764,16 @@ struct Index {
     this.sendPointer(flags, x, y, false, 'wheel.horizontal', true)
   }
 
+  private sendLeftButtonDown(x: number, y: number, label: string): void {
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
+    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
+  }
+
+  private sendLeftButtonUp(x: number, y: number, label: string): void {
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, true, `${label}.move`, true)
+    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, true, `${label}.up`, true)
+  }
+
   private sendLeftClick(x: number, y: number, label: string = 'tap.left'): void {
     this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
     this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
@@ -834,6 +933,7 @@ struct Index {
     this.rightWinModifierDown = false
     this.leftShiftModifierDown = false
     this.rightShiftModifierDown = false
+    this.remoteShortcutPrintableKeysDown = []
   }
 
   private clearPointerState(): void {
@@ -853,7 +953,7 @@ struct Index {
       return
     }
     if (this.pointerDown) {
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, this.lastTouchX, this.lastTouchY, true)
+      this.sendLeftButtonUp(this.lastTouchX, this.lastTouchY, 'touch.releaseOnExit')
     }
     if (this.mouseButtonFlags !== 0) {
       this.sendPointer(PTR_FLAGS_MOVE | this.mouseButtonFlags, this.lastTouchX, this.lastTouchY, true)
@@ -999,6 +1099,30 @@ struct Index {
     return false
   }
 
+  private isAnyModifierPressed(event: KeyEvent, modifiers: string[]): boolean {
+    for (let i = 0; i < modifiers.length; i++) {
+      if (this.isModifierPressed(event, modifiers[i])) {
+        return true
+      }
+    }
+    return false
+  }
+
+  private isCtrlModifierPressed(event: KeyEvent): boolean {
+    return this.ctrlModifierDown || this.rightCtrlModifierDown ||
+      this.isAnyModifierPressed(event, ['ctrl', 'Ctrl', 'CTRL', 'control', 'Control', 'CONTROL'])
+  }
+
+  private isAltModifierPressed(event: KeyEvent): boolean {
+    return this.altModifierDown || this.rightAltModifierDown ||
+      this.isAnyModifierPressed(event, ['alt', 'Alt', 'ALT'])
+  }
+
+  private isWinModifierPressed(event: KeyEvent): boolean {
+    return this.winModifierDown || this.rightWinModifierDown ||
+      this.isAnyModifierPressed(event, ['meta', 'Meta', 'META', 'win', 'Win', 'WIN'])
+  }
+
   private updateModifierState(scancode: number, down: boolean): void {
     if (scancode === RDP_SCANCODE_LCONTROL) {
       this.ctrlModifierDown = down
@@ -1028,13 +1152,40 @@ struct Index {
   }
 
   private hasRemoteShortcutModifier(event: KeyEvent): boolean {
-    return this.ctrlModifierDown || this.rightCtrlModifierDown ||
-      this.altModifierDown || this.rightAltModifierDown ||
-      this.winModifierDown || this.rightWinModifierDown ||
-      this.isModifierPressed(event, 'ctrl') ||
-      this.isModifierPressed(event, 'alt') ||
-      this.isModifierPressed(event, 'meta') ||
-      this.isModifierPressed(event, 'win')
+    return this.isCtrlModifierPressed(event) || this.isAltModifierPressed(event) || this.isWinModifierPressed(event)
+  }
+
+  private isTrackedRemoteShortcutPrintableKey(keyCode: number): boolean {
+    return this.remoteShortcutPrintableKeysDown.indexOf(keyCode) >= 0
+  }
+
+  private setRemoteShortcutPrintableKeyState(keyCode: number, down: boolean): void {
+    const index = this.remoteShortcutPrintableKeysDown.indexOf(keyCode)
+    if (down) {
+      if (index < 0) {
+        this.remoteShortcutPrintableKeysDown.push(keyCode)
+      }
+      return
+    }
+    if (index >= 0) {
+      this.remoteShortcutPrintableKeysDown.splice(index, 1)
+    }
+  }
+
+  private isFunctionKey(keyCode: number): boolean {
+    return keyCode >= OH_KEYCODE_F1 && keyCode <= OH_KEYCODE_F12
+  }
+
+  private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
+    trackedShortcut: boolean, fromInputBridge: boolean): void {
+    if (!shortcut && !trackedShortcut && !this.isFunctionKey(event.keyCode)) {
+      return
+    }
+    this.logInputEvent('key',
+      `code=${event.keyCode} type=${event.type} scancode=${scancode} printable=${printable} ` +
+      `shortcut=${shortcut} tracked=${trackedShortcut} bridge=${fromInputBridge} ` +
+      `ctrl=${this.isCtrlModifierPressed(event)} alt=${this.isAltModifierPressed(event)} win=${this.isWinModifierPressed(event)}`,
+      true)
   }
 
   private getEventUnicode(event: KeyEvent): number {
@@ -1086,13 +1237,22 @@ struct Index {
     const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
     const down = event.type === KeyType.Down
     const printable = this.isPrintableArkKeyCode(event.keyCode)
-    const shortcut = this.hasRemoteShortcutModifier(event)
+    let shortcut = this.hasRemoteShortcutModifier(event)
+    const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
+    if (!down && trackedShortcut) {
+      shortcut = true
+    }
+    this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, fromInputBridge)
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
       return true
     }
 
     if (scancode > 0 && (!printable || shortcut)) {
-      return this.sendMappedKeyEvent(scancode, down)
+      const sent = this.sendMappedKeyEvent(scancode, down)
+      if (sent && printable) {
+        this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
+      }
+      return sent
     }
 
     if (!down) {
@@ -1133,19 +1293,45 @@ struct Index {
     return flags
   }
 
+  private getPrimaryPressedMouseButtonFlag(flags: number): number {
+    if ((flags & PTR_FLAGS_BUTTON1) !== 0) {
+      return PTR_FLAGS_BUTTON1
+    }
+    if ((flags & PTR_FLAGS_BUTTON2) !== 0) {
+      return PTR_FLAGS_BUTTON2
+    }
+    if ((flags & PTR_FLAGS_BUTTON3) !== 0) {
+      return PTR_FLAGS_BUTTON3
+    }
+    return 0
+  }
+
+  private isSyntheticMouseAfterTouch(): boolean {
+    return Date.now() - this.lastTouchEventAtMs < SYNTHETIC_MOUSE_SUPPRESS_MS
+  }
+
   private handleSurfaceMouse(event: MouseEvent): void {
+    const rawButtonFlag = this.mouseButtonToPointerFlag(event.button)
+    const pressedFlags = this.getPressedMouseButtonFlags(event)
+    const fallbackButtonFlag = this.getPrimaryPressedMouseButtonFlag(pressedFlags)
+    const buttonFlag = rawButtonFlag !== 0 ? rawButtonFlag : fallbackButtonFlag
+    this.logInputEvent('mouse',
+      `action=${event.action} button=${event.button} rawFlag=${this.formatPointerFlags(rawButtonFlag)} ` +
+      `pressed=${this.formatPointerFlags(pressedFlags)} x=${this.formatNumber(event.x)} y=${this.formatNumber(event.y)}`)
+
     if (!this.isConnected()) {
       if (this.pointerMappingFailureShouldLog('')) {
         this.appendLog('Mouse input skipped: no active FreeRDP session')
       }
       return
     }
-    if (Date.now() - this.lastTouchEventAtMs < 350) {
+    if ((event.action === MouseAction.Press || event.action === MouseAction.Release) &&
+      this.isSyntheticMouseAfterTouch()) {
+      this.logInputEvent('mouse.synthetic', `suppressed action=${event.action}`, true)
       return
     }
     this.lastTouchX = event.x
     this.lastTouchY = event.y
-    const buttonFlag = this.mouseButtonToPointerFlag(event.button)
     if (event.action === MouseAction.Press) {
       this.focusRemoteInputBridge()
       this.logPointerDiagnostic('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
@@ -1156,19 +1342,19 @@ struct Index {
       }
       this.mouseButtonFlags |= buttonFlag
       this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, false, 'mouse.press.move', true)
-      this.sendPointer(PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down', true)
+      this.sendPointer(buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down', true)
       return
     }
     if (event.action === MouseAction.Release) {
       const releaseFlag = buttonFlag !== 0 ? buttonFlag : this.mouseButtonFlags
       if (releaseFlag !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE | releaseFlag, event.x, event.y, true, 'mouse.release.up', true)
+        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.release.move', true)
+        this.sendPointer(releaseFlag, event.x, event.y, true, 'mouse.release.up', true)
         this.mouseButtonFlags &= ~releaseFlag
       }
       return
     }
     if (event.action === MouseAction.Move || event.action === MouseAction.Hover) {
-      const pressedFlags = this.getPressedMouseButtonFlags(event)
       if (pressedFlags !== 0) {
         this.sendPointer(PTR_FLAGS_MOVE | pressedFlags | PTR_FLAGS_DOWN, event.x, event.y, true, 'mouse.drag.move')
       } else {
@@ -1178,25 +1364,35 @@ struct Index {
     }
     if (event.action === MouseAction.CANCEL) {
       if (this.mouseButtonFlags !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE | this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release', true)
+        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.cancel.move', true)
+        this.sendPointer(this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release', true)
       }
       this.mouseButtonFlags = 0
     }
   }
 
   private handleSurfaceAxis(event: AxisEvent): void {
+    const deltaY = event.getVerticalAxisValue()
+    const deltaX = event.getHorizontalAxisValue()
+    if (this.shouldSkipDuplicateAxisEvent(event, deltaX, deltaY)) {
+      return
+    }
+    const axisX = this.isPointInRemoteViewport(event.x, event.y) ? event.x : this.lastTouchX
+    const axisY = this.isPointInRemoteViewport(event.x, event.y) ? event.y : this.lastTouchY
+    this.logInputEvent('axis',
+      `action=${event.action} dx=${this.formatNumber(deltaX)} dy=${this.formatNumber(deltaY)} ` +
+      `x=${this.formatNumber(event.x)} y=${this.formatNumber(event.y)} target=${this.formatNumber(axisX)},${this.formatNumber(axisY)}`)
+
     if (!this.isConnected() || event.action !== AxisAction.UPDATE) {
       return
     }
 
-    const deltaY = event.getVerticalAxisValue()
-    const deltaX = event.getHorizontalAxisValue()
     if (Math.abs(deltaY) >= Math.abs(deltaX) && Math.abs(deltaY) > 0) {
-      this.sendWheel(deltaY, event.x, event.y)
+      this.sendWheel(deltaY, axisX, axisY)
       return
     }
     if (Math.abs(deltaX) > 0) {
-      this.sendHorizontalWheel(deltaX, event.x, event.y)
+      this.sendHorizontalWheel(deltaX, axisX, axisY)
     }
   }
 
@@ -1241,10 +1437,8 @@ struct Index {
     this.cancelLongPressTimer()
     this.pendingTouchActive = false
     this.pointerDown = true
-    this.sendPointer(PTR_FLAGS_MOVE, this.pendingTouchStartX, this.pendingTouchStartY, false, 'touch.drag.start.move',
-      true)
-    this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, this.pendingTouchStartX,
-      this.pendingTouchStartY, false, 'touch.drag.start.down', true)
+    this.logInputEvent('touch.drag', `start ${this.formatNumber(this.pendingTouchStartX)},${this.formatNumber(this.pendingTouchStartY)} -> ${this.formatNumber(x)},${this.formatNumber(y)}`, true)
+    this.sendLeftButtonDown(this.pendingTouchStartX, this.pendingTouchStartY, 'touch.drag.start')
     this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true, 'touch.drag.move')
   }
 
@@ -1292,12 +1486,18 @@ struct Index {
 
     if (this.pointerDown) {
       this.pointerDown = false
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, x, y, true, 'touch.drag.release', true)
+      this.sendLeftButtonUp(x, y, 'touch.drag.release')
     }
   }
 
   private handleSurfaceTouch(event: TouchEvent): void {
     this.lastTouchEventAtMs = Date.now()
+    const touchCount = event.touches.length
+    const firstX = touchCount > 0 ? event.touches[0].x : this.lastTouchX
+    const firstY = touchCount > 0 ? event.touches[0].y : this.lastTouchY
+    this.logInputEvent('touch',
+      `type=${event.type} count=${touchCount} x=${this.formatNumber(firstX)} y=${this.formatNumber(firstY)} ` +
+      `pending=${this.pendingTouchActive} down=${this.pointerDown}`)
     if (this.touchGestureSuppressed && event.touches.length < 2) {
       if (event.type === TouchType.Up || event.type === TouchType.Cancel || event.touches.length === 0) {
         this.touchGestureSuppressed = false
@@ -1374,8 +1574,7 @@ struct Index {
 
     if (this.pointerDown) {
       this.pointerDown = false
-      this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1, firstTouch.x, firstTouch.y, true,
-        'touch.scroll.releaseDrag', true)
+      this.sendLeftButtonUp(firstTouch.x, firstTouch.y, 'touch.scroll.releaseDrag')
     }
 
     if (event.type === TouchType.Down || !this.twoFingerScrollActive) {
@@ -1383,6 +1582,8 @@ struct Index {
       this.touchGestureSuppressed = true
       this.twoFingerLastX = centerX
       this.twoFingerLastY = centerY
+      this.logInputEvent('touch.scroll',
+        `start center=${this.formatNumber(centerX)},${this.formatNumber(centerY)}`, true)
       return true
     }
 
@@ -1390,6 +1591,9 @@ struct Index {
       const deltaX = centerX - this.twoFingerLastX
       const deltaY = centerY - this.twoFingerLastY
       if (Math.abs(deltaY) >= TOUCH_WHEEL_THRESHOLD || Math.abs(deltaX) >= TOUCH_WHEEL_THRESHOLD) {
+        this.logInputEvent('touch.scroll',
+          `dx=${this.formatNumber(deltaX)} dy=${this.formatNumber(deltaY)} ` +
+          `center=${this.formatNumber(centerX)},${this.formatNumber(centerY)}`, true)
         if (Math.abs(deltaY) >= Math.abs(deltaX)) {
           this.sendWheel(deltaY, centerX, centerY)
         } else {
@@ -1407,6 +1611,23 @@ struct Index {
     }
 
     return true
+  }
+
+  private shouldSkipDuplicateAxisEvent(event: AxisEvent, deltaX: number, deltaY: number): boolean {
+    const now = Date.now()
+    const duplicate = now - this.lastAxisEventAtMs <= AXIS_EVENT_DEDUP_MS &&
+      this.lastAxisAction === event.action &&
+      Math.abs(this.lastAxisX - event.x) < 0.01 &&
+      Math.abs(this.lastAxisY - event.y) < 0.01 &&
+      Math.abs(this.lastAxisDeltaX - deltaX) < 0.01 &&
+      Math.abs(this.lastAxisDeltaY - deltaY) < 0.01
+    this.lastAxisEventAtMs = now
+    this.lastAxisAction = event.action
+    this.lastAxisX = event.x
+    this.lastAxisY = event.y
+    this.lastAxisDeltaX = deltaX
+    this.lastAxisDeltaY = deltaY
+    return duplicate
   }
 
   private toConnectionState(value: string): ConnectionState {
@@ -1634,6 +1855,9 @@ struct Index {
               this.probeNative()
             })
           })
+          .onAxisEvent((event: AxisEvent) => {
+            this.handleSurfaceAxis(event)
+          })
 
         TextInput({ text: this.remoteTextInput, controller: this.remoteInputController })
           .id(REMOTE_INPUT_BRIDGE_ID)
@@ -1649,11 +1873,18 @@ struct Index {
           .onChange((value: string) => {
             this.handleRemoteTextInputChange(value)
           })
+          .onPaste((content: string, event: PasteEvent) => {
+            event.preventDefault?.()
+            this.logInputEvent('paste', `hidden TextInput default paste suppressed len=${content.length}`, true)
+          })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
             this.sendKeyStroke(RDP_SCANCODE_ENTER)
           })
           .onKeyEvent((event: KeyEvent): boolean => {
             return this.handleInputBridgeKeyEvent(event)
+          })
+          .onAxisEvent((event: AxisEvent) => {
+            this.handleSurfaceAxis(event)
           })
 
         if (!this.isConnected()) {

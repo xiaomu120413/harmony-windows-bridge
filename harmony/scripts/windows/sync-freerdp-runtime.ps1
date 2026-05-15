@@ -29,7 +29,11 @@ if (-not $targetResolved.StartsWith($repoResolved, [System.StringComparison]::Or
 }
 
 Get-ChildItem -LiteralPath $target -Force | Remove-Item -Recurse -Force
-Copy-Item -Path (Join-Path $runtimeSource "*") -Destination $target -Recurse -Force
+Get-ChildItem -LiteralPath $runtimeSource -Force |
+  Where-Object { $_.Name -notin @("libohaudio.so", "libOpenSLES.so", "libhilog_ndk.z.so") } |
+  ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force
+  }
 Copy-Item -LiteralPath $probeSource -Destination $target -Force
 
 $requiredNames = @(
@@ -37,7 +41,6 @@ $requiredNames = @(
   "libcrypto.so.3",
   "libfreerdp-client3.so",
   "libfreerdp3.so",
-  "libohaudio.so",
   "libssl.so.3",
   "libwinpr3.so",
   "libz.so.1",

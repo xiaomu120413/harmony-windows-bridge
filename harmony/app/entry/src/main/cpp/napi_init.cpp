@@ -938,6 +938,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, true, "DeviceRedirection", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, false, "AudioPlayback", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RemoteConsoleAudio, false, "RemoteConsoleAudio", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectDrives, false, "RedirectDrives", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectPrinters, false, "RedirectPrinters", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectSmartCards, false, "RedirectSmartCards", error)) {
@@ -998,7 +999,7 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         return false;
     }
 
-    log("FreeRDP audio playback requested with rdpsnd sys:ohos PCM 44.1kHz stereo latency 100ms");
+    log("FreeRDP audio playback requested with static and dynamic rdpsnd sys:ohos PCM 44.1kHz stereo latency 100ms");
     log("FreeRDP AudioPlayback enabled so the logon Info Packet does not request no-audio playback");
     log("FreeRDP microphone capture remains disabled");
     return true;
@@ -1175,12 +1176,14 @@ public:
             return false;
         }
         subscribedDisconnected_ = true;
+        Log("cliprdr bridge subscribed to FreeRDP channel events");
 
         pasteboard_ = OH_Pasteboard_Create();
         if (pasteboard_ == nullptr) {
             Log("HarmonyOS Pasteboard create failed; cliprdr will advertise no local text");
             return true;
         }
+        Log("HarmonyOS Pasteboard created for cliprdr text bridge");
 
         observer_ = OH_PasteboardObserver_Create();
         if (observer_ == nullptr) {
@@ -1316,6 +1319,7 @@ private:
         if (rc != CHANNEL_RC_OK) {
             return rc;
         }
+        bridge->Log("cliprdr monitor ready");
         return bridge->SendLocalFormatList("monitor ready");
     }
 
@@ -1458,6 +1462,28 @@ private:
         return cliprdr->ClientCapabilities(cliprdr, &capabilities);
     }
 
+    UINT SendClientFormatListResponse(bool accepted)
+    {
+        CliprdrClientContext* cliprdr = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            cliprdr = cliprdr_;
+        }
+        if (cliprdr == nullptr || cliprdr->ClientFormatListResponse == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+
+        CLIPRDR_FORMAT_LIST_RESPONSE response = {};
+        response.common.msgType = CB_FORMAT_LIST_RESPONSE;
+        response.common.msgFlags = accepted ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
+        response.common.dataLen = 0;
+        const UINT rc = cliprdr->ClientFormatListResponse(cliprdr, &response);
+        if (rc == CHANNEL_RC_OK) {
+            Log(std::string("cliprdr server format list ") + (accepted ? "accepted" : "rejected"));
+        }
+        return rc;
+    }
+
     UINT SendLocalFormatList(const char* reason)
     {
         CliprdrClientContext* cliprdr = nullptr;
@@ -1504,12 +1530,19 @@ private:
                     requested = CF_UNICODETEXT;
                 } else if (requested == 0 && formatList.formats[index].formatId == CF_TEXT) {
                     requested = CF_TEXT;
+                } else if (requested == 0 && formatList.formats[index].formatId == CF_OEMTEXT) {
+                    requested = CF_OEMTEXT;
                 }
             }
             requestedFormatId_ = requested;
         }
 
         Log("cliprdr server format list received: " + std::to_string(formatList.numFormats));
+        UINT rc = SendClientFormatListResponse(true);
+        if (rc != CHANNEL_RC_OK) {
+            Log("cliprdr server format list response failed: " + std::to_string(rc));
+            return rc;
+        }
         if (requested == 0) {
             Log("cliprdr server format list has no supported text format");
             return CHANNEL_RC_OK;
@@ -1527,6 +1560,7 @@ private:
         CLIPRDR_FORMAT_DATA_REQUEST request = {};
         request.common.msgType = CB_FORMAT_DATA_REQUEST;
         request.requestedFormatId = requested;
+        Log("cliprdr remote text request sent: format=" + std::to_string(requested));
         return cliprdr->ClientFormatDataRequest(cliprdr, &request);
     }
 
@@ -1569,7 +1603,8 @@ private:
     UINT HandleServerFormatDataResponse(const CLIPRDR_FORMAT_DATA_RESPONSE& response)
     {
         if ((response.common.msgFlags & CB_RESPONSE_FAIL) != 0 || response.requestedFormatData == nullptr) {
-            Log("cliprdr remote text response failed");
+            Log("cliprdr remote text response failed: flags=" + std::to_string(response.common.msgFlags) +
+                " length=" + std::to_string(response.common.dataLen));
             return CHANNEL_RC_OK;
         }
 
@@ -1582,7 +1617,7 @@ private:
         std::string text;
         if (requested == CF_UNICODETEXT) {
             text = Utf16LeClipboardToUtf8(response.requestedFormatData, response.common.dataLen);
-        } else if (requested == CF_TEXT) {
+        } else if (requested == CF_TEXT || requested == CF_OEMTEXT) {
             const auto* bytes = reinterpret_cast<const char*>(response.requestedFormatData);
             const size_t length = strnlen(bytes, response.common.dataLen);
             text.assign(bytes, length);
@@ -1623,15 +1658,28 @@ private:
             error = "pasteboard unavailable";
             return false;
         }
-        if (!OH_Pasteboard_HasType(pasteboard_, PASTEBOARD_MIMETYPE_TEXT_PLAIN)) {
-            return false;
-        }
 
         int status = ERR_OK;
         OH_UdmfData* data = OH_Pasteboard_GetData(pasteboard_, &status);
         if (status != ERR_OK || data == nullptr) {
             error = "OH_Pasteboard_GetData status=" + std::to_string(status);
             return false;
+        }
+
+        OH_UdsPlainText* primaryPlainText = OH_UdsPlainText_Create();
+        if (primaryPlainText != nullptr) {
+            const int primaryRc = OH_UdmfData_GetPrimaryPlainText(data, primaryPlainText);
+            if (primaryRc == UDMF_E_OK) {
+                const char* content = OH_UdsPlainText_GetContent(primaryPlainText);
+                if (content != nullptr) {
+                    text = content;
+                }
+            }
+            OH_UdsPlainText_Destroy(primaryPlainText);
+            if (!text.empty()) {
+                OH_UdmfData_Destroy(data);
+                return true;
+            }
         }
 
         const int recordCount = OH_UdmfData_GetRecordCount(data);
@@ -1658,7 +1706,11 @@ private:
         }
 
         OH_UdmfData_Destroy(data);
-        return !text.empty();
+        if (text.empty()) {
+            error = "pasteboard has no plain text record";
+            return false;
+        }
+        return true;
     }
 
     bool WriteLocalPlainText(const std::string& text, std::string& error)
@@ -3039,37 +3091,103 @@ private:
         inputDroppedCount_.store(0);
         inputDispatchLogCount_.store(0);
         inputFailureLogCount_.store(0);
+        inputBackpressureLogCount_.store(0);
     }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    bool IsCoalesciblePointerMove(const QueuedInputEvent& event) const
+    const char* InputTypeName(const QueuedInputEvent& event) const
     {
-        return event.type == QueuedInputType::Pointer && event.flags == PTR_FLAGS_MOVE;
+        if (event.type == QueuedInputType::Pointer) {
+            return "pointer";
+        }
+        if (event.type == QueuedInputType::Key) {
+            return "key";
+        }
+        return "unicode";
+    }
+
+    bool IsPointerWheelEvent(const QueuedInputEvent& event) const
+    {
+        return event.type == QueuedInputType::Pointer &&
+            (event.flags & (PTR_FLAGS_WHEEL | PTR_FLAGS_HWHEEL)) != 0;
+    }
+
+    bool IsPointerMotionEvent(const QueuedInputEvent& event) const
+    {
+        return event.type == QueuedInputType::Pointer &&
+            (event.flags & PTR_FLAGS_MOVE) != 0 &&
+            !IsPointerWheelEvent(event);
+    }
+
+    bool HasSamePointerMotionClass(const QueuedInputEvent& lhs, const QueuedInputEvent& rhs) const
+    {
+        constexpr uint16_t pointerStateMask = PTR_FLAGS_BUTTON1 | PTR_FLAGS_BUTTON2 | PTR_FLAGS_BUTTON3 | PTR_FLAGS_DOWN;
+        return (lhs.flags & pointerStateMask) == (rhs.flags & pointerStateMask);
+    }
+
+    bool IsDroppablePointerEvent(const QueuedInputEvent& event) const
+    {
+        return IsPointerMotionEvent(event) || IsPointerWheelEvent(event);
+    }
+
+    bool DropOldestDroppablePointerEventLocked()
+    {
+        for (auto iter = inputQueue_.begin(); iter != inputQueue_.end(); ++iter) {
+            if (IsDroppablePointerEvent(*iter)) {
+                inputQueue_.erase(iter);
+                inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
+                return true;
+            }
+        }
+        return false;
     }
 
     bool EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message)
     {
-        constexpr size_t maxInputQueue = 1024;
-        std::lock_guard<std::mutex> lock(inputMutex_);
+        constexpr size_t maxInputQueue = 4096;
+        bool droppedOldPointer = false;
+        bool droppedNewEvent = false;
 
-        if (IsCoalesciblePointerMove(event) && !inputQueue_.empty() &&
-            IsCoalesciblePointerMove(inputQueue_.back())) {
-            inputQueue_.back() = event;
-            inputQueuedCount_.fetch_add(1);
-            message = okMessage;
-            return true;
+        {
+            std::lock_guard<std::mutex> lock(inputMutex_);
+
+            if (IsPointerMotionEvent(event) && !inputQueue_.empty() &&
+                IsPointerMotionEvent(inputQueue_.back()) &&
+                HasSamePointerMotionClass(event, inputQueue_.back())) {
+                inputQueue_.back() = event;
+                inputQueuedCount_.fetch_add(1);
+                message = okMessage;
+                return true;
+            }
+
+            if (inputQueue_.size() >= maxInputQueue) {
+                const bool mustProtectNewEvent = event.type != QueuedInputType::Pointer || !IsDroppablePointerEvent(event);
+                if (mustProtectNewEvent && DropOldestDroppablePointerEventLocked()) {
+                    inputDroppedCount_.fetch_add(1);
+                    droppedOldPointer = true;
+                }
+            }
+
+            if (inputQueue_.size() >= maxInputQueue) {
+                inputDroppedCount_.fetch_add(1);
+                message = std::string("FreeRDP input queue is full; dropped ") + InputTypeName(event) + " event";
+                droppedNewEvent = true;
+            } else {
+                inputQueue_.push_back(event);
+                inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
+                inputQueuedCount_.fetch_add(1);
+                message = okMessage;
+            }
         }
 
-        if (inputQueue_.size() >= maxInputQueue) {
-            inputDroppedCount_.fetch_add(1);
-            message = "FreeRDP input queue is full";
+        if (droppedOldPointer) {
+            LogInputBackpressure(std::string("FreeRDP input queue protected ") + InputTypeName(event) +
+                " event by dropping pending pointer motion");
+        }
+        if (droppedNewEvent) {
+            LogInputFailure(message);
             return false;
         }
-
-        inputQueue_.push_back(event);
-        inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
-        inputQueuedCount_.fetch_add(1);
-        message = okMessage;
         return true;
     }
 
@@ -3134,6 +3252,14 @@ private:
     void LogInputFailure(const std::string& message)
     {
         const uint32_t logIndex = inputFailureLogCount_.fetch_add(1);
+        if (logIndex < 5 || logIndex % 100 == 0) {
+            EmitLog(message);
+        }
+    }
+
+    void LogInputBackpressure(const std::string& message)
+    {
+        const uint32_t logIndex = inputBackpressureLogCount_.fetch_add(1);
         if (logIndex < 5 || logIndex % 100 == 0) {
             EmitLog(message);
         }
@@ -3279,6 +3405,7 @@ private:
     std::atomic_uint32_t inputDroppedCount_{0};
     std::atomic_uint32_t inputDispatchLogCount_{0};
     std::atomic_uint32_t inputFailureLogCount_{0};
+    std::atomic_uint32_t inputBackpressureLogCount_{0};
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::mutex activeMutex_;
     FreerdpRuntimeApi* activeApi_ = nullptr;

@@ -396,6 +396,31 @@ WindowStage
 - 中文输入和普通文本优先走 Unicode event；Esc、Tab、方向键、Ctrl/Alt/Win 组合键走 RDP scancode。
 - 触摸屏首版按鼠标模型映射，不要一开始启用 `rdpei` 触摸通道；`rdpei` 后续适合多点触控和更完整手势。
 
+#### 触控板适配方案
+
+当前 `Index.ets` 已有三条输入入口：`onMouse` 处理移动/悬停/按键，`onAxisEvent` 处理滚轮轴，`onTouch` 把触摸屏手势映射成鼠标模型。触控板不应该简单复用触摸屏逻辑，因为触控板的一指滑动语义是“移动指针”，不是“按住左键拖动”。因此第一版应把触控板归入鼠标类输入，走 FreeRDP core mouse PDU，不启用 `rdpei`。
+
+建议适配分三步：
+
+1. **先加输入诊断日志**：在 ArkTS 侧临时记录 `MouseEvent`、`AxisEvent`、`TouchEvent` 的 `action/type/button/pressedButtons/x/y/delta/source/deviceId` 等可见字段，确认这台 HarmonyOS 设备的触控板到底上报成 mouse、axis 还是 touch。日志用已有 App log 和 HiLog/WLog 标记都可以，验证后保留低频诊断开关，避免刷屏。
+2. **基础触控板按鼠标处理**：一指移动发送 `PTR_FLAGS_MOVE`；物理左键或轻触点击发送 left down/up；双指点击或系统右键事件发送 right down/up；按住移动发送 left drag；双指滚动走 `PTR_FLAGS_WHEEL/PTR_FLAGS_HWHEEL`。这条路径只需要改 ArkTS 事件映射，native 队列和 `freerdp_input_send_mouse_event` 可以继续复用。
+3. **滚轮和手势调优**：不要每个 `AxisAction.UPDATE` 都固定发一个 120 wheel delta。应增加水平/垂直滚动累计器，把连续触控板 delta 按阈值转换成离散 RDP wheel step，保留余量并校正方向；同时对高频 move 做节流或合并，避免 UI 线程和 native input queue 被触控板移动刷满。
+
+需要重点处理的边界：
+
+- 若触控板事件被系统同时转成 `TouchEvent` 和 `MouseEvent`，当前 `lastTouchEventAtMs < 350` 的防重复逻辑可能误丢触控板 mouse 事件，需要用事件来源区分屏幕触摸和触控板。
+- `onTouch` 的长按右键、双指滚动、单指拖动适合触摸屏，不适合触控板一指移动；需要在来源无法区分时先以实机日志为准。
+- 坐标仍走已有 viewport 映射，触控板点击落在 letterbox/pillarbox 外时应继续丢弃。
+- 失焦、取消、断开连接时要释放 `mouseButtonFlags`，避免远端卡住左键或右键。
+
+验收建议：
+
+- 一指移动远端鼠标光标平滑移动，无意外左键拖动。
+- 单击、双击、右键、按住拖动可用。
+- 双指上下/左右滚动方向正确，速度可控，没有明显跳动。
+- 窗口 resize 后触控板点击位置仍和远端坐标一致。
+- 连续滑动 30 秒 input queue 不增长、不丢事件、不造成渲染明显卡顿。
+
 #### 音频适配细节
 
 FreeRDP 音频不是“系统自动播放”，需要启用并接平台后端：

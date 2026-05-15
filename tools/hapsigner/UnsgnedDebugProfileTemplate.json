@@ -15,10 +15,14 @@
     "app-feature": "hos_normal_app"
   },
   "acls": {
-    "allowed-acls": []
+    "allowed-acls": [
+      "ohos.permission.READ_PASTEBOARD"
+    ]
   },
   "permissions": {
-    "restricted-permissions": []
+    "restricted-permissions": [
+      "ohos.permission.READ_PASTEBOARD"
+    ]
   },
   "debug-info": {
     "device-ids": [],

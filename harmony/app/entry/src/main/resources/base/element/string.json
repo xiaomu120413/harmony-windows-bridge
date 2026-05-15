@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "FreeRDP"
+    },
+    {
+      "name": "read_pasteboard_reason",
+      "value": "Read the local clipboard so FreeRDP can redirect text paste operations to the remote desktop."
     }
   ]
 }

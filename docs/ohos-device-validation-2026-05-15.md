@@ -36,6 +36,30 @@ WSL build manifest still reports:
 - `with_cups=OFF`
 - `with_fuse=OFF`
 
+## HiLog / WLog Validation
+
+Result: passed on device `3QC0124C11000711` after rebuilding the OHOS FreeRDP runtime, syncing `entry/libs/arm64-v8a`, rebuilding the signed HAP, reinstalling it, force-stopping `com.huawei.freerdp`, and starting `EntryAbility`.
+
+MCP log query:
+
+- `mode=markers`
+- `tag=FreeRDP`
+- `marker_keywords=["FREERDP_HILOG_BRIDGE_READY"]`
+- `seconds=90`
+
+Matched HiLog lines:
+
+```text
+05-15 12:02:39.457 11803 11803 I A0F3D0/com.huawei.freerdp/FreeRDP: FREERDP_HILOG_BRIDGE_READY WinPR WLog initialized
+05-15 12:02:39.457 11803 11803 I A0F3D0/com.huawei.freerdp/FreeRDP: [com.freerdp.ohos.probe] [12:02:39:457] [11803:00002e1b] [INFO][com.freerdp.ohos.probe] - [freerdp_ohos_probe]: FREERDP_HILOG_BRIDGE_READY WinPR WLog probe reached
+```
+
+Impact:
+
+- `WinPR/WLog` root initialization can write to HarmonyOS HiLog through `OH_LOG_Print`.
+- A normal `WLog_INFO` emitted from the probe reaches the same HiLog tag through the WLog console appender path.
+- For info-level business markers, use MCP `logs_query` with `mode=markers`; default error mode may not return these lines.
+
 ## Validation Result
 
 ### TOFU Certificate Policy
