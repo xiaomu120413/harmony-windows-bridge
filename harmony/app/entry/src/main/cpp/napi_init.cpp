@@ -916,7 +916,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL,
             "ClipboardFeatureMask", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, false, "DeviceRedirection", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, false, "AudioPlayback", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, true, "AudioPlayback", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectDrives, false, "RedirectDrives", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectPrinters, false, "RedirectPrinters", error) ||
@@ -924,7 +924,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         return false;
     }
 
-    log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection enabled");
+    log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection and audio playback enabled");
     log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     log("FreeRDP redirect devices compiled; drive/printer/smartcard runtime toggles remain disabled by default");
     return true;
