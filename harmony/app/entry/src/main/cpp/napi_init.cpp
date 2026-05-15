@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <functional>
 #include <iomanip>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <netdb.h>
@@ -43,7 +44,9 @@
 #include <freerdp/client.h>
 #include <freerdp/client/channels.h>
 #include <freerdp/client/cliprdr.h>
+#include <freerdp/client/disp.h>
 #include <freerdp/channels/cliprdr.h>
+#include <freerdp/channels/disp.h>
 #include <freerdp/codec/color.h>
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
@@ -148,7 +151,9 @@ std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
 
 void EmitNativeLog(const std::string& line);
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
-bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message);
+bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender = false);
+void RequestSurfaceRepaint(const std::string& reason);
+void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason);
 void StartRenderPipeline();
 void StopRenderPipeline();
 std::string BuildRenderStatsLog();
@@ -1146,8 +1151,9 @@ bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
 bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const FreerdpLogFn& log, std::string& error)
 {
-    if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, false, "SupportDynamicChannels", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, false, "SupportDisplayControl", error) ||
+    if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_DynamicResolutionUpdate, true, "DynamicResolutionUpdate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, false, "SupportGraphicsPipeline", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxH264, false, "GfxH264", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false, "GfxAVC444", error) ||
@@ -1167,9 +1173,28 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     }
 
     log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection enabled");
+    log("FreeRDP display-control dynamic resolution enabled");
     log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     log("FreeRDP audio playback is requested through explicit rdpsnd sys:ohos channels");
     log("FreeRDP rdpdr base channel enabled; drive/printer/smartcard runtime toggles remain disabled by default");
+    return true;
+}
+
+bool ConfigureDisplayControlChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (api.clientAddDynamicChannel == nullptr) {
+        error = "FreeRDP display-control channel helper is not loaded";
+        return false;
+    }
+
+    const char* params[] = {DISP_CHANNEL_NAME};
+    if (!api.clientAddDynamicChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set disp dynamic channel failed";
+        return false;
+    }
+
+    log("FreeRDP display-control requested: dynamic disp channel");
     return true;
 }
 
@@ -2157,6 +2182,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
 
+    if (!ConfigureDisplayControlChannel(api, settings, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
     if (!clipboardBridge.Initialize(instance->context, api, log, error)) {
         result.message = error;
         result.failed = true;
@@ -2486,6 +2518,35 @@ public:
             std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height));
     }
 
+    bool OnSurfaceLayout(uint32_t width, uint32_t height, std::string& message)
+    {
+        if (width == 0 || height == 0) {
+            message = "XComponent layout size is invalid";
+            return false;
+        }
+
+        SurfaceSnapshot snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (width_ == width && height_ == height) {
+                message = "XComponent layout unchanged: " + std::to_string(width) + "x" +
+                    std::to_string(height);
+                return false;
+            }
+
+            width_ = width;
+            height_ = height;
+            ClearNativeWindowConfigLocked();
+            ClearViewportLocked();
+            ++changedCount_;
+            snapshot = SnapshotLocked();
+        }
+
+        message = "XComponent layout changed: " + snapshot.id + " " +
+            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height);
+        return true;
+    }
+
     void OnSurfaceDestroyed(OH_NativeXComponent* component, void*)
     {
         SurfaceSnapshot snapshot;
@@ -2557,8 +2618,15 @@ private:
         }
 
         auto* nativeWindow = static_cast<OHNativeWindow*>(window_);
-        const int32_t targetWidth = static_cast<int32_t>(frame.width);
-        const int32_t targetHeight = static_cast<int32_t>(frame.height);
+        constexpr uint32_t maxTargetSize = static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
+        if (width_ > maxTargetSize || height_ > maxTargetSize) {
+            result.message = "NativeWindow target geometry exceeds int32 range";
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
+        }
+        const int32_t targetWidth = static_cast<int32_t>(width_);
+        const int32_t targetHeight = static_cast<int32_t>(height_);
 
         if (!ConfigureNativeWindowLocked(nativeWindow, targetWidth, targetHeight, result)) {
             return result;
@@ -2691,16 +2759,17 @@ private:
         }
 
         ++paintCount_;
-        viewportX_ = 0;
-        viewportY_ = 0;
-        viewportWidth_ = width_;
-        viewportHeight_ = height_;
+        viewportX_ = bufferViewport.x;
+        viewportY_ = bufferViewport.y;
+        viewportWidth_ = bufferViewport.width;
+        viewportHeight_ = bufferViewport.height;
         result.ok = true;
         const std::string frameLabel = frame.label.empty() ? "frame" : frame.label;
         result.message = "NativeWindow RGBA frame rendered: " + frameLabel + " " +
             std::to_string(bufferViewport.width) + "x" + std::to_string(bufferViewport.height) +
             " bufferViewport=" + std::to_string(bufferViewport.x) + "," +
-            std::to_string(bufferViewport.y) + " displayViewport=0,0 " +
+            std::to_string(bufferViewport.y) + " displayViewport=" +
+            std::to_string(viewportX_) + "," + std::to_string(viewportY_) + " " +
             std::to_string(viewportWidth_) + "x" + std::to_string(viewportHeight_);
         result.logs.push_back(result.message);
         result.logs.push_back("RGBA source=" + std::to_string(frame.width) + "x" +
@@ -3047,17 +3116,11 @@ public:
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!running_ && !worker_.joinable()) {
-                pending_.pixels.clear();
                 hasPending_ = false;
-                latestFrame_.pixels.clear();
-                hasLatestFrame_ = false;
                 return;
             }
             running_ = false;
-            pending_.pixels.clear();
             hasPending_ = false;
-            latestFrame_.pixels.clear();
-            hasLatestFrame_ = false;
             worker = std::move(worker_);
         }
 
@@ -3067,7 +3130,7 @@ public:
         }
     }
 
-    bool Enqueue(const RgbaFrame& frame, std::string& message)
+    bool Enqueue(const RgbaFrame& frame, std::string& message, bool forceRender)
     {
         const int32_t sourceStride = frame.strideBytes > 0 ? frame.strideBytes :
             static_cast<int32_t>(frame.width * 4U);
@@ -3084,6 +3147,7 @@ public:
         next.label = frame.label.empty() ? "freerdp gdi queued" : frame.label + " queued";
         next.data = frame.data;
         next.dirty = frame.dirty;
+        next.forceRender = forceRender;
         const uint32_t copyUs = 0;
 
         {
@@ -3093,11 +3157,9 @@ public:
                 return false;
             }
             if (hasPending_) {
-                next.forceRender = pending_.forceRender;
+                next.forceRender = next.forceRender || pending_.forceRender;
                 ++replacedCount_;
             }
-            latestFrame_ = next;
-            hasLatestFrame_ = true;
             pending_ = std::move(next);
             hasPending_ = true;
             lastCopyUs_ = copyUs;
@@ -3108,41 +3170,6 @@ public:
                 " latest-gdi " + DescribeDirtyStats(frame.dirty);
         }
 
-        condition_.notify_one();
-        return true;
-    }
-
-    bool RepaintLatest(const std::string& reason, std::string& message)
-    {
-        uint32_t width = 0;
-        uint32_t height = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!running_) {
-                message = "render thread stopped";
-                return false;
-            }
-            if (!hasLatestFrame_ ||
-                (latestFrame_.data == nullptr && latestFrame_.pixels.empty())) {
-                message = "no frame available for surface repaint";
-                return false;
-            }
-            if (hasPending_) {
-                ++replacedCount_;
-            }
-
-            PendingFrame repaint = latestFrame_;
-            repaint.forceRender = true;
-            repaint.label = reason.empty() ? "surface repaint" : reason;
-            width = repaint.width;
-            height = repaint.height;
-            pending_ = std::move(repaint);
-            hasPending_ = true;
-            lastCopyUs_ = 0;
-            ++queuedCount_;
-        }
-
-        message = std::to_string(width) + "x" + std::to_string(height) + " surface-repaint";
         condition_.notify_one();
         return true;
     }
@@ -3177,7 +3204,6 @@ public:
 
 private:
     struct PendingFrame {
-        std::vector<uint8_t> pixels;
         const uint8_t* data = nullptr;
         uint32_t width = 0;
         uint32_t height = 0;
@@ -3191,10 +3217,7 @@ private:
 
     void ResetStatsLocked()
     {
-        pending_.pixels.clear();
         hasPending_ = false;
-        latestFrame_.pixels.clear();
-        hasLatestFrame_ = false;
         queuedCount_ = 0;
         renderedCount_ = 0;
         failedCount_ = 0;
@@ -3243,20 +3266,20 @@ private:
                     }
 
                     frame = std::move(pending_);
-                    pending_.pixels.clear();
                     hasPending_ = false;
                     break;
                 }
             }
 
             RgbaFrame view = {
-                frame.data != nullptr ? frame.data : frame.pixels.data(),
+                frame.data,
                 frame.width,
                 frame.height,
                 frame.strideBytes,
                 frame.label,
                 frame.dirty,
             };
+            const bool forcedRender = frame.forceRender;
             const auto renderStart = std::chrono::steady_clock::now();
             SurfacePaintResult paint = RenderSurfaceRgbaFrame(view);
             const auto renderEnd = std::chrono::steady_clock::now();
@@ -3282,9 +3305,9 @@ private:
             }
 
             if (paint.ok) {
-                if (rendered <= 3 || rendered % 60 == 0) {
+                if (forcedRender || rendered <= 3 || rendered % 60 == 0) {
                     EmitNativeLog("Render thread painted frame " + std::to_string(rendered) +
-                        " render=" + std::to_string(renderUs / 1000.0) + "ms");
+                        " render=" + std::to_string(renderUs / 1000.0) + "ms " + paint.message);
                 }
             } else if (failed <= 3 || failed % 120 == 0) {
                 EmitNativeLog("Render thread paint failed: " + paint.message);
@@ -3296,10 +3319,8 @@ private:
     std::condition_variable condition_;
     std::thread worker_;
     PendingFrame pending_;
-    PendingFrame latestFrame_;
     bool running_ = false;
     bool hasPending_ = false;
-    bool hasLatestFrame_ = false;
     uint64_t queuedCount_ = 0;
     uint64_t renderedCount_ = 0;
     uint64_t failedCount_ = 0;
@@ -3318,22 +3339,9 @@ private:
 
 LatestFrameRenderer g_frameRenderer;
 
-bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message)
+bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender)
 {
-    return g_frameRenderer.Enqueue(frame, message);
-}
-
-void RequestSurfaceRepaint(const std::string& reason)
-{
-    static std::atomic_uint32_t repaintLogCount{0};
-    std::string message;
-    if (g_frameRenderer.RepaintLatest(reason, message)) {
-        const uint32_t count = ++repaintLogCount;
-        if (count <= 3 || count % 30 == 0) {
-            EmitNativeLog("Surface repaint queued after " + reason + ": " + message +
-                " count=" + std::to_string(count));
-        }
-    }
+    return g_frameRenderer.Enqueue(frame, message, forceRender);
 }
 
 void StartRenderPipeline()
@@ -3387,6 +3395,8 @@ void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceChanged(component, window);
+    const SurfaceSnapshot snapshot = g_surface.Snapshot();
+    RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface changed");
     RequestSurfaceRepaint("surface changed");
 }
 
@@ -3572,6 +3582,113 @@ public:
     uint32_t InputDroppedCount() const
     {
         return inputDroppedCount_.load();
+    }
+
+    bool RequestCurrentFrameRender(const std::string& reason, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected_.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeContext_ == nullptr || activeContext_->gdi == nullptr) {
+            message = "FreeRDP GDI context is not ready";
+            return false;
+        }
+
+        rdpGdi* gdi = activeContext_->gdi;
+        if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
+            gdi->height <= 0 || gdi->stride == 0) {
+            message = "FreeRDP GDI primary buffer is not ready";
+            return false;
+        }
+
+        RgbaFrame frame = {
+            gdi->primary_buffer,
+            static_cast<uint32_t>(gdi->width),
+            static_cast<uint32_t>(gdi->height),
+            static_cast<int32_t>(gdi->stride),
+            reason.empty() ? "surface repaint" : reason,
+            DirtyFrameStats{},
+        };
+
+        std::string queueMessage;
+        if (!QueueSurfaceRgbaFrame(frame, queueMessage, true)) {
+            message = queueMessage;
+            return false;
+        }
+
+        message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+            " current-gdi";
+        return true;
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
+    bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
+        std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected_.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+
+        constexpr uint32_t minDimension = 200;
+        constexpr uint32_t maxDimension = 8192;
+        width = std::clamp(width, minDimension, maxDimension);
+        height = std::clamp(height, minDimension, maxDimension);
+        width -= width % 2U;
+        if (width < minDimension) {
+            width = minDimension;
+        }
+
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
+            message = "display-control channel is not ready";
+            return false;
+        }
+        if (!displayControlCapsReady_) {
+            message = "display-control caps are not ready";
+            return false;
+        }
+        if (lastDynamicResizeWidth_ == width && lastDynamicResizeHeight_ == height) {
+            message = "display-control resize unchanged: " + std::to_string(width) + "x" +
+                std::to_string(height);
+            return true;
+        }
+
+        DISPLAY_CONTROL_MONITOR_LAYOUT layout = {};
+        layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
+        layout.Left = 0;
+        layout.Top = 0;
+        layout.Width = width;
+        layout.Height = height;
+        layout.PhysicalWidth = width;
+        layout.PhysicalHeight = height;
+        layout.Orientation = ORIENTATION_LANDSCAPE;
+        layout.DesktopScaleFactor = 100;
+        layout.DeviceScaleFactor = 100;
+
+        const UINT rc = activeDisp_->SendMonitorLayout(activeDisp_, 1, &layout);
+        if (rc != CHANNEL_RC_OK) {
+            message = "display-control resize failed: " + std::to_string(rc);
+            return false;
+        }
+
+        lastDynamicResizeWidth_ = width;
+        lastDynamicResizeHeight_ = height;
+        message = "display-control resize requested after " + reason + ": " +
+            std::to_string(width) + "x" + std::to_string(height);
+        return true;
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
     }
 
 private:
@@ -3795,22 +3912,49 @@ private:
 
     void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
     {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        activeApi_ = api;
-        activeInstance_ = instance;
-        activeContext_ = context;
+        {
+            std::lock_guard<std::mutex> lock(activeMutex_);
+            activeApi_ = api;
+            activeInstance_ = instance;
+            activeContext_ = context;
+            activeDisp_ = nullptr;
+            displayControlCapsReady_ = false;
+            lastDynamicResizeWidth_ = 0;
+            lastDynamicResizeHeight_ = 0;
+        }
+
+        RegisterSession(context, this);
+        if (api != nullptr && api->pubSubSubscribe != nullptr && context != nullptr &&
+            context->pubSub != nullptr) {
+            (void)api->pubSubSubscribe(context->pubSub, "ChannelConnected", OnChannelConnected);
+            (void)api->pubSubSubscribe(context->pubSub, "ChannelDisconnected", OnChannelDisconnected);
+        }
     }
 
     void ClearActiveNative(freerdp* instance)
     {
+        rdpContext* oldContext = nullptr;
+        FreerdpRuntimeApi* oldApi = nullptr;
         std::lock_guard<std::mutex> lock(activeMutex_);
         if (activeInstance_ != instance) {
             return;
         }
 
+        oldContext = activeContext_;
+        oldApi = activeApi_;
+        if (oldApi != nullptr && oldApi->pubSubUnsubscribe != nullptr && oldContext != nullptr &&
+            oldContext->pubSub != nullptr) {
+            (void)oldApi->pubSubUnsubscribe(oldContext->pubSub, "ChannelConnected", OnChannelConnected);
+            (void)oldApi->pubSubUnsubscribe(oldContext->pubSub, "ChannelDisconnected", OnChannelDisconnected);
+        }
+        UnregisterSession(oldContext);
         activeApi_ = nullptr;
         activeInstance_ = nullptr;
         activeContext_ = nullptr;
+        activeDisp_ = nullptr;
+        displayControlCapsReady_ = false;
+        lastDynamicResizeWidth_ = 0;
+        lastDynamicResizeHeight_ = 0;
     }
 
     void RequestNativeDisconnect()
@@ -3818,6 +3962,156 @@ private:
         std::lock_guard<std::mutex> lock(activeMutex_);
         if (activeApi_ != nullptr && activeContext_ != nullptr) {
             activeApi_->abortConnectContext(activeContext_);
+        }
+    }
+
+    static std::mutex& RegistryMutex()
+    {
+        static std::mutex mutex;
+        return mutex;
+    }
+
+    static std::unordered_map<rdpContext*, RdpSession*>& Registry()
+    {
+        static std::unordered_map<rdpContext*, RdpSession*> registry;
+        return registry;
+    }
+
+    static void RegisterSession(rdpContext* context, RdpSession* session)
+    {
+        if (context == nullptr || session == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(RegistryMutex());
+        Registry()[context] = session;
+    }
+
+    static void UnregisterSession(rdpContext* context)
+    {
+        if (context == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(RegistryMutex());
+        Registry().erase(context);
+    }
+
+    static RdpSession* FindSession(rdpContext* context)
+    {
+        std::lock_guard<std::mutex> lock(RegistryMutex());
+        auto iter = Registry().find(context);
+        return iter == Registry().end() ? nullptr : iter->second;
+    }
+
+    static bool IsDisplayControlChannel(const char* name)
+    {
+        return name != nullptr &&
+            (std::strcmp(name, DISP_CHANNEL_NAME) == 0 ||
+                std::strcmp(name, DISP_DVC_CHANNEL_NAME) == 0);
+    }
+
+    static void OnChannelConnected(void* context, const ChannelConnectedEventArgs* event)
+    {
+        if (context == nullptr || event == nullptr || !IsDisplayControlChannel(event->name)) {
+            return;
+        }
+
+        RdpSession* session = FindSession(static_cast<rdpContext*>(context));
+        if (session != nullptr) {
+            session->AttachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
+        }
+    }
+
+    static void OnChannelDisconnected(void* context, const ChannelDisconnectedEventArgs* event)
+    {
+        if (context == nullptr || event == nullptr || !IsDisplayControlChannel(event->name)) {
+            return;
+        }
+
+        RdpSession* session = FindSession(static_cast<rdpContext*>(context));
+        if (session != nullptr) {
+            session->DetachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
+        }
+    }
+
+    static UINT DisplayControlCaps(DispClientContext* disp, UINT32 maxNumMonitors,
+        UINT32 maxMonitorAreaFactorA, UINT32 maxMonitorAreaFactorB)
+    {
+        auto* session = disp == nullptr ? nullptr : static_cast<RdpSession*>(disp->custom);
+        if (session != nullptr) {
+            session->HandleDisplayControlCaps(maxNumMonitors, maxMonitorAreaFactorA,
+                maxMonitorAreaFactorB);
+        }
+        return CHANNEL_RC_OK;
+    }
+
+    void HandleDisplayControlCaps(UINT32 maxNumMonitors, UINT32 maxMonitorAreaFactorA,
+        UINT32 maxMonitorAreaFactorB)
+    {
+        {
+            std::lock_guard<std::mutex> lock(activeMutex_);
+            displayControlCapsReady_ = true;
+            lastDynamicResizeWidth_ = 0;
+            lastDynamicResizeHeight_ = 0;
+        }
+
+        EmitLog("display-control caps: maxMonitors=" + std::to_string(maxNumMonitors) +
+            " areaFactor=" + std::to_string(maxMonitorAreaFactorA) + "/" +
+            std::to_string(maxMonitorAreaFactorB));
+
+        const SurfaceSnapshot snapshot = g_surface.Snapshot();
+        if (snapshot.width > 0 && snapshot.height > 0) {
+            std::string resizeMessage;
+            if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
+                "display-control caps", resizeMessage)) {
+                EmitLog(resizeMessage);
+            } else {
+                EmitLog("display-control resize skipped after display-control caps: " +
+                    resizeMessage);
+            }
+        }
+    }
+
+    void AttachDisplayControl(DispClientContext* disp)
+    {
+        if (disp == nullptr) {
+            EmitLog("display-control connected without client context");
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(activeMutex_);
+            activeDisp_ = disp;
+            activeDisp_->custom = this;
+            activeDisp_->DisplayControlCaps = DisplayControlCaps;
+            displayControlCapsReady_ = false;
+            lastDynamicResizeWidth_ = 0;
+            lastDynamicResizeHeight_ = 0;
+        }
+        EmitLog("display-control connected to HarmonyOS window resize bridge");
+
+        const SurfaceSnapshot snapshot = g_surface.Snapshot();
+        if (snapshot.width > 0 && snapshot.height > 0) {
+            std::string resizeMessage;
+            if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
+                "display-control connected", resizeMessage)) {
+                EmitLog(resizeMessage);
+            } else {
+                EmitLog("display-control resize skipped after display-control connected: " +
+                    resizeMessage);
+            }
+        }
+    }
+
+    void DetachDisplayControl(DispClientContext* disp)
+    {
+        std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeDisp_ != nullptr && activeDisp_ == disp) {
+            activeDisp_->custom = nullptr;
+            activeDisp_ = nullptr;
+            displayControlCapsReady_ = false;
+            lastDynamicResizeWidth_ = 0;
+            lastDynamicResizeHeight_ = 0;
+            EmitLog("display-control disconnected from HarmonyOS window resize bridge");
         }
     }
 #else
@@ -3874,6 +4168,16 @@ private:
 
         EmitState("Authenticating");
         EmitLog("state=Authenticating");
+        if (IsAutoInitialResolution(params.resolution)) {
+            SurfaceSnapshot snapshot = g_surface.Snapshot();
+            if (snapshot.width >= 320 && snapshot.height >= 240) {
+                params.resolution = std::to_string(snapshot.width) + "x" +
+                    std::to_string(snapshot.height);
+                EmitLog("FreeRDP initial resolution auto from surface: " + params.resolution);
+            } else {
+                EmitLog("FreeRDP initial resolution auto fallback: surface is not ready");
+            }
+        }
         RdpSessionRunResult session;
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
         session = RunFreerdpSession(params, running_,
@@ -3892,6 +4196,17 @@ private:
                 EmitLog("state=Connected");
                 EmitLog("FreeRDP persistent session loop is active");
                 EmitLog("FreeRDP input bridge is using worker-thread dispatch");
+                const SurfaceSnapshot snapshot = g_surface.Snapshot();
+                if (snapshot.width > 0 && snapshot.height > 0) {
+                    std::string resizeMessage;
+                    if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
+                        "session connected", resizeMessage)) {
+                        EmitLog(resizeMessage);
+                    } else {
+                        EmitLog("display-control resize skipped after session connected: " +
+                            resizeMessage);
+                    }
+                }
             },
             [this](FreerdpRuntimeApi* api, rdpContext* context) {
                 DrainInputQueue(api, context);
@@ -3935,16 +4250,67 @@ private:
     std::atomic_uint32_t inputFailureLogCount_{0};
     std::atomic_uint32_t inputBackpressureLogCount_{0};
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+    static bool IsAutoInitialResolution(const std::string& resolution)
+    {
+        const std::string normalized = ToLowerAscii(TrimAscii(resolution));
+        return normalized.empty() || normalized == "auto" || normalized == "window";
+    }
+
     std::mutex activeMutex_;
     FreerdpRuntimeApi* activeApi_ = nullptr;
     freerdp* activeInstance_ = nullptr;
     rdpContext* activeContext_ = nullptr;
+    DispClientContext* activeDisp_ = nullptr;
+    bool displayControlCapsReady_ = false;
+    uint32_t lastDynamicResizeWidth_ = 0;
+    uint32_t lastDynamicResizeHeight_ = 0;
     std::mutex inputMutex_;
     std::deque<QueuedInputEvent> inputQueue_;
 #endif
 };
 
 RdpSession g_session;
+
+void RequestSurfaceRepaint(const std::string& reason)
+{
+    static std::atomic_uint32_t repaintLogCount{0};
+    static std::atomic_uint32_t repaintSkipLogCount{0};
+    std::string message;
+    if (g_session.RequestCurrentFrameRender(reason, message)) {
+        const uint32_t count = ++repaintLogCount;
+        if (count <= 3 || count % 30 == 0) {
+            EmitNativeLog("Surface repaint queued after " + reason + ": " + message +
+                " count=" + std::to_string(count));
+        }
+        return;
+    }
+
+    const uint32_t skipCount = ++repaintSkipLogCount;
+    if (skipCount <= 3 || skipCount % 30 == 0) {
+        EmitNativeLog("Surface repaint skipped after " + reason + ": " + message +
+            " count=" + std::to_string(skipCount));
+    }
+}
+
+void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason)
+{
+    static std::atomic_uint32_t resizeLogCount{0};
+    static std::atomic_uint32_t resizeSkipLogCount{0};
+    std::string message;
+    if (g_session.RequestDynamicDesktopResize(width, height, reason, message)) {
+        const uint32_t count = ++resizeLogCount;
+        if (count <= 3 || count % 30 == 0) {
+            EmitNativeLog(message + " count=" + std::to_string(count));
+        }
+        return;
+    }
+
+    const uint32_t skipCount = ++resizeSkipLogCount;
+    if (skipCount <= 3 || skipCount % 30 == 0) {
+        EmitNativeLog("display-control resize skipped after " + reason + ": " + message +
+            " count=" + std::to_string(skipCount));
+    }
+}
 
 napi_value MakeString(napi_env env, const std::string& value)
 {
@@ -4253,7 +4619,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "core RDP/TLS/NLA + queued software GDI renderer; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
-        "static cliprdr text bridge and rdpsnd/OHAudio playback requested; "
+        "static cliprdr text bridge, disp dynamic resolution, and rdpsnd/OHAudio playback requested; "
         "other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
@@ -4505,6 +4871,45 @@ napi_value SendUnicode(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value NotifySurfaceLayout(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native surface layout notify invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "surface layout notify requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    const uint32_t width = GetUint32Property(env, arg, "width");
+    const uint32_t height = GetUint32Property(env, arg, "height");
+    logs.push_back("width=" + std::to_string(width) + " height=" + std::to_string(height));
+
+    std::string message;
+    const bool changed = g_surface.OnSurfaceLayout(width, height, message);
+    if (changed) {
+        EmitNativeLog(message);
+        RequestRemoteDesktopResize(width, height, "surface layout changed");
+        RequestSurfaceRepaint("surface layout changed");
+    }
+
+    SetBool(env, result, "ok", width > 0 && height > 0);
+    SetString(env, result, "state", changed ? "Updated" : "Unchanged");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name,
     bool mirrorToHilog = false)
 {
@@ -4548,6 +4953,7 @@ static napi_value Init(napi_env env, napi_value exports)
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"notifySurfaceLayout", nullptr, NotifySurfaceLayout, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -70,6 +70,11 @@ export interface NativeUnicodeInput {
   down: boolean;
 }
 
+export interface NativeSurfaceLayoutInput {
+  width: number;
+  height: number;
+}
+
 declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: NativeConnectParams): NativeCommandResult;
@@ -77,6 +82,7 @@ declare const rdpNative: {
   sendPointer(input: NativePointerInput): NativeCommandResult;
   sendKey(input: NativeKeyInput): NativeCommandResult;
   sendUnicode(input: NativeUnicodeInput): NativeCommandResult;
+  notifySurfaceLayout(input: NativeSurfaceLayoutInput): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

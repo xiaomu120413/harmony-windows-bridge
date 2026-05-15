@@ -178,7 +178,7 @@ struct Index {
   @State private port: string = '3389'
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
-  @State private resolution: string = '1280x720'
+  @State private resolution: string = 'auto'
   @State private certPolicy: string = 'ignore'
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
@@ -246,6 +246,8 @@ struct Index {
   private lastAxisDeltaX: number = 0
   private lastAxisDeltaY: number = 0
   private lastInputProbeAtMs: number = 0
+  private surfacePixelScaleX: number = 0
+  private surfacePixelScaleY: number = 0
   private surfaceController: XComponentController = new XComponentController()
   private remoteInputController: TextInputController = new TextInputController()
 
@@ -526,8 +528,49 @@ struct Index {
     if (nextWidth <= 0 || nextHeight <= 0) {
       return
     }
+    if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight) {
+      return
+    }
+
+    let pixelScaleX = this.surfacePixelScaleX
+    let pixelScaleY = this.surfacePixelScaleY
+    if (pixelScaleX <= 0 && this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
+      pixelScaleX = this.surfacePixelWidth / this.surfaceLayoutWidth
+    }
+    if (pixelScaleY <= 0 && this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
+      pixelScaleY = this.surfacePixelHeight / this.surfaceLayoutHeight
+    }
+
+    if (pixelScaleX <= 0 || pixelScaleY <= 0) {
+      try {
+        const probe: NativeProbeResult = rdpNative.probe()
+        if (probe.surfaceWidth > 0 && probe.surfaceHeight > 0) {
+          this.surfacePixelWidth = probe.surfaceWidth
+          this.surfacePixelHeight = probe.surfaceHeight
+          pixelScaleX = probe.surfaceWidth / (this.surfaceLayoutWidth > 0 ? this.surfaceLayoutWidth : nextWidth)
+          pixelScaleY = probe.surfaceHeight / (this.surfaceLayoutHeight > 0 ? this.surfaceLayoutHeight : nextHeight)
+        }
+      } catch (error) {
+        this.appendLog(`Native surface scale probe failed: ${JSON.stringify(error)}`)
+      }
+    }
+
+    this.surfacePixelScaleX = pixelScaleX > 0 ? pixelScaleX : this.surfacePixelScaleX
+    this.surfacePixelScaleY = pixelScaleY > 0 ? pixelScaleY : this.surfacePixelScaleY
+    const nativeWidth = Math.round(nextWidth * (pixelScaleX > 0 ? pixelScaleX : 1))
+    const nativeHeight = Math.round(nextHeight * (pixelScaleY > 0 ? pixelScaleY : 1))
     this.surfaceLayoutWidth = nextWidth
     this.surfaceLayoutHeight = nextHeight
+    this.surfacePixelWidth = nativeWidth
+    this.surfacePixelHeight = nativeHeight
+    try {
+      rdpNative.notifySurfaceLayout({
+        width: nativeWidth,
+        height: nativeHeight
+      })
+    } catch (error) {
+      this.appendLog(`Native surface layout notify failed: ${JSON.stringify(error)}`)
+    }
   }
 
   private getPointerScaleX(): number {
@@ -1817,9 +1860,6 @@ struct Index {
           .onChange((value: string) => {
             this.password = value
           })
-        this.inputField('Resolution', this.resolution, (value: string) => {
-          this.resolution = value
-        })
         Row() {
           this.certPolicyButton('tofu', 'TOFU')
           this.certPolicyButton('strict', 'Strict')
