@@ -23,6 +23,8 @@ target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so
     libace_ndk.z.so
+    libEGL.so
+    libGLESv3.so
     libnative_window.so
     libnative_buffer.so
     libpasteboard.so
