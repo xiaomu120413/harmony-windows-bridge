@@ -3011,7 +3011,8 @@ public:
         event.scancode = rdpScancode;
         event.down = down;
         event.repeat = repeat;
-        return EnqueueInput(event, down ? "key down queued" : "key up queued", message);
+        return EnqueueInput(event, down ? (repeat ? "key down queued repeat" : "key down queued") : "key up queued",
+            message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;

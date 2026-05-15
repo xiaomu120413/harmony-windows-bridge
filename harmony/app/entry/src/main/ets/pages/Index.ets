@@ -214,6 +214,8 @@ struct Index {
   private remoteShortcutPrintableKeysDown: number[] = []
   private dispatchedRemoteKeyEvents: string[] = []
   private remotePressedScancodes: number[] = []
+  private lastEnterDispatchDownAtMs: number = 0
+  private suppressNextSubmitFallbackEnterUp: boolean = false
   private callbacksRegistered: boolean = false
   private pasteboardPermissionRequested: boolean = false
   private pasteboardPermissionInFlight: boolean = false
@@ -955,6 +957,8 @@ struct Index {
     this.rightShiftModifierDown = false
     this.remoteShortcutPrintableKeysDown = []
     this.remotePressedScancodes = []
+    this.lastEnterDispatchDownAtMs = 0
+    this.suppressNextSubmitFallbackEnterUp = false
   }
 
   private clearPointerState(): void {
@@ -1244,14 +1248,14 @@ struct Index {
   }
 
   private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
-    trackedShortcut: boolean, fromInputBridge: boolean): void {
+    trackedShortcut: boolean, fromInputBridge: boolean, repeat: boolean): void {
     if (!shortcut && !trackedShortcut && !this.isFunctionKey(event.keyCode) &&
-      !this.isClipboardShortcutKey(event.keyCode)) {
+      !this.isClipboardShortcutKey(event.keyCode) && (scancode <= 0 || printable)) {
       return
     }
     this.logInputEvent('key',
       `code=${event.keyCode} type=${event.type} scancode=${scancode} printable=${printable} ` +
-      `shortcut=${shortcut} tracked=${trackedShortcut} bridge=${fromInputBridge} ` +
+      `shortcut=${shortcut} tracked=${trackedShortcut} repeat=${repeat} bridge=${fromInputBridge} ` +
       `ctrl=${this.isCtrlModifierPressed(event)} alt=${this.isAltModifierPressed(event)} win=${this.isWinModifierPressed(event)}`,
       true)
   }
@@ -1339,6 +1343,18 @@ struct Index {
     return this.handleSurfaceKeyEvent(event, true)
   }
 
+  private handleInputBridgeSubmit(): void {
+    if (Date.now() - this.lastEnterDispatchDownAtMs <= BRIDGE_PRINTABLE_KEY_GUARD_MS) {
+      this.logInputEvent('key.submit', 'hidden TextInput submit suppressed after dispatched Enter', true)
+      return
+    }
+    const sent = this.sendKeyStroke(RDP_SCANCODE_ENTER)
+    if (sent) {
+      this.suppressNextSubmitFallbackEnterUp = true
+    }
+    this.logInputEvent('key.submit', `hidden TextInput submit fallback sent=${sent}`, true)
+  }
+
   private handleSurfaceKeyEvent(event: KeyEvent, fromInputBridge: boolean = false): boolean {
     if (!fromInputBridge && this.consumeDispatchedRemoteKeyEvent(event)) {
       return true
@@ -1348,20 +1364,28 @@ struct Index {
     }
     const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
     const down = event.type === KeyType.Down
+    if (!down && scancode === RDP_SCANCODE_ENTER && this.suppressNextSubmitFallbackEnterUp) {
+      this.suppressNextSubmitFallbackEnterUp = false
+      this.logInputEvent('key.submit', 'suppressed Enter up after submit fallback', true)
+      return true
+    }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     let shortcut = this.hasRemoteShortcutModifier(event)
     const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
     if (!down && trackedShortcut) {
       shortcut = true
     }
-    this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, fromInputBridge)
+    const repeat = down && scancode > 0 && this.isRemoteScancodePressed(scancode)
+    this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, fromInputBridge, repeat)
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
       return true
     }
 
     if (scancode > 0 && (!printable || shortcut)) {
-      const repeat = down && this.isRemoteScancodePressed(scancode)
       const sent = this.sendMappedKeyEvent(scancode, down, repeat)
+      if (sent && down && scancode === RDP_SCANCODE_ENTER) {
+        this.lastEnterDispatchDownAtMs = Date.now()
+      }
       if (sent && printable) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
       }
@@ -2000,7 +2024,7 @@ struct Index {
             this.logInputEvent('paste', `hidden TextInput default paste suppressed len=${content.length}`, true)
           })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
-            this.logInputEvent('key.submit', 'hidden TextInput submit suppressed; hardware Enter uses key dispatch', true)
+            this.handleInputBridgeSubmit()
           })
           .onKeyEvent((event: KeyEvent): boolean => {
             return this.handleInputBridgeKeyEvent(event)
