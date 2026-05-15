@@ -28,20 +28,29 @@
 #include <ace/xcomponent/native_interface_xcomponent.h>
 #include <native_buffer/native_buffer.h>
 #include <native_window/external_window.h>
+#include <database/pasteboard/oh_pasteboard.h>
+#include <database/pasteboard/oh_pasteboard_err_code.h>
+#include <database/udmf/udmf.h>
+#include <database/udmf/udmf_err_code.h>
+#include <database/udmf/uds.h>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/addin.h>
 #include <freerdp/client.h>
 #include <freerdp/client/channels.h>
+#include <freerdp/client/cliprdr.h>
+#include <freerdp/channels/cliprdr.h>
 #include <freerdp/codec/color.h>
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
+#include <freerdp/event.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
 #include <freerdp/update.h>
+#include <winpr/clipboard.h>
 #include <winpr/synch.h>
 #endif
 
@@ -386,6 +395,8 @@ public:
             LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
             LoadClientSymbol("freerdp_client_load_channels", clientLoadChannels, error) &&
             LoadClientSymbol("freerdp_client_add_static_channel", clientAddStaticChannel, error) &&
+            LoadWinprSymbol("PubSub_Subscribe", pubSubSubscribe, error) &&
+            LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error) &&
             LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
         return loaded_;
     }
@@ -416,6 +427,8 @@ public:
     using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
     using ClientLoadChannelsFn = BOOL (*)(freerdp*);
     using ClientAddStaticChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
+    using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
+    using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -445,6 +458,8 @@ public:
     ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;
     ClientLoadChannelsFn clientLoadChannels = nullptr;
     ClientAddStaticChannelFn clientAddStaticChannel = nullptr;
+    PubSubSubscribeFn pubSubSubscribe = nullptr;
+    PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -876,7 +891,10 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         !SetFreerdpBool(api, settings, FreeRDP_GfxH264, false, "GfxH264", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false, "GfxAVC444", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, false, "GfxAVC444v2", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, false, "RedirectClipboard", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
+        !SetFreerdpUint32(api, settings, FreeRDP_ClipboardFeatureMask,
+            CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL,
+            "ClipboardFeatureMask", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, false, "DeviceRedirection", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, false, "AudioPlayback", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
@@ -886,9 +904,27 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         return false;
     }
 
-    log("FreeRDP enhanced runtime libraries packaged; optional channels disabled by default");
+    log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection enabled");
     log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     log("FreeRDP redirect devices compiled; drive/printer/smartcard runtime toggles remain disabled by default");
+    return true;
+}
+
+bool ConfigureClipboardChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (api.clientAddStaticChannel == nullptr) {
+        error = "FreeRDP static channel helper is not loaded";
+        return false;
+    }
+
+    const char* params[] = {"cliprdr"};
+    if (!api.clientAddStaticChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set cliprdr static channel failed";
+        return false;
+    }
+
+    log("FreeRDP clipboard requested: static cliprdr text only");
     return true;
 }
 
@@ -910,6 +946,755 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
     log("FreeRDP dynamic channels remain disabled; microphone capture remains disabled");
     return true;
 }
+
+std::string Utf16LeClipboardToUtf8(const BYTE* data, UINT32 size)
+{
+    std::string text;
+    if (data == nullptr || size < 2) {
+        return text;
+    }
+
+    auto appendCodePoint = [&text](uint32_t cp) {
+        if (cp <= 0x7F) {
+            text.push_back(static_cast<char>(cp));
+        } else if (cp <= 0x7FF) {
+            text.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            text.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else if (cp <= 0xFFFF) {
+            text.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            text.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else {
+            text.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            text.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            text.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+    };
+
+    const UINT32 units = size / 2U;
+    for (UINT32 index = 0; index < units; ++index) {
+        uint16_t unit = static_cast<uint16_t>(data[index * 2U]) |
+            (static_cast<uint16_t>(data[index * 2U + 1U]) << 8U);
+        if (unit == 0) {
+            break;
+        }
+
+        if (unit >= 0xD800 && unit <= 0xDBFF && index + 1U < units) {
+            uint16_t next = static_cast<uint16_t>(data[(index + 1U) * 2U]) |
+                (static_cast<uint16_t>(data[(index + 1U) * 2U + 1U]) << 8U);
+            if (next >= 0xDC00 && next <= 0xDFFF) {
+                const uint32_t cp = 0x10000U +
+                    (((static_cast<uint32_t>(unit) - 0xD800U) << 10U) |
+                        (static_cast<uint32_t>(next) - 0xDC00U));
+                appendCodePoint(cp);
+                ++index;
+                continue;
+            }
+        }
+
+        appendCodePoint(unit);
+    }
+    return text;
+}
+
+bool ReadUtf8CodePoint(const std::string& text, size_t& offset, uint32_t& cp)
+{
+    if (offset >= text.size()) {
+        return false;
+    }
+
+    const uint8_t first = static_cast<uint8_t>(text[offset++]);
+    if (first < 0x80) {
+        cp = first;
+        return true;
+    }
+
+    uint32_t value = 0;
+    size_t trailing = 0;
+    if ((first & 0xE0U) == 0xC0U) {
+        value = first & 0x1FU;
+        trailing = 1;
+    } else if ((first & 0xF0U) == 0xE0U) {
+        value = first & 0x0FU;
+        trailing = 2;
+    } else if ((first & 0xF8U) == 0xF0U) {
+        value = first & 0x07U;
+        trailing = 3;
+    } else {
+        cp = 0xFFFD;
+        return true;
+    }
+
+    if (offset + trailing > text.size()) {
+        cp = 0xFFFD;
+        offset = text.size();
+        return true;
+    }
+
+    for (size_t index = 0; index < trailing; ++index) {
+        const uint8_t next = static_cast<uint8_t>(text[offset++]);
+        if ((next & 0xC0U) != 0x80U) {
+            cp = 0xFFFD;
+            return true;
+        }
+        value = (value << 6U) | (next & 0x3FU);
+    }
+
+    cp = value;
+    return true;
+}
+
+std::vector<BYTE> Utf8ToUtf16LeClipboard(const std::string& text)
+{
+    std::vector<BYTE> output;
+    output.reserve(text.size() * 2U + 2U);
+
+    auto appendUnit = [&output](uint16_t unit) {
+        output.push_back(static_cast<BYTE>(unit & 0xFFU));
+        output.push_back(static_cast<BYTE>((unit >> 8U) & 0xFFU));
+    };
+
+    size_t offset = 0;
+    uint32_t cp = 0;
+    while (ReadUtf8CodePoint(text, offset, cp)) {
+        if (cp > 0x10FFFFU) {
+            cp = 0xFFFD;
+        }
+
+        if (cp <= 0xFFFFU) {
+            appendUnit(static_cast<uint16_t>(cp));
+        } else {
+            cp -= 0x10000U;
+            appendUnit(static_cast<uint16_t>(0xD800U | (cp >> 10U)));
+            appendUnit(static_cast<uint16_t>(0xDC00U | (cp & 0x3FFU)));
+        }
+    }
+
+    appendUnit(0);
+    return output;
+}
+
+class HarmonyClipboardBridge {
+public:
+    ~HarmonyClipboardBridge()
+    {
+        Uninitialize();
+    }
+
+    bool Initialize(rdpContext* context, FreerdpRuntimeApi& api, const FreerdpLogFn& log,
+        std::string& error)
+    {
+        if (context == nullptr || context->pubSub == nullptr) {
+            error = "FreeRDP pubSub is unavailable for clipboard";
+            return false;
+        }
+        if (api.pubSubSubscribe == nullptr || api.pubSubUnsubscribe == nullptr) {
+            error = "WinPR PubSub symbols are not loaded for clipboard";
+            return false;
+        }
+
+        context_ = context;
+        api_ = &api;
+        log_ = log;
+
+        {
+            std::lock_guard<std::mutex> lock(RegistryMutex());
+            Registry()[context_] = this;
+        }
+
+        int rc = api_->pubSubSubscribe(context_->pubSub, "ChannelConnected", OnChannelConnected);
+        if (rc < 0) {
+            RemoveFromRegistry();
+            error = "subscribe ChannelConnected for clipboard failed: " + std::to_string(rc);
+            return false;
+        }
+        subscribedConnected_ = true;
+
+        rc = api_->pubSubSubscribe(context_->pubSub, "ChannelDisconnected", OnChannelDisconnected);
+        if (rc < 0) {
+            Uninitialize();
+            error = "subscribe ChannelDisconnected for clipboard failed: " + std::to_string(rc);
+            return false;
+        }
+        subscribedDisconnected_ = true;
+
+        pasteboard_ = OH_Pasteboard_Create();
+        if (pasteboard_ == nullptr) {
+            Log("HarmonyOS Pasteboard create failed; cliprdr will advertise no local text");
+            return true;
+        }
+
+        observer_ = OH_PasteboardObserver_Create();
+        if (observer_ == nullptr) {
+            Log("HarmonyOS Pasteboard observer create failed; local clipboard changes require reconnect");
+            return true;
+        }
+
+        rc = OH_PasteboardObserver_SetData(observer_, this, OnPasteboardChanged, OnPasteboardFinalize);
+        if (rc != ERR_OK) {
+            Log("HarmonyOS Pasteboard observer setup failed: " + std::to_string(rc));
+            return true;
+        }
+
+        rc = OH_Pasteboard_Subscribe(pasteboard_, NOTIFY_LOCAL_DATA_CHANGE, observer_);
+        if (rc == ERR_OK) {
+            pasteboardSubscribed_ = true;
+            Log("HarmonyOS Pasteboard observer subscribed");
+        } else {
+            Log("HarmonyOS Pasteboard subscribe warning: " + std::to_string(rc));
+        }
+
+        return true;
+    }
+
+    void Uninitialize()
+    {
+        if (cliprdr_ != nullptr) {
+            DetachCliprdr(cliprdr_);
+        }
+
+        if (pasteboard_ != nullptr && observer_ != nullptr && pasteboardSubscribed_) {
+            (void)OH_Pasteboard_Unsubscribe(pasteboard_, NOTIFY_LOCAL_DATA_CHANGE, observer_);
+            pasteboardSubscribed_ = false;
+        }
+        if (observer_ != nullptr) {
+            (void)OH_PasteboardObserver_Destroy(observer_);
+            observer_ = nullptr;
+        }
+        if (pasteboard_ != nullptr) {
+            OH_Pasteboard_Destroy(pasteboard_);
+            pasteboard_ = nullptr;
+        }
+
+        if (api_ != nullptr && context_ != nullptr && context_->pubSub != nullptr) {
+            if (subscribedConnected_) {
+                (void)api_->pubSubUnsubscribe(context_->pubSub, "ChannelConnected", OnChannelConnected);
+                subscribedConnected_ = false;
+            }
+            if (subscribedDisconnected_) {
+                (void)api_->pubSubUnsubscribe(context_->pubSub, "ChannelDisconnected", OnChannelDisconnected);
+                subscribedDisconnected_ = false;
+            }
+        }
+
+        RemoveFromRegistry();
+        context_ = nullptr;
+        api_ = nullptr;
+        log_ = nullptr;
+    }
+
+private:
+    static std::mutex& RegistryMutex()
+    {
+        static std::mutex mutex;
+        return mutex;
+    }
+
+    static std::unordered_map<rdpContext*, HarmonyClipboardBridge*>& Registry()
+    {
+        static std::unordered_map<rdpContext*, HarmonyClipboardBridge*> registry;
+        return registry;
+    }
+
+    static HarmonyClipboardBridge* FromContext(void* context)
+    {
+        auto* rdpCtx = static_cast<::rdpContext*>(context);
+        std::lock_guard<std::mutex> lock(RegistryMutex());
+        auto iter = Registry().find(rdpCtx);
+        return iter == Registry().end() ? nullptr : iter->second;
+    }
+
+    static HarmonyClipboardBridge* FromCliprdr(CliprdrClientContext* cliprdr)
+    {
+        return cliprdr == nullptr ? nullptr : static_cast<HarmonyClipboardBridge*>(cliprdr->custom);
+    }
+
+    static void OnChannelConnected(void* context, const ChannelConnectedEventArgs* event)
+    {
+        HarmonyClipboardBridge* bridge = FromContext(context);
+        if (bridge == nullptr || event == nullptr || event->name == nullptr) {
+            return;
+        }
+        if (std::strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
+            bridge->AttachCliprdr(static_cast<CliprdrClientContext*>(event->pInterface));
+        }
+    }
+
+    static void OnChannelDisconnected(void* context, const ChannelDisconnectedEventArgs* event)
+    {
+        HarmonyClipboardBridge* bridge = FromContext(context);
+        if (bridge == nullptr || event == nullptr || event->name == nullptr) {
+            return;
+        }
+        if (std::strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
+            bridge->DetachCliprdr(static_cast<CliprdrClientContext*>(event->pInterface));
+        }
+    }
+
+    static void OnPasteboardChanged(void* context, Pasteboard_NotifyType type)
+    {
+        auto* bridge = static_cast<HarmonyClipboardBridge*>(context);
+        if (bridge == nullptr || type != NOTIFY_LOCAL_DATA_CHANGE) {
+            return;
+        }
+        bridge->HandleLocalPasteboardChanged();
+    }
+
+    static void OnPasteboardFinalize(void*)
+    {
+    }
+
+    static UINT CliprdrMonitorReady(CliprdrClientContext* cliprdr,
+        const CLIPRDR_MONITOR_READY* monitorReady)
+    {
+        HarmonyClipboardBridge* bridge = FromCliprdr(cliprdr);
+        if (bridge == nullptr || monitorReady == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+
+        UINT rc = bridge->SendClientCapabilities();
+        if (rc != CHANNEL_RC_OK) {
+            return rc;
+        }
+        return bridge->SendLocalFormatList("monitor ready");
+    }
+
+    static UINT CliprdrServerCapabilities(CliprdrClientContext* cliprdr,
+        const CLIPRDR_CAPABILITIES* capabilities)
+    {
+        HarmonyClipboardBridge* bridge = FromCliprdr(cliprdr);
+        if (bridge == nullptr || capabilities == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+        bridge->Log("cliprdr server capabilities received");
+        return CHANNEL_RC_OK;
+    }
+
+    static UINT CliprdrServerFormatList(CliprdrClientContext* cliprdr,
+        const CLIPRDR_FORMAT_LIST* formatList)
+    {
+        HarmonyClipboardBridge* bridge = FromCliprdr(cliprdr);
+        if (bridge == nullptr || formatList == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+        return bridge->HandleServerFormatList(*formatList);
+    }
+
+    static UINT CliprdrServerFormatListResponse(CliprdrClientContext* cliprdr,
+        const CLIPRDR_FORMAT_LIST_RESPONSE* response)
+    {
+        HarmonyClipboardBridge* bridge = FromCliprdr(cliprdr);
+        if (bridge == nullptr || response == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+        bridge->Log("cliprdr server accepted local format list");
+        return CHANNEL_RC_OK;
+    }
+
+    static UINT CliprdrServerLockClipboardData(CliprdrClientContext* cliprdr,
+        const CLIPRDR_LOCK_CLIPBOARD_DATA* lockClipboardData)
+    {
+        return (cliprdr == nullptr || lockClipboardData == nullptr) ? ERROR_INVALID_PARAMETER :
+            CHANNEL_RC_OK;
+    }
+
+    static UINT CliprdrServerUnlockClipboardData(CliprdrClientContext* cliprdr,
+        const CLIPRDR_UNLOCK_CLIPBOARD_DATA* unlockClipboardData)
+    {
+        return (cliprdr == nullptr || unlockClipboardData == nullptr) ? ERROR_INVALID_PARAMETER :
+            CHANNEL_RC_OK;
+    }
+
+    static UINT CliprdrServerFormatDataRequest(CliprdrClientContext* cliprdr,
+        const CLIPRDR_FORMAT_DATA_REQUEST* request)
+    {
+        HarmonyClipboardBridge* bridge = FromCliprdr(cliprdr);
+        if (bridge == nullptr || request == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+        return bridge->HandleServerFormatDataRequest(*request);
+    }
+
+    static UINT CliprdrServerFormatDataResponse(CliprdrClientContext* cliprdr,
+        const CLIPRDR_FORMAT_DATA_RESPONSE* response)
+    {
+        HarmonyClipboardBridge* bridge = FromCliprdr(cliprdr);
+        if (bridge == nullptr || response == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+        return bridge->HandleServerFormatDataResponse(*response);
+    }
+
+    static UINT CliprdrServerFileContentsRequest(CliprdrClientContext* cliprdr,
+        const CLIPRDR_FILE_CONTENTS_REQUEST* request)
+    {
+        return (cliprdr == nullptr || request == nullptr) ? ERROR_INVALID_PARAMETER :
+            CHANNEL_RC_OK;
+    }
+
+    static UINT CliprdrServerFileContentsResponse(CliprdrClientContext* cliprdr,
+        const CLIPRDR_FILE_CONTENTS_RESPONSE* response)
+    {
+        return (cliprdr == nullptr || response == nullptr) ? ERROR_INVALID_PARAMETER :
+            CHANNEL_RC_OK;
+    }
+
+    void AttachCliprdr(CliprdrClientContext* cliprdr)
+    {
+        if (cliprdr == nullptr) {
+            Log("cliprdr connected without client context");
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        cliprdr_ = cliprdr;
+        cliprdr_->custom = this;
+        cliprdr_->MonitorReady = CliprdrMonitorReady;
+        cliprdr_->ServerCapabilities = CliprdrServerCapabilities;
+        cliprdr_->ServerFormatList = CliprdrServerFormatList;
+        cliprdr_->ServerFormatListResponse = CliprdrServerFormatListResponse;
+        cliprdr_->ServerLockClipboardData = CliprdrServerLockClipboardData;
+        cliprdr_->ServerUnlockClipboardData = CliprdrServerUnlockClipboardData;
+        cliprdr_->ServerFormatDataRequest = CliprdrServerFormatDataRequest;
+        cliprdr_->ServerFormatDataResponse = CliprdrServerFormatDataResponse;
+        cliprdr_->ServerFileContentsRequest = CliprdrServerFileContentsRequest;
+        cliprdr_->ServerFileContentsResponse = CliprdrServerFileContentsResponse;
+        Log("cliprdr connected to HarmonyOS Pasteboard text bridge");
+    }
+
+    void DetachCliprdr(CliprdrClientContext* cliprdr)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (cliprdr_ == nullptr || cliprdr_ != cliprdr) {
+            return;
+        }
+
+        cliprdr_->custom = nullptr;
+        cliprdr_ = nullptr;
+        serverFormats_.clear();
+        requestedFormatId_ = 0;
+        Log("cliprdr disconnected from HarmonyOS Pasteboard text bridge");
+    }
+
+    UINT SendClientCapabilities()
+    {
+        CliprdrClientContext* cliprdr = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            cliprdr = cliprdr_;
+        }
+        if (cliprdr == nullptr || cliprdr->ClientCapabilities == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+
+        CLIPRDR_CAPABILITIES capabilities = {};
+        CLIPRDR_GENERAL_CAPABILITY_SET generalCapabilitySet = {};
+        capabilities.cCapabilitiesSets = 1;
+        capabilities.capabilitySets = reinterpret_cast<CLIPRDR_CAPABILITY_SET*>(&generalCapabilitySet);
+        generalCapabilitySet.capabilitySetType = CB_CAPSTYPE_GENERAL;
+        generalCapabilitySet.capabilitySetLength = 12;
+        generalCapabilitySet.version = CB_CAPS_VERSION_2;
+        generalCapabilitySet.generalFlags = CB_USE_LONG_FORMAT_NAMES;
+        return cliprdr->ClientCapabilities(cliprdr, &capabilities);
+    }
+
+    UINT SendLocalFormatList(const char* reason)
+    {
+        CliprdrClientContext* cliprdr = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            cliprdr = cliprdr_;
+        }
+        if (cliprdr == nullptr || cliprdr->ClientFormatList == nullptr) {
+            return CHANNEL_RC_OK;
+        }
+
+        std::string text;
+        std::string error;
+        const bool hasText = ReadLocalPlainText(text, error);
+        if (!hasText && !error.empty()) {
+            Log("HarmonyOS Pasteboard read warning: " + error);
+        }
+
+        CLIPRDR_FORMAT format = {};
+        format.formatId = CF_UNICODETEXT;
+        CLIPRDR_FORMAT_LIST formatList = {};
+        formatList.common.msgType = CB_FORMAT_LIST;
+        formatList.common.msgFlags = 0;
+        formatList.numFormats = hasText ? 1U : 0U;
+        formatList.formats = hasText ? &format : nullptr;
+
+        UINT rc = cliprdr->ClientFormatList(cliprdr, &formatList);
+        if (rc == CHANNEL_RC_OK) {
+            Log(std::string("cliprdr local format list sent: ") +
+                (hasText ? "CF_UNICODETEXT" : "empty") + " reason=" + SafeCString(reason));
+        }
+        return rc;
+    }
+
+    UINT HandleServerFormatList(const CLIPRDR_FORMAT_LIST& formatList)
+    {
+        UINT32 requested = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            serverFormats_.clear();
+            for (UINT32 index = 0; index < formatList.numFormats; ++index) {
+                serverFormats_.push_back(formatList.formats[index].formatId);
+                if (formatList.formats[index].formatId == CF_UNICODETEXT) {
+                    requested = CF_UNICODETEXT;
+                } else if (requested == 0 && formatList.formats[index].formatId == CF_TEXT) {
+                    requested = CF_TEXT;
+                }
+            }
+            requestedFormatId_ = requested;
+        }
+
+        Log("cliprdr server format list received: " + std::to_string(formatList.numFormats));
+        if (requested == 0) {
+            Log("cliprdr server format list has no supported text format");
+            return CHANNEL_RC_OK;
+        }
+
+        CliprdrClientContext* cliprdr = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            cliprdr = cliprdr_;
+        }
+        if (cliprdr == nullptr || cliprdr->ClientFormatDataRequest == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+
+        CLIPRDR_FORMAT_DATA_REQUEST request = {};
+        request.common.msgType = CB_FORMAT_DATA_REQUEST;
+        request.requestedFormatId = requested;
+        return cliprdr->ClientFormatDataRequest(cliprdr, &request);
+    }
+
+    UINT HandleServerFormatDataRequest(const CLIPRDR_FORMAT_DATA_REQUEST& request)
+    {
+        CliprdrClientContext* cliprdr = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            cliprdr = cliprdr_;
+        }
+        if (cliprdr == nullptr || cliprdr->ClientFormatDataResponse == nullptr) {
+            return ERROR_INVALID_PARAMETER;
+        }
+
+        std::string text;
+        std::string error;
+        const bool ok = ReadLocalPlainText(text, error);
+        std::vector<BYTE> data;
+        if (ok && request.requestedFormatId == CF_UNICODETEXT) {
+            data = Utf8ToUtf16LeClipboard(text);
+        } else if (ok && request.requestedFormatId == CF_TEXT) {
+            data.assign(text.begin(), text.end());
+            data.push_back(0);
+        }
+
+        CLIPRDR_FORMAT_DATA_RESPONSE response = {};
+        response.common.msgType = CB_FORMAT_DATA_RESPONSE;
+        response.common.msgFlags = data.empty() ? CB_RESPONSE_FAIL : CB_RESPONSE_OK;
+        response.common.dataLen = static_cast<UINT32>(data.size());
+        response.requestedFormatData = data.empty() ? nullptr : data.data();
+
+        if (data.empty()) {
+            Log("cliprdr local text request failed: " + error);
+        } else {
+            Log("cliprdr local text response sent: " + std::to_string(data.size()) + " bytes");
+        }
+        return cliprdr->ClientFormatDataResponse(cliprdr, &response);
+    }
+
+    UINT HandleServerFormatDataResponse(const CLIPRDR_FORMAT_DATA_RESPONSE& response)
+    {
+        if ((response.common.msgFlags & CB_RESPONSE_FAIL) != 0 || response.requestedFormatData == nullptr) {
+            Log("cliprdr remote text response failed");
+            return CHANNEL_RC_OK;
+        }
+
+        UINT32 requested = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            requested = requestedFormatId_;
+        }
+
+        std::string text;
+        if (requested == CF_UNICODETEXT) {
+            text = Utf16LeClipboardToUtf8(response.requestedFormatData, response.common.dataLen);
+        } else if (requested == CF_TEXT) {
+            const auto* bytes = reinterpret_cast<const char*>(response.requestedFormatData);
+            const size_t length = strnlen(bytes, response.common.dataLen);
+            text.assign(bytes, length);
+        }
+
+        if (text.empty()) {
+            Log("cliprdr remote text response was empty");
+            return CHANNEL_RC_OK;
+        }
+
+        std::string error;
+        if (!WriteLocalPlainText(text, error)) {
+            Log("HarmonyOS Pasteboard write failed: " + error);
+            return ERROR_INTERNAL_ERROR;
+        }
+
+        Log("cliprdr remote text copied to HarmonyOS Pasteboard: " +
+            std::to_string(text.size()) + " bytes utf8");
+        return CHANNEL_RC_OK;
+    }
+
+    void HandleLocalPasteboardChanged()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (ignoreLocalPasteboardChanges_ > 0) {
+                --ignoreLocalPasteboardChanges_;
+                return;
+            }
+        }
+        (void)SendLocalFormatList("pasteboard changed");
+    }
+
+    bool ReadLocalPlainText(std::string& text, std::string& error)
+    {
+        text.clear();
+        if (pasteboard_ == nullptr) {
+            error = "pasteboard unavailable";
+            return false;
+        }
+        if (!OH_Pasteboard_HasType(pasteboard_, PASTEBOARD_MIMETYPE_TEXT_PLAIN)) {
+            return false;
+        }
+
+        int status = ERR_OK;
+        OH_UdmfData* data = OH_Pasteboard_GetData(pasteboard_, &status);
+        if (status != ERR_OK || data == nullptr) {
+            error = "OH_Pasteboard_GetData status=" + std::to_string(status);
+            return false;
+        }
+
+        const int recordCount = OH_UdmfData_GetRecordCount(data);
+        for (int index = 0; index < recordCount; ++index) {
+            OH_UdmfRecord* record = OH_UdmfData_GetRecord(data, static_cast<unsigned int>(index));
+            if (record == nullptr) {
+                continue;
+            }
+            OH_UdsPlainText* plainText = OH_UdsPlainText_Create();
+            if (plainText == nullptr) {
+                continue;
+            }
+            const int rc = OH_UdmfRecord_GetPlainText(record, plainText);
+            if (rc == UDMF_E_OK) {
+                const char* content = OH_UdsPlainText_GetContent(plainText);
+                if (content != nullptr) {
+                    text = content;
+                }
+            }
+            OH_UdsPlainText_Destroy(plainText);
+            if (!text.empty()) {
+                break;
+            }
+        }
+
+        OH_UdmfData_Destroy(data);
+        return !text.empty();
+    }
+
+    bool WriteLocalPlainText(const std::string& text, std::string& error)
+    {
+        if (pasteboard_ == nullptr) {
+            error = "pasteboard unavailable";
+            return false;
+        }
+
+        OH_UdsPlainText* plainText = OH_UdsPlainText_Create();
+        OH_UdmfRecord* record = OH_UdmfRecord_Create();
+        OH_UdmfData* data = OH_UdmfData_Create();
+        if (plainText == nullptr || record == nullptr || data == nullptr) {
+            error = "UDMF allocation failed";
+            if (plainText != nullptr) {
+                OH_UdsPlainText_Destroy(plainText);
+            }
+            if (record != nullptr) {
+                OH_UdmfRecord_Destroy(record);
+            }
+            if (data != nullptr) {
+                OH_UdmfData_Destroy(data);
+            }
+            return false;
+        }
+
+        int rc = OH_UdsPlainText_SetContent(plainText, text.c_str());
+        if (rc == UDMF_E_OK) {
+            rc = OH_UdmfRecord_AddPlainText(record, plainText);
+        }
+        if (rc == UDMF_E_OK) {
+            rc = OH_UdmfData_AddRecord(data, record);
+        }
+        if (rc != UDMF_E_OK) {
+            error = "UDMF plain text setup failed: " + std::to_string(rc);
+            OH_UdsPlainText_Destroy(plainText);
+            OH_UdmfRecord_Destroy(record);
+            OH_UdmfData_Destroy(data);
+            return false;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            ++ignoreLocalPasteboardChanges_;
+        }
+        rc = OH_Pasteboard_SetData(pasteboard_, data);
+        OH_UdsPlainText_Destroy(plainText);
+        OH_UdmfRecord_Destroy(record);
+        OH_UdmfData_Destroy(data);
+        if (rc != ERR_OK) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (ignoreLocalPasteboardChanges_ > 0) {
+                --ignoreLocalPasteboardChanges_;
+            }
+            error = "OH_Pasteboard_SetData status=" + std::to_string(rc);
+            return false;
+        }
+        return true;
+    }
+
+    void RemoveFromRegistry()
+    {
+        if (context_ == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(RegistryMutex());
+        auto iter = Registry().find(context_);
+        if (iter != Registry().end() && iter->second == this) {
+            Registry().erase(iter);
+        }
+    }
+
+    void Log(const std::string& line)
+    {
+        if (log_) {
+            log_(line);
+        } else {
+            EmitNativeLog(line);
+        }
+    }
+
+    std::mutex mutex_;
+    rdpContext* context_ = nullptr;
+    FreerdpRuntimeApi* api_ = nullptr;
+    FreerdpLogFn log_;
+    CliprdrClientContext* cliprdr_ = nullptr;
+    OH_Pasteboard* pasteboard_ = nullptr;
+    OH_PasteboardObserver* observer_ = nullptr;
+    bool pasteboardSubscribed_ = false;
+    bool subscribedConnected_ = false;
+    bool subscribedDisconnected_ = false;
+    std::vector<UINT32> serverFormats_;
+    UINT32 requestedFormatId_ = 0;
+    uint32_t ignoreLocalPasteboardChanges_ = 0;
+};
 
 RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
     const FreerdpSetActiveFn& setActive, const FreerdpClearActiveFn& clearActive,
@@ -953,7 +1738,9 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     bool contextCreated = false;
+    HarmonyClipboardBridge clipboardBridge;
     auto cleanup = [&]() {
+        clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
         clearActive(instance);
         UnregisterCertificatePolicy(instance);
@@ -1017,6 +1804,20 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     if (!ConfigureEnhancedRdpSettings(api, settings, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!ConfigureClipboardChannel(api, settings, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!clipboardBridge.Initialize(instance->context, api, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -2663,10 +3464,11 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "core RDP/TLS/NLA + software GDI; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
-        "static rdpsnd/OHAudio playback requested; other optional channel negotiation off";
+        "static cliprdr text bridge and rdpsnd/OHAudio playback requested; "
+        "other optional channel negotiation off";
 
     napi_value result = MakeObject(env);
-    SetString(env, result, "bridgeVersion", "0.7.0");
+    SetString(env, result, "bridgeVersion", "0.8.0");
     SetString(env, result, "abi", CurrentAbi());
     SetString(env, result, "freeRdpVersion", freerdp.freerdpVersion);
     SetString(env, result, "winprVersion", freerdp.winprVersion);
