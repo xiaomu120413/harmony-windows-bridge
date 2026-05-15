@@ -94,12 +94,23 @@ struct SurfacePaintResult {
     std::vector<std::string> logs;
 };
 
+struct DirtyFrameStats {
+    bool valid = false;
+    uint32_t rectCount = 0;
+    uint32_t x = 0;
+    uint32_t y = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t areaPermille = 0;
+};
+
 struct RgbaFrame {
     const uint8_t* data = nullptr;
     uint32_t width = 0;
     uint32_t height = 0;
     int32_t strideBytes = 0;
     std::string label;
+    DirtyFrameStats dirty;
 };
 
 struct RenderStatsSnapshot {
@@ -117,7 +128,23 @@ struct RenderStatsSnapshot {
     uint32_t avgCopyUs = 0;
     uint32_t avgRenderUs = 0;
     uint32_t fpsX100 = 0;
+    DirtyFrameStats lastDirty;
 };
+
+std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
+{
+    if (!dirty.valid) {
+        return "dirty=none";
+    }
+
+    std::ostringstream out;
+    out << "dirtyRects=" << dirty.rectCount
+        << " dirtyBox=" << dirty.x << "," << dirty.y << " "
+        << dirty.width << "x" << dirty.height
+        << " dirtyArea=" << (dirty.areaPermille / 10) << "."
+        << (dirty.areaPermille % 10) << "%";
+    return out.str();
+}
 
 void EmitNativeLog(const std::string& line);
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
@@ -881,6 +908,77 @@ void ClearRdpDesktopSize()
     SetRdpDesktopSize(0, 0);
 }
 
+DirtyFrameStats CaptureGdiDirtyStats(const rdpGdi* gdi)
+{
+    DirtyFrameStats stats;
+    if (gdi == nullptr || gdi->width <= 0 || gdi->height <= 0 ||
+        gdi->primary == nullptr || gdi->primary->hdc == nullptr ||
+        gdi->primary->hdc->hwnd == nullptr) {
+        return stats;
+    }
+
+    HGDI_WND hwnd = gdi->primary->hdc->hwnd;
+    const uint32_t frameWidth = static_cast<uint32_t>(gdi->width);
+    const uint32_t frameHeight = static_cast<uint32_t>(gdi->height);
+    const uint64_t frameArea = static_cast<uint64_t>(frameWidth) * frameHeight;
+    if (frameArea == 0) {
+        return stats;
+    }
+
+    uint32_t minX = frameWidth;
+    uint32_t minY = frameHeight;
+    uint32_t maxX = 0;
+    uint32_t maxY = 0;
+    uint64_t dirtyArea = 0;
+
+    auto addRegion = [&](const GDI_RGN* region) {
+        if (region == nullptr || region->null || region->w <= 0 || region->h <= 0) {
+            return;
+        }
+
+        const int64_t left = std::max<int64_t>(0, region->x);
+        const int64_t top = std::max<int64_t>(0, region->y);
+        const int64_t right = std::min<int64_t>(frameWidth, static_cast<int64_t>(region->x) + region->w);
+        const int64_t bottom = std::min<int64_t>(frameHeight, static_cast<int64_t>(region->y) + region->h);
+        if (right <= left || bottom <= top) {
+            return;
+        }
+
+        const uint32_t clampedLeft = static_cast<uint32_t>(left);
+        const uint32_t clampedTop = static_cast<uint32_t>(top);
+        const uint32_t clampedRight = static_cast<uint32_t>(right);
+        const uint32_t clampedBottom = static_cast<uint32_t>(bottom);
+        minX = std::min(minX, clampedLeft);
+        minY = std::min(minY, clampedTop);
+        maxX = std::max(maxX, clampedRight);
+        maxY = std::max(maxY, clampedBottom);
+        dirtyArea += static_cast<uint64_t>(clampedRight - clampedLeft) *
+            static_cast<uint64_t>(clampedBottom - clampedTop);
+        ++stats.rectCount;
+    };
+
+    if (hwnd->ninvalid > 0 && hwnd->cinvalid != nullptr) {
+        for (INT32 i = 0; i < hwnd->ninvalid; ++i) {
+            addRegion(&hwnd->cinvalid[i]);
+        }
+    } else {
+        addRegion(hwnd->invalid);
+    }
+
+    if (stats.rectCount == 0) {
+        return stats;
+    }
+
+    stats.valid = true;
+    stats.x = minX;
+    stats.y = minY;
+    stats.width = maxX > minX ? maxX - minX : 0;
+    stats.height = maxY > minY ? maxY - minY : 0;
+    const uint64_t cappedArea = std::min(dirtyArea, frameArea);
+    stats.areaPermille = static_cast<uint32_t>((cappedArea * 1000U + frameArea / 2U) / frameArea);
+    return stats;
+}
+
 BOOL HarmonyBeginPaint(rdpContext* context)
 {
     if (context == nullptr || context->gdi == nullptr || context->gdi->primary == nullptr ||
@@ -919,6 +1017,7 @@ BOOL HarmonyEndPaint(rdpContext* context)
         static_cast<uint32_t>(gdi->height),
         static_cast<int32_t>(gdi->stride),
         "freerdp gdi",
+        CaptureGdiDirtyStats(gdi),
     };
     const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
     std::string queueMessage;
@@ -2984,6 +3083,7 @@ public:
         next.strideBytes = sourceStride;
         next.label = frame.label.empty() ? "freerdp gdi queued" : frame.label + " queued";
         next.data = frame.data;
+        next.dirty = frame.dirty;
         const uint32_t copyUs = 0;
 
         {
@@ -3002,9 +3102,10 @@ public:
             hasPending_ = true;
             lastCopyUs_ = copyUs;
             totalCopyUs_ += copyUs;
+            lastDirty_ = next.dirty;
             ++queuedCount_;
             message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-                " latest-gdi";
+                " latest-gdi " + DescribeDirtyStats(frame.dirty);
         }
 
         condition_.notify_one();
@@ -3065,6 +3166,7 @@ public:
             static_cast<uint32_t>(totalCopyUs_ / queuedCount_);
         snapshot.avgRenderUs = renderedCount_ == 0 ? 0 :
             static_cast<uint32_t>(totalRenderUs_ / renderedCount_);
+        snapshot.lastDirty = lastDirty_;
         const uint64_t elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - statsStartedAt_).count();
         if (elapsedMs > 0) {
@@ -3082,6 +3184,7 @@ private:
         int32_t strideBytes = 0;
         std::string label;
         bool forceRender = false;
+        DirtyFrameStats dirty;
     };
 
     static constexpr uint32_t kTargetFrameIntervalMs = 16;
@@ -3101,6 +3204,7 @@ private:
         totalRenderUs_ = 0;
         lastCopyUs_ = 0;
         lastRenderUs_ = 0;
+        lastDirty_ = DirtyFrameStats{};
         lastRenderedWidth_ = 0;
         lastRenderedHeight_ = 0;
         lastRenderFinishedAt_ = std::chrono::steady_clock::time_point{};
@@ -3151,6 +3255,7 @@ private:
                 frame.height,
                 frame.strideBytes,
                 frame.label,
+                frame.dirty,
             };
             const auto renderStart = std::chrono::steady_clock::now();
             SurfacePaintResult paint = RenderSurfaceRgbaFrame(view);
@@ -3204,6 +3309,7 @@ private:
     uint64_t totalRenderUs_ = 0;
     uint32_t lastCopyUs_ = 0;
     uint32_t lastRenderUs_ = 0;
+    DirtyFrameStats lastDirty_;
     uint32_t lastRenderedWidth_ = 0;
     uint32_t lastRenderedHeight_ = 0;
     std::chrono::steady_clock::time_point lastRenderFinishedAt_;
@@ -3267,7 +3373,8 @@ std::string BuildRenderStatsLog()
         << " avgRenderMs=" << (stats.avgRenderUs / 1000) << "."
         << std::setw(3) << std::setfill('0') << (stats.avgRenderUs % 1000)
         << std::setfill(' ')
-        << " last=" << stats.lastWidth << "x" << stats.lastHeight;
+        << " last=" << stats.lastWidth << "x" << stats.lastHeight
+        << " " << DescribeDirtyStats(stats.lastDirty);
     return out.str();
 }
 

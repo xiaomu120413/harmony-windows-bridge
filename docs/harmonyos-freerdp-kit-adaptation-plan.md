@@ -671,6 +671,23 @@ static UINT ohos_cliprdr_server_format_data_request(
 
 - repaint 仍然读取 GDI direct pointer；disconnect/resize 前已停止 render thread，但极端并发下仍需生命周期压测。
 
+本轮继续落地 S4-5：
+
+- 从 FreeRDP GDI `invalid/cinvalid` 中采集 dirty rect 数量、合并 bbox 和 dirty area。
+- dirty 信息跟随 latest frame 进入 render stats 和低频队列日志。
+- 暂不改变 NativeWindow flush 策略，仍然整帧写入，避免 buffer queue 无 backing store 时出现残影。
+
+验收标准：
+
+- HAP 构建通过。
+- 连接后 `latest-gdi` 或 `render stats` 能看到 `dirtyRects/dirtyBox/dirtyArea`。
+- 不改变 S4-1 的远端尺寸 NativeWindow buffer 策略。
+
+遗留风险：
+
+- dirty area 当前按 rect 面积求和，重叠区域会被重复计入，只作为趋势指标，不直接用于局部渲染决策。
+- 还没有实现真正 dirty rect 拷贝；后续需要确认 NativeWindow buffer age 或维护本地 backing store。
+
 遗留风险：
 
 - direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。
