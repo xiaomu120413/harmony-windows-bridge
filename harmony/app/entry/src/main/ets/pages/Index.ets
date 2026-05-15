@@ -20,6 +20,7 @@ const DOUBLE_TAP_DISTANCE: number = 24
 const POINTER_FAILURE_LOG_INTERVAL_MS: number = 800
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
+const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
 
 const RDP_SCANCODE_ESCAPE: number = 0x01
 const RDP_SCANCODE_BACKSPACE: number = 0x0E
@@ -28,6 +29,7 @@ const RDP_SCANCODE_ENTER: number = 0x1C
 const RDP_SCANCODE_LCONTROL: number = 0x1D
 const RDP_SCANCODE_LMENU: number = 0x38
 const RDP_SCANCODE_LWIN: number = 0x015B
+const RDP_SCANCODE_INSERT: number = 0x0152
 const RDP_SCANCODE_DELETE: number = 0x0153
 const RDP_SCANCODE_UP: number = 0x0148
 const RDP_SCANCODE_DOWN: number = 0x0150
@@ -35,6 +37,12 @@ const RDP_SCANCODE_LEFT: number = 0x014B
 const RDP_SCANCODE_RIGHT: number = 0x014D
 const RDP_SCANCODE_HOME: number = 0x0147
 const RDP_SCANCODE_END: number = 0x014F
+const RDP_SCANCODE_PAGE_UP: number = 0x0149
+const RDP_SCANCODE_PAGE_DOWN: number = 0x0151
+const RDP_SCANCODE_F1: number = 0x3B
+const RDP_SCANCODE_F10: number = 0x44
+const RDP_SCANCODE_F11: number = 0x57
+const RDP_SCANCODE_F12: number = 0x58
 
 const OH_KEYCODE_0: number = 2000
 const OH_KEYCODE_9: number = 2009
@@ -63,6 +71,8 @@ const OH_KEYCODE_BACKSLASH: number = 2061
 const OH_KEYCODE_SEMICOLON: number = 2062
 const OH_KEYCODE_APOSTROPHE: number = 2063
 const OH_KEYCODE_SLASH: number = 2064
+const OH_KEYCODE_PAGE_UP: number = 2068
+const OH_KEYCODE_PAGE_DOWN: number = 2069
 const OH_KEYCODE_ESCAPE: number = 2070
 const OH_KEYCODE_FORWARD_DEL: number = 2071
 const OH_KEYCODE_CTRL_LEFT: number = 2072
@@ -71,6 +81,17 @@ const OH_KEYCODE_META_LEFT: number = 2076
 const OH_KEYCODE_META_RIGHT: number = 2077
 const OH_KEYCODE_MOVE_HOME: number = 2081
 const OH_KEYCODE_MOVE_END: number = 2082
+const OH_KEYCODE_INSERT: number = 2083
+const OH_KEYCODE_F1: number = 2090
+const OH_KEYCODE_F12: number = 2101
+const OH_KEYCODE_NUMPAD_0: number = 2103
+const OH_KEYCODE_NUMPAD_9: number = 2112
+const OH_KEYCODE_NUMPAD_DIVIDE: number = 2113
+const OH_KEYCODE_NUMPAD_MULTIPLY: number = 2114
+const OH_KEYCODE_NUMPAD_SUBTRACT: number = 2115
+const OH_KEYCODE_NUMPAD_ADD: number = 2116
+const OH_KEYCODE_NUMPAD_DOT: number = 2117
+const OH_KEYCODE_NUMPAD_ENTER: number = 2119
 
 interface NativeProbeResult {
   bridgeVersion: string
@@ -186,6 +207,7 @@ struct Index {
   private lastPointerFailureLogAtMs: number = 0
   private lastInputProbeAtMs: number = 0
   private surfaceController: XComponentController = new XComponentController()
+  private remoteInputController: TextInputController = new TextInputController()
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -661,6 +683,9 @@ struct Index {
       if (!result.ok) {
         this.appendLog(result.message)
       }
+      if (result.ok) {
+        this.scheduleInputProbe()
+      }
       return result.ok
     } catch (error) {
       this.appendLog(`Native key input failed: ${JSON.stringify(error)}`)
@@ -685,6 +710,9 @@ struct Index {
       if (!result.ok) {
         this.appendLog(result.message)
       }
+      if (result.ok) {
+        this.scheduleInputProbe()
+      }
       return result.ok
     } catch (error) {
       this.appendLog(`Native unicode input failed: ${JSON.stringify(error)}`)
@@ -696,6 +724,35 @@ struct Index {
     if (this.sendUnicodeEvent(code, true)) {
       this.sendUnicodeEvent(code, false)
     }
+  }
+
+  private focusRemoteInputBridge(): void {
+    if (!this.isConnected()) {
+      return
+    }
+    this.deferUiUpdate(() => {
+      const focused = focusControl.requestFocus(REMOTE_INPUT_BRIDGE_ID)
+      if (!focused) {
+        this.appendLog('Remote input focus failed')
+      }
+    })
+  }
+
+  private sendRemoteTextValue(value: string): void {
+    if (!value.length) {
+      return
+    }
+    this.remoteTextInput = value
+    this.sendRemoteText()
+    this.scheduleInputProbe()
+  }
+
+  private handleRemoteTextInputChange(value: string): void {
+    if (!value.length) {
+      this.remoteTextInput = ''
+      return
+    }
+    this.sendRemoteTextValue(value)
   }
 
   private sendRemoteText(): void {
@@ -811,6 +868,19 @@ struct Index {
       const digitScancodes: number[] = [0x0B, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A]
       return digitScancodes[keyCode - OH_KEYCODE_0]
     }
+    if (keyCode >= OH_KEYCODE_F1 && keyCode <= OH_KEYCODE_F12) {
+      if (keyCode <= OH_KEYCODE_F1 + 9) {
+        return RDP_SCANCODE_F1 + keyCode - OH_KEYCODE_F1
+      }
+      if (keyCode === OH_KEYCODE_F1 + 10) {
+        return RDP_SCANCODE_F11
+      }
+      return RDP_SCANCODE_F12
+    }
+    if (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) {
+      const numpadScancodes: number[] = [0x52, 0x4F, 0x50, 0x51, 0x4B, 0x4C, 0x4D, 0x47, 0x48, 0x49]
+      return numpadScancodes[keyCode - OH_KEYCODE_NUMPAD_0]
+    }
 
     const keyMap: Map<number, number> = new Map<number, number>([
       [OH_KEYCODE_ESCAPE, RDP_SCANCODE_ESCAPE],
@@ -819,6 +889,9 @@ struct Index {
       [OH_KEYCODE_DEL, RDP_SCANCODE_BACKSPACE],
       [OH_KEYCODE_FORWARD_DEL, RDP_SCANCODE_DELETE],
       [OH_KEYCODE_SPACE, 0x39],
+      [OH_KEYCODE_PAGE_UP, RDP_SCANCODE_PAGE_UP],
+      [OH_KEYCODE_PAGE_DOWN, RDP_SCANCODE_PAGE_DOWN],
+      [OH_KEYCODE_INSERT, RDP_SCANCODE_INSERT],
       [OH_KEYCODE_DPAD_UP, RDP_SCANCODE_UP],
       [OH_KEYCODE_DPAD_DOWN, RDP_SCANCODE_DOWN],
       [OH_KEYCODE_DPAD_LEFT, RDP_SCANCODE_LEFT],
@@ -843,9 +916,64 @@ struct Index {
       [OH_KEYCODE_APOSTROPHE, 0x28],
       [OH_KEYCODE_COMMA, 0x33],
       [OH_KEYCODE_PERIOD, 0x34],
-      [OH_KEYCODE_SLASH, 0x35]
+      [OH_KEYCODE_SLASH, 0x35],
+      [OH_KEYCODE_NUMPAD_DIVIDE, 0x0135],
+      [OH_KEYCODE_NUMPAD_MULTIPLY, 0x37],
+      [OH_KEYCODE_NUMPAD_SUBTRACT, 0x4A],
+      [OH_KEYCODE_NUMPAD_ADD, 0x4E],
+      [OH_KEYCODE_NUMPAD_DOT, 0x53],
+      [OH_KEYCODE_NUMPAD_ENTER, 0x011C]
     ])
     return keyMap.get(keyCode) ?? 0
+  }
+
+  private isPrintableArkKeyCode(keyCode: number): boolean {
+    return (keyCode >= OH_KEYCODE_A && keyCode <= OH_KEYCODE_Z) ||
+      (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) ||
+      (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) ||
+      keyCode === OH_KEYCODE_SPACE ||
+      keyCode === OH_KEYCODE_GRAVE ||
+      keyCode === OH_KEYCODE_MINUS ||
+      keyCode === OH_KEYCODE_EQUALS ||
+      keyCode === OH_KEYCODE_LEFT_BRACKET ||
+      keyCode === OH_KEYCODE_RIGHT_BRACKET ||
+      keyCode === OH_KEYCODE_BACKSLASH ||
+      keyCode === OH_KEYCODE_SEMICOLON ||
+      keyCode === OH_KEYCODE_APOSTROPHE ||
+      keyCode === OH_KEYCODE_COMMA ||
+      keyCode === OH_KEYCODE_PERIOD ||
+      keyCode === OH_KEYCODE_SLASH ||
+      keyCode === OH_KEYCODE_NUMPAD_DIVIDE ||
+      keyCode === OH_KEYCODE_NUMPAD_MULTIPLY ||
+      keyCode === OH_KEYCODE_NUMPAD_SUBTRACT ||
+      keyCode === OH_KEYCODE_NUMPAD_ADD ||
+      keyCode === OH_KEYCODE_NUMPAD_DOT
+  }
+
+  private isModifierPressed(event: KeyEvent, modifier: string): boolean {
+    try {
+      if (event.getModifierKeyState) {
+        return event.getModifierKeyState([modifier])
+      }
+    } catch (error) {
+      return false
+    }
+    return false
+  }
+
+  private hasRemoteShortcutModifier(event: KeyEvent): boolean {
+    return this.ctrlModifierDown || this.altModifierDown ||
+      this.isModifierPressed(event, 'ctrl') || this.isModifierPressed(event, 'alt')
+  }
+
+  private getEventUnicode(event: KeyEvent): number {
+    if (event.unicode && event.unicode > 0) {
+      return event.unicode
+    }
+    if (event.keyText.length === 1) {
+      return event.keyText.charCodeAt(0)
+    }
+    return 0
   }
 
   private handleSurfaceKeyEvent(event: KeyEvent): boolean {
@@ -853,11 +981,26 @@ struct Index {
       return false
     }
     const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
-    if (scancode <= 0) {
-      return false
-    }
     const down = event.type === KeyType.Down
-    return this.sendKeyEvent(scancode, down, false)
+    const printable = this.isPrintableArkKeyCode(event.keyCode)
+    const shortcut = this.hasRemoteShortcutModifier(event)
+
+    if (scancode > 0 && (!printable || shortcut)) {
+      return this.sendKeyEvent(scancode, down, false)
+    }
+
+    if (!down) {
+      return printable || scancode > 0
+    }
+
+    const unicode = this.getEventUnicode(event)
+    if (unicode > 0 && unicode <= 0xFFFF) {
+      this.sendUnicodeStroke(unicode)
+      this.scheduleInputProbe()
+      return true
+    }
+
+    return scancode > 0
   }
 
   private mouseButtonToPointerFlag(button: MouseButton): number {
@@ -898,6 +1041,7 @@ struct Index {
     this.lastTouchY = event.y
     const buttonFlag = this.mouseButtonToPointerFlag(event.button)
     if (event.action === MouseAction.Press) {
+      this.focusRemoteInputBridge()
       this.logPointerDiagnostic('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
         this.mapPointerToDesktop(event.x, event.y, false))
       if (buttonFlag === 0 || !this.isPointInRemoteViewport(event.x, event.y)) {
@@ -1080,6 +1224,7 @@ struct Index {
     this.lastTouchY = y
 
     if (event.type === TouchType.Down) {
+      this.focusRemoteInputBridge()
       this.startPendingTouch(x, y)
       return
     }
@@ -1396,6 +1541,28 @@ struct Index {
             })
           })
 
+        TextInput({ text: this.remoteTextInput, controller: this.remoteInputController })
+          .id(REMOTE_INPUT_BRIDGE_ID)
+          .width(1)
+          .height(1)
+          .position({ x: 0, y: 0 })
+          .opacity(0.01)
+          .fontSize(1)
+          .fontColor('#00000000')
+          .backgroundColor('#00000000')
+          .caretColor('#00000000')
+          .focusable(true)
+          .onChange((value: string) => {
+            this.handleRemoteTextInputChange(value)
+          })
+          .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
+            this.remoteTextInput = ''
+            this.sendKeyStroke(RDP_SCANCODE_ENTER)
+          })
+          .onKeyEvent((event: KeyEvent): boolean => {
+            return this.handleSurfaceKeyEvent(event)
+          })
+
         if (!this.isConnected()) {
           Text('Remote desktop surface')
             .fontSize(20)
@@ -1419,93 +1586,6 @@ struct Index {
       .onAxisEvent((event: AxisEvent) => {
         this.handleSurfaceAxis(event)
       })
-
-      Column() {
-        Row() {
-          Button('Ctrl')
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor(this.ctrlModifierDown ? '#0A84FF' : '#E8EEF7')
-            .fontColor(this.ctrlModifierDown ? Color.White : '#1D2433')
-            .onClick(() => {
-              this.toggleCtrlModifier()
-            })
-          Button('Alt')
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor(this.altModifierDown ? '#0A84FF' : '#E8EEF7')
-            .fontColor(this.altModifierDown ? Color.White : '#1D2433')
-            .onClick(() => {
-              this.toggleAltModifier()
-            })
-          Button('Win')
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor(this.winModifierDown ? '#0A84FF' : '#E8EEF7')
-            .fontColor(this.winModifierDown ? Color.White : '#1D2433')
-            .onClick(() => {
-              this.toggleWinModifier()
-            })
-          Button('Esc')
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor('#E8EEF7')
-            .fontColor('#1D2433')
-            .onClick(() => {
-              this.sendKeyStroke(RDP_SCANCODE_ESCAPE)
-            })
-          Button('Tab')
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor('#E8EEF7')
-            .fontColor('#1D2433')
-            .onClick(() => {
-              this.sendKeyStroke(RDP_SCANCODE_TAB)
-            })
-          this.keyButton('Enter', RDP_SCANCODE_ENTER)
-          this.keyButton('Bksp', RDP_SCANCODE_BACKSPACE)
-          this.keyButton('Del', RDP_SCANCODE_DELETE)
-        }
-        .height(44)
-        .width('100%')
-
-        Row() {
-          this.keyButton('Home', RDP_SCANCODE_HOME)
-          this.keyButton('End', RDP_SCANCODE_END)
-          this.keyButton('Up', RDP_SCANCODE_UP)
-          this.keyButton('Down', RDP_SCANCODE_DOWN)
-          this.keyButton('Left', RDP_SCANCODE_LEFT)
-          this.keyButton('Right', RDP_SCANCODE_RIGHT)
-        }
-        .height(36)
-        .width('100%')
-        .margin({ top: 6 })
-
-        Row() {
-          TextInput({ placeholder: 'Text', text: this.remoteTextInput })
-            .height(40)
-            .layoutWeight(1)
-            .onChange((value: string) => {
-              this.remoteTextInput = value
-            })
-          Button('Send')
-            .height(40)
-            .width(112)
-            .margin({ left: 8 })
-            .backgroundColor('#0A84FF')
-            .fontColor(Color.White)
-            .onClick(() => {
-              this.sendRemoteText()
-            })
-        }
-        .height(48)
-        .width('100%')
-        .margin({ top: 6 })
-      }
-      .height(154)
-      .width('100%')
-      .padding({ left: 8, right: 8, top: 8, bottom: 8 })
-      .backgroundColor('#FFFFFF')
     }
     .layoutWeight(1)
   }
