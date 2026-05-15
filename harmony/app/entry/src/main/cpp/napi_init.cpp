@@ -2950,11 +2950,15 @@ public:
             if (!running_ && !worker_.joinable()) {
                 pending_.pixels.clear();
                 hasPending_ = false;
+                latestFrame_.pixels.clear();
+                hasLatestFrame_ = false;
                 return;
             }
             running_ = false;
             pending_.pixels.clear();
             hasPending_ = false;
+            latestFrame_.pixels.clear();
+            hasLatestFrame_ = false;
             worker = std::move(worker_);
         }
 
@@ -2989,8 +2993,11 @@ public:
                 return false;
             }
             if (hasPending_) {
+                next.forceRender = pending_.forceRender;
                 ++replacedCount_;
             }
+            latestFrame_ = next;
+            hasLatestFrame_ = true;
             pending_ = std::move(next);
             hasPending_ = true;
             lastCopyUs_ = copyUs;
@@ -3000,6 +3007,41 @@ public:
                 " latest-gdi";
         }
 
+        condition_.notify_one();
+        return true;
+    }
+
+    bool RepaintLatest(const std::string& reason, std::string& message)
+    {
+        uint32_t width = 0;
+        uint32_t height = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!running_) {
+                message = "render thread stopped";
+                return false;
+            }
+            if (!hasLatestFrame_ ||
+                (latestFrame_.data == nullptr && latestFrame_.pixels.empty())) {
+                message = "no frame available for surface repaint";
+                return false;
+            }
+            if (hasPending_) {
+                ++replacedCount_;
+            }
+
+            PendingFrame repaint = latestFrame_;
+            repaint.forceRender = true;
+            repaint.label = reason.empty() ? "surface repaint" : reason;
+            width = repaint.width;
+            height = repaint.height;
+            pending_ = std::move(repaint);
+            hasPending_ = true;
+            lastCopyUs_ = 0;
+            ++queuedCount_;
+        }
+
+        message = std::to_string(width) + "x" + std::to_string(height) + " surface-repaint";
         condition_.notify_one();
         return true;
     }
@@ -3039,6 +3081,7 @@ private:
         uint32_t height = 0;
         int32_t strideBytes = 0;
         std::string label;
+        bool forceRender = false;
     };
 
     static constexpr uint32_t kTargetFrameIntervalMs = 16;
@@ -3047,6 +3090,8 @@ private:
     {
         pending_.pixels.clear();
         hasPending_ = false;
+        latestFrame_.pixels.clear();
+        hasLatestFrame_ = false;
         queuedCount_ = 0;
         renderedCount_ = 0;
         failedCount_ = 0;
@@ -3078,9 +3123,10 @@ private:
                         continue;
                     }
 
+                    const bool forceRender = pending_.forceRender;
                     const bool sizeChanged = pending_.width != lastRenderedWidth_ ||
                         pending_.height != lastRenderedHeight_;
-                    if (!sizeChanged && renderedCount_ > 0 &&
+                    if (!forceRender && !sizeChanged && renderedCount_ > 0 &&
                         lastRenderFinishedAt_ != std::chrono::steady_clock::time_point{}) {
                         const auto nextRenderAt = lastRenderFinishedAt_ +
                             std::chrono::milliseconds(kTargetFrameIntervalMs);
@@ -3145,8 +3191,10 @@ private:
     std::condition_variable condition_;
     std::thread worker_;
     PendingFrame pending_;
+    PendingFrame latestFrame_;
     bool running_ = false;
     bool hasPending_ = false;
+    bool hasLatestFrame_ = false;
     uint64_t queuedCount_ = 0;
     uint64_t renderedCount_ = 0;
     uint64_t failedCount_ = 0;
@@ -3167,6 +3215,19 @@ LatestFrameRenderer g_frameRenderer;
 bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message)
 {
     return g_frameRenderer.Enqueue(frame, message);
+}
+
+void RequestSurfaceRepaint(const std::string& reason)
+{
+    static std::atomic_uint32_t repaintLogCount{0};
+    std::string message;
+    if (g_frameRenderer.RepaintLatest(reason, message)) {
+        const uint32_t count = ++repaintLogCount;
+        if (count <= 3 || count % 30 == 0) {
+            EmitNativeLog("Surface repaint queued after " + reason + ": " + message +
+                " count=" + std::to_string(count));
+        }
+    }
 }
 
 void StartRenderPipeline()
@@ -3213,11 +3274,13 @@ std::string BuildRenderStatsLog()
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceCreated(component, window);
+    RequestSurfaceRepaint("surface created");
 }
 
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceChanged(component, window);
+    RequestSurfaceRepaint("surface changed");
 }
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)

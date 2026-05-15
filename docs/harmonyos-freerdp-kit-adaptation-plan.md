@@ -654,6 +654,23 @@ static UINT ohos_cliprdr_server_format_data_request(
 
 - 音频问题排查时实时性下降；需要排查音频时可临时缩短诊断间隔或改成手动诊断入口。
 
+本轮继续落地 S4-4：
+
+- render thread 保存最近一次 latest frame 元数据。
+- XComponent surface created/changed 后，如果会话中已有最新帧，主动排队一次 `surface repaint`。
+- repaint 帧绕过 16ms pacing，优先恢复画面，避免窗口重建、尺寸变化后短暂黑屏。
+- surface resize 过程中 repaint 请求会被 latest-frame 队列合并，日志只输出前几次和周期性计数，避免 resize 时刷屏。
+
+验收标准：
+
+- surface created/changed 时不崩溃。
+- 已连接场景下重建 surface 后能复用最新帧补画。
+- 不回退 S4-1 的远端尺寸 NativeWindow buffer 策略。
+
+遗留风险：
+
+- repaint 仍然读取 GDI direct pointer；disconnect/resize 前已停止 render thread，但极端并发下仍需生命周期压测。
+
 遗留风险：
 
 - direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。
