@@ -137,6 +137,7 @@ struct RenderStatsSnapshot {
     uint32_t avgRenderUs = 0;
     uint32_t fpsX100 = 0;
     DirtyFrameStats lastDirty;
+    uint32_t targetFrameIntervalMs = 0;
 };
 
 std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
@@ -3395,6 +3396,7 @@ public:
         snapshot.avgRenderUs = renderedCount_ == 0 ? 0 :
             static_cast<uint32_t>(totalRenderUs_ / renderedCount_);
         snapshot.lastDirty = lastDirty_;
+        snapshot.targetFrameIntervalMs = lastTargetFrameIntervalMs_;
         const uint64_t elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - statsStartedAt_).count();
         if (elapsedMs > 0) {
@@ -3417,6 +3419,19 @@ private:
     };
 
     static constexpr uint32_t kTargetFrameIntervalMs = 16;
+    static constexpr uint32_t kLargeDirtyFrameIntervalMs = 33;
+    static constexpr uint32_t kLargeDirtyAreaPermille = 700;
+
+    static uint32_t ResolveTargetFrameIntervalMs(const PendingFrame& frame, bool sizeChanged)
+    {
+        if (frame.forceRender || sizeChanged) {
+            return 0;
+        }
+        if (frame.dirty.valid && frame.dirty.areaPermille >= kLargeDirtyAreaPermille) {
+            return kLargeDirtyFrameIntervalMs;
+        }
+        return kTargetFrameIntervalMs;
+    }
 
     void ResetStatsLocked()
     {
@@ -3436,6 +3451,7 @@ private:
         lastRenderedWidth_ = 0;
         lastRenderedHeight_ = 0;
         frameSequence_ = 0;
+        lastTargetFrameIntervalMs_ = 0;
         lastRenderFinishedAt_ = std::chrono::steady_clock::time_point{};
         statsStartedAt_ = std::chrono::steady_clock::now();
     }
@@ -3444,6 +3460,7 @@ private:
     {
         for (;;) {
             PendingFrame frame;
+            uint32_t targetFrameIntervalMs = 0;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 condition_.wait(lock, [this]() { return !running_ || hasPending_; });
@@ -3459,10 +3476,12 @@ private:
                     const bool forceRender = pending_.forceRender;
                     const bool sizeChanged = pending_.width != lastRenderedWidth_ ||
                         pending_.height != lastRenderedHeight_;
-                    if (!forceRender && !sizeChanged && renderedCount_ > 0 &&
+                    targetFrameIntervalMs = ResolveTargetFrameIntervalMs(pending_, sizeChanged);
+                    lastTargetFrameIntervalMs_ = targetFrameIntervalMs;
+                    if (!forceRender && !sizeChanged && targetFrameIntervalMs > 0 && renderedCount_ > 0 &&
                         lastRenderFinishedAt_ != std::chrono::steady_clock::time_point{}) {
                         const auto nextRenderAt = lastRenderFinishedAt_ +
-                            std::chrono::milliseconds(kTargetFrameIntervalMs);
+                            std::chrono::milliseconds(targetFrameIntervalMs);
                         const auto now = std::chrono::steady_clock::now();
                         if (now < nextRenderAt) {
                             ++throttledCount_;
@@ -3523,7 +3542,8 @@ private:
                 if (forcedRender || rendered <= 3 || rendered % 60 == 0 ||
                     (paint.partial && (partialRendered <= 3 || partialRendered % 60 == 0))) {
                     EmitNativeLog("Render thread painted frame " + std::to_string(rendered) +
-                        " render=" + std::to_string(renderUs / 1000.0) + "ms " + paint.message);
+                        " render=" + std::to_string(renderUs / 1000.0) + "ms pace=" +
+                        std::to_string(targetFrameIntervalMs) + "ms " + paint.message);
                 }
             } else if (failed <= 3 || failed % 120 == 0) {
                 EmitNativeLog("Render thread paint failed: " + paint.message);
@@ -3552,6 +3572,7 @@ private:
     uint32_t lastRenderedWidth_ = 0;
     uint32_t lastRenderedHeight_ = 0;
     uint64_t frameSequence_ = 0;
+    uint32_t lastTargetFrameIntervalMs_ = 0;
     std::chrono::steady_clock::time_point lastRenderFinishedAt_;
     std::chrono::steady_clock::time_point statsStartedAt_ = std::chrono::steady_clock::now();
 };
@@ -3586,6 +3607,7 @@ std::string BuildRenderStatsLog()
         << " paced=" << stats.throttled
         << " full=" << stats.fullRendered
         << " partial=" << stats.partialRendered
+        << " paceMs=" << stats.targetFrameIntervalMs
         << " pending=" << stats.pending
         << " fps=" << (stats.fpsX100 / 100) << "."
         << std::setw(2) << std::setfill('0') << (stats.fpsX100 % 100)

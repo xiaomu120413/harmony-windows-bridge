@@ -707,6 +707,24 @@ static UINT ohos_cliprdr_server_format_data_request(
 - NativeWindow buffer key 使用请求到的 buffer 指针；若系统实现不保持稳定指针，会退化为整帧渲染。
 - 视频大面积刷新通常超过阈值，仍会走整帧渲染；真正视频流畅还需要 `rdpgfx/H.264` 或 AVCodec 路线。
 
+本轮继续落地 S4-7：
+
+- render thread 根据 pending frame 的 dirty 面积做自适应 pacing。
+- 首帧、尺寸变化和 surface repaint 不限速。
+- dirty 面积大于等于 70% 时使用 33ms pacing，其他帧保持 16ms。
+- render stats 和 render 日志增加 `paceMs`，用于真机观察当前节奏。
+
+验收标准：
+
+- HAP 构建通过。
+- 真机连接后正常显示桌面。
+- 日志中首帧/resize 可见 `pace=0ms`，普通帧可见 `pace=16ms`，大面积刷新可退到 `pace=33ms`。
+
+遗留风险：
+
+- 33ms pacing 会降低大面积动态画面的最高帧率，但目的是优先降低 CPU 和输入阻塞。
+- 当前只按 dirty 面积判断，没有结合实时 CPU/队列深度，后续可继续改成动态负载控制。
+
 遗留风险：
 
 - direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。
