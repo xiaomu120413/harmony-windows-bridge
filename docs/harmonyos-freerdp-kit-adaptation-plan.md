@@ -638,6 +638,22 @@ static UINT ohos_cliprdr_server_format_data_request(
 - 目标 16ms 会比 33ms 消耗更多 CPU/内存带宽；如果真机发热或耗电明显，需要改成自适应 16/33ms。
 - 当前仍未做 dirty rect，NativeWindow 写入仍是整帧。
 
+本轮继续落地 S4-3：
+
+- 暂缓直接实现 dirty rect。原因是当前 NativeWindow 走 buffer queue，未确认 buffer age 前只拷贝脏区可能让非脏区残留旧 buffer 内容，造成残影。
+- 先降低会话热路径日志开销：`FreeRDP audio diagnostics` 从连接后立即每 2 秒输出一次，改为连接 10 秒后每 10 秒输出一次。
+- 目标是减少高频视频场景下 hilog 大字符串拼接和写日志对协议线程的干扰。
+
+验收标准：
+
+- 连接后前 10 秒不再持续输出大段 audio diagnostics。
+- 远程视频页面仍可显示，render thread 日志继续正常。
+- 音频链路不变，只降低诊断日志频率。
+
+遗留风险：
+
+- 音频问题排查时实时性下降；需要排查音频时可临时缩短诊断间隔或改成手动诊断入口。
+
 遗留风险：
 
 - direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。
