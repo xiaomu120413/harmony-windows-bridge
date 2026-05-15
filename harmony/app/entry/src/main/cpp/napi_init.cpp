@@ -1431,10 +1431,55 @@ struct RdpgfxDiagnosticsHookState {
     pcRdpgfxStartFrame startFrame = nullptr;
     pcRdpgfxEndFrame endFrame = nullptr;
     pcRdpgfxSurfaceCommand surfaceCommand = nullptr;
+    pcRdpgfxCapsConfirm capsConfirm = nullptr;
 };
 
 std::mutex g_rdpgfxHooksMutex;
 std::unordered_map<RdpgfxClientContext*, RdpgfxDiagnosticsHookState> g_rdpgfxHooks;
+
+bool RdpgfxCapsConfirmAvc420(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    return capsConfirm != nullptr && capsConfirm->capsSet != nullptr &&
+        capsConfirm->capsSet->version == RDPGFX_CAPVERSION_81 &&
+        (capsConfirm->capsSet->flags & RDPGFX_CAPS_FLAG_AVC420_ENABLED) != 0;
+}
+
+bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
+        return false;
+    }
+
+    const uint32_t version = capsConfirm->capsSet->version;
+    const uint32_t flags = capsConfirm->capsSet->flags;
+    return version == RDPGFX_CAPVERSION_101 ||
+        (version >= RDPGFX_CAPVERSION_10 && (flags & RDPGFX_CAPS_FLAG_AVC_DISABLED) == 0);
+}
+
+std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
+        return "capsConfirm=null";
+    }
+
+    const RDPGFX_CAPSET* capsSet = capsConfirm->capsSet;
+    return "version=" + Hex32(capsSet->version) + " flags=" + Hex32(capsSet->flags);
+}
+
+void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
+{
+    if (!g_avc420SurfaceOutputEnabled.exchange(false)) {
+        return;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosAvcodecSetOutputSurface != nullptr) {
+        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    }
+
+    StartRenderPipeline();
+    EmitNativeLog("AVC420 surface output disabled; using FreeRDP buffer/GLES fallback: " + reason);
+}
 
 UINT HarmonyRdpgfxStartFrame(RdpgfxClientContext* context, const RDPGFX_START_FRAME_PDU* startFrame)
 {
@@ -1464,19 +1509,39 @@ UINT HarmonyRdpgfxEndFrame(RdpgfxClientContext* context, const RDPGFX_END_FRAME_
     return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, endFrame);
 }
 
+UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    if (g_avc420SurfaceOutputEnabled.load()) {
+        const std::string summary = RdpgfxCapsConfirmSummary(capsConfirm);
+        if (RdpgfxCapsConfirmAvc420(capsConfirm)) {
+            StopRenderPipeline();
+            EmitNativeLog("RDPGFX negotiated AVC420 surface mode: " + summary);
+        } else if (RdpgfxCapsConfirmAvc444(capsConfirm)) {
+            SwitchAvc420SurfaceToSoftwareFallback("server selected AVC444 buffer mode " + summary);
+        } else {
+            SwitchAvc420SurfaceToSoftwareFallback("server selected non-AVC graphics mode " + summary);
+        }
+    }
+
+    pcRdpgfxCapsConfirm original = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+        auto iter = g_rdpgfxHooks.find(context);
+        if (iter != g_rdpgfxHooks.end()) {
+            original = iter->second.capsConfirm;
+        }
+    }
+    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, capsConfirm);
+}
+
 UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURFACE_COMMAND* command)
 {
     if (command != nullptr) {
         RecordRdpgfxSurfaceCommand(*command);
         if (g_avc420SurfaceOutputEnabled.load() && command->codecId != RDPGFX_CODECID_AVC420) {
-            static std::atomic_uint32_t rejectedNonAvc420Count{0};
-            const uint32_t count = ++rejectedNonAvc420Count;
-            if (count <= 5 || count % 120 == 0) {
-                EmitNativeLog("RDPGFX surface command rejected in AVC420 surface-only mode: codec=" +
-                    std::string(RdpgfxCodecName(command->codecId)) +
-                    "(" + std::to_string(command->codecId) + ") count=" + std::to_string(count));
-            }
-            return ERROR_NOT_SUPPORTED;
+            SwitchAvc420SurfaceToSoftwareFallback("first non-AVC420 surface command codec=" +
+                std::string(RdpgfxCodecName(command->codecId)) +
+                "(" + std::to_string(command->codecId) + ")");
         }
     }
 
@@ -1506,6 +1571,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     state.startFrame = gfx->StartFrame;
     state.endFrame = gfx->EndFrame;
     state.surfaceCommand = gfx->SurfaceCommand;
+    state.capsConfirm = gfx->CapsConfirm;
     g_rdpgfxHooks[gfx] = state;
     if (state.startFrame != nullptr) {
         gfx->StartFrame = HarmonyRdpgfxStartFrame;
@@ -1515,6 +1581,9 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     }
     if (state.surfaceCommand != nullptr) {
         gfx->SurfaceCommand = HarmonyRdpgfxSurfaceCommand;
+    }
+    if (state.capsConfirm != nullptr) {
+        gfx->CapsConfirm = HarmonyRdpgfxCapsConfirm;
     }
 }
 
@@ -1533,6 +1602,7 @@ void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     gfx->StartFrame = iter->second.startFrame;
     gfx->EndFrame = iter->second.endFrame;
     gfx->SurfaceCommand = iter->second.surfaceCommand;
+    gfx->CapsConfirm = iter->second.capsConfirm;
     g_rdpgfxHooks.erase(iter);
 }
 
@@ -1570,20 +1640,20 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig,
     const FreerdpLogFn& log, std::string& error)
 {
-    constexpr uint32_t kGfxAvc420OnlyCapFilter = 0x00000001;
-    const bool h264SurfaceOnly = graphicsConfig.enabled && graphicsConfig.h264;
-    const uint32_t gfxCapsFilter = h264SurfaceOnly ? kGfxAvc420OnlyCapFilter : 0;
+    const bool h264Requested = graphicsConfig.enabled && graphicsConfig.h264;
+    const bool avc444FallbackEnabled = h264Requested;
+    const uint32_t gfxCapsFilter = 0;
 
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DynamicResolutionUpdate, true, "DynamicResolutionUpdate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, graphicsConfig.enabled,
             "SupportGraphicsPipeline", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, h264SurfaceOnly,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, h264Requested,
             "GfxH264", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, avc444FallbackEnabled,
             "GfxAVC444", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, false,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, avc444FallbackEnabled,
             "GfxAVC444v2", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_GfxCapsFilter, gfxCapsFilter, "GfxCapsFilter", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
@@ -1604,10 +1674,10 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     log("FreeRDP display-control dynamic resolution enabled");
     if (graphicsConfig.enabled) {
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
-            " h264=" + std::string(h264SurfaceOnly ? "surface-avc420-only" : "off") +
-            " avc444=off" +
+            " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
+            " avc444=" + std::string(avc444FallbackEnabled ? "buffer-fallback" : "off") +
             " capsFilter=" + Hex32(gfxCapsFilter) +
-            " fallback=disabled");
+            " fallback=" + std::string(avc444FallbackEnabled ? "avc444-buffer" : "disabled"));
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     }
@@ -1647,7 +1717,7 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     StopRenderPipeline();
     log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=avc420-surface-only");
+        " mode=avc420-surface-preferred fallback=avc444-buffer");
     return true;
 }
 
