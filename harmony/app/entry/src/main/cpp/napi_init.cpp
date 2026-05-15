@@ -93,6 +93,7 @@ struct TcpConnectResult {
 
 struct SurfacePaintResult {
     bool ok = false;
+    bool partial = false;
     std::string message;
     std::vector<std::string> logs;
 };
@@ -114,6 +115,8 @@ struct RgbaFrame {
     int32_t strideBytes = 0;
     std::string label;
     DirtyFrameStats dirty;
+    uint64_t sequence = 0;
+    uint64_t dirtySequenceStart = 0;
 };
 
 struct RenderStatsSnapshot {
@@ -123,6 +126,8 @@ struct RenderStatsSnapshot {
     uint64_t failed = 0;
     uint64_t replaced = 0;
     uint64_t throttled = 0;
+    uint64_t fullRendered = 0;
+    uint64_t partialRendered = 0;
     uint32_t pending = 0;
     uint32_t lastWidth = 0;
     uint32_t lastHeight = 0;
@@ -147,6 +152,45 @@ std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
         << " dirtyArea=" << (dirty.areaPermille / 10) << "."
         << (dirty.areaPermille % 10) << "%";
     return out.str();
+}
+
+DirtyFrameStats MergeDirtyStats(const DirtyFrameStats& first, const DirtyFrameStats& second,
+    uint32_t frameWidth, uint32_t frameHeight)
+{
+    if (!first.valid) {
+        return second;
+    }
+    if (!second.valid) {
+        return first;
+    }
+    if (frameWidth == 0 || frameHeight == 0) {
+        return DirtyFrameStats{};
+    }
+
+    DirtyFrameStats merged;
+    const uint64_t firstRight = static_cast<uint64_t>(first.x) + first.width;
+    const uint64_t firstBottom = static_cast<uint64_t>(first.y) + first.height;
+    const uint64_t secondRight = static_cast<uint64_t>(second.x) + second.width;
+    const uint64_t secondBottom = static_cast<uint64_t>(second.y) + second.height;
+    const uint32_t right = static_cast<uint32_t>(
+        std::min<uint64_t>(frameWidth, std::max(firstRight, secondRight)));
+    const uint32_t bottom = static_cast<uint32_t>(
+        std::min<uint64_t>(frameHeight, std::max(firstBottom, secondBottom)));
+
+    merged.valid = true;
+    merged.rectCount = first.rectCount + second.rectCount;
+    if (merged.rectCount < first.rectCount) {
+        merged.rectCount = UINT32_MAX;
+    }
+    merged.x = std::min(first.x, second.x);
+    merged.y = std::min(first.y, second.y);
+    merged.width = right > merged.x ? right - merged.x : 0;
+    merged.height = bottom > merged.y ? bottom - merged.y : 0;
+    const uint64_t frameArea = static_cast<uint64_t>(frameWidth) * frameHeight;
+    const uint64_t dirtyArea = static_cast<uint64_t>(merged.width) * merged.height;
+    merged.areaPermille = frameArea == 0 ? 0 :
+        static_cast<uint32_t>((std::min(dirtyArea, frameArea) * 1000U + frameArea / 2U) / frameArea);
+    return merged;
 }
 
 void EmitNativeLog(const std::string& line);
@@ -2593,6 +2637,14 @@ private:
         uint32_t height = 0;
     };
 
+    struct DirtyHistoryEntry {
+        uint64_t fromSequence = 0;
+        uint64_t toSequence = 0;
+        DirtyFrameStats dirty;
+    };
+
+    static constexpr size_t kDirtyHistoryLimit = 240;
+
     SurfacePaintResult RenderRgbaFrameLocked(const RgbaFrame& frame)
     {
         SurfacePaintResult result;
@@ -2739,15 +2791,27 @@ private:
 
         BufferHandle mappedHandle = *handle;
         mappedHandle.virAddr = mappedAddress;
-        FillNativeLetterbox(mappedHandle, mappedRowBytes, targetAreaWidth, targetAreaHeight,
-            bufferViewport, 0, 0, 0, 0xFF);
-        CopyScaledRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride,
-            frame.width, frame.height, bufferViewport);
+        const uintptr_t bufferKey = reinterpret_cast<uintptr_t>(buffer);
+        DirtyFrameStats partialDirty;
+        const bool canUsePartialDirty = CanUsePartialDirtyLocked(bufferKey, frame,
+            targetAreaWidth, targetAreaHeight, bufferViewport, partialDirty);
+        if (canUsePartialDirty) {
+            CopyRgbaRectToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride,
+                partialDirty.x, partialDirty.y, partialDirty.width, partialDirty.height);
+        } else {
+            FillNativeLetterbox(mappedHandle, mappedRowBytes, targetAreaWidth, targetAreaHeight,
+                bufferViewport, 0, 0, 0, 0xFF);
+            CopyScaledRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride,
+                frame.width, frame.height, bufferViewport);
+        }
         if (mappedNativeBuffer) {
             OH_NativeBuffer_Unmap(nativeBuffer);
         }
 
-        Region::Rect dirtyRect = {0, 0, targetAreaWidth, targetAreaHeight};
+        Region::Rect dirtyRect = canUsePartialDirty ?
+            Region::Rect{static_cast<int32_t>(partialDirty.x), static_cast<int32_t>(partialDirty.y),
+                partialDirty.width, partialDirty.height} :
+            Region::Rect{0, 0, targetAreaWidth, targetAreaHeight};
         Region dirtyRegion = {&dirtyRect, 1};
         rc = OH_NativeWindow_NativeWindowFlushBuffer(nativeWindow, buffer, -1, dirtyRegion);
         if (rc != 0) {
@@ -2759,6 +2823,8 @@ private:
         }
 
         ++paintCount_;
+        RecordBufferFrameLocked(bufferKey, frame);
+        result.partial = canUsePartialDirty;
         viewportX_ = bufferViewport.x;
         viewportY_ = bufferViewport.y;
         viewportWidth_ = bufferViewport.width;
@@ -2770,7 +2836,8 @@ private:
             " bufferViewport=" + std::to_string(bufferViewport.x) + "," +
             std::to_string(bufferViewport.y) + " displayViewport=" +
             std::to_string(viewportX_) + "," + std::to_string(viewportY_) + " " +
-            std::to_string(viewportWidth_) + "x" + std::to_string(viewportHeight_);
+            std::to_string(viewportWidth_) + "x" + std::to_string(viewportHeight_) +
+            (canUsePartialDirty ? " mode=dirty-bbox " + DescribeDirtyStats(partialDirty) : " mode=full");
         result.logs.push_back(result.message);
         result.logs.push_back("RGBA source=" + std::to_string(frame.width) + "x" +
             std::to_string(frame.height) + " stride=" + std::to_string(sourceStride));
@@ -2797,6 +2864,90 @@ private:
         configuredHeight_ = 0;
         configuredFormat_ = 0;
         configuredUsage_ = 0;
+        bufferFrameSequences_.clear();
+        dirtyHistory_.clear();
+        dirtyHistoryWidth_ = 0;
+        dirtyHistoryHeight_ = 0;
+    }
+
+    bool CanUsePartialDirtyLocked(uintptr_t bufferKey, const RgbaFrame& frame,
+        uint32_t targetAreaWidth, uint32_t targetAreaHeight, const RenderViewport& viewport,
+        DirtyFrameStats& dirty) const
+    {
+        constexpr uint32_t kMaxPartialDirtyAreaPermille = 650;
+        if (bufferKey == 0 || frame.sequence == 0 || frame.dirtySequenceStart == 0 || !frame.dirty.valid) {
+            return false;
+        }
+        if (frame.width != targetAreaWidth || frame.height != targetAreaHeight ||
+            viewport.x != 0 || viewport.y != 0 ||
+            viewport.width != frame.width || viewport.height != frame.height) {
+            return false;
+        }
+        if (dirtyHistoryWidth_ != frame.width || dirtyHistoryHeight_ != frame.height) {
+            return false;
+        }
+
+        const auto bufferIt = bufferFrameSequences_.find(bufferKey);
+        if (bufferIt == bufferFrameSequences_.end() || bufferIt->second >= frame.sequence) {
+            return false;
+        }
+
+        const uint64_t lastBufferSequence = bufferIt->second;
+        uint64_t expectedSequence = lastBufferSequence + 1U;
+        DirtyFrameStats accumulated;
+        for (const DirtyHistoryEntry& entry : dirtyHistory_) {
+            if (entry.toSequence <= lastBufferSequence) {
+                continue;
+            }
+            if (entry.fromSequence > expectedSequence) {
+                return false;
+            }
+            accumulated = MergeDirtyStats(accumulated, entry.dirty, frame.width, frame.height);
+            expectedSequence = entry.toSequence + 1U;
+        }
+
+        if (frame.dirtySequenceStart > expectedSequence) {
+            return false;
+        }
+        accumulated = MergeDirtyStats(accumulated, frame.dirty, frame.width, frame.height);
+        if (!accumulated.valid || accumulated.width == 0 || accumulated.height == 0) {
+            return false;
+        }
+        if (accumulated.x + accumulated.width > targetAreaWidth ||
+            accumulated.y + accumulated.height > targetAreaHeight) {
+            return false;
+        }
+        if (accumulated.areaPermille > kMaxPartialDirtyAreaPermille) {
+            return false;
+        }
+
+        dirty = accumulated;
+        return true;
+    }
+
+    void RecordBufferFrameLocked(uintptr_t bufferKey, const RgbaFrame& frame)
+    {
+        if (frame.sequence == 0) {
+            return;
+        }
+        if (dirtyHistoryWidth_ != frame.width || dirtyHistoryHeight_ != frame.height) {
+            dirtyHistory_.clear();
+            bufferFrameSequences_.clear();
+            dirtyHistoryWidth_ = frame.width;
+            dirtyHistoryHeight_ = frame.height;
+        }
+
+        DirtyHistoryEntry entry;
+        entry.fromSequence = frame.dirtySequenceStart == 0 ? frame.sequence : frame.dirtySequenceStart;
+        entry.toSequence = frame.sequence;
+        entry.dirty = frame.dirty;
+        dirtyHistory_.push_back(entry);
+        while (dirtyHistory_.size() > kDirtyHistoryLimit) {
+            dirtyHistory_.pop_front();
+        }
+        if (bufferKey != 0) {
+            bufferFrameSequences_[bufferKey] = frame.sequence;
+        }
     }
 
     bool ConfigureNativeWindowLocked(OHNativeWindow* nativeWindow, int32_t targetWidth,
@@ -3017,6 +3168,40 @@ private:
         }
     }
 
+    static void CopyRgbaRectToNative(const BufferHandle& handle, int32_t rowBytes, const uint8_t* source,
+        int32_t sourceStride, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+    {
+        if (width == 0 || height == 0) {
+            return;
+        }
+
+        auto* target = static_cast<uint8_t*>(handle.virAddr);
+        if (handle.format == NATIVEBUFFER_PIXEL_FMT_RGBA_8888 ||
+            handle.format == NATIVEBUFFER_PIXEL_FMT_RGBX_8888) {
+            const size_t bytesPerRow = static_cast<size_t>(width) * 4U;
+            for (uint32_t row = 0; row < height; ++row) {
+                std::memcpy(target + static_cast<int64_t>(rowBytes) * (y + row) +
+                    static_cast<int64_t>(x) * 4,
+                    source + static_cast<int64_t>(sourceStride) * (y + row) +
+                    static_cast<int64_t>(x) * 4,
+                    bytesPerRow);
+            }
+            return;
+        }
+
+        for (uint32_t row = 0; row < height; ++row) {
+            uint8_t* targetRow = target + static_cast<int64_t>(rowBytes) * (y + row) +
+                static_cast<int64_t>(x) * 4;
+            const uint8_t* sourceRow = source + static_cast<int64_t>(sourceStride) * (y + row) +
+                static_cast<int64_t>(x) * 4;
+            for (uint32_t column = 0; column < width; ++column) {
+                const uint8_t* sourcePixel = sourceRow + column * 4;
+                CopyRgbaPixelToNative(targetRow + column * 4, handle.format, sourcePixel[0],
+                    sourcePixel[1], sourcePixel[2], sourcePixel[3]);
+            }
+        }
+    }
+
     static void CopyScaledRgbaToNative(const BufferHandle& handle, int32_t rowBytes, const uint8_t* source,
         int32_t sourceStride, uint32_t sourceWidth, uint32_t sourceHeight, const RenderViewport& viewport)
     {
@@ -3086,6 +3271,10 @@ private:
     int32_t configuredHeight_ = 0;
     int32_t configuredFormat_ = 0;
     uint64_t configuredUsage_ = 0;
+    std::unordered_map<uintptr_t, uint64_t> bufferFrameSequences_;
+    std::deque<DirtyHistoryEntry> dirtyHistory_;
+    uint32_t dirtyHistoryWidth_ = 0;
+    uint32_t dirtyHistoryHeight_ = 0;
     std::string lastPaintMessage_;
 };
 
@@ -3148,6 +3337,8 @@ public:
         next.data = frame.data;
         next.dirty = frame.dirty;
         next.forceRender = forceRender;
+        next.sequence = 0;
+        next.dirtySequenceStart = 0;
         const uint32_t copyUs = 0;
 
         {
@@ -3156,18 +3347,26 @@ public:
                 message = "render thread stopped";
                 return false;
             }
+            next.sequence = ++frameSequence_;
+            next.dirtySequenceStart = next.sequence;
             if (hasPending_) {
                 next.forceRender = next.forceRender || pending_.forceRender;
+                if (pending_.width == next.width && pending_.height == next.height) {
+                    next.dirty = MergeDirtyStats(pending_.dirty, next.dirty, next.width, next.height);
+                    if (pending_.dirtySequenceStart > 0) {
+                        next.dirtySequenceStart = pending_.dirtySequenceStart;
+                    }
+                }
                 ++replacedCount_;
             }
-            pending_ = std::move(next);
-            hasPending_ = true;
             lastCopyUs_ = copyUs;
             totalCopyUs_ += copyUs;
             lastDirty_ = next.dirty;
             ++queuedCount_;
             message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
                 " latest-gdi " + DescribeDirtyStats(frame.dirty);
+            pending_ = std::move(next);
+            hasPending_ = true;
         }
 
         condition_.notify_one();
@@ -3184,6 +3383,8 @@ public:
         snapshot.failed = failedCount_;
         snapshot.replaced = replacedCount_;
         snapshot.throttled = throttledCount_;
+        snapshot.fullRendered = fullRenderedCount_;
+        snapshot.partialRendered = partialRenderedCount_;
         snapshot.pending = hasPending_ ? 1U : 0U;
         snapshot.lastWidth = lastRenderedWidth_;
         snapshot.lastHeight = lastRenderedHeight_;
@@ -3211,6 +3412,8 @@ private:
         std::string label;
         bool forceRender = false;
         DirtyFrameStats dirty;
+        uint64_t sequence = 0;
+        uint64_t dirtySequenceStart = 0;
     };
 
     static constexpr uint32_t kTargetFrameIntervalMs = 16;
@@ -3223,6 +3426,8 @@ private:
         failedCount_ = 0;
         replacedCount_ = 0;
         throttledCount_ = 0;
+        fullRenderedCount_ = 0;
+        partialRenderedCount_ = 0;
         totalCopyUs_ = 0;
         totalRenderUs_ = 0;
         lastCopyUs_ = 0;
@@ -3230,6 +3435,7 @@ private:
         lastDirty_ = DirtyFrameStats{};
         lastRenderedWidth_ = 0;
         lastRenderedHeight_ = 0;
+        frameSequence_ = 0;
         lastRenderFinishedAt_ = std::chrono::steady_clock::time_point{};
         statsStartedAt_ = std::chrono::steady_clock::now();
     }
@@ -3278,6 +3484,8 @@ private:
                 frame.strideBytes,
                 frame.label,
                 frame.dirty,
+                frame.sequence,
+                frame.dirtySequenceStart,
             };
             const bool forcedRender = frame.forceRender;
             const auto renderStart = std::chrono::steady_clock::now();
@@ -3288,6 +3496,7 @@ private:
 
             uint64_t rendered = 0;
             uint64_t failed = 0;
+            uint64_t partialRendered = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 lastRenderUs_ = renderUs;
@@ -3296,16 +3505,23 @@ private:
                 lastRenderFinishedAt_ = renderEnd;
                 if (paint.ok) {
                     ++renderedCount_;
+                    if (paint.partial) {
+                        ++partialRenderedCount_;
+                    } else {
+                        ++fullRenderedCount_;
+                    }
                     totalRenderUs_ += renderUs;
                 } else {
                     ++failedCount_;
                 }
                 rendered = renderedCount_;
                 failed = failedCount_;
+                partialRendered = partialRenderedCount_;
             }
 
             if (paint.ok) {
-                if (forcedRender || rendered <= 3 || rendered % 60 == 0) {
+                if (forcedRender || rendered <= 3 || rendered % 60 == 0 ||
+                    (paint.partial && (partialRendered <= 3 || partialRendered % 60 == 0))) {
                     EmitNativeLog("Render thread painted frame " + std::to_string(rendered) +
                         " render=" + std::to_string(renderUs / 1000.0) + "ms " + paint.message);
                 }
@@ -3326,6 +3542,8 @@ private:
     uint64_t failedCount_ = 0;
     uint64_t replacedCount_ = 0;
     uint64_t throttledCount_ = 0;
+    uint64_t fullRenderedCount_ = 0;
+    uint64_t partialRenderedCount_ = 0;
     uint64_t totalCopyUs_ = 0;
     uint64_t totalRenderUs_ = 0;
     uint32_t lastCopyUs_ = 0;
@@ -3333,6 +3551,7 @@ private:
     DirtyFrameStats lastDirty_;
     uint32_t lastRenderedWidth_ = 0;
     uint32_t lastRenderedHeight_ = 0;
+    uint64_t frameSequence_ = 0;
     std::chrono::steady_clock::time_point lastRenderFinishedAt_;
     std::chrono::steady_clock::time_point statsStartedAt_ = std::chrono::steady_clock::now();
 };
@@ -3365,6 +3584,8 @@ std::string BuildRenderStatsLog()
         << " failed=" << stats.failed
         << " replaced=" << stats.replaced
         << " paced=" << stats.throttled
+        << " full=" << stats.fullRendered
+        << " partial=" << stats.partialRendered
         << " pending=" << stats.pending
         << " fps=" << (stats.fpsX100 / 100) << "."
         << std::setw(2) << std::setfill('0') << (stats.fpsX100 % 100)

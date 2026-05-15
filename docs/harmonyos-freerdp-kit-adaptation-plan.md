@@ -688,6 +688,25 @@ static UINT ohos_cliprdr_server_format_data_request(
 - dirty area 当前按 rect 面积求和，重叠区域会被重复计入，只作为趋势指标，不直接用于局部渲染决策。
 - 还没有实现真正 dirty rect 拷贝；后续需要确认 NativeWindow buffer age 或维护本地 backing store。
 
+本轮继续落地 S4-6：
+
+- 为 render thread 分配递增 frame sequence，并在丢弃 pending frame 时合并 dirty bbox。
+- NativeWindow renderer 记录每个 buffer 最近渲染到的 frame sequence，保留短窗口 dirty history。
+- 仅在 1:1 无缩放、buffer 已初始化、dirty history 连续且 dirty bbox 面积不超过 65% 时启用局部 bbox 拷贝和局部 flush。
+- 其他情况继续整帧渲染，作为残影/断档保护。
+
+验收标准：
+
+- HAP 构建通过。
+- 真机连接后远程画面正常显示，不黑屏、不崩溃。
+- 日志能区分 `mode=full` 和 `mode=dirty-bbox`，并且 resize/首帧会自动回退整帧。
+
+遗留风险：
+
+- 当前局部渲染使用 dirty bbox，不是逐 rect 拷贝；复杂小区域更新仍可能扩大为较大 bbox。
+- NativeWindow buffer key 使用请求到的 buffer 指针；若系统实现不保持稳定指针，会退化为整帧渲染。
+- 视频大面积刷新通常超过阈值，仍会走整帧渲染；真正视频流畅还需要 `rdpgfx/H.264` 或 AVCodec 路线。
+
 遗留风险：
 
 - direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。
