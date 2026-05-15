@@ -925,7 +925,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL,
             "ClipboardFeatureMask", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DeviceRedirection, true, "DeviceRedirection", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, true, "AudioPlayback", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_AudioPlayback, false, "AudioPlayback", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_AudioCapture, false, "AudioCapture", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectDrives, false, "RedirectDrives", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectPrinters, false, "RedirectPrinters", error) ||
@@ -933,9 +933,10 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         return false;
     }
 
-    log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection and audio playback enabled");
+    log("FreeRDP enhanced runtime libraries packaged; clipboard text redirection enabled");
     log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
-    log("FreeRDP rdpdr base channel enabled for rdpsnd; drive/printer/smartcard runtime toggles remain disabled by default");
+    log("FreeRDP audio playback is requested through explicit rdpsnd sys:ohos channels");
+    log("FreeRDP rdpdr base channel enabled; drive/printer/smartcard runtime toggles remain disabled by default");
     return true;
 }
 
@@ -975,7 +976,7 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
         return false;
     }
 
-    log("FreeRDP audio playback requested: static/dynamic rdpsnd sys:ohos");
+    log("FreeRDP audio playback requested with CLI-compatible /sound:sys:ohos channel ordering");
     log("FreeRDP microphone capture remains disabled");
     return true;
 }
