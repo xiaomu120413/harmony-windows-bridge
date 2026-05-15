@@ -281,7 +281,13 @@ prepare_freerdp_build_source() {
   safe_rm_rf "$FREERDP_BUILD_SRC"
   mkdir -p "$FREERDP_BUILD_SRC"
   if git -C "$FREE_RDP_SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$FREE_RDP_SRC" archive --format=tar HEAD | tar -x -C "$FREERDP_BUILD_SRC"
+    if [[ -n "$(git -C "$FREE_RDP_SRC" status --porcelain)" ]]; then
+      log "copy FreeRDP working tree with local changes"
+      cp -a "$FREE_RDP_SRC/." "$FREERDP_BUILD_SRC/"
+      safe_rm_rf "$FREERDP_BUILD_SRC/.git"
+    else
+      git -C "$FREE_RDP_SRC" archive --format=tar HEAD | tar -x -C "$FREERDP_BUILD_SRC"
+    fi
   else
     cp -a "$FREE_RDP_SRC/." "$FREERDP_BUILD_SRC/"
   fi
@@ -490,8 +496,14 @@ freerdp_feature_profile() {
 build_freerdp() {
   local build="$BUILD_DIR/freerdp"
   local feature_stamp="$PREFIX/.freerdp-feature-profile"
+  local freerdp_dirty=0
+  if git -C "$FREE_RDP_SRC" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+    [[ -n "$(git -C "$FREE_RDP_SRC" status --porcelain)" ]]; then
+    freerdp_dirty=1
+  fi
 
-  if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libfreerdp3.so" && -f "$PREFIX/lib/libwinpr3.so" &&
+  if [[ "$FORCE_REBUILD" != "1" && "$freerdp_dirty" != "1" &&
+        -f "$PREFIX/lib/libfreerdp3.so" && -f "$PREFIX/lib/libwinpr3.so" &&
         -f "$feature_stamp" && "$(freerdp_feature_profile)" == "$(cat "$feature_stamp")" ]]; then
     log "FreeRDP already installed"
     return 0
@@ -506,6 +518,8 @@ build_freerdp() {
 
   cmake -S "$FREERDP_BUILD_SRC" -B "$build" "${cmake_common_args[@]}" \
     -DUNIX=ON \
+    -DOHOS=ON \
+    -DCMAKE_MODULE_PATH="$FREERDP_BUILD_SRC/cmake" \
     -DBUILD_SHARED_LIBS=ON \
     -DBUILD_TESTING=OFF \
     -DBUILD_TESTING_INTERNAL=OFF \
@@ -708,12 +722,16 @@ build_probe() {
 #include <freerdp/freerdp.h>
 #include <openssl/crypto.h>
 #include <winpr/winpr.h>
+#include <winpr/wlog.h>
 
 #include <stdio.h>
 
 __attribute__((visibility("default"))) const char* freerdp_ohos_probe(void)
 {
     static char fallback[512];
+    WLog_INFO("com.freerdp.ohos.probe",
+              "FREERDP_HILOG_BRIDGE_READY WinPR WLog probe reached");
+
     cJSON* root = cJSON_CreateObject();
     if (!root) {
         return "{\"ok\":false,\"error\":\"cJSON_CreateObject failed\"}";

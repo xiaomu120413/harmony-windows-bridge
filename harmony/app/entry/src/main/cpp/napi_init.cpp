@@ -402,6 +402,7 @@ public:
         if (loaded_) {
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_diagnostics", rdpsndOhosGetDiagnostics);
+            LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);
         }
         return loaded_;
     }
@@ -438,6 +439,7 @@ public:
     using RdpsndOhosGetStatsFn = BOOL (*)(UINT64*, UINT64*, UINT64*, UINT64*, UINT64*, UINT64*,
         UINT64*, UINT64*, UINT32*, UINT16*, UINT16*, UINT32*);
     using RdpsndOhosGetDiagnosticsFn = const char* (*)();
+    using RdpsndClientGetDiagnosticsFn = const char* (*)();
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -472,6 +474,7 @@ public:
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
+    RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -3494,14 +3497,22 @@ std::string BuildOHAudioStatsLog()
     if (!EnsureFreerdpRuntimeLoaded(api, error)) {
         return "OHAudio stats unavailable: " + error;
     }
+    std::string rdpsndClientDiagnostics;
+    if (api.rdpsndClientGetDiagnostics != nullptr) {
+        const char* diagnostics = api.rdpsndClientGetDiagnostics();
+        if (diagnostics != nullptr && diagnostics[0] != '\0') {
+            rdpsndClientDiagnostics = " | ";
+            rdpsndClientDiagnostics += diagnostics;
+        }
+    }
     if (api.rdpsndOhosGetDiagnostics != nullptr) {
         const char* diagnostics = api.rdpsndOhosGetDiagnostics();
         if (diagnostics != nullptr && diagnostics[0] != '\0') {
-            return diagnostics;
+            return std::string(diagnostics) + rdpsndClientDiagnostics;
         }
     }
     if (api.rdpsndOhosGetStats == nullptr) {
-        return "OHAudio stats unavailable: backend symbol not exported";
+        return "OHAudio stats unavailable: backend symbol not exported" + rdpsndClientDiagnostics;
     }
 
     UINT64 registeredCount = 0;
@@ -3533,7 +3544,7 @@ std::string BuildOHAudioStatsLog()
         << " underrunBytes=" << underrunBytes
         << " lastFormat=" << lastRate << "Hz/" << lastChannels << "ch/" << lastBits
         << "bit latency=" << lastLatencyMs << "ms";
-    return out.str();
+    return out.str() + rdpsndClientDiagnostics;
 #else
     return "OHAudio stats unavailable: FreeRDP headers not found at build time";
 #endif
