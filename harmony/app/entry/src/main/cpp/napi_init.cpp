@@ -944,6 +944,47 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
     return config;
 }
 
+std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
+{
+    const GraphicsPipelineConfig config = ParseGraphicsPipelineConfig(params);
+    if (config.mode == "rdpgfx-h264") {
+        return {"rdpgfx-h264", "rdpgfx", "gdi"};
+    }
+    if (config.mode == "rdpgfx") {
+        return {"rdpgfx", "gdi"};
+    }
+    return {"gdi"};
+}
+
+std::string JoinGraphicsModes(const std::vector<std::string>& modes)
+{
+    std::ostringstream stream;
+    for (size_t i = 0; i < modes.size(); ++i) {
+        if (i > 0) {
+            stream << " -> ";
+        }
+        stream << modes[i];
+    }
+    return stream.str();
+}
+
+bool ShouldRetryGraphicsFallback(const RdpSessionRunResult& session, bool attemptConnected,
+    const std::string& failedMode, size_t attemptIndex, size_t attemptCount)
+{
+    if (!session.failed || attemptConnected || attemptIndex + 1 >= attemptCount ||
+        failedMode == "gdi") {
+        return false;
+    }
+
+    const std::string message = ToLowerAscii(session.message);
+    return message.find("graphics") != std::string::npos ||
+        message.find("rdpgfx") != std::string::npos ||
+        message.find("gfx") != std::string::npos ||
+        message.find("dynamic channel") != std::string::npos ||
+        message.find("h264") != std::string::npos ||
+        message.find("surface") != std::string::npos;
+}
+
 std::string SafeCString(const char* value)
 {
     return value == nullptr ? "" : value;
@@ -4080,14 +4121,20 @@ public:
 
     void Disconnect()
     {
+        RequestDisconnect();
+        if (worker_.joinable()) {
+            worker_.join();
+        }
+    }
+
+    bool RequestDisconnect()
+    {
         running_.store(false);
         connected_.store(false);
         ClearInputQueue();
         ClearRdpDesktopSize();
         RequestNativeDisconnect();
-        if (worker_.joinable()) {
-            worker_.join();
-        }
+        return worker_.joinable();
     }
 
     bool IsConnected() const
@@ -4856,39 +4903,74 @@ private:
             }
         }
         RdpSessionRunResult session;
+        const std::vector<std::string> graphicsModes = BuildGraphicsFallbackModes(params);
+        EmitLog("graphics fallback ladder: " + JoinGraphicsModes(graphicsModes));
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-        session = RunFreerdpSession(params, running_,
-            [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context) {
-                SetActiveNative(api, instance, context);
-            },
-            [this](freerdp* instance) {
-                ClearActiveNative(instance);
-            },
-            [this](const std::string& line) {
-                EmitLog(line);
-            },
-            [this]() {
-                connected_.store(true);
-                EmitState("Connected");
-                EmitLog("state=Connected");
-                EmitLog("FreeRDP persistent session loop is active");
-                EmitLog("FreeRDP input bridge is using worker-thread dispatch");
-                const SurfaceSnapshot snapshot = g_surface.Snapshot();
-                if (snapshot.width > 0 && snapshot.height > 0) {
-                    std::string resizeMessage;
-                    if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-                        "session connected", resizeMessage)) {
-                        EmitLog(resizeMessage);
-                    } else {
-                        EmitLog("display-control resize skipped after session connected: " +
-                            resizeMessage);
+        for (size_t attempt = 0; attempt < graphicsModes.size(); ++attempt) {
+            ConnectParams attemptParams = params;
+            attemptParams.graphicsMode = graphicsModes[attempt];
+            bool attemptConnected = false;
+            EmitLog("graphics attempt " + std::to_string(attempt + 1) + "/" +
+                std::to_string(graphicsModes.size()) + ": mode=" + attemptParams.graphicsMode);
+            session = RunFreerdpSession(attemptParams, running_,
+                [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context) {
+                    SetActiveNative(api, instance, context);
+                },
+                [this](freerdp* instance) {
+                    ClearActiveNative(instance);
+                },
+                [this](const std::string& line) {
+                    EmitLog(line);
+                },
+                [this, &attemptConnected, selectedMode = attemptParams.graphicsMode]() {
+                    attemptConnected = true;
+                    connected_.store(true);
+                    EmitState("Connected");
+                    EmitLog("state=Connected");
+                    EmitLog("graphics mode selected: " + selectedMode);
+                    EmitLog("FreeRDP persistent session loop is active");
+                    EmitLog("FreeRDP input bridge is using worker-thread dispatch");
+                    const SurfaceSnapshot snapshot = g_surface.Snapshot();
+                    if (snapshot.width > 0 && snapshot.height > 0) {
+                        std::string resizeMessage;
+                        if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
+                            "session connected", resizeMessage)) {
+                            EmitLog(resizeMessage);
+                        } else {
+                            EmitLog("display-control resize skipped after session connected: " +
+                                resizeMessage);
+                        }
                     }
-                }
-            },
-            [this](FreerdpRuntimeApi* api, rdpContext* context) {
-                DrainInputQueue(api, context);
-            });
+                },
+                [this](FreerdpRuntimeApi* api, rdpContext* context) {
+                    DrainInputQueue(api, context);
+                });
+            ClearInputQueue();
+
+            if (session.cancelled || !running_.load()) {
+                break;
+            }
+
+            if (ShouldRetryGraphicsFallback(session, attemptConnected, attemptParams.graphicsMode,
+                attempt, graphicsModes.size())) {
+                connected_.store(false);
+                EmitLog("graphics mode " + attemptParams.graphicsMode +
+                    " failed before connection: " + session.message);
+                EmitLog("graphics fallback retry: " + attemptParams.graphicsMode + " -> " +
+                    graphicsModes[attempt + 1]);
+                EmitState("Negotiating");
+                EmitLog("state=Negotiating");
+                continue;
+            }
+
+            if (session.failed && !attemptConnected && attempt + 1 < graphicsModes.size()) {
+                EmitLog("graphics fallback skipped for non-graphics failure: " +
+                    session.message);
+            }
+            break;
+        }
 #else
+        (void)graphicsModes;
         session = RunFreerdpSessionUnavailable();
 #endif
         ClearInputQueue();
@@ -5472,17 +5554,17 @@ napi_value Connect(napi_env env, napi_callback_info info)
 
 napi_value Disconnect(napi_env env, napi_callback_info info)
 {
-    g_session.Disconnect();
+    const bool closing = g_session.RequestDisconnect();
     g_events.state.Emit("Disconnected");
-    g_events.log.Emit("native disconnect invoked");
+    g_events.log.Emit("native disconnect requested");
 
     napi_value result = MakeObject(env);
     SetBool(env, result, "ok", true);
     SetString(env, result, "state", "Disconnected");
-    SetString(env, result, "message", "native bridge session closed");
+    SetString(env, result, "message", closing ? "native bridge session closing" : "native bridge session already closed");
     SetNamed(env, result, "logs", MakeStringArray(env, {
-        "native disconnect invoked",
-        "native worker stopped"
+        "native disconnect requested",
+        closing ? "native worker stopping asynchronously" : "native worker was not running"
     }));
     return result;
 }

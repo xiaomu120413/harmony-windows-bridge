@@ -1122,45 +1122,109 @@ gfx->SurfaceCommand = [](gfx, cmd) {
 - 当前统计在 N-API bridge 层完成，不侵入 FreeRDP；长期如果要精确 decode 耗时，还应在 FreeRDP codec 层补 profiler。
 - 如果服务端没有选择 AVC420，`avc420` 计数会保持 0，这不代表客户端 H.264 不可用，只代表当前会话没用到。
 
-修改点：
+#### S5-5：图形连接自动 fallback
+
+目标：
+
+- 把增强图形的回退从“手动改 `graphicsMode=gdi`”升级为 native bridge 自动降级。
+- 保持默认请求 `rdpgfx-h264`，失败时按 `rdpgfx-h264 -> rdpgfx -> gdi` 尝试，避免一打开增强图形就把连接能力打断。
+- 只处理连接前的图形初始化/协商失败；已经进入 `Connected` 后的断开、网络抖动、用户主动断开不在本阶段自动重连。
+
+修改范围：
+
+- `harmony/app/entry/src/main/cpp/napi_init.cpp`
+  - 新增 `BuildGraphicsFallbackModes()`，根据请求模式生成降级链。
+  - `WorkerMain()` 不再只调用一次 `RunFreerdpSession()`，而是按降级链逐个尝试。
+  - 每次尝试记录 `graphics attempt n/m` 和最终 `graphics mode selected`。
+  - 只有失败信息指向 `graphics` / `rdpgfx` / `gfx` / `dynamic channel` / `h264` / `surface` 且尚未进入 `Connected` 时才重试，避免账号、证书、网络类失败被重复尝试。
+
+伪码：
+
+```cpp
+modes = BuildGraphicsFallbackModes(params.graphicsMode)
+for mode in modes:
+    attemptParams = params
+    attemptParams.graphicsMode = mode
+    connected = false
+    result = RunFreerdpSession(attemptParams, onConnected = {
+        connected = true
+        log("graphics mode selected: " + mode)
+    })
+
+    if result.cancelled:
+        break
+
+    if result.failed && !connected && IsGraphicsFailure(result.message):
+        continue
+
+    break
+```
+
+验收标准：
+
+- HAP 构建通过。
+- 真机连接日志出现 `graphics fallback ladder: rdpgfx-h264 -> rdpgfx -> gdi`。
+- 正常场景仍使用第一档 `rdpgfx-h264`，日志出现 `graphics mode selected: rdpgfx-h264`。
+- 如果后续遇到图形管线连接前失败，日志能看到 `graphics fallback retry: ...`，最终可回到 `gdi`。
+- 非图形类失败不会盲目重试，日志出现 `graphics fallback skipped for non-graphics failure`。
+
+遗留问题和影响：
+
+- 本阶段没有强行制造图形失败做真机回退验证；实际 fallback 分支需要后续用禁用 `rdpgfx` 符号、裁剪动态通道或服务端策略来压测。
+- 连接后黑屏但 FreeRDP 未返回失败时，当前逻辑不会自动降级；后续需要增加首帧 watchdog 或 `rdpgfx` frame ack 超时判断。
+- fallback 策略放在 native bridge 合适，因为它决定会话重试和 UI 状态；不要放进 FreeRDP codec 层。
+
+#### S5-6：FreeRDP OHOS 图形 backend 收敛
+
+目标：
+
+- 把当前散在 N-API bridge 的 `rdpgfx` surface/update 统计和后续 hard decode 接入点收敛到 FreeRDP 的 OHOS 平台适配层。
+- 为 S6 AVCodec 硬解准备稳定接口，不继续把 codec/buffer 生命周期放在 ArkTS 或普通 N-API 事件里。
+
+修改范围：
 
 - FreeRDP `client/ohos/ohos_gfx.*`。
-- 开启 `rdpgfx` runtime 开关。
-- 先走 FFmpeg/OpenH264 软件解码。
-- 保留 GDI fallback。
+- `harmony/app/entry/src/main/cpp/napi_init.cpp`
+  - 只保留会话模式选择、NativeWindow 句柄传入、状态/日志回调。
+  - 将具体 `rdpgfx` surface/update/codec 分发逐步迁移到 FreeRDP OHOS backend。
 
-验收：
+验收标准：
 
 - 开启增强图形后不黑屏。
-- 视频播放帧率优于 GDI。
-- 关闭开关可回退稳定 GDI。
+- 关闭增强图形或 backend 初始化失败时可回退稳定 GDI。
+- 统计仍能报告实际 codec，如 `CLEARCODEC`、`AVC420`。
 
 风险：
 
-- 这是最高风险阶段。
-- 之前黑屏说明不能只开配置，必须完整接 gfx surface/update/ack。
+- 这是进入硬解前的高风险阶段；之前黑屏说明不能只开配置，必须完整接 gfx surface/update/ack。
+- 迁移时要保持 cleanup 顺序：先 `freerdp_disconnect()`，再释放 GDI graphics pipeline，避免复现 `HashTable_Remove` 断言。
 
 ### S6：AVCodec 硬解评估
 
 目标：
 
 - 用 HarmonyOS 媒体能力降低 H.264 视频 CPU。
+- 硬解码应放在 FreeRDP OHOS codec/backend 适配里，不放在 ArkTS 页面层；ArkTS 只控制连接策略和接收状态。
 
 修改点：
 
 - 新增 OHOS AVCodec decoder adapter。
-- 对接 FreeRDP codec pipeline。
+- 对接 FreeRDP codec pipeline，优先处理 AVC420，再评估 AVC444/AVC444v2。
+- 初始化 `OH_VideoDecoder`，配置 H.264/AVC 格式，把 FreeRDP `rdpgfx` H.264 bitstream 输入解码器。
+- 输出优先走可控的 NativeWindow/GPU texture 路线；初始化失败或设备不支持时 fallback 到 FFmpeg/OpenH264 软件解码。
 
 验收：
 
 - H.264 数据可被硬解。
 - CPU 占用下降。
 - 画面同步正常。
+- 解码器不可用时仍能显示桌面，不影响 GDI fallback。
 
 风险：
 
 - 硬解异步模型、buffer ownership、surface lifetime 都复杂。
-- 不建议在 S2/S3/S4 未完成前启动。
+- 服务端当前真机会话实际下发 `CLEARCODEC(8)`，未必会进入 AVC420；需要用视频场景、服务端策略或不同 Windows 版本触发 H.264 才能验硬解路径。
+- AVCodec 接口、NativeWindow、FreeRDP surface lifetime 三方生命周期不一致，是本阶段最大风险。
 
 ## 总体验收矩阵
 
