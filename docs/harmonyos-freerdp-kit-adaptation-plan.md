@@ -1031,6 +1031,54 @@ if graphicsMode == "rdpgfx":
 - 如果服务端或客户端通道未协商 `rdpgfx`，会继续依赖已有 bitmap/GDI 更新，需要从日志确认。
 - 自动 fallback 仍未做；真机失败时手动改回 `graphicsMode='gdi'`。
 
+#### S5-3：默认请求 `rdpgfx` + H.264 软件解码
+
+目标：
+
+- 在 S5-2 已验证 `rdpgfx` 稳定的基础上，把默认 `graphicsMode` 切到 `rdpgfx-h264`。
+- 请求 `SupportGraphicsPipeline=true` 和 `GfxH264=true`，优先验证 FreeRDP 已打包的 FFmpeg/OpenH264 软件解码路径。
+
+修改范围：
+
+- `harmony/app/entry/src/main/ets/pages/Index.ets`
+  - 默认 `graphicsMode='rdpgfx-h264'`。
+- `harmony/app/entry/src/main/cpp/napi_init.cpp`
+  - 复用现有 `ParseGraphicsPipelineConfig()`，将 `GfxH264` 跟随 `graphicsMode` 打开。
+
+伪码：
+
+```ts
+graphicsMode = 'rdpgfx-h264'
+rdpNative.connect({ ..., graphicsMode })
+```
+
+```cpp
+if graphicsMode == "rdpgfx-h264":
+    SupportGraphicsPipeline = true
+    GfxH264 = true
+    GfxAVC444 = false
+    add_dynamic_channel("rdpgfx")
+```
+
+验收标准：
+
+- HAP 构建通过。
+- 真机连接后日志出现 `graphicsMode=rdpgfx-h264`、`h264=requested`。
+- `rdpgfx connected to FreeRDP GDI graphics pipeline` 正常出现。
+- 远程桌面正常显示，断开连接不崩溃。
+
+验证记录：
+
+- 真机日志已出现 `graphicsMode=rdpgfx-h264`、`FreeRDP graphics pipeline requested: mode=rdpgfx-h264 h264=on`、`rdpgfx stats ... h264=requested`。
+- `rdpgfx connected to FreeRDP GDI graphics pipeline` 正常出现。
+- 断开时出现 `rdpgfx disconnected from FreeRDP GDI graphics pipeline` 和 `FreeRDP GDI resources released`，未再触发 `HashTable_Remove` / SIGABRT。
+
+遗留问题和影响：
+
+- 日志只能证明客户端请求 H.264，是否实际使用 AVC420/AVC444 还需要补充 FreeRDP codec 级统计或服务端侧确认。
+- 软件 H.264 仍会占 CPU；真正降负载需要 S6 接 OHOS AVCodec。
+- AVC444/AVC444v2 继续关闭，避免把视频优化和复杂色彩路径混在同一阶段。
+
 修改点：
 
 - FreeRDP `client/ohos/ohos_gfx.*`。
