@@ -1297,6 +1297,7 @@ public:
             id_ = ReadXComponentId(component);
             width_ = static_cast<uint32_t>(width);
             height_ = static_cast<uint32_t>(height);
+            ClearNativeWindowConfigLocked();
             ClearViewportLocked();
             ++createdCount_;
             snapshot = SnapshotLocked();
@@ -1321,6 +1322,7 @@ public:
             id_ = ReadXComponentId(component);
             width_ = static_cast<uint32_t>(width);
             height_ = static_cast<uint32_t>(height);
+            ClearNativeWindowConfigLocked();
             ClearViewportLocked();
             ++changedCount_;
             snapshot = SnapshotLocked();
@@ -1341,6 +1343,7 @@ public:
             id_ = ReadXComponentId(component);
             width_ = 0;
             height_ = 0;
+            ClearNativeWindowConfigLocked();
             ClearViewportLocked();
             ++destroyedCount_;
             snapshot = SnapshotLocked();
@@ -1427,31 +1430,13 @@ private:
         const int32_t targetWidth = static_cast<int32_t>(width_);
         const int32_t targetHeight = static_cast<int32_t>(height_);
 
-        int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(
-            nativeWindow, SET_BUFFER_GEOMETRY, targetWidth, targetHeight);
-        if (rc != 0) {
-            result.message = "NativeWindow SET_BUFFER_GEOMETRY failed: " + std::to_string(rc);
-            result.logs.push_back(result.message);
-            lastPaintMessage_ = result.message;
+        if (!ConfigureNativeWindowLocked(nativeWindow, targetWidth, targetHeight, result)) {
             return result;
-        }
-
-        rc = OH_NativeWindow_NativeWindowHandleOpt(
-            nativeWindow, SET_FORMAT, static_cast<int32_t>(NATIVEBUFFER_PIXEL_FMT_RGBA_8888));
-        if (rc != 0) {
-            result.logs.push_back("NativeWindow SET_FORMAT warning: " + std::to_string(rc));
-        }
-
-        constexpr uint64_t usage = NATIVEBUFFER_USAGE_CPU_READ | NATIVEBUFFER_USAGE_CPU_WRITE |
-            NATIVEBUFFER_USAGE_MEM_DMA;
-        rc = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_USAGE, usage);
-        if (rc != 0) {
-            result.logs.push_back("NativeWindow SET_USAGE warning: " + std::to_string(rc));
         }
 
         OHNativeWindowBuffer* buffer = nullptr;
         int fenceFd = -1;
-        rc = OH_NativeWindow_NativeWindowRequestBuffer(nativeWindow, &buffer, &fenceFd);
+        int32_t rc = OH_NativeWindow_NativeWindowRequestBuffer(nativeWindow, &buffer, &fenceFd);
         if (rc != 0 || buffer == nullptr) {
             CloseFence(fenceFd);
             result.message = "NativeWindow request buffer failed: " + std::to_string(rc);
@@ -1523,27 +1508,14 @@ private:
         }
 
         void* mappedAddress = nullptr;
-        OH_NativeBuffer_Planes planes = {};
         int32_t mappedRowBytes = 0;
-        uint64_t mappedOffset = 0;
-        rc = OH_NativeBuffer_MapPlanes(nativeBuffer, &mappedAddress, &planes);
-        if (rc == 0 && mappedAddress != nullptr) {
-            if (planes.planeCount > 0 && planes.planes[0].rowStride > 0) {
-                mappedRowBytes = static_cast<int32_t>(planes.planes[0].rowStride);
-                mappedOffset = planes.planes[0].offset;
-            }
-            result.logs.push_back("NativeBuffer mapped with planes");
-        } else {
-            mappedAddress = nullptr;
-            rc = OH_NativeBuffer_Map(nativeBuffer, &mappedAddress);
-            if (rc != 0 || mappedAddress == nullptr) {
-                OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
-                result.message = "NativeBuffer map failed: " + std::to_string(rc);
-                result.logs.push_back(result.message);
-                lastPaintMessage_ = result.message;
-                return result;
-            }
-            result.logs.push_back("NativeBuffer mapped");
+        rc = OH_NativeBuffer_Map(nativeBuffer, &mappedAddress);
+        if (rc != 0 || mappedAddress == nullptr) {
+            OH_NativeWindow_NativeWindowAbortBuffer(nativeWindow, buffer);
+            result.message = "NativeBuffer map failed: " + std::to_string(rc);
+            result.logs.push_back(result.message);
+            lastPaintMessage_ = result.message;
+            return result;
         }
 
         OH_NativeBuffer_Config config = {};
@@ -1565,8 +1537,9 @@ private:
         }
 
         BufferHandle mappedHandle = *handle;
-        mappedHandle.virAddr = static_cast<uint8_t*>(mappedAddress) + mappedOffset;
-        FillNativeColor(mappedHandle, mappedRowBytes, targetAreaWidth, targetAreaHeight, 0, 0, 0, 0xFF);
+        mappedHandle.virAddr = mappedAddress;
+        FillNativeLetterbox(mappedHandle, mappedRowBytes, targetAreaWidth, targetAreaHeight,
+            viewport, 0, 0, 0, 0xFF);
         CopyScaledRgbaToNative(mappedHandle, mappedRowBytes, frame.data, sourceStride,
             frame.width, frame.height, viewport);
         OH_NativeBuffer_Unmap(nativeBuffer);
@@ -1608,6 +1581,63 @@ private:
         viewportY_ = 0;
         viewportWidth_ = 0;
         viewportHeight_ = 0;
+    }
+
+    void ClearNativeWindowConfigLocked()
+    {
+        configuredWindow_ = nullptr;
+        configuredWidth_ = 0;
+        configuredHeight_ = 0;
+        configuredFormat_ = 0;
+        configuredUsage_ = 0;
+    }
+
+    bool ConfigureNativeWindowLocked(OHNativeWindow* nativeWindow, int32_t targetWidth,
+        int32_t targetHeight, SurfacePaintResult& result)
+    {
+        if (configuredWindow_ != nativeWindow) {
+            configuredWindow_ = nativeWindow;
+            configuredWidth_ = 0;
+            configuredHeight_ = 0;
+            configuredFormat_ = 0;
+            configuredUsage_ = 0;
+        }
+
+        if (configuredWidth_ != targetWidth || configuredHeight_ != targetHeight) {
+            const int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(
+                nativeWindow, SET_BUFFER_GEOMETRY, targetWidth, targetHeight);
+            if (rc != 0) {
+                result.message = "NativeWindow SET_BUFFER_GEOMETRY failed: " + std::to_string(rc);
+                result.logs.push_back(result.message);
+                lastPaintMessage_ = result.message;
+                return false;
+            }
+            configuredWidth_ = targetWidth;
+            configuredHeight_ = targetHeight;
+        }
+
+        constexpr int32_t format = static_cast<int32_t>(NATIVEBUFFER_PIXEL_FMT_RGBA_8888);
+        if (configuredFormat_ != format) {
+            const int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_FORMAT, format);
+            if (rc != 0) {
+                result.logs.push_back("NativeWindow SET_FORMAT warning: " + std::to_string(rc));
+            } else {
+                configuredFormat_ = format;
+            }
+        }
+
+        constexpr uint64_t usage = NATIVEBUFFER_USAGE_CPU_READ | NATIVEBUFFER_USAGE_CPU_WRITE |
+            NATIVEBUFFER_USAGE_MEM_DMA;
+        if (configuredUsage_ != usage) {
+            const int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_USAGE, usage);
+            if (rc != 0) {
+                result.logs.push_back("NativeWindow SET_USAGE warning: " + std::to_string(rc));
+            } else {
+                configuredUsage_ = usage;
+            }
+        }
+
+        return true;
     }
 
     static void CloseFence(int fenceFd)
@@ -1721,15 +1751,37 @@ private:
         pixel[3] = a;
     }
 
-    static void FillNativeColor(const BufferHandle& handle, int32_t rowBytes,
-        uint32_t width, uint32_t height, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+    static void FillNativeRect(const BufferHandle& handle, int32_t rowBytes, uint32_t x,
+        uint32_t y, uint32_t width, uint32_t height, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
     {
+        if (width == 0 || height == 0) {
+            return;
+        }
+
         auto* target = static_cast<uint8_t*>(handle.virAddr);
-        for (uint32_t y = 0; y < height; ++y) {
-            uint8_t* targetRow = target + static_cast<int64_t>(rowBytes) * y;
-            for (uint32_t x = 0; x < width; ++x) {
-                CopyRgbaPixelToNative(targetRow + x * 4, handle.format, r, g, b, a);
+        for (uint32_t row = 0; row < height; ++row) {
+            uint8_t* targetRow = target + static_cast<int64_t>(rowBytes) * (y + row) +
+                static_cast<int64_t>(x) * 4;
+            for (uint32_t column = 0; column < width; ++column) {
+                CopyRgbaPixelToNative(targetRow + column * 4, handle.format, r, g, b, a);
             }
+        }
+    }
+
+    static void FillNativeLetterbox(const BufferHandle& handle, int32_t rowBytes,
+        uint32_t width, uint32_t height, const RenderViewport& viewport,
+        uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+    {
+        FillNativeRect(handle, rowBytes, 0, 0, width, viewport.y, r, g, b, a);
+        const uint32_t bottomY = viewport.y + viewport.height;
+        if (bottomY < height) {
+            FillNativeRect(handle, rowBytes, 0, bottomY, width, height - bottomY, r, g, b, a);
+        }
+        FillNativeRect(handle, rowBytes, 0, viewport.y, viewport.x, viewport.height, r, g, b, a);
+        const uint32_t rightX = viewport.x + viewport.width;
+        if (rightX < width) {
+            FillNativeRect(handle, rowBytes, rightX, viewport.y, width - rightX,
+                viewport.height, r, g, b, a);
         }
     }
 
@@ -1844,6 +1896,11 @@ private:
     uint32_t destroyedCount_ = 0;
     uint32_t touchCount_ = 0;
     uint32_t paintCount_ = 0;
+    void* configuredWindow_ = nullptr;
+    int32_t configuredWidth_ = 0;
+    int32_t configuredHeight_ = 0;
+    int32_t configuredFormat_ = 0;
+    uint64_t configuredUsage_ = 0;
     std::string lastPaintMessage_;
 };
 
