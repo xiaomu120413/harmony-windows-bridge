@@ -2256,13 +2256,15 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     auto cleanup = [&]() {
         clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
-        clearActive(instance);
         UnregisterCertificatePolicy(instance);
         if (contextCreated && instance->context != nullptr) {
             api.abortConnectContext(instance->context);
             api.disconnect(instance);
             StopRenderPipeline();
+            clearActive(instance);
             api.contextFree(instance);
+        } else {
+            clearActive(instance);
         }
         api.freerdpFree(instance);
     };

@@ -983,6 +983,54 @@ OnChannelDisconnected(name, pInterface):
 - 启用 `rdpgfx` 后仍可能遇到 surface lifetime、frame ack、H.264 解码 CPU 压力，需要 S5-2 真机开关验证。
 - 当前 fallback 是手动回到 `graphicsMode=gdi`，不是会话内自动降级。
 
+#### S5-2：默认启用 `rdpgfx` 软件 GDI pipeline，不启用 H.264
+
+目标：
+
+- 默认连接从 S4 GDI 直连帧更新切到 `rdpgfx` 动态通道 + FreeRDP GDI graphics pipeline。
+- 先保持 `GfxH264=false`，只验证 `rdpgfx` surface/update/ack 和现有 NativeWindow renderer 的兼容性。
+
+修改范围：
+
+- `harmony/app/entry/src/main/ets/pages/Index.ets`
+  - 默认 `graphicsMode='rdpgfx'`。
+- `harmony/app/entry/src/main/cpp/napi_init.cpp`
+  - 复用 S5-1 的 `SupportGraphicsPipeline=true`、`rdpgfx` 动态通道和 `gdi_graphics_pipeline_init/uninit` 绑定。
+  - 调整 session cleanup 顺序：先 `freerdp_disconnect()` 触发 `rdpgfx_on_close` / `OnChannelDisconnected`，再 `clearActive()`，避免提前 `gdi_graphics_pipeline_uninit()` 后 `rdpgfx_on_close` 继续清 surface。
+
+伪码：
+
+```ts
+graphicsMode = 'rdpgfx'
+rdpNative.connect({ ..., graphicsMode })
+```
+
+```cpp
+if graphicsMode == "rdpgfx":
+    SupportGraphicsPipeline = true
+    GfxH264 = false
+    add_dynamic_channel("rdpgfx")
+```
+
+验收标准：
+
+- HAP 构建通过。
+- 真机连接后日志出现 `graphicsMode=rdpgfx`、`rdpgfx requested`。
+- 如果服务端协商成功，日志出现 `rdpgfx connected to FreeRDP GDI graphics pipeline`。
+- 远程桌面正常显示，不黑屏；断开连接不崩溃。
+
+验证记录：
+
+- 首次默认启用时出现 SIGABRT，fatal 为 WinPR `HashTable_Remove`，栈位于 `rdpgfx_on_close -> delete_surface -> gdi_DeleteSurface`。
+- 根因是 cleanup 先 `clearActive()`，提前反初始化 `gdi_graphics_pipeline`，而 FreeRDP 的 `rdpgfx_on_close` 会先释放 surface、之后才发 channel disconnected。
+- 调整 cleanup 顺序后真机验证通过：`rdpgfx connected`、断开时 `rdpgfx disconnected`，未再出现 `HashTable_Remove` 断言。
+
+遗留问题和影响：
+
+- 这一阶段仍不是 H.264，视频高负载可能仍卡。
+- 如果服务端或客户端通道未协商 `rdpgfx`，会继续依赖已有 bitmap/GDI 更新，需要从日志确认。
+- 自动 fallback 仍未做；真机失败时手动改回 `graphicsMode='gdi'`。
+
 修改点：
 
 - FreeRDP `client/ohos/ohos_gfx.*`。

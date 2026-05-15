@@ -181,7 +181,7 @@ struct Index {
   @State private password: string = 'aaaa'
   @State private resolution: string = 'auto'
   @State private certPolicy: string = 'ignore'
-  @State private graphicsMode: string = 'gdi'
+  @State private graphicsMode: string = 'rdpgfx'
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
