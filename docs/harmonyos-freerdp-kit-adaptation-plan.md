@@ -1079,6 +1079,49 @@ if graphicsMode == "rdpgfx-h264":
 - 软件 H.264 仍会占 CPU；真正降负载需要 S6 接 OHOS AVCodec。
 - AVC444/AVC444v2 继续关闭，避免把视频优化和复杂色彩路径混在同一阶段。
 
+#### S5-4：`rdpgfx` codec 级运行时统计
+
+目标：
+
+- 证明客户端不只是请求了 H.264，还能观察服务端实际下发的 `RDPGFX_SURFACE_COMMAND.codecId`。
+- 不改 FreeRDP 库构建，先在 native bridge 中包装 `RdpgfxClientContext` 回调做轻量统计。
+
+修改范围：
+
+- `harmony/app/entry/src/main/cpp/napi_init.cpp`
+  - 在 `gdi_graphics_pipeline_init()` 后保存原始 `StartFrame`、`EndFrame`、`SurfaceCommand` 回调。
+  - 替换为 HarmonyOS wrapper，统计 frame 数和 codec 分布后再调用原始 GDI callback。
+  - `rdpgfx stats` 增加 `frames`、`surfaceCommands`、`codecs=...`、`lastCodec`、`lastSurface`、`lastSize`。
+  - 前 5 个 surface command 和每 120 个 command 输出一次 hilog，便于真机验证。
+
+伪码：
+
+```cpp
+gdi_graphics_pipeline_init(gdi, gfx)
+save = gfx->SurfaceCommand
+gfx->SurfaceCommand = [](gfx, cmd) {
+    counters[cmd->codecId]++
+    return save(gfx, cmd)
+}
+```
+
+验收标准：
+
+- HAP 构建通过。
+- 真机连接后仍能显示桌面并正常断开。
+- 日志出现 `rdpgfx surface command: codec=...`。
+- `probe()` / hilog 中 `rdpgfx stats` 可以看到 surface command 总数和 codec 分布。
+
+验证记录：
+
+- 真机日志已出现 `rdpgfx surface command`，当前会话实际 codec 为 `CLEARCODEC(8)`。
+- 这说明 `rdpgfx` surface command hook 生效；当前场景虽然请求了 H.264，但服务端未选择 AVC420。
+
+遗留问题和影响：
+
+- 当前统计在 N-API bridge 层完成，不侵入 FreeRDP；长期如果要精确 decode 耗时，还应在 FreeRDP codec 层补 profiler。
+- 如果服务端没有选择 AVC420，`avc420` 计数会保持 0，这不代表客户端 H.264 不可用，只代表当前会话没用到。
+
 修改点：
 
 - FreeRDP `client/ohos/ohos_gfx.*`。
