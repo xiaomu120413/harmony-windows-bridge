@@ -619,6 +619,25 @@ static UINT ohos_cliprdr_server_format_data_request(
 - 入队使用 direct GDI pointer，去掉 RDP 线程里的整帧 snapshot copy。
 - Diagnostics 增加 render queued/rendered/replaced/throttled/fps/copyMs/renderMs。
 
+本轮继续落地 S4-2：
+
+- 帧率控制从 `HarmonyEndPaint` 回调线程移动到 render thread。
+- `HarmonyEndPaint` 每次只更新 latest-frame 指针并立即返回，不再因为帧间隔过短返回 `render throttled`。
+- render thread 按 16ms 目标间隔取当时最新帧写入 NativeWindow，旧 pending frame 只统计为 replaced。
+- Diagnostics 将原 `throttled` 含义调整为 `paced`，表示 render thread 因帧节奏等待的次数。
+
+验收标准：
+
+- 高频画面下 hilog 不再刷 `FreeRDP GDI frame queue throttled`。
+- 日志显示 `FreeRDP GDI frame queued: 1280x720 latest-gdi`。
+- render thread 继续稳定输出帧，单帧 renderMs 维持低毫秒级。
+- 真机连接后远程视频页面可显示，输入和断开不回归。
+
+遗留风险：
+
+- 目标 16ms 会比 33ms 消耗更多 CPU/内存带宽；如果真机发热或耗电明显，需要改成自适应 16/33ms。
+- 当前仍未做 dirty rect，NativeWindow 写入仍是整帧。
+
 遗留风险：
 
 - direct GDI pointer 读取期间 RDP 线程可能继续写 framebuffer，极端情况下可能出现轻微撕裂；resize/disconnect 前已停止 render thread，避免释放后访问。

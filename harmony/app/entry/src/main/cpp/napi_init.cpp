@@ -867,7 +867,6 @@ DWORD HarmonyVerifyChangedCertificateEx(freerdp* instance, const char* host, UIN
 
 std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
 std::atomic_uint32_t g_freerdpRenderSkipCount{0};
-std::atomic_uint32_t g_freerdpRenderThrottleCount{0};
 std::atomic_uint32_t g_rdpDesktopWidth{0};
 std::atomic_uint32_t g_rdpDesktopHeight{0};
 
@@ -924,16 +923,9 @@ BOOL HarmonyEndPaint(rdpContext* context)
     const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
     std::string queueMessage;
     if (!QueueSurfaceRgbaFrame(frame, queueMessage)) {
-        if (queueMessage == "render throttled") {
-            const uint32_t throttleCount = ++g_freerdpRenderThrottleCount;
-            if (throttleCount % 300 == 0) {
-                EmitNativeLog("FreeRDP GDI frame queue throttled: " + std::to_string(throttleCount));
-            }
-        } else {
-            const uint32_t skipCount = ++g_freerdpRenderSkipCount;
-            if (skipCount <= 3 || skipCount % 120 == 0) {
-                EmitNativeLog("FreeRDP GDI frame queue skipped: " + queueMessage);
-            }
+        const uint32_t skipCount = ++g_freerdpRenderSkipCount;
+        if (skipCount <= 3 || skipCount % 120 == 0) {
+            EmitNativeLog("FreeRDP GDI frame queue skipped: " + queueMessage);
         }
     } else {
         g_freerdpRenderSkipCount.store(0);
@@ -994,7 +986,6 @@ BOOL HarmonyPostConnect(freerdp* instance)
     StartRenderPipeline();
     g_freerdpRenderedFrameCount.store(0);
     g_freerdpRenderSkipCount.store(0);
-    g_freerdpRenderThrottleCount.store(0);
     if (instance->context->settings != nullptr) {
         const uint32_t width = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopWidth);
         const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);
@@ -2983,22 +2974,6 @@ public:
             return false;
         }
 
-        const auto now = std::chrono::steady_clock::now();
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (!running_) {
-                message = "render thread not running";
-                return false;
-            }
-            const bool sizeChanged = frame.width != lastQueuedWidth_ || frame.height != lastQueuedHeight_;
-            if (!sizeChanged && queuedCount_ > 0 &&
-                now - lastQueuedAt_ < std::chrono::milliseconds(kTargetFrameIntervalMs)) {
-                ++throttledCount_;
-                message = "render throttled";
-                return false;
-            }
-        }
-
         PendingFrame next;
         next.width = frame.width;
         next.height = frame.height;
@@ -3018,14 +2993,11 @@ public:
             }
             pending_ = std::move(next);
             hasPending_ = true;
-            lastQueuedAt_ = now;
-            lastQueuedWidth_ = frame.width;
-            lastQueuedHeight_ = frame.height;
             lastCopyUs_ = copyUs;
             totalCopyUs_ += copyUs;
             ++queuedCount_;
             message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-                " direct-gdi";
+                " latest-gdi";
         }
 
         condition_.notify_one();
@@ -3069,7 +3041,7 @@ private:
         std::string label;
     };
 
-    static constexpr uint32_t kTargetFrameIntervalMs = 33;
+    static constexpr uint32_t kTargetFrameIntervalMs = 16;
 
     void ResetStatsLocked()
     {
@@ -3084,11 +3056,9 @@ private:
         totalRenderUs_ = 0;
         lastCopyUs_ = 0;
         lastRenderUs_ = 0;
-        lastQueuedWidth_ = 0;
-        lastQueuedHeight_ = 0;
         lastRenderedWidth_ = 0;
         lastRenderedHeight_ = 0;
-        lastQueuedAt_ = std::chrono::steady_clock::time_point{};
+        lastRenderFinishedAt_ = std::chrono::steady_clock::time_point{};
         statsStartedAt_ = std::chrono::steady_clock::now();
     }
 
@@ -3099,12 +3069,34 @@ private:
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 condition_.wait(lock, [this]() { return !running_ || hasPending_; });
-                if (!running_ && !hasPending_) {
-                    return;
+                for (;;) {
+                    if (!running_ && !hasPending_) {
+                        return;
+                    }
+                    if (!hasPending_) {
+                        condition_.wait(lock, [this]() { return !running_ || hasPending_; });
+                        continue;
+                    }
+
+                    const bool sizeChanged = pending_.width != lastRenderedWidth_ ||
+                        pending_.height != lastRenderedHeight_;
+                    if (!sizeChanged && renderedCount_ > 0 &&
+                        lastRenderFinishedAt_ != std::chrono::steady_clock::time_point{}) {
+                        const auto nextRenderAt = lastRenderFinishedAt_ +
+                            std::chrono::milliseconds(kTargetFrameIntervalMs);
+                        const auto now = std::chrono::steady_clock::now();
+                        if (now < nextRenderAt) {
+                            ++throttledCount_;
+                            condition_.wait_until(lock, nextRenderAt);
+                            continue;
+                        }
+                    }
+
+                    frame = std::move(pending_);
+                    pending_.pixels.clear();
+                    hasPending_ = false;
+                    break;
                 }
-                frame = std::move(pending_);
-                pending_.pixels.clear();
-                hasPending_ = false;
             }
 
             RgbaFrame view = {
@@ -3127,6 +3119,7 @@ private:
                 lastRenderUs_ = renderUs;
                 lastRenderedWidth_ = frame.width;
                 lastRenderedHeight_ = frame.height;
+                lastRenderFinishedAt_ = renderEnd;
                 if (paint.ok) {
                     ++renderedCount_;
                     totalRenderUs_ += renderUs;
@@ -3163,11 +3156,9 @@ private:
     uint64_t totalRenderUs_ = 0;
     uint32_t lastCopyUs_ = 0;
     uint32_t lastRenderUs_ = 0;
-    uint32_t lastQueuedWidth_ = 0;
-    uint32_t lastQueuedHeight_ = 0;
     uint32_t lastRenderedWidth_ = 0;
     uint32_t lastRenderedHeight_ = 0;
-    std::chrono::steady_clock::time_point lastQueuedAt_;
+    std::chrono::steady_clock::time_point lastRenderFinishedAt_;
     std::chrono::steady_clock::time_point statsStartedAt_ = std::chrono::steady_clock::now();
 };
 
@@ -3198,7 +3189,7 @@ std::string BuildRenderStatsLog()
         << " rendered=" << stats.rendered
         << " failed=" << stats.failed
         << " replaced=" << stats.replaced
-        << " throttled=" << stats.throttled
+        << " paced=" << stats.throttled
         << " pending=" << stats.pending
         << " fps=" << (stats.fpsX100 / 100) << "."
         << std::setw(2) << std::setfill('0') << (stats.fpsX100 % 100)
