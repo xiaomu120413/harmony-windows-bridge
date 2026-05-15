@@ -152,6 +152,12 @@ struct GraphicsPipelineConfig {
     std::string mode = "gdi";
 };
 
+struct DecoderSurfaceTarget {
+    OHNativeWindow* window = nullptr;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+
 std::atomic_bool g_rdpgfxRuntimeRequested{false};
 std::atomic_bool g_rdpgfxH264Requested{false};
 std::atomic_bool g_rdpgfxBridgeAttached{false};
@@ -175,6 +181,7 @@ std::atomic_uint32_t g_rdpgfxLastCodecId{0};
 std::atomic_uint32_t g_rdpgfxLastSurfaceId{0};
 std::atomic_uint32_t g_rdpgfxLastCommandWidth{0};
 std::atomic_uint32_t g_rdpgfxLastCommandHeight{0};
+std::atomic_bool g_avc420SurfaceOutputEnabled{false};
 
 std::string DescribeDirtyStats(const DirtyFrameStats& dirty)
 {
@@ -237,6 +244,8 @@ void RequestSurfaceRepaint(const std::string& reason);
 void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason);
 void StartRenderPipeline();
 void StopRenderPipeline();
+DecoderSurfaceTarget SnapshotDecoderSurfaceTarget();
+void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 std::string BuildRenderStatsLog();
 std::string BuildGraphicsPipelineStatsLog();
 std::string BuildOHAudioStatsLog();
@@ -566,6 +575,8 @@ public:
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
             LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_diagnostics", rdpsndOhosGetDiagnostics);
             LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);
+            LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
+                ohosAvcodecSetOutputSurface);
         }
         return loaded_;
     }
@@ -607,6 +618,7 @@ public:
         UINT64*, UINT64*, UINT32*, UINT16*, UINT16*, UINT32*);
     using RdpsndOhosGetDiagnosticsFn = const char* (*)();
     using RdpsndClientGetDiagnosticsFn = const char* (*)();
+    using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -646,6 +658,7 @@ public:
     RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
+    OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
@@ -950,7 +963,7 @@ std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
 {
     const GraphicsPipelineConfig config = ParseGraphicsPipelineConfig(params);
     if (config.mode == "rdpgfx-h264") {
-        return {"rdpgfx-h264", "rdpgfx", "gdi"};
+        return {"rdpgfx-h264"};
     }
     if (config.mode == "rdpgfx") {
         return {"rdpgfx", "gdi"};
@@ -1176,6 +1189,9 @@ BOOL HarmonyEndPaint(rdpContext* context)
     if (context == nullptr || context->gdi == nullptr) {
         return TRUE;
     }
+    if (g_avc420SurfaceOutputEnabled.load()) {
+        return TRUE;
+    }
 
     rdpGdi* gdi = context->gdi;
     if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
@@ -1235,13 +1251,17 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     const uint32_t height = api.settingsGetUint32(context->settings, FreeRDP_DesktopHeight);
     StopRenderPipeline();
     if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
-        StartRenderPipeline();
+        if (!g_avc420SurfaceOutputEnabled.load()) {
+            StartRenderPipeline();
+        }
         EmitNativeLog("FreeRDP desktop resize failed");
         return FALSE;
     }
 
     SetRdpDesktopSize(width, height);
-    StartRenderPipeline();
+    if (!g_avc420SurfaceOutputEnabled.load()) {
+        StartRenderPipeline();
+    }
     EmitNativeLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
     return TRUE;
 }
@@ -1262,7 +1282,11 @@ BOOL HarmonyPostConnect(freerdp* instance)
     update->BeginPaint = HarmonyBeginPaint;
     update->EndPaint = HarmonyEndPaint;
     update->DesktopResize = HarmonyDesktopResize;
-    StartRenderPipeline();
+    if (g_avc420SurfaceOutputEnabled.load()) {
+        StopRenderPipeline();
+    } else {
+        StartRenderPipeline();
+    }
     g_freerdpRenderedFrameCount.store(0);
     g_freerdpRenderSkipCount.store(0);
     if (instance->context->settings != nullptr) {
@@ -1444,6 +1468,16 @@ UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURF
 {
     if (command != nullptr) {
         RecordRdpgfxSurfaceCommand(*command);
+        if (g_avc420SurfaceOutputEnabled.load() && command->codecId != RDPGFX_CODECID_AVC420) {
+            static std::atomic_uint32_t rejectedNonAvc420Count{0};
+            const uint32_t count = ++rejectedNonAvc420Count;
+            if (count <= 5 || count % 120 == 0) {
+                EmitNativeLog("RDPGFX surface command rejected in AVC420 surface-only mode: codec=" +
+                    std::string(RdpgfxCodecName(command->codecId)) +
+                    "(" + std::to_string(command->codecId) + ") count=" + std::to_string(count));
+            }
+            return ERROR_NOT_SUPPORTED;
+        }
     }
 
     pcRdpgfxSurfaceCommand original = nullptr;
@@ -1536,19 +1570,20 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig,
     const FreerdpLogFn& log, std::string& error)
 {
-    constexpr uint32_t kGfxOnlyCap107Filter = 0x000003FF;
-    const uint32_t gfxCapsFilter = graphicsConfig.enabled && graphicsConfig.h264 ? kGfxOnlyCap107Filter : 0;
+    constexpr uint32_t kGfxAvc420OnlyCapFilter = 0x00000001;
+    const bool h264SurfaceOnly = graphicsConfig.enabled && graphicsConfig.h264;
+    const uint32_t gfxCapsFilter = h264SurfaceOnly ? kGfxAvc420OnlyCapFilter : 0;
 
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_DynamicResolutionUpdate, true, "DynamicResolutionUpdate", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportGraphicsPipeline, graphicsConfig.enabled,
             "SupportGraphicsPipeline", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, graphicsConfig.enabled && graphicsConfig.h264,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxH264, h264SurfaceOnly,
             "GfxH264", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, graphicsConfig.enabled && graphicsConfig.h264,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, false,
             "GfxAVC444", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, graphicsConfig.enabled && graphicsConfig.h264,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, false,
             "GfxAVC444v2", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_GfxCapsFilter, gfxCapsFilter, "GfxCapsFilter", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
@@ -1569,15 +1604,50 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     log("FreeRDP display-control dynamic resolution enabled");
     if (graphicsConfig.enabled) {
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
-            " h264=" + std::string(graphicsConfig.h264 ? "on" : "off") +
-            " avc444=" + std::string(graphicsConfig.h264 ? "on" : "off") +
+            " h264=" + std::string(h264SurfaceOnly ? "surface-avc420-only" : "off") +
+            " avc444=off" +
             " capsFilter=" + Hex32(gfxCapsFilter) +
-            " fallback=manual-gdi-toggle");
+            " fallback=disabled");
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     }
     log("FreeRDP audio playback is requested through explicit rdpsnd sys:ohos channels");
     log("FreeRDP rdpdr base channel enabled; drive/printer/smartcard runtime toggles remain disabled by default");
+    return true;
+}
+
+bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipelineConfig& graphicsConfig,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (!graphicsConfig.enabled || !graphicsConfig.h264) {
+        g_avc420SurfaceOutputEnabled.store(false);
+        if (api.ohosAvcodecSetOutputSurface != nullptr) {
+            api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+        }
+        return true;
+    }
+
+    if (api.ohosAvcodecSetOutputSurface == nullptr) {
+        error = "OHOS AVCodec surface output symbol is not loaded";
+        return false;
+    }
+
+    const DecoderSurfaceTarget target = SnapshotDecoderSurfaceTarget();
+    if (target.window == nullptr || target.width == 0 || target.height == 0) {
+        error = "AVC420 surface output requires a ready XComponent NativeWindow";
+        return false;
+    }
+
+    if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
+        error = "OHOS AVCodec surface output setup failed";
+        return false;
+    }
+
+    g_avc420SurfaceOutputEnabled.store(true);
+    StopRenderPipeline();
+    log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
+        std::to_string(target.width) + "x" + std::to_string(target.height) +
+        " mode=avc420-surface-only");
     return true;
 }
 
@@ -2532,6 +2602,10 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     bool contextCreated = false;
     HarmonyClipboardBridge clipboardBridge;
     auto cleanup = [&]() {
+        g_avc420SurfaceOutputEnabled.store(false);
+        if (api.ohosAvcodecSetOutputSurface != nullptr) {
+            api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+        }
         clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
         UnregisterCertificatePolicy(instance);
@@ -2607,6 +2681,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     if (!ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, log, error)) {
+        result.message = error;
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+
+    if (!ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
@@ -3028,6 +3109,15 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return SnapshotLocked();
+    }
+
+    DecoderSurfaceTarget DecoderSurface()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!ready_ || window_ == nullptr || width_ == 0 || height_ == 0) {
+            return {};
+        }
+        return {static_cast<OHNativeWindow*>(window_), width_, height_};
     }
 
 private:
@@ -4188,6 +4278,36 @@ private:
 
 SurfaceBridge g_surface;
 
+DecoderSurfaceTarget SnapshotDecoderSurfaceTarget()
+{
+    return g_surface.DecoderSurface();
+}
+
+void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
+{
+    if (!g_avc420SurfaceOutputEnabled.load()) {
+        return;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosAvcodecSetOutputSurface == nullptr) {
+        EmitNativeLog("AVC420 surface update skipped after " + reason +
+            ": OHOS AVCodec surface symbol is not loaded");
+        return;
+    }
+
+    const DecoderSurfaceTarget target = SnapshotDecoderSurfaceTarget();
+    if (target.window == nullptr || target.width == 0 || target.height == 0) {
+        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+        EmitNativeLog("AVC420 surface output disabled after " + reason + ": XComponent surface unavailable");
+        return;
+    }
+
+    api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
+    EmitNativeLog("AVC420 surface output updated after " + reason + ": " +
+        std::to_string(target.width) + "x" + std::to_string(target.height));
+}
+
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
     return g_surface.RenderRgbaFrame(frame);
@@ -4539,12 +4659,14 @@ std::string BuildRenderStatsLog()
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceCreated(component, window);
+    UpdateAvc420SurfaceOutputIfActive("surface created");
     RequestSurfaceRepaint("surface created");
 }
 
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceChanged(component, window);
+    UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
     RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface changed");
     RequestSurfaceRepaint("surface changed");
@@ -4553,6 +4675,7 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceDestroyed(component, window);
+    UpdateAvc420SurfaceOutputIfActive("surface destroyed");
 }
 
 void OnXComponentTouchEvent(OH_NativeXComponent*, void*)
@@ -4743,6 +4866,10 @@ public:
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (g_avc420SurfaceOutputEnabled.load()) {
+            message = "AVC420 surface output owns XComponent";
+            return false;
+        }
         if (!connected_.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -6222,6 +6349,7 @@ napi_value NotifySurfaceLayout(napi_env env, napi_callback_info info)
     const bool changed = g_surface.OnSurfaceLayout(width, height, message);
     if (changed) {
         EmitNativeLog(message);
+        UpdateAvc420SurfaceOutputIfActive("surface layout changed");
         RequestRemoteDesktopResize(width, height, "surface layout changed");
         RequestSurfaceRepaint("surface layout changed");
     }
