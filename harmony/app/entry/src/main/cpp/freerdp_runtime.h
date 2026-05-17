@@ -23,6 +23,7 @@
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
 #include <client/OHOS/ohos_keyboard.h>
+#include <client/OHOS/ohos_session_config.h>
 #endif
 
 namespace rdp_bridge {
@@ -117,6 +118,11 @@ public:
     using OhosRdpgfxCodecIsH264Fn = BOOL (*)(UINT32);
     using OhosRdpgfxSurfaceCommandIsFullWindowFn = BOOL (*)(UINT32, UINT32, UINT32, UINT32,
         UINT32, UINT32);
+    using OhosSessionConfigDefaultFn = FREERDP_OHOS_SESSION_CONFIG (*)();
+    using OhosSessionApplySettingsFn = BOOL (*)(rdpSettings*,
+        const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
+    using OhosSessionAddStandardChannelsFn = BOOL (*)(rdpSettings*,
+        const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
     using OhosAvc444FrameCallbackFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, void*);
@@ -194,6 +200,9 @@ public:
     OhosRdpgfxCapsConfirmIsAvc444Fn ohosRdpgfxCapsConfirmIsAvc444 = nullptr;
     OhosRdpgfxCodecIsH264Fn ohosRdpgfxCodecIsH264 = nullptr;
     OhosRdpgfxSurfaceCommandIsFullWindowFn ohosRdpgfxSurfaceCommandIsFullWindow = nullptr;
+    OhosSessionConfigDefaultFn ohosSessionConfigDefault = nullptr;
+    OhosSessionApplySettingsFn ohosSessionApplySettings = nullptr;
+    OhosSessionAddStandardChannelsFn ohosSessionAddStandardChannels = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;
     OhosAvcodecSetAvc444SurfaceRouteEnabledFn ohosAvcodecSetAvc444SurfaceRouteEnabled = nullptr;

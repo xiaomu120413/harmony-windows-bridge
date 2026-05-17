@@ -19,13 +19,8 @@ bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
 bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig,
     const std::function<void(const std::string&)>& log, std::string& error);
-bool ConfigureDisplayControlChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const std::function<void(const std::string&)>& log, std::string& error);
-bool ConfigureClipboardChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const std::function<void(const std::string&)>& log, std::string& error);
-bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const std::function<void(const std::string&)>& log, std::string& error);
-bool ConfigureAudioCaptureChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+bool ConfigureOhosStandardChannels(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const GraphicsPipelineConfig& graphicsConfig,
     const std::function<void(const std::string&)>& log, std::string& error);
 #endif
 

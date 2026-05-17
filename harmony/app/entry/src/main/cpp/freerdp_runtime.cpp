@@ -167,6 +167,12 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosRdpgfxCodecIsH264);
         LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_surface_command_is_full_window",
             ohosRdpgfxSurfaceCommandIsFullWindow);
+        LoadOptionalClientSymbol("freerdp_ohos_session_config_default",
+            ohosSessionConfigDefault);
+        LoadOptionalClientSymbol("freerdp_ohos_session_apply_settings",
+            ohosSessionApplySettings);
+        LoadOptionalClientSymbol("freerdp_ohos_session_add_standard_channels",
+            ohosSessionAddStandardChannels);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",

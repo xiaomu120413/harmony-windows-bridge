@@ -235,17 +235,14 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         !ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, log, error) ||
         !ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
         !ConfigureGraphicsPipelineChannel(api, settings, graphicsConfig, log, error) ||
-        !ConfigureClipboardChannel(api, settings, log, error) ||
-        !ConfigureDisplayControlChannel(api, settings, log, error)) {
+        !ConfigureOhosStandardChannels(api, settings, graphicsConfig, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
         return result;
     }
 
-    if (!clipboardBridge.Initialize(instance->context, api, log, error) ||
-        !ConfigureAudioPlaybackChannel(api, settings, log, error) ||
-        !ConfigureAudioCaptureChannel(api, settings, log, error)) {
+    if (!clipboardBridge.Initialize(instance->context, api, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
