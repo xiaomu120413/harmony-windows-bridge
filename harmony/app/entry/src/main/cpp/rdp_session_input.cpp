@@ -82,6 +82,7 @@ void RdpSessionInput::Reset()
     inputSentCount_.store(0);
     inputDroppedCount_.store(0);
     inputDispatchLogCount_.store(0);
+    inputKeyDispatchLogCount_.store(0);
     inputFailureLogCount_.store(0);
     inputBackpressureLogCount_.store(0);
 }
@@ -233,7 +234,16 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
                 ok = api->inputSendMouseEvent(context->input, event.flags, event.x, event.y);
             }
         } else if (event.type == QueuedInputType::Key) {
-            if (api->inputSendKeyboardEventEx != nullptr) {
+            if (api->inputSendKeyboardEvent != nullptr) {
+                uint16_t flags = RDP_SCANCODE_EXTENDED(event.scancode) ? KBD_FLAGS_EXTENDED : 0;
+                if (event.down) {
+                    flags |= KBD_FLAGS_DOWN;
+                } else if (!event.down) {
+                    flags |= KBD_FLAGS_RELEASE;
+                }
+                ok = api->inputSendKeyboardEvent(context->input, flags, RDP_SCANCODE_CODE(event.scancode));
+                LogKeyDispatch(event, flags, ok == TRUE, log);
+            } else if (api->inputSendKeyboardEventEx != nullptr) {
                 ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
                     event.repeat ? TRUE : FALSE, event.scancode);
             }
@@ -271,6 +281,21 @@ void RdpSessionInput::LogInputFailure(const std::string& message,
     if (log != nullptr && (logIndex < 5 || logIndex % 100 == 0)) {
         log(message);
     }
+}
+
+void RdpSessionInput::LogKeyDispatch(const QueuedInputEvent& event, uint16_t flags, bool ok,
+    const std::function<void(const std::string&)>& log)
+{
+    const uint32_t logIndex = inputKeyDispatchLogCount_.fetch_add(1);
+    if (log == nullptr || (logIndex >= 80 && logIndex % 200 != 0)) {
+        return;
+    }
+    log("FreeRDP key dispatch: scancode=" + std::to_string(event.scancode) +
+        " code=" + std::to_string(static_cast<uint32_t>(RDP_SCANCODE_CODE(event.scancode))) +
+        " flags=" + std::to_string(static_cast<uint32_t>(flags)) +
+        (event.down ? " down" : " up") +
+        (event.repeat ? " repeat" : "") +
+        (ok ? " ok" : " failed"));
 }
 
 void RdpSessionInput::LogInputBackpressure(const std::string& message,

@@ -64,6 +64,8 @@ private:
         const std::function<void(const std::string&)>& log);
     void LogInputFailure(const std::string& message, const std::function<void(const std::string&)>& log);
     void LogInputBackpressure(const std::string& message, const std::function<void(const std::string&)>& log);
+    void LogKeyDispatch(const QueuedInputEvent& event, uint16_t flags, bool ok,
+        const std::function<void(const std::string&)>& log);
 
     std::mutex inputMutex_;
     std::deque<QueuedInputEvent> inputQueue_;
@@ -74,6 +76,7 @@ private:
     std::atomic_uint32_t inputSentCount_{0};
     std::atomic_uint32_t inputDroppedCount_{0};
     std::atomic_uint32_t inputDispatchLogCount_{0};
+    std::atomic_uint32_t inputKeyDispatchLogCount_{0};
     std::atomic_uint32_t inputFailureLogCount_{0};
     std::atomic_uint32_t inputBackpressureLogCount_{0};
 };

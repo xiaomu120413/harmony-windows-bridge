@@ -53,6 +53,7 @@ public:
     using GdiFreeFn = void (*)(freerdp*);
     using GdiResizeFn = BOOL (*)(rdpGdi*, UINT32, UINT32);
     using InputSendMouseEventFn = BOOL (*)(rdpInput*, UINT16, UINT16, UINT16);
+    using InputSendKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT8);
     using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
     using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
     using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
@@ -101,6 +102,7 @@ public:
     GdiFreeFn gdiFree = nullptr;
     GdiResizeFn gdiResize = nullptr;
     InputSendMouseEventFn inputSendMouseEvent = nullptr;
+    InputSendKeyboardEventFn inputSendKeyboardEvent = nullptr;
     InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
     InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
     ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;

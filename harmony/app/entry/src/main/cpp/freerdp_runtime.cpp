@@ -101,6 +101,7 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadFreerdpSymbol("gdi_free", gdiFree, error) &&
         LoadFreerdpSymbol("gdi_resize", gdiResize, error) &&
         LoadFreerdpSymbol("freerdp_input_send_mouse_event", inputSendMouseEvent, error) &&
+        LoadFreerdpSymbol("freerdp_input_send_keyboard_event", inputSendKeyboardEvent, error) &&
         LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
         LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
         LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
