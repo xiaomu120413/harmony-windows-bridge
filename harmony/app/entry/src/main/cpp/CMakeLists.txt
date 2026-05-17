@@ -20,6 +20,7 @@ endif()
 
 add_library(entry SHARED
     bridge_log.cpp
+    graphics_config.cpp
     net_utils.cpp
     napi_init.cpp
     napi_utils.cpp

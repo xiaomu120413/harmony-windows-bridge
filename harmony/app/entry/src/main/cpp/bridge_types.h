@@ -91,4 +91,12 @@ struct Avc444SurfaceTargets {
     uint64_t chromaSurfaceId = 0;
 };
 
+struct RdpSessionRunResult {
+    bool available = false;
+    bool connected = false;
+    bool cancelled = false;
+    bool failed = false;
+    std::string message;
+};
+
 } // namespace rdp_bridge
