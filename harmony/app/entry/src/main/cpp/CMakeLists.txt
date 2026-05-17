@@ -12,10 +12,16 @@ include_directories(${NATIVERENDER_ROOT_PATH}
 
 set(FREERDP_OHOS_SYSROOT_INCLUDE
     ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/include)
+set(FREERDP_OHOS_SOURCE_ROOT
+    ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/FreeRDP)
 if(EXISTS ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/freerdp.h)
     include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3
                         ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3)
     add_compile_definitions(HARMONY_HAS_FREERDP_HEADERS=1)
+endif()
+if(EXISTS ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h)
+    include_directories(${FREERDP_OHOS_SOURCE_ROOT})
+    add_compile_definitions(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE=1)
 endif()
 
 add_library(entry SHARED
@@ -30,6 +36,7 @@ add_library(entry SHARED
     channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
     input/ohos_keyboard_adapter.cpp
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.c
     freerdp_session_runner.cpp
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp
