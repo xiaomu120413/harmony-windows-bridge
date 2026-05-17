@@ -32,8 +32,6 @@ add_library(entry SHARED
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
-    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.c
-    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_graphics.c
     input/ohos_keyboard_adapter.cpp
     freerdp_session_runner.cpp
     freerdp_gdi_bridge.cpp

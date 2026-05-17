@@ -11,8 +11,6 @@
 #include <utility>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-#include "client/OHOS/ohos_display.h"
-
 #include <freerdp/client/channels.h>
 #include <freerdp/channels/disp.h>
 #include <freerdp/channels/rdpgfx.h>
@@ -104,7 +102,12 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(activeMutex_);
-    freerdp_ohos_display_normalize_size(width, height, dynamicResizeAlignment_, &width, &height);
+    if (activeApi_ == nullptr || activeApi_->ohosDisplayNormalizeSize == nullptr ||
+        activeApi_->ohosDisplaySendMonitorLayout == nullptr) {
+        message = "FreeRDP OHOS display-control helper symbols are not loaded";
+        return false;
+    }
+    activeApi_->ohosDisplayNormalizeSize(width, height, dynamicResizeAlignment_, &width, &height);
     if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
         message = "display-control channel is not ready";
         return false;
@@ -123,7 +126,7 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
     uint32_t sentHeight = 0;
     uint32_t channelStatus = 0;
     std::array<char, 192> detail {};
-    if (freerdp_ohos_display_send_monitor_layout(activeDisp_, width, height, 1U, &sentWidth,
+    if (activeApi_->ohosDisplaySendMonitorLayout(activeDisp_, width, height, 1U, &sentWidth,
         &sentHeight, &channelStatus, detail.data(), detail.size()) == 0) {
         if (detail[0] != '\0') {
             message = detail.data();

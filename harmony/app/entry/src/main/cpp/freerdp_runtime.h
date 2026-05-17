@@ -19,6 +19,8 @@
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 #include <client/OHOS/ohos_clipboard.h>
+#include <client/OHOS/ohos_display.h>
+#include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
 #include <client/OHOS/ohos_keyboard.h>
 #endif
@@ -99,6 +101,22 @@ public:
     using OhosImeBuildCommittedTextPacketsFn = int (*)(const uint16_t*, size_t,
         FREERDP_OHOS_IME_PACKET*, size_t, size_t*, size_t*);
     using OhosImeFormatCommittedTextResultFn = int (*)(size_t, size_t, size_t, char*, size_t);
+    using OhosDisplayNormalizeSizeFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t*,
+        uint32_t*);
+    using OhosDisplaySendMonitorLayoutFn = int (*)(DispClientContext*, uint32_t, uint32_t,
+        uint32_t, uint32_t*, uint32_t*, uint32_t*, char*, size_t);
+    using OhosGraphicsConfigFromModeFn = FREERDP_OHOS_GRAPHICS_CONFIG (*)(const char*);
+    using OhosGraphicsFallbackModesFn = size_t (*)(const char*, const char**, size_t);
+    using OhosGraphicsShouldRetryFallbackFn = BOOL (*)(BOOL, BOOL, const char*, size_t, size_t,
+        const char*);
+    using OhosGraphicsAlignDownToMultipleFn = UINT32 (*)(UINT32, UINT32, UINT32);
+    using OhosGraphicsAlignH264DesktopSizeFn = void (*)(const FREERDP_OHOS_GRAPHICS_CONFIG*,
+        UINT32*, UINT32*);
+    using OhosRdpgfxCapsConfirmIsAvc420Fn = BOOL (*)(UINT32, UINT32);
+    using OhosRdpgfxCapsConfirmIsAvc444Fn = BOOL (*)(UINT32, UINT32);
+    using OhosRdpgfxCodecIsH264Fn = BOOL (*)(UINT32);
+    using OhosRdpgfxSurfaceCommandIsFullWindowFn = BOOL (*)(UINT32, UINT32, UINT32, UINT32,
+        UINT32, UINT32);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
     using OhosAvc444FrameCallbackFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, void*);
@@ -165,6 +183,17 @@ public:
     OhosKeyboardStateReleaseAllFn ohosKeyboardStateReleaseAll = nullptr;
     OhosImeBuildCommittedTextPacketsFn ohosImeBuildCommittedTextPackets = nullptr;
     OhosImeFormatCommittedTextResultFn ohosImeFormatCommittedTextResult = nullptr;
+    OhosDisplayNormalizeSizeFn ohosDisplayNormalizeSize = nullptr;
+    OhosDisplaySendMonitorLayoutFn ohosDisplaySendMonitorLayout = nullptr;
+    OhosGraphicsConfigFromModeFn ohosGraphicsConfigFromMode = nullptr;
+    OhosGraphicsFallbackModesFn ohosGraphicsFallbackModes = nullptr;
+    OhosGraphicsShouldRetryFallbackFn ohosGraphicsShouldRetryFallback = nullptr;
+    OhosGraphicsAlignDownToMultipleFn ohosGraphicsAlignDownToMultiple = nullptr;
+    OhosGraphicsAlignH264DesktopSizeFn ohosGraphicsAlignH264DesktopSize = nullptr;
+    OhosRdpgfxCapsConfirmIsAvc420Fn ohosRdpgfxCapsConfirmIsAvc420 = nullptr;
+    OhosRdpgfxCapsConfirmIsAvc444Fn ohosRdpgfxCapsConfirmIsAvc444 = nullptr;
+    OhosRdpgfxCodecIsH264Fn ohosRdpgfxCodecIsH264 = nullptr;
+    OhosRdpgfxSurfaceCommandIsFullWindowFn ohosRdpgfxSurfaceCommandIsFullWindow = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;
     OhosAvcodecSetAvc444SurfaceRouteEnabledFn ohosAvcodecSetAvc444SurfaceRouteEnabled = nullptr;

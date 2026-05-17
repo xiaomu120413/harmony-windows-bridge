@@ -1,27 +1,39 @@
 #include "graphics_config.h"
 
+#include "freerdp_runtime.h"
 #include "string_utils.h"
 
 #include <cstdlib>
 #include <sstream>
 
-#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
-#include <client/OHOS/ohos_graphics.h>
-#endif
-
 namespace rdp_bridge {
+namespace {
+
+FreerdpRuntimeApi* LoadedRuntime()
+{
+    auto& api = SharedFreerdpRuntimeApi();
+    std::string error;
+    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
+        return nullptr;
+    }
+    return &api;
+}
+
+} // namespace
 
 GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
 {
-#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+    if (FreerdpRuntimeApi* api = LoadedRuntime();
+        api != nullptr && api->ohosGraphicsConfigFromMode != nullptr) {
     const FREERDP_OHOS_GRAPHICS_CONFIG nativeConfig =
-        freerdp_ohos_graphics_config_from_mode(params.graphicsMode.c_str());
+            api->ohosGraphicsConfigFromMode(params.graphicsMode.c_str());
     GraphicsPipelineConfig config;
     config.enabled = nativeConfig.enabled;
     config.h264 = nativeConfig.h264;
     config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
     return config;
-#else
+    }
+
     GraphicsPipelineConfig config;
     std::string mode = ToLowerAscii(TrimAscii(params.graphicsMode));
     if (mode.empty()) {
@@ -44,14 +56,14 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
         config.mode = "gdi";
     }
     return config;
-#endif
 }
 
 std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
 {
-#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+    if (FreerdpRuntimeApi* api = LoadedRuntime();
+        api != nullptr && api->ohosGraphicsFallbackModes != nullptr) {
     const char* nativeModes[3] = {};
-    const size_t count = freerdp_ohos_graphics_fallback_modes(
+        const size_t count = api->ohosGraphicsFallbackModes(
         params.graphicsMode.c_str(), nativeModes, sizeof(nativeModes) / sizeof(nativeModes[0]));
     std::vector<std::string> modes;
     modes.reserve(count);
@@ -59,7 +71,8 @@ std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
         modes.emplace_back(nativeModes[index] == nullptr ? "gdi" : nativeModes[index]);
     }
     return modes;
-#else
+    }
+
     const GraphicsPipelineConfig config = ParseGraphicsPipelineConfig(params);
     if (config.mode == "rdpgfx-h264") {
         return {"rdpgfx-h264"};
@@ -68,7 +81,6 @@ std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
         return {"rdpgfx", "gdi"};
     }
     return {"gdi"};
-#endif
 }
 
 std::string JoinGraphicsModes(const std::vector<std::string>& modes)
@@ -86,10 +98,12 @@ std::string JoinGraphicsModes(const std::vector<std::string>& modes)
 bool ShouldRetryGraphicsFallback(const RdpSessionRunResult& session, bool attemptConnected,
     const std::string& failedMode, size_t attemptIndex, size_t attemptCount)
 {
-#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
-    return freerdp_ohos_graphics_should_retry_fallback(session.failed, attemptConnected,
-        failedMode.c_str(), attemptIndex, attemptCount, session.message.c_str());
-#else
+    if (FreerdpRuntimeApi* api = LoadedRuntime();
+        api != nullptr && api->ohosGraphicsShouldRetryFallback != nullptr) {
+        return api->ohosGraphicsShouldRetryFallback(session.failed, attemptConnected,
+            failedMode.c_str(), attemptIndex, attemptCount, session.message.c_str());
+    }
+
     if (!session.failed || attemptConnected || attemptIndex + 1 >= attemptCount ||
         failedMode == "gdi") {
         return false;
@@ -102,7 +116,6 @@ bool ShouldRetryGraphicsFallback(const RdpSessionRunResult& session, bool attemp
         message.find("dynamic channel") != std::string::npos ||
         message.find("h264") != std::string::npos ||
         message.find("surface") != std::string::npos;
-#endif
 }
 
 } // namespace rdp_bridge

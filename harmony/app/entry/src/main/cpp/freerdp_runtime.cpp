@@ -145,6 +145,28 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosImeBuildCommittedTextPackets);
         LoadOptionalClientSymbol("freerdp_ohos_ime_format_committed_text_result",
             ohosImeFormatCommittedTextResult);
+        LoadOptionalClientSymbol("freerdp_ohos_display_normalize_size",
+            ohosDisplayNormalizeSize);
+        LoadOptionalClientSymbol("freerdp_ohos_display_send_monitor_layout",
+            ohosDisplaySendMonitorLayout);
+        LoadOptionalClientSymbol("freerdp_ohos_graphics_config_from_mode",
+            ohosGraphicsConfigFromMode);
+        LoadOptionalClientSymbol("freerdp_ohos_graphics_fallback_modes",
+            ohosGraphicsFallbackModes);
+        LoadOptionalClientSymbol("freerdp_ohos_graphics_should_retry_fallback",
+            ohosGraphicsShouldRetryFallback);
+        LoadOptionalClientSymbol("freerdp_ohos_graphics_align_down_to_multiple",
+            ohosGraphicsAlignDownToMultiple);
+        LoadOptionalClientSymbol("freerdp_ohos_graphics_align_h264_desktop_size",
+            ohosGraphicsAlignH264DesktopSize);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_caps_confirm_is_avc420",
+            ohosRdpgfxCapsConfirmIsAvc420);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_caps_confirm_is_avc444",
+            ohosRdpgfxCapsConfirmIsAvc444);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_codec_is_h264",
+            ohosRdpgfxCodecIsH264);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_surface_command_is_full_window",
+            ohosRdpgfxSurfaceCommandIsFullWindow);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",

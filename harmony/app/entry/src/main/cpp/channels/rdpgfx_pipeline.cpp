@@ -17,10 +17,6 @@
 #include <freerdp/error.h>
 #endif
 
-#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
-#include <client/OHOS/ohos_graphics.h>
-#endif
-
 namespace rdp_bridge {
 namespace {
 
@@ -96,8 +92,10 @@ void RecordRdpgfxConnectionCapsSnapshot(RdpgfxClientContext* gfx)
 
 bool RdpgfxCapsConfirmAvc420(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 {
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     return capsConfirm != nullptr && capsConfirm->capsSet != nullptr &&
-        freerdp_ohos_rdpgfx_caps_confirm_is_avc420(
+        api.ohosRdpgfxCapsConfirmIsAvc420 != nullptr &&
+        api.ohosRdpgfxCapsConfirmIsAvc420(
             capsConfirm->capsSet->version, capsConfirm->capsSet->flags);
 }
 
@@ -107,13 +105,16 @@ bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
         return false;
     }
 
-    return freerdp_ohos_rdpgfx_caps_confirm_is_avc444(
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    return api.ohosRdpgfxCapsConfirmIsAvc444 != nullptr &&
+        api.ohosRdpgfxCapsConfirmIsAvc444(
         capsConfirm->capsSet->version, capsConfirm->capsSet->flags);
 }
 
 bool IsH264SurfaceCodec(uint32_t codecId)
 {
-    return freerdp_ohos_rdpgfx_codec_is_h264(codecId);
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    return api.ohosRdpgfxCodecIsH264 != nullptr && api.ohosRdpgfxCodecIsH264(codecId);
 }
 
 std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
@@ -131,7 +132,9 @@ bool IsFullWindowAvcCommand(const RDPGFX_SURFACE_COMMAND* command, const Decoder
     if (command == nullptr) {
         return false;
     }
-    return freerdp_ohos_rdpgfx_surface_command_is_full_window(
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    return api.ohosRdpgfxSurfaceCommandIsFullWindow != nullptr &&
+        api.ohosRdpgfxSurfaceCommandIsFullWindow(
         command->left, command->top, command->width, command->height, target.width, target.height);
 }
 
