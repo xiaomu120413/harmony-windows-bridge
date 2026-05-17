@@ -1,5 +1,8 @@
 #include "rdp_session_input.h"
 
+#include <array>
+#include <vector>
+
 namespace rdp_bridge {
 namespace {
 
@@ -129,6 +132,86 @@ bool RdpSessionInput::EnqueueUnicode(uint32_t code, bool down, std::string& mess
 #else
     (void)code;
     (void)down;
+    (void)log;
+    message = "FreeRDP headers not found at build time";
+    return false;
+#endif
+}
+
+bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::string& message,
+    const std::function<void(const std::string&)>& log)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    if (text.empty()) {
+        message = "committed text input is empty";
+        return false;
+    }
+
+    std::vector<FREERDP_OHOS_IME_PACKET> packets(text.size() * 2U);
+    size_t packetCount = 0;
+    size_t skipped = 0;
+    if (freerdp_ohos_ime_build_committed_text_packets(
+        reinterpret_cast<const uint16_t*>(text.data()), text.size(), packets.data(), packets.size(),
+        &packetCount, &skipped) == 0) {
+        message = "OHOS IME committed text conversion failed";
+        LogInputFailure(message, log);
+        return false;
+    }
+
+    std::array<char, 160> formatted {};
+    if (freerdp_ohos_ime_format_committed_text_result(text.size(), packetCount, skipped,
+        formatted.data(), formatted.size()) != 0) {
+        message = formatted.data();
+    } else {
+        message = "OHOS IME committed text queued";
+    }
+
+    if (packetCount == 0) {
+        LogInputFailure(message, log);
+        return skipped == 0;
+    }
+
+    bool failed = false;
+    bool droppedOldPointer = false;
+    bool droppedNewEvent = false;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex_);
+        for (size_t index = 0; index < packetCount; ++index) {
+            QueuedInputEvent event;
+            event.type = QueuedInputType::Unicode;
+            event.code = packets[index].codeUnit;
+            event.down = packets[index].down != 0;
+
+            std::string packetMessage;
+            bool oldPointer = false;
+            bool newEvent = false;
+            if (!EnqueueInputLocked(event, "unicode text packet queued", packetMessage,
+                oldPointer, newEvent)) {
+                failed = true;
+                message = packetMessage;
+            }
+            droppedOldPointer = droppedOldPointer || oldPointer;
+            droppedNewEvent = droppedNewEvent || newEvent;
+            if (newEvent) {
+                break;
+            }
+        }
+    }
+
+    if (droppedOldPointer) {
+        LogInputBackpressure("FreeRDP input queue protected committed text by dropping pending pointer motion",
+            log);
+    }
+    if (failed || droppedNewEvent) {
+        LogInputFailure(message, log);
+        return false;
+    }
+    if (skipped > 0) {
+        LogInputFailure(message, log);
+    }
+    return true;
+#else
+    (void)text;
     (void)log;
     message = "FreeRDP headers not found at build time";
     return false;

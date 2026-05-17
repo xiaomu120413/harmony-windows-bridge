@@ -8,6 +8,7 @@
 #include <string>
 
 #include "input/ohos_keyboard_adapter.h"
+#include "client/OHOS/ohos_ime.h"
 #include "client/OHOS/ohos_keyboard.h"
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -28,6 +29,8 @@ public:
     bool EnqueuePlatformKey(const OhosKeyEvent& event, std::string& message,
         const std::function<void(const std::string&)>& log);
     bool EnqueueUnicode(uint32_t code, bool down, std::string& message,
+        const std::function<void(const std::string&)>& log);
+    bool EnqueueCommittedText(const std::u16string& text, std::string& message,
         const std::function<void(const std::string&)>& log);
     bool EnqueueReleaseAllKeys(std::string& message, const std::function<void(const std::string&)>& log);
 

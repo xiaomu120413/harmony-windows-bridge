@@ -41,6 +41,7 @@ public:
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message);
     bool SendPlatformKey(const OhosKeyEvent& event, std::string& message);
     bool SendUnicode(uint32_t code, bool down, std::string& message);
+    bool SendCommittedText(const std::u16string& text, std::string& message);
     bool ReleaseAllKeys(std::string& message);
 
     uint32_t InputQueueDepth() const;

@@ -1033,27 +1033,19 @@ struct Index {
       return false
     }
 
-    let sent = false
-    for (let i = 0; i < value.length; i++) {
-      const code = value.charCodeAt(i)
-      if (code >= 0xD800 && code <= 0xDBFF) {
-        if (i + 1 < value.length) {
-          const nextCode = value.charCodeAt(i + 1)
-          if (nextCode >= 0xDC00 && nextCode <= 0xDFFF) {
-            this.appendLog('Text input skipped: non-BMP character is not supported yet')
-            i++
-            continue
-          }
-        }
+    try {
+      const result: NativeCommandResult = rdpNative.sendText({ text: value })
+      if (!result.ok) {
+        this.appendLog(result.message)
       }
-      if (code >= 0xDC00 && code <= 0xDFFF) {
-        this.appendLog('Text input skipped: unmatched UTF-16 surrogate')
-        continue
+      if (result.ok && INPUT_PROBE_ON_INPUT) {
+        this.scheduleInputProbe()
       }
-      sent = this.sendUnicodeStroke(code) || sent
+      return result.ok
+    } catch (error) {
+      this.appendLog(`Native committed text input failed: ${JSON.stringify(error)}`)
+      return false
     }
-
-    return sent
   }
 
   private clearRemoteInputBridge(): void {

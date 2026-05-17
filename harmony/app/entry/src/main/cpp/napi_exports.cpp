@@ -48,6 +48,31 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     return params;
 }
 
+std::u16string GetUtf16StringProperty(napi_env env, napi_value object, const char* name)
+{
+    bool hasProperty = false;
+    napi_has_named_property(env, object, name, &hasProperty);
+    if (!hasProperty) {
+        return u"";
+    }
+
+    napi_value value = nullptr;
+    napi_get_named_property(env, object, name, &value);
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, value, &type);
+    if (type != napi_string) {
+        return u"";
+    }
+
+    size_t length = 0;
+    napi_get_value_string_utf16(env, value, nullptr, 0, &length);
+    std::vector<char16_t> buffer(length + 1U);
+    size_t copied = 0;
+    napi_get_value_string_utf16(env, value, buffer.data(), buffer.size(), &copied);
+    return std::u16string(buffer.data(), copied);
+}
+
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
@@ -102,7 +127,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, sendPointer, sendKey, sendUnicode",
+        "Native calls are available: probe, connect, disconnect, sendPointer, sendKey, sendUnicode, sendText",
         "FreeRDP input dispatch: worker-thread queue",
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
@@ -351,6 +376,40 @@ napi_value SendUnicode(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value SendText(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native committed text input invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Disconnected");
+        SetString(env, result, "message", "committed text input requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    const std::u16string text = GetUtf16StringProperty(env, arg, "text");
+    logs.push_back("utf16Units=" + std::to_string(text.size()));
+
+    std::string message;
+    const bool ok = BridgeSession().SendCommittedText(text, message);
+    BridgeEvents().log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
 {
     (void)info;
@@ -445,6 +504,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPlatformKey", nullptr, SendPlatformKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendText", nullptr, SendText, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"notifySurfaceLayout", nullptr, NotifySurfaceLayout, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
