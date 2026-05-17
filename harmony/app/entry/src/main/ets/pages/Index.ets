@@ -23,11 +23,6 @@ const POINTER_FAILURE_LOG_INTERVAL_MS: number = 800
 const INPUT_EVENT_LOG_INTERVAL_MS: number = 650
 const SYNTHETIC_MOUSE_SUPPRESS_MS: number = 80
 const AXIS_EVENT_DEDUP_MS: number = 12
-const INPUT_PROBE_DELAY_MS: number = 200
-const INPUT_PROBE_INTERVAL_MS: number = 350
-const INPUT_PROBE_ON_INPUT: boolean = false
-const INPUT_EVENT_UI_LOG_ENABLED: boolean = false
-const INPUT_EVENT_VERBOSE_LOG_ENABLED: boolean = false
 // Real-device key callback echo was observed under 30ms; keep a wider window without masking fast typing.
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 120
 const REMOTE_TEXT_BRIDGE_RESET_LENGTH: number = 32
@@ -44,9 +39,6 @@ const OH_KEYCODE_DPAD_DOWN: number = 2013
 const OH_KEYCODE_DPAD_LEFT: number = 2014
 const OH_KEYCODE_DPAD_RIGHT: number = 2015
 const OH_KEYCODE_A: number = 2017
-const OH_KEYCODE_C: number = OH_KEYCODE_A + 2
-const OH_KEYCODE_V: number = OH_KEYCODE_A + 21
-const OH_KEYCODE_X: number = OH_KEYCODE_A + 23
 const OH_KEYCODE_Z: number = 2042
 const OH_KEYCODE_COMMA: number = 2043
 const OH_KEYCODE_PERIOD: number = 2044
@@ -92,41 +84,15 @@ const READ_PASTEBOARD_PERMISSION: Permissions = 'ohos.permission.READ_PASTEBOARD
 const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE'
 
 interface NativeProbeResult {
-  bridgeVersion: string
-  abi: string
-  freeRdpVersion: string
-  winprVersion: string
-  opensslVersion: string
-  featureSummary: string
-  audioStats: string
-  renderStats: string
-  graphicsStats: string
-  inputDispatchMode: string
-  freeRdpLinked: boolean
-  surfaceRegistered: boolean
   surfaceReady: boolean
-  surfaceId: string
   surfaceWidth: number
   surfaceHeight: number
   surfaceViewportX: number
   surfaceViewportY: number
   surfaceViewportWidth: number
   surfaceViewportHeight: number
-  surfaceCreatedCount: number
-  surfaceChangedCount: number
-  surfaceDestroyedCount: number
-  surfaceTouchCount: number
-  surfacePaintCount: number
-  surfaceLastPaintMessage: string
-  sessionConnected: boolean
   desktopWidth: number
   desktopHeight: number
-  inputQueueDepth: number
-  inputQueuedCount: number
-  inputSentCount: number
-  inputDroppedCount: number
-  probeJson: string
-  probeError: string
   logs: string[]
 }
 
@@ -167,7 +133,6 @@ struct Index {
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
-  @State private nativeProbeText: string = 'Native bridge not probed'
   @State private surfacePixelWidth: number = 0
   @State private surfacePixelHeight: number = 0
   @State private surfaceLayoutWidth: number = 0
@@ -178,12 +143,6 @@ struct Index {
   @State private surfaceViewportHeight: number = 0
   @State private desktopPixelWidth: number = 0
   @State private desktopPixelHeight: number = 0
-  @State private inputQueueDepth: number = 0
-  @State private inputQueuedCount: number = 0
-  @State private inputSentCount: number = 0
-  @State private inputDroppedCount: number = 0
-  @State private nativeFeatureSummary: string = ''
-  @State private nativeInputDispatchMode: string = ''
   @State private remoteTextInput: string = ''
   private remoteTextBridgeValue: string = ''
   private bridgePrintableKeyCode: number = 0
@@ -221,7 +180,6 @@ struct Index {
   private lastAxisY: number = 0
   private lastAxisDeltaX: number = 0
   private lastAxisDeltaY: number = 0
-  private lastInputProbeAtMs: number = 0
   private surfacePixelScaleX: number = 0
   private surfacePixelScaleY: number = 0
   private surfaceController: XComponentController = new XComponentController()
@@ -271,7 +229,7 @@ struct Index {
           this.connectionState = nextState
           if (nextState === 'Connected' && !wasConnected) {
             this.currentTab = 'session'
-            this.probeNative()
+            this.refreshNativeState()
             this.focusRemoteInputBridge()
           } else if (nextState !== 'Connected') {
             this.clearPointerState()
@@ -415,7 +373,7 @@ struct Index {
     return this.microphonePermissionRequest
   }
 
-  private probeNative(appendLogs: boolean = true): void {
+  private refreshNativeState(appendLogs: boolean = false): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
       this.surfacePixelWidth = result.surfaceWidth
@@ -426,47 +384,12 @@ struct Index {
       this.surfaceViewportHeight = result.surfaceViewportHeight
       this.desktopPixelWidth = result.desktopWidth
       this.desktopPixelHeight = result.desktopHeight
-      this.inputQueueDepth = result.inputQueueDepth
-      this.inputQueuedCount = result.inputQueuedCount
-      this.inputSentCount = result.inputSentCount
-      this.inputDroppedCount = result.inputDroppedCount
-      this.nativeFeatureSummary = result.featureSummary
-      this.nativeInputDispatchMode = result.inputDispatchMode
-      const linkState = result.freeRdpLinked ? 'linked' : 'not-linked'
-      const surfaceText = result.surfaceReady ? `surface ${result.surfaceWidth}x${result.surfaceHeight}` : 'surface pending'
-      const viewportText = result.surfaceViewportWidth > 0 && result.surfaceViewportHeight > 0 ?
-        `viewport ${result.surfaceViewportX},${result.surfaceViewportY} ${result.surfaceViewportWidth}x${result.surfaceViewportHeight}` :
-        'viewport pending'
-      const layoutText = this.surfaceLayoutWidth > 0 && this.surfaceLayoutHeight > 0 ?
-        `layout ${this.formatNumber(this.surfaceLayoutWidth)}x${this.formatNumber(this.surfaceLayoutHeight)}` :
-        'layout pending'
-      const desktopText = result.desktopWidth > 0 && result.desktopHeight > 0 ?
-        `desktop ${result.desktopWidth}x${result.desktopHeight}` : 'desktop pending'
-      const paintText = result.surfacePaintCount > 0 ? `paint ${result.surfacePaintCount}` : 'paint pending'
-      const renderText = result.renderStats
-      const graphicsText = result.graphicsStats
-      const inputText = `input ${result.inputDispatchMode} q=${result.inputQueueDepth} sent=${result.inputSentCount} drop=${result.inputDroppedCount}`
-      const audioText = result.audioStats.replace('OHAudio stats: ', 'audio ')
-      this.nativeProbeText = `bridge ${result.bridgeVersion} | ${result.abi} | FreeRDP ${result.freeRdpVersion} | ${linkState} | ${surfaceText} | ${layoutText} | ${viewportText} | ${desktopText} | ${paintText} | ${renderText} | ${graphicsText} | ${inputText} | ${audioText}`
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }
     } catch (error) {
-      this.nativeProbeText = 'Native bridge probe failed'
-      this.appendLog(`Native probe failed: ${JSON.stringify(error)}`)
+      this.appendLog(`Native state refresh failed: ${JSON.stringify(error)}`)
     }
-  }
-
-  private scheduleInputProbe(): void {
-    const now = Date.now()
-    if (now - this.lastInputProbeAtMs < INPUT_PROBE_INTERVAL_MS) {
-      return
-    }
-    this.lastInputProbeAtMs = now
-    setTimeout((): void => {
-      this.probeNative(false)
-      this.appendLog(`Input counters: q=${this.inputQueueDepth} sent=${this.inputSentCount} drop=${this.inputDroppedCount}`)
-    }, INPUT_PROBE_DELAY_MS)
   }
 
   private normalizeCertPolicy(value: string): string {
@@ -654,24 +577,20 @@ struct Index {
     }
     this.lastInputEventLogAtMs = now
     const line = `Input ${label}: ${detail}`
-    if (INPUT_EVENT_UI_LOG_ENABLED) {
-      this.appendLog(line)
-    }
-    const shouldLogVerbose = INPUT_EVENT_VERBOSE_LOG_ENABLED ||
-      label === 'key.shortcut' ||
+    const shouldLogHilog = force ||
       label === 'paste' ||
       label === 'copy' ||
       label === 'cut' ||
       label === 'key.delete' ||
       label === 'key.repeat'
-    if (shouldLogVerbose) {
+    if (shouldLogHilog) {
       hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
       console.info(line)
     }
   }
 
   private sendPointer(flags: number, x: number, y: number, allowClamp: boolean = false,
-    traceLabel: string = '', logSuccess: boolean = false): boolean {
+    traceLabel: string = ''): boolean {
     if (!this.isConnected()) {
       if (this.pointerMappingFailureShouldLog(traceLabel)) {
         this.appendLog(`Pointer ${traceLabel || 'input'} skipped: no active FreeRDP session`)
@@ -694,23 +613,11 @@ struct Index {
       })
       if (!result.ok) {
         this.appendLog(`Pointer ${traceLabel || 'input'} failed: ${result.message}; ${this.describePointerMapping(flags, x, y, mapped)}`)
-        if (INPUT_PROBE_ON_INPUT) {
-          this.scheduleInputProbe()
-        }
         return false
-      }
-      if (logSuccess && INPUT_EVENT_UI_LOG_ENABLED) {
-        this.appendLog(`Pointer ${traceLabel || 'input'} queued: ${this.describePointerMapping(flags, x, y, mapped)}`)
-      }
-      if (INPUT_PROBE_ON_INPUT) {
-        this.scheduleInputProbe()
       }
       return result.ok
     } catch (error) {
       this.appendLog(`Native pointer input failed (${traceLabel || 'input'}): ${JSON.stringify(error)}`)
-      if (INPUT_PROBE_ON_INPUT) {
-        this.scheduleInputProbe()
-      }
       return false
     }
   }
@@ -839,36 +746,36 @@ struct Index {
     const flags = deltaY > 0 ?
       PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
       PTR_FLAGS_WHEEL | RDP_WHEEL_DELTA
-    this.sendPointer(flags, x, y, false, 'wheel.vertical', true)
+    this.sendPointer(flags, x, y, false, 'wheel.vertical')
   }
 
   private sendHorizontalWheel(deltaX: number, x: number, y: number): void {
     const flags = deltaX > 0 ?
       PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
       PTR_FLAGS_HWHEEL | RDP_WHEEL_DELTA
-    this.sendPointer(flags, x, y, false, 'wheel.horizontal', true)
+    this.sendPointer(flags, x, y, false, 'wheel.horizontal')
   }
 
   private sendLeftButtonDown(x: number, y: number, label: string): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
-    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
+    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
   }
 
   private sendLeftButtonUp(x: number, y: number, label: string): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, true, `${label}.move`, true)
-    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, true, `${label}.up`, true)
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, true, `${label}.move`)
+    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, true, `${label}.up`)
   }
 
   private sendLeftClick(x: number, y: number, label: string = 'tap.left'): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
-    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
-    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, false, `${label}.up`, true)
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
+    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
+    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, false, `${label}.up`)
   }
 
   private sendRightClick(x: number, y: number, label: string = 'longPress.right'): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`, true)
-    this.sendPointer(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`, true)
-    this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`, true)
+    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
+    this.sendPointer(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
+    this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`)
   }
 
   private sendPlatformKeyStroke(keyCode: number): boolean {
@@ -900,9 +807,6 @@ struct Index {
       if (!result.ok) {
         this.appendLog(result.message)
       }
-      if (result.ok && INPUT_PROBE_ON_INPUT) {
-        this.scheduleInputProbe()
-      }
       return result.ok
     } catch (error) {
       this.appendLog(`Native platform key input failed: ${JSON.stringify(error)}`)
@@ -920,9 +824,6 @@ struct Index {
       const result: NativeCommandResult = rdpNative.sendUnicode({ code: code, down: down })
       if (!result.ok) {
         this.appendLog(result.message)
-      }
-      if (result.ok && INPUT_PROBE_ON_INPUT) {
-        this.scheduleInputProbe()
       }
       return result.ok
     } catch (error) {
@@ -1057,9 +958,6 @@ struct Index {
       if (!result.ok) {
         this.appendLog(result.message)
       }
-      if (result.ok && INPUT_PROBE_ON_INPUT) {
-        this.scheduleInputProbe()
-      }
       return result.ok
     } catch (error) {
       this.appendLog(`Native committed text input failed: ${JSON.stringify(error)}`)
@@ -1172,7 +1070,8 @@ struct Index {
       OH_KEYCODE_META_LEFT,
       OH_KEYCODE_META_RIGHT,
       OH_KEYCODE_SHIFT_LEFT,
-      OH_KEYCODE_SHIFT_RIGHT
+      OH_KEYCODE_SHIFT_RIGHT,
+      OH_KEYCODE_NUMPAD_ENTER
     ]
     return keyCodes.indexOf(keyCode) >= 0
   }
@@ -1556,15 +1455,15 @@ struct Index {
         return
       }
       this.mouseButtonFlags |= buttonFlag
-      this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, false, 'mouse.press.move', true)
-      this.sendPointer(buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down', true)
+      this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, false, 'mouse.press.move')
+      this.sendPointer(buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down')
       return
     }
     if (event.action === MouseAction.Release) {
       const releaseFlag = buttonFlag !== 0 ? buttonFlag : this.mouseButtonFlags
       if (releaseFlag !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.release.move', true)
-        this.sendPointer(releaseFlag, event.x, event.y, true, 'mouse.release.up', true)
+        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.release.move')
+        this.sendPointer(releaseFlag, event.x, event.y, true, 'mouse.release.up')
         this.mouseButtonFlags &= ~releaseFlag
       }
       return
@@ -1579,8 +1478,8 @@ struct Index {
     }
     if (event.action === MouseAction.CANCEL) {
       if (this.mouseButtonFlags !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.cancel.move', true)
-        this.sendPointer(this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release', true)
+        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.cancel.move')
+        this.sendPointer(this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release')
       }
       this.mouseButtonFlags = 0
     }
@@ -1878,7 +1777,6 @@ struct Index {
     Row() {
       this.tabButton('connect', 'Connect')
       this.tabButton('session', 'Session')
-      this.tabButton('diagnostics', 'Diagnostics')
     }
     .height(48)
     .width('100%')
@@ -1899,11 +1797,6 @@ struct Index {
         this.currentTab = id
         if (leavingSession) {
           this.releaseActiveModifiers()
-        }
-        if (id === 'diagnostics') {
-          this.deferUiUpdate(() => {
-            this.probeNative()
-          })
         }
       })
   }
@@ -1996,20 +1889,19 @@ struct Index {
           .onLoad(() => {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent loaded')
-              this.probeNative()
+              this.refreshNativeState()
               this.focusRemoteInputBridge()
             })
           })
           .onDestroy(() => {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent destroyed')
-              this.probeNative()
             })
           })
           .onAreaChange((oldArea: Area, newArea: Area) => {
             this.updateSurfaceLayout(newArea.width, newArea.height)
             this.deferUiUpdate(() => {
-              this.probeNative()
+              this.refreshNativeState()
             })
           })
           .onAxisEvent((event: AxisEvent) => {
@@ -2088,53 +1980,13 @@ struct Index {
     })
   }
 
-  @Builder
-  private buildDiagnosticsPage() {
-    Scroll() {
-      Column() {
-        Text('Diagnostics')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .width('100%')
-          .margin({ bottom: 16 })
-        Text(`TCP target: ${this.host || '-'}:${this.port}`)
-          .fontSize(15)
-          .width('100%')
-          .margin({ bottom: 8 })
-        Text(`Native bridge: ${this.nativeProbeText}`)
-          .fontSize(15)
-          .width('100%')
-          .margin({ bottom: 8 })
-        Text('RDP negotiation: FreeRDP persistent session loop')
-          .fontSize(15)
-          .width('100%')
-          .margin({ bottom: 8 })
-        Text('Logs')
-          .fontSize(18)
-          .fontWeight(FontWeight.Medium)
-          .width('100%')
-          .margin({ top: 16, bottom: 8 })
-        Text(this.logText)
-          .fontSize(13)
-          .fontColor('#344054')
-          .width('100%')
-          .backgroundColor('#FFFFFF')
-          .padding(12)
-      }
-      .padding(20)
-    }
-    .layoutWeight(1)
-  }
-
   build() {
     Column() {
       this.buildTabs()
       if (this.currentTab === 'connect') {
         this.buildConnectPage()
-      } else if (this.currentTab === 'session') {
-        this.buildSessionPage()
       } else {
-        this.buildDiagnosticsPage()
+        this.buildSessionPage()
       }
     }
     .width('100%')
