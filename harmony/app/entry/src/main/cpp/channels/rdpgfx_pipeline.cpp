@@ -19,7 +19,8 @@
 namespace rdp_bridge {
 namespace {
 
-std::atomic_bool g_avc420SurfaceOutputEnabled{false};
+std::atomic_bool g_avc420SurfaceOutputConfigured{false};
+std::atomic_bool g_avc420SurfaceOutputActive{false};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
 
@@ -112,9 +113,10 @@ std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 
 void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
 {
-    if (!g_avc420SurfaceOutputEnabled.exchange(false)) {
+    if (!g_avc420SurfaceOutputConfigured.exchange(false)) {
         return;
     }
+    g_avc420SurfaceOutputActive.store(false);
 
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
@@ -178,14 +180,11 @@ UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CO
 {
     RecordRdpgfxCapsConfirm(capsConfirm);
 
-    if (g_avc420SurfaceOutputEnabled.load()) {
+    if (g_avc420SurfaceOutputConfigured.load()) {
         const std::string summary = RdpgfxCapsConfirmSummary(capsConfirm);
         if (RdpgfxCapsConfirmAvc420(capsConfirm)) {
-            RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-            if (callbacks.stopRenderPipeline != nullptr) {
-                callbacks.stopRenderPipeline();
-            }
-            LogThroughCallbacks("RDPGFX negotiated AVC420 surface mode: " + summary);
+            LogThroughCallbacks("RDPGFX negotiated AVC420 surface mode: " + summary +
+                "; GDI remains active until the first AVC420 surface command");
         } else if (RdpgfxCapsConfirmAvc444(capsConfirm)) {
             SwitchAvc420SurfaceToSoftwareFallback("server selected AVC444 buffer mode " + summary);
         } else {
@@ -208,10 +207,15 @@ UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURF
 {
     if (command != nullptr) {
         RecordRdpgfxSurfaceCommand(*command);
-        if (g_avc420SurfaceOutputEnabled.load() && command->codecId != RDPGFX_CODECID_AVC420) {
-            SwitchAvc420SurfaceToSoftwareFallback("first non-AVC420 surface command codec=" +
-                std::string(RdpgfxCodecName(command->codecId)) +
-                "(" + std::to_string(command->codecId) + ")");
+        if (g_avc420SurfaceOutputConfigured.load() && command->codecId == RDPGFX_CODECID_AVC420 &&
+            !g_avc420SurfaceOutputActive.exchange(true)) {
+            RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+            if (callbacks.stopRenderPipeline != nullptr) {
+                callbacks.stopRenderPipeline();
+            }
+            LogThroughCallbacks("AVC420 surface output activated by first AVC420 surface command: surface=" +
+                std::to_string(command->surfaceId) +
+                " size=" + std::to_string(command->width) + "x" + std::to_string(command->height));
         }
     }
 
@@ -237,13 +241,13 @@ void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks)
 
 bool IsAvc420SurfaceOutputEnabled()
 {
-    return g_avc420SurfaceOutputEnabled.load();
+    return g_avc420SurfaceOutputActive.load();
 }
 
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    if (!g_avc420SurfaceOutputEnabled.load()) {
+    if (!g_avc420SurfaceOutputConfigured.load()) {
         return;
     }
 
@@ -263,6 +267,7 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
 
     const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
     if (target.window == nullptr || target.width == 0 || target.height == 0) {
+        g_avc420SurfaceOutputActive.store(false);
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
         if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
             api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
@@ -272,6 +277,9 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
         }
         if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
             api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+        }
+        if (callbacks.startRenderPipeline != nullptr) {
+            callbacks.startRenderPipeline();
         }
         LogThroughCallbacks("AVC420 surface output disabled after " + reason +
             ": XComponent surface unavailable");
@@ -292,7 +300,8 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
 {
-    g_avc420SurfaceOutputEnabled.store(false);
+    g_avc420SurfaceOutputConfigured.store(false);
+    g_avc420SurfaceOutputActive.store(false);
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     }
@@ -343,16 +352,14 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
         api.ohosAvcodecSetFallbackCallback(OnOhosAvcodecFallback, nullptr);
     }
 
-    g_avc420SurfaceOutputEnabled.store(true);
+    g_avc420SurfaceOutputConfigured.store(true);
+    g_avc420SurfaceOutputActive.store(false);
     if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
         callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, log);
     }
-    if (callbacks.stopRenderPipeline != nullptr) {
-        callbacks.stopRenderPipeline();
-    }
     log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=avc420-surface-only avc444=not-advertised");
+        " mode=avc420-surface-armed avc444=not-advertised gdi=active-until-avc420");
     return true;
 }
 

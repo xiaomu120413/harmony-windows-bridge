@@ -48,6 +48,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const bool h264Requested = graphicsConfig.enabled && graphicsConfig.h264;
     const bool avc444Requested = false;
     const uint32_t gfxCapsFilter = h264Requested ? kFilterRdpgfxCapVersion8 : 0;
+    const uint32_t frameAcknowledge = 2;
 
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||
@@ -61,6 +62,16 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, avc444Requested,
             "GfxAVC444v2", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_GfxCapsFilter, gfxCapsFilter, "GfxCapsFilter", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_RemoteFxCodec, false, "RemoteFxCodec", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_NSCodec, false, "NSCodec", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxProgressive, false, "GfxProgressive", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxProgressiveV2, false, "GfxProgressiveV2", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxSmallCache, true, "GfxSmallCache", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_FastPathOutput, true, "FastPathOutput", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_FrameMarkerCommandEnabled, true,
+            "FrameMarkerCommandEnabled", error) ||
+        !SetFreerdpUint32(api, settings, FreeRDP_FrameAcknowledge, frameAcknowledge,
+            "FrameAcknowledge", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_ClipboardFeatureMask,
             CLIPRDR_FLAG_LOCAL_TO_REMOTE | CLIPRDR_FLAG_REMOTE_TO_LOCAL,
@@ -82,7 +93,9 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
             " avc444=" + std::string(avc444Requested ? "on" : "off") +
             " capsFilter=" + Hex32(gfxCapsFilter) +
-            " requestedCodec=" + std::string(h264Requested ? "avc420-only" : "none"));
+            " requestedCodec=" + std::string(h264Requested ? "avc420-only" : "none") +
+            " rfx=off nscodec=off progressive=off fastPath=on frameMarker=on frameAck=" +
+            std::to_string(frameAcknowledge));
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     }
