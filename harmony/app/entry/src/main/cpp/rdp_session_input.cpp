@@ -6,8 +6,6 @@
 namespace rdp_bridge {
 namespace {
 
-constexpr uint32_t kWinprKeyboardTypeIbmEnhanced = 0x00000004U;
-constexpr uint32_t kWinprKeyboardExtendedFlag = 0x0100U;
 constexpr size_t kMaxOhosKeyPackets = 96;
 
 std::string HexInput(uint32_t value)
@@ -399,6 +397,7 @@ void RdpSessionInput::AppendPlatformKeyPacketLocked(const FREERDP_OHOS_KEY_PACKE
     event.type = QueuedInputType::PlatformKeyPacket;
     event.keyCode = packet.keyCode;
     event.vk = packet.windowsVk;
+    event.scancode = packet.rdpScancode;
     event.down = packet.down != 0;
     event.repeat = packet.repeat != 0;
     event.extended = packet.extended != 0;
@@ -521,20 +520,15 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
                     event.repeat ? TRUE : FALSE, event.scancode);
             }
         } else if (event.type == QueuedInputType::PlatformKeyPacket) {
-            if (api->inputSendKeyboardEventEx != nullptr &&
-                api->getVirtualScanCodeFromVirtualKeyCode != nullptr) {
-                const uint32_t vkForScancode = event.vk |
-                    (event.extended ? kWinprKeyboardExtendedFlag : 0U);
-                const uint32_t scancode = api->getVirtualScanCodeFromVirtualKeyCode(
-                    vkForScancode, kWinprKeyboardTypeIbmEnhanced);
-                if (scancode == 0) {
-                    LogInputFailure("FreeRDP platform key scancode mapping failed: keyCode=" +
+            if (api->inputSendKeyboardEventEx != nullptr) {
+                if (event.scancode == 0) {
+                    LogInputFailure("FreeRDP OHOS platform key has no RDP scancode: keyCode=" +
                         std::to_string(event.keyCode) + " vk=" + HexInput(event.vk) +
                         (event.extended ? " extended" : ""), log);
                 } else {
                     ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
-                        event.repeat ? TRUE : FALSE, scancode);
-                    LogPlatformKeyDispatch(event, scancode, ok == TRUE, log);
+                        event.repeat ? TRUE : FALSE, event.scancode);
+                    LogPlatformKeyDispatch(event, event.scancode, ok == TRUE, log);
                 }
             }
         } else {
