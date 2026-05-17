@@ -1,8 +1,8 @@
-# HarmonyOS 输入、IME、剪贴板适配层迁移方案
+# HarmonyOS FreeRDP 输入、IME、剪贴板适配正式方案
 
 日期：2026-05-17
 
-本文档用于记录 HarmonyOS FreeRDP 客户端的输入、IME 和剪贴板适配方案。核心目标是对齐 FreeRDP Android、Wayland、X11 等平台客户端的设计，把平台相关逻辑收敛到“鸿蒙 FreeRDP client 适配层”，避免 ArkTS 继续直接处理 RDP scancode、组合键和剪贴板协议语义。
+本文档用于记录 HarmonyOS FreeRDP 客户端的输入、IME 和剪贴板正式适配方案，并给出从当前实现迁移到目标结构的可执行步骤。核心目标是对齐 FreeRDP Android、Wayland、X11 等平台客户端的设计，把平台相关逻辑收敛到“鸿蒙 FreeRDP client 适配层”，避免 ArkTS 继续直接处理 RDP scancode、组合键和剪贴板协议语义。
 
 ## 1. 当前问题
 
@@ -244,7 +244,130 @@ harmony/third_party/FreeRDP/client/OHOS/ohos_cliprdr.h
 - `freerdp_input_send_unicode_keyboard_event()`
 - `CliprdrClientContext` callbacks
 
-## 4. 可执行迁移步骤
+## 4. 正式迁移方案
+
+### 4.1 迁移目标
+
+迁移完成后的目标不是简单“移动文件”，而是把当前 ArkTS、N-API、native bridge 中混在一起的输入语义拆成稳定的平台 client adapter：
+
+```text
+harmony/app/entry/src/main/ets/
+  pages/Index.ets
+    只保留 UI、焦点、IME 文本入口、权限入口
+
+harmony/app/entry/src/main/cpp/
+  input/
+    ohos_keyboard_adapter.*
+    ohos_ime_adapter.*
+  client/ohos/
+    ohos_clipboard_backend.*
+    ohos_cliprdr.*
+    ohos_pasteboard.*
+    ohos_clipboard_format.*
+  rdp_session_input.*
+    只保留 worker 线程安全输入队列和 FreeRDP dispatch
+  freerdp_session_runner.*
+    只负责 session 生命周期和 adapter 初始化/销毁
+```
+
+最终边界：
+
+- ArkTS 不再持有 RDP scancode。
+- ArkTS 不再解释远端 Ctrl+C/V/A/X/Z。
+- Native keyboard adapter 统一处理 VK、scancode、repeat、modifier。
+- Native IME adapter 统一处理 Unicode 文本。
+- Native clipboard backend 统一处理 `OH_Pasteboard` 和 `cliprdr`。
+- FreeRDP core 只作为协议库使用，不因为本次迁移改 core。
+
+### 4.2 当前文件到目标结构的迁移映射
+
+| 当前位置 | 当前职责 | 目标位置 | 迁移方式 |
+| --- | --- | --- | --- |
+| `harmony/app/entry/src/main/ets/pages/Index.ets` | UI、焦点、触摸、键盘映射、IME TextInput、部分兜底逻辑 | `Index.ets` + native adapter | 保留 UI/焦点/IME入口；删除 RDP scancode map 和远端快捷键语义 |
+| `Index.ets::mapArkKeyCodeToRdpScancode()` | ArkTS 手写 RDP scancode | `input/ohos_keyboard_adapter.cpp` | 改为 `OH_KEYCODE -> Windows VK -> WinPR scancode` |
+| `Index.ets` TextInput delete guard | 处理软键盘删除，同时影响硬件 Delete/Backspace | `input/ohos_ime_adapter.cpp` + `ohos_keyboard_adapter.cpp` | 软键盘删除走 IME adapter；硬件删除走 keyboard adapter |
+| `harmony/app/entry/src/main/cpp/rdp_session_input.*` | 输入队列和 FreeRDP dispatch | 原地保留 | 保留线程安全队列，增加平台 key/unicode event 类型或统一 event payload |
+| `harmony/app/entry/src/main/cpp/freerdp_runtime.*` | FreeRDP symbol/runtime API | 原地保留 | 补齐 WinPR keyboard helper 或 FreeRDP remap 所需入口 |
+| `harmony/app/entry/src/main/cpp/channels/clipboard_*` | Pasteboard、格式转换、cliprdr 回调混在 channels 目录 | `client/ohos/ohos_clipboard_*` | 文本剪贴板稳定后做文件边界整理，不和键盘迁移混做 |
+| `harmony/app/entry/src/main/cpp/freerdp_session_runner.cpp` | session 生命周期、channel 初始化、clipboard bridge 持有 | 原地保留 | 后续只持有 `OhosClipboardBackend`、`OhosKeyboardAdapter` 生命周期 |
+| `harmony/third_party/FreeRDP/client/OHOS/` | 当前不存在 | 可选长期目标 | 只有当需要把 OHOS client backend 归入 FreeRDP 子模块时再迁入 |
+
+### 4.3 迁移原则
+
+- 先新增新链路，再切调用方，最后删除旧链路。
+- 每个阶段都必须能 build，并能通过最小真机验证。
+- 不在同一阶段同时重构键盘、IME、剪贴板，避免问题归因困难。
+- 不用兜底逻辑掩盖输入问题；优先让事件按正确语义进入 native adapter。
+- 剪贴板当前方向正确，先稳定文本复制粘贴，再整理为 `client/OHOS` backend。
+- 旧 `sendKey(scancode)` 只短期保留作日志对比，迁移完成后从 session 主路径移除。
+- 每阶段单独提交，报告完成度和风险。
+
+### 4.4 迁移阶段总览
+
+| 阶段 | 目标 | 行为变化 | 是否需要真机验证 |
+| --- | --- | --- | --- |
+| Migrate-1 | 新增 native keyboard adapter 骨架 | 无 | 只需确认日志 |
+| Migrate-2 | OH keycode 映射 Windows VK | 仅新增日志和新能力 | 需要校验键值 |
+| Migrate-3 | WinPR scancode + FreeRDP dispatch | 开始具备新输入链路 | 需要远端文本框验证 |
+| Migrate-4 | ArkTS session 键盘切到 `sendPlatformKey` | 有 | 必须验证组合键和普通输入 |
+| Migrate-5 | native repeat 和 pressed-key table | 有 | 必须验证长按数字/Delete/Backspace |
+| Migrate-6 | IME 边界清理 | 有 | 必须验证中文/英文/软键盘删除 |
+| Migrate-7 | 剪贴板日志和文本同步补强 | 有 | 必须验证双向文本剪贴板 |
+| Migrate-8 | 剪贴板整理为 OHOS client backend | 理论无行为变化 | 必须做迁移前后对比 |
+
+### 4.5 迁移兼容和回退策略
+
+键盘迁移期间保留两条 native 能力：
+
+```text
+sendKey(scancode, down, repeat)        旧链路，只用于对比和临时回退
+sendPlatformKey(event)                 新链路，正式主路径
+```
+
+切换策略：
+
+- Phase 1-3：只新增新链路，ArkTS 主路径仍可保持旧逻辑。
+- Phase 4：session 页面切换到新链路，旧 `sendKey` 不再被正常 session 输入调用。
+- Phase 5-6：删除或隔离 ArkTS 中影响硬件输入的兜底逻辑。
+- Phase 7-8：剪贴板不依赖旧键盘链路，按 clipboard backend 自己的阶段推进。
+
+回退策略：
+
+- 如果 Phase 4 后远端完全无法输入，可以临时把 session 键盘入口切回旧 `sendKey`，但必须保留新链路日志用于定位。
+- 如果 repeat 出现 stuck key，优先禁用 native repeat timer，保留普通 key down/up。
+- 如果 IME 提交异常，保留硬件键盘新链路，只回退 TextInput 到原 Unicode 发送方式。
+- 如果剪贴板 backend 迁移后异常，回退到当前 `channels/clipboard_*` 文件布局，不影响键盘链路。
+
+禁止回退方式：
+
+- 不通过 ArkTS 重新拦截 Ctrl+C/V/A/X/Z 做本地语义兜底。
+- 不把硬件 Delete/Backspace 重新塞回 TextInput delete guard。
+- 不在 FreeRDP core 里写 HarmonyOS UI/输入逻辑。
+
+### 4.6 迁移完成判定
+
+键盘迁移完成：
+
+- `Index.ets` session 主路径不再调用 `mapArkKeyCodeToRdpScancode()`。
+- 远端 Ctrl+A/C/V/X/Z 在 Notepad 或浏览器输入框中可用。
+- 数字、Delete、Backspace 长按可用。
+- focus lost、disconnect、页面销毁时 native 能 release all keys。
+
+IME 迁移完成：
+
+- 中文 IME 提交文本能进入远端。
+- 英文软键盘输入可用。
+- 软键盘 Backspace 可用。
+- 硬件 Delete/Backspace 不依赖 TextInput delete。
+
+剪贴板迁移完成：
+
+- Windows 复制文本到 HarmonyOS pasteboard 正常。
+- HarmonyOS 复制文本到 Windows 粘贴正常。
+- `freerdp_session_runner.cpp` 不再直接依赖具体 clipboard message/format 细节。
+- clipboard 日志前缀和生命周期清晰。
+
+## 5. 可执行迁移步骤
 
 ### Phase 1：新增 native keyboard adapter 骨架
 
@@ -591,7 +714,7 @@ harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.cpp
 - 中。纯文件迁移容易引入 CMake 链接、include path、生命周期顺序问题。
 - 中。如果后续直接迁入 FreeRDP 子模块，需要处理 OHOS Pasteboard 头文件和 FreeRDP CMake 对 HarmonyOS SDK 的发现方式。
 
-## 5. 执行顺序
+## 6. 执行顺序
 
 推荐顺序：
 
@@ -606,7 +729,7 @@ harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.cpp
 
 每个阶段完成后单独提交，并报告完成度、验证结果、遗留风险。
 
-## 6. 真机验收清单
+## 7. 真机验收清单
 
 远端验证应用优先使用 Notepad、浏览器输入框、Explorer 重命名。不要只用 `cmd.exe` 验证组合键，因为控制台快捷键行为和普通 Windows 文本控件不同。
 
@@ -646,7 +769,7 @@ IME：
 - 按键按下时 App 进入后台。
 - 断开后重新连接。
 
-## 7. 已知遗留问题和影响
+## 8. 已知遗留问题和影响
 
 - 第一阶段不做完整 IME composition 范围控制。
   影响：提交文本应可用，但候选词编辑、光标范围等高级行为可能还需要设备专项适配。
@@ -659,7 +782,7 @@ IME：
 - 硬件键盘、软键盘、外接键盘事件序列可能不同。
   影响：验收至少覆盖当前真机和当前输入法。
 
-## 8. 阶段报告模板
+## 9. 阶段报告模板
 
 每个阶段完成后按以下格式报告：
 
