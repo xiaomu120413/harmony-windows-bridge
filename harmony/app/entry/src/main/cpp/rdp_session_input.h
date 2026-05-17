@@ -82,11 +82,13 @@ private:
     bool HasSamePointerMotionClass(const QueuedInputEvent& lhs, const QueuedInputEvent& rhs) const;
     bool IsDroppablePointerEvent(const QueuedInputEvent& event) const;
     bool DropOldestDroppablePointerEventLocked();
+    bool EnsureKeyboardBackendLocked(FreerdpRuntimeApi* api,
+        const std::function<void(const std::string&)>& log);
     void AppendPlatformKeyPacketLocked(const FREERDP_OHOS_KEY_PACKET& packet,
         std::deque<QueuedInputEvent>& pending);
-    bool AppendPlatformKeyPacketsLocked(const QueuedInputEvent& event,
+    bool AppendPlatformKeyPacketsLocked(FreerdpRuntimeApi* api, const QueuedInputEvent& event,
         std::deque<QueuedInputEvent>& pending, const std::function<void(const std::string&)>& log);
-    void AppendDueRepeatPacketsLocked(std::deque<QueuedInputEvent>& pending,
+    void AppendDueRepeatPacketsLocked(FreerdpRuntimeApi* api, std::deque<QueuedInputEvent>& pending,
         const std::function<void(const std::string&)>& log);
     bool EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message,
         const std::function<void(const std::string&)>& log);
@@ -101,6 +103,7 @@ private:
 
     std::mutex inputMutex_;
     std::deque<QueuedInputEvent> inputQueue_;
+    FreerdpRuntimeApi* keyboardApi_ = nullptr;
     FREERDP_OHOS_KEYBOARD_STATE* keyboardState_ = nullptr;
 #endif
 

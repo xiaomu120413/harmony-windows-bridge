@@ -19,6 +19,8 @@
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 #include <client/OHOS/ohos_clipboard.h>
+#include <client/OHOS/ohos_ime.h>
+#include <client/OHOS/ohos_keyboard.h>
 #endif
 
 namespace rdp_bridge {
@@ -82,6 +84,21 @@ public:
         const FREERDP_OHOS_CLIPBOARD_CONFIG*, char*, size_t);
     using OhosClipboardFreeFn = void (*)(freerdpOhosClipboard*);
     using OhosClipboardGetDiagnosticsFn = const char* (*)(freerdpOhosClipboard*);
+    using OhosKeyboardMapKeyCodeToWindowsVkFn = uint32_t (*)(uint32_t);
+    using OhosKeyboardKeyCodeRequiresExtendedScancodeFn = int (*)(uint32_t);
+    using OhosKeyboardFormatEventFn = int (*)(const FREERDP_OHOS_KEY_EVENT*, char*, size_t);
+    using OhosKeyboardStateNewFn = FREERDP_OHOS_KEYBOARD_STATE* (*)();
+    using OhosKeyboardStateFreeFn = void (*)(FREERDP_OHOS_KEYBOARD_STATE*);
+    using OhosKeyboardStateResetFn = void (*)(FREERDP_OHOS_KEYBOARD_STATE*);
+    using OhosKeyboardStateHandleEventFn = int (*)(FREERDP_OHOS_KEYBOARD_STATE*,
+        const FREERDP_OHOS_KEY_EVENT*, FREERDP_OHOS_KEY_PACKET*, size_t, size_t*);
+    using OhosKeyboardStateCollectDueRepeatsFn = int (*)(FREERDP_OHOS_KEYBOARD_STATE*,
+        FREERDP_OHOS_KEY_PACKET*, size_t, size_t*);
+    using OhosKeyboardStateReleaseAllFn = int (*)(FREERDP_OHOS_KEYBOARD_STATE*,
+        FREERDP_OHOS_KEY_PACKET*, size_t, size_t*);
+    using OhosImeBuildCommittedTextPacketsFn = int (*)(const uint16_t*, size_t,
+        FREERDP_OHOS_IME_PACKET*, size_t, size_t*, size_t*);
+    using OhosImeFormatCommittedTextResultFn = int (*)(size_t, size_t, size_t, char*, size_t);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
     using OhosAvc444FrameCallbackFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, void*);
@@ -136,6 +153,18 @@ public:
     OhosClipboardRegisterFn ohosClipboardRegister = nullptr;
     OhosClipboardFreeFn ohosClipboardFree = nullptr;
     OhosClipboardGetDiagnosticsFn ohosClipboardGetDiagnostics = nullptr;
+    OhosKeyboardMapKeyCodeToWindowsVkFn ohosKeyboardMapKeyCodeToWindowsVk = nullptr;
+    OhosKeyboardKeyCodeRequiresExtendedScancodeFn ohosKeyboardKeyCodeRequiresExtendedScancode =
+        nullptr;
+    OhosKeyboardFormatEventFn ohosKeyboardFormatEvent = nullptr;
+    OhosKeyboardStateNewFn ohosKeyboardStateNew = nullptr;
+    OhosKeyboardStateFreeFn ohosKeyboardStateFree = nullptr;
+    OhosKeyboardStateResetFn ohosKeyboardStateReset = nullptr;
+    OhosKeyboardStateHandleEventFn ohosKeyboardStateHandleEvent = nullptr;
+    OhosKeyboardStateCollectDueRepeatsFn ohosKeyboardStateCollectDueRepeats = nullptr;
+    OhosKeyboardStateReleaseAllFn ohosKeyboardStateReleaseAll = nullptr;
+    OhosImeBuildCommittedTextPacketsFn ohosImeBuildCommittedTextPackets = nullptr;
+    OhosImeFormatCommittedTextResultFn ohosImeFormatCommittedTextResult = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;
     OhosAvcodecSetAvc444SurfaceRouteEnabledFn ohosAvcodecSetAvc444SurfaceRouteEnabled = nullptr;

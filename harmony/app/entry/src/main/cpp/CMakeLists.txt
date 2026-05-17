@@ -35,8 +35,6 @@ add_library(entry SHARED
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.c
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_graphics.c
     input/ohos_keyboard_adapter.cpp
-    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.c
-    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.c
     freerdp_session_runner.cpp
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp

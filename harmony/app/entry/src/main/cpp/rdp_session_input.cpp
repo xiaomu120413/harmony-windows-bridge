@@ -27,16 +27,17 @@ std::string HexInput(uint32_t value)
 
 RdpSessionInput::RdpSessionInput()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    keyboardState_ = freerdp_ohos_keyboard_state_new();
-#endif
 }
 
 RdpSessionInput::~RdpSessionInput()
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    freerdp_ohos_keyboard_state_free(keyboardState_);
+    if (keyboardState_ != nullptr && keyboardApi_ != nullptr &&
+        keyboardApi_->ohosKeyboardStateFree != nullptr) {
+        keyboardApi_->ohosKeyboardStateFree(keyboardState_);
+    }
     keyboardState_ = nullptr;
+    keyboardApi_ = nullptr;
 #endif
 }
 
@@ -148,7 +149,17 @@ bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::stri
     std::vector<FREERDP_OHOS_IME_PACKET> packets(text.size() * 2U);
     size_t packetCount = 0;
     size_t skipped = 0;
-    if (freerdp_ohos_ime_build_committed_text_packets(
+    auto& api = SharedFreerdpRuntimeApi();
+    std::string runtimeError;
+    if (!EnsureFreerdpRuntimeLoaded(api, runtimeError) ||
+        api.ohosImeBuildCommittedTextPackets == nullptr ||
+        api.ohosImeFormatCommittedTextResult == nullptr) {
+        message = runtimeError.empty() ? "FreeRDP OHOS IME backend unavailable" : runtimeError;
+        LogInputFailure(message, log);
+        return false;
+    }
+
+    if (api.ohosImeBuildCommittedTextPackets(
         reinterpret_cast<const uint16_t*>(text.data()), text.size(), packets.data(), packets.size(),
         &packetCount, &skipped) == 0) {
         message = "OHOS IME committed text conversion failed";
@@ -157,7 +168,7 @@ bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::stri
     }
 
     std::array<char, 160> formatted {};
-    if (freerdp_ohos_ime_format_committed_text_result(text.size(), packetCount, skipped,
+    if (api.ohosImeFormatCommittedTextResult(text.size(), packetCount, skipped,
         formatted.data(), formatted.size()) != 0) {
         message = formatted.data();
     } else {
@@ -237,7 +248,10 @@ void RdpSessionInput::Clear()
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(inputMutex_);
     inputQueue_.clear();
-    freerdp_ohos_keyboard_state_reset(keyboardState_);
+    if (keyboardState_ != nullptr && keyboardApi_ != nullptr &&
+        keyboardApi_->ohosKeyboardStateReset != nullptr) {
+        keyboardApi_->ohosKeyboardStateReset(keyboardState_);
+    }
 #endif
     inputQueueDepth_.store(0);
 }
@@ -329,6 +343,32 @@ bool RdpSessionInput::DropOldestDroppablePointerEventLocked()
     return false;
 }
 
+bool RdpSessionInput::EnsureKeyboardBackendLocked(FreerdpRuntimeApi* api,
+    const std::function<void(const std::string&)>& log)
+{
+    if (api == nullptr) {
+        LogInputFailure("FreeRDP runtime is unavailable for OHOS keyboard backend", log);
+        return false;
+    }
+    if (api->ohosKeyboardStateNew == nullptr || api->ohosKeyboardStateFree == nullptr ||
+        api->ohosKeyboardStateReset == nullptr || api->ohosKeyboardStateHandleEvent == nullptr ||
+        api->ohosKeyboardStateCollectDueRepeats == nullptr ||
+        api->ohosKeyboardStateReleaseAll == nullptr) {
+        LogInputFailure("FreeRDP OHOS keyboard symbols are not loaded", log);
+        return false;
+    }
+    if (keyboardState_ == nullptr) {
+        keyboardState_ = api->ohosKeyboardStateNew();
+        keyboardApi_ = api;
+        if (keyboardState_ == nullptr) {
+            keyboardApi_ = nullptr;
+            LogInputFailure("FreeRDP OHOS keyboard state allocation failed", log);
+            return false;
+        }
+    }
+    return true;
+}
+
 bool RdpSessionInput::EnqueueInputLocked(const QueuedInputEvent& event, const char* okMessage,
     std::string& message, bool& droppedOldPointer, bool& droppedNewEvent)
 {
@@ -405,20 +445,20 @@ void RdpSessionInput::AppendPlatformKeyPacketLocked(const FREERDP_OHOS_KEY_PACKE
     pending.push_back(event);
 }
 
-bool RdpSessionInput::AppendPlatformKeyPacketsLocked(const QueuedInputEvent& event,
+bool RdpSessionInput::AppendPlatformKeyPacketsLocked(FreerdpRuntimeApi* api,
+    const QueuedInputEvent& event,
     std::deque<QueuedInputEvent>& pending, const std::function<void(const std::string&)>& log)
 {
     FREERDP_OHOS_KEY_PACKET packets[kMaxOhosKeyPackets] = {};
     size_t packetCount = 0;
     bool ok = false;
 
-    if (keyboardState_ == nullptr) {
-        LogInputFailure("OHOS keyboard state backend is not initialized", log);
+    if (!EnsureKeyboardBackendLocked(api, log)) {
         return false;
     }
 
     if (event.synthetic && event.keyCode == 0) {
-        ok = freerdp_ohos_keyboard_state_release_all(keyboardState_, packets,
+        ok = api->ohosKeyboardStateReleaseAll(keyboardState_, packets,
             kMaxOhosKeyPackets, &packetCount) != 0;
     } else {
         FREERDP_OHOS_KEY_EVENT nativeEvent {
@@ -430,7 +470,7 @@ bool RdpSessionInput::AppendPlatformKeyPacketsLocked(const QueuedInputEvent& eve
             event.alt ? 1 : 0,
             event.meta ? 1 : 0,
         };
-        ok = freerdp_ohos_keyboard_state_handle_event(keyboardState_, &nativeEvent, packets,
+        ok = api->ohosKeyboardStateHandleEvent(keyboardState_, &nativeEvent, packets,
             kMaxOhosKeyPackets, &packetCount) != 0;
     }
 
@@ -446,17 +486,18 @@ bool RdpSessionInput::AppendPlatformKeyPacketsLocked(const QueuedInputEvent& eve
     return true;
 }
 
-void RdpSessionInput::AppendDueRepeatPacketsLocked(std::deque<QueuedInputEvent>& pending,
+void RdpSessionInput::AppendDueRepeatPacketsLocked(FreerdpRuntimeApi* api,
+    std::deque<QueuedInputEvent>& pending,
     const std::function<void(const std::string&)>& log)
 {
     FREERDP_OHOS_KEY_PACKET packets[kMaxOhosKeyPackets] = {};
     size_t packetCount = 0;
 
-    if (keyboardState_ == nullptr) {
+    if (!EnsureKeyboardBackendLocked(api, log)) {
         return;
     }
 
-    if (freerdp_ohos_keyboard_state_collect_due_repeats(keyboardState_, packets,
+    if (api->ohosKeyboardStateCollectDueRepeats(keyboardState_, packets,
         kMaxOhosKeyPackets, &packetCount) == 0) {
         LogInputFailure("OHOS keyboard repeat collection failed", log);
         return;
@@ -479,12 +520,12 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
 
         for (const QueuedInputEvent& event : queued) {
             if (event.type == QueuedInputType::PlatformKey) {
-                AppendPlatformKeyPacketsLocked(event, pending, log);
+                AppendPlatformKeyPacketsLocked(api, event, pending, log);
             } else {
                 pending.push_back(event);
             }
         }
-        AppendDueRepeatPacketsLocked(pending, log);
+        AppendDueRepeatPacketsLocked(api, pending, log);
 
         if (pending.empty()) {
             inputQueueDepth_.store(0);

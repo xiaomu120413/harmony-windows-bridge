@@ -127,6 +127,24 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("freerdp_ohos_clipboard_free", ohosClipboardFree);
         LoadOptionalClientSymbol("freerdp_ohos_clipboard_get_diagnostics",
             ohosClipboardGetDiagnostics);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_map_keycode_to_windows_vk",
+            ohosKeyboardMapKeyCodeToWindowsVk);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_keycode_requires_extended_scancode",
+            ohosKeyboardKeyCodeRequiresExtendedScancode);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_format_event", ohosKeyboardFormatEvent);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_new", ohosKeyboardStateNew);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_free", ohosKeyboardStateFree);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_reset", ohosKeyboardStateReset);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_handle_event",
+            ohosKeyboardStateHandleEvent);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_collect_due_repeats",
+            ohosKeyboardStateCollectDueRepeats);
+        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_release_all",
+            ohosKeyboardStateReleaseAll);
+        LoadOptionalClientSymbol("freerdp_ohos_ime_build_committed_text_packets",
+            ohosImeBuildCommittedTextPackets);
+        LoadOptionalClientSymbol("freerdp_ohos_ime_format_committed_text_result",
+            ohosImeFormatCommittedTextResult);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",
