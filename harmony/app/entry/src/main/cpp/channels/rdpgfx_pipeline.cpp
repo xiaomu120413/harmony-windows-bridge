@@ -1,0 +1,383 @@
+#include "channels/rdpgfx_pipeline.h"
+
+#include "channels/rdpgfx_diagnostics.h"
+#include "freerdp_runtime.h"
+#include "string_utils.h"
+
+#include <atomic>
+#include <mutex>
+#include <unordered_map>
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+#include <freerdp/channels/rdpgfx.h>
+#include <freerdp/client/channels.h>
+#include <freerdp/constants.h>
+#include <freerdp/error.h>
+#endif
+
+namespace rdp_bridge {
+namespace {
+
+std::atomic_bool g_avc420SurfaceOutputEnabled{false};
+std::mutex g_callbacksMutex;
+RdpgfxPipelineCallbacks g_callbacks;
+
+RdpgfxPipelineCallbacks SnapshotCallbacks()
+{
+    std::lock_guard<std::mutex> lock(g_callbacksMutex);
+    return g_callbacks;
+}
+
+void LogThroughCallbacks(const std::string& line)
+{
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.log != nullptr) {
+        callbacks.log(line);
+    }
+}
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+struct RdpgfxDiagnosticsHookState {
+    pcRdpgfxStartFrame startFrame = nullptr;
+    pcRdpgfxEndFrame endFrame = nullptr;
+    pcRdpgfxSurfaceCommand surfaceCommand = nullptr;
+    pcRdpgfxCapsConfirm capsConfirm = nullptr;
+};
+
+std::mutex g_rdpgfxHooksMutex;
+std::unordered_map<RdpgfxClientContext*, RdpgfxDiagnosticsHookState> g_rdpgfxHooks;
+
+bool RdpgfxCapsConfirmAvc420(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    return capsConfirm != nullptr && capsConfirm->capsSet != nullptr &&
+        capsConfirm->capsSet->version == RDPGFX_CAPVERSION_81 &&
+        (capsConfirm->capsSet->flags & RDPGFX_CAPS_FLAG_AVC420_ENABLED) != 0;
+}
+
+bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
+        return false;
+    }
+
+    const uint32_t version = capsConfirm->capsSet->version;
+    const uint32_t flags = capsConfirm->capsSet->flags;
+    return version == RDPGFX_CAPVERSION_101 ||
+        (version >= RDPGFX_CAPVERSION_10 && (flags & RDPGFX_CAPS_FLAG_AVC_DISABLED) == 0);
+}
+
+std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
+        return "capsConfirm=null";
+    }
+
+    const RDPGFX_CAPSET* capsSet = capsConfirm->capsSet;
+    return "version=" + Hex32(capsSet->version) + " flags=" + Hex32(capsSet->flags);
+}
+
+void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
+{
+    if (!g_avc420SurfaceOutputEnabled.exchange(false)) {
+        return;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosAvcodecSetOutputSurface != nullptr) {
+        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    }
+
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.startRenderPipeline != nullptr) {
+        callbacks.startRenderPipeline();
+    }
+    LogThroughCallbacks("AVC420 surface output disabled; using FreeRDP buffer/GLES fallback: " + reason);
+}
+
+UINT HarmonyRdpgfxStartFrame(RdpgfxClientContext* context, const RDPGFX_START_FRAME_PDU* startFrame)
+{
+    RecordRdpgfxStartFrame();
+    pcRdpgfxStartFrame original = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+        auto iter = g_rdpgfxHooks.find(context);
+        if (iter != g_rdpgfxHooks.end()) {
+            original = iter->second.startFrame;
+        }
+    }
+    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, startFrame);
+}
+
+UINT HarmonyRdpgfxEndFrame(RdpgfxClientContext* context, const RDPGFX_END_FRAME_PDU* endFrame)
+{
+    RecordRdpgfxEndFrame();
+    pcRdpgfxEndFrame original = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+        auto iter = g_rdpgfxHooks.find(context);
+        if (iter != g_rdpgfxHooks.end()) {
+            original = iter->second.endFrame;
+        }
+    }
+    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, endFrame);
+}
+
+UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    if (g_avc420SurfaceOutputEnabled.load()) {
+        const std::string summary = RdpgfxCapsConfirmSummary(capsConfirm);
+        if (RdpgfxCapsConfirmAvc420(capsConfirm)) {
+            RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+            if (callbacks.stopRenderPipeline != nullptr) {
+                callbacks.stopRenderPipeline();
+            }
+            LogThroughCallbacks("RDPGFX negotiated AVC420 surface mode: " + summary);
+        } else if (RdpgfxCapsConfirmAvc444(capsConfirm)) {
+            SwitchAvc420SurfaceToSoftwareFallback("server selected AVC444 buffer mode " + summary);
+        } else {
+            SwitchAvc420SurfaceToSoftwareFallback("server selected non-AVC graphics mode " + summary);
+        }
+    }
+
+    pcRdpgfxCapsConfirm original = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+        auto iter = g_rdpgfxHooks.find(context);
+        if (iter != g_rdpgfxHooks.end()) {
+            original = iter->second.capsConfirm;
+        }
+    }
+    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, capsConfirm);
+}
+
+UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURFACE_COMMAND* command)
+{
+    if (command != nullptr) {
+        RecordRdpgfxSurfaceCommand(*command);
+        if (g_avc420SurfaceOutputEnabled.load() && command->codecId != RDPGFX_CODECID_AVC420) {
+            SwitchAvc420SurfaceToSoftwareFallback("first non-AVC420 surface command codec=" +
+                std::string(RdpgfxCodecName(command->codecId)) +
+                "(" + std::to_string(command->codecId) + ")");
+        }
+    }
+
+    pcRdpgfxSurfaceCommand original = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+        auto iter = g_rdpgfxHooks.find(context);
+        if (iter != g_rdpgfxHooks.end()) {
+            original = iter->second.surfaceCommand;
+        }
+    }
+    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, command);
+}
+#endif
+
+} // namespace
+
+void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks)
+{
+    std::lock_guard<std::mutex> lock(g_callbacksMutex);
+    g_callbacks = std::move(callbacks);
+}
+
+bool IsAvc420SurfaceOutputEnabled()
+{
+    return g_avc420SurfaceOutputEnabled.load();
+}
+
+void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    if (!g_avc420SurfaceOutputEnabled.load()) {
+        return;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosAvcodecSetOutputSurface == nullptr) {
+        LogThroughCallbacks("AVC420 surface update skipped after " + reason +
+            ": OHOS AVCodec surface symbol is not loaded");
+        return;
+    }
+
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.decoderSurfaceTarget == nullptr) {
+        LogThroughCallbacks("AVC420 surface update skipped after " + reason +
+            ": decoder surface callback is not configured");
+        return;
+    }
+
+    const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+    if (target.window == nullptr || target.width == 0 || target.height == 0) {
+        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+        if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+            api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+        }
+        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+        }
+        LogThroughCallbacks("AVC420 surface output disabled after " + reason +
+            ": XComponent surface unavailable");
+        return;
+    }
+
+    api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
+    if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
+        callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, LogThroughCallbacks);
+    }
+    LogThroughCallbacks("AVC420 surface output updated after " + reason + ": " +
+        std::to_string(target.width) + "x" + std::to_string(target.height));
+#else
+    (void)reason;
+#endif
+}
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
+{
+    g_avc420SurfaceOutputEnabled.store(false);
+    if (api.ohosAvcodecSetOutputSurface != nullptr) {
+        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+        api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+    }
+}
+
+bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipelineConfig& graphicsConfig,
+    const FreerdpLogFn& log, std::string& error)
+{
+    if (!graphicsConfig.enabled || !graphicsConfig.h264) {
+        ResetAvcSurfaceOutput(api);
+        return true;
+    }
+
+    if (api.ohosAvcodecSetOutputSurface == nullptr) {
+        error = "OHOS AVCodec surface output symbol is not loaded";
+        return false;
+    }
+
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.decoderSurfaceTarget == nullptr) {
+        error = "AVC420 surface output requires a decoder surface callback";
+        return false;
+    }
+
+    const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+    if (target.window == nullptr || target.width == 0 || target.height == 0) {
+        error = "AVC420 surface output requires a ready XComponent NativeWindow";
+        return false;
+    }
+
+    if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
+        error = "OHOS AVCodec surface output setup failed";
+        return false;
+    }
+
+    g_avc420SurfaceOutputEnabled.store(true);
+    if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
+        callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, log);
+    }
+    if (callbacks.stopRenderPipeline != nullptr) {
+        callbacks.stopRenderPipeline();
+    }
+    log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
+        std::to_string(target.width) + "x" + std::to_string(target.height) +
+        " mode=avc420-surface-preferred fallback=avc444-buffer");
+    return true;
+}
+
+bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const GraphicsPipelineConfig& graphicsConfig, const FreerdpLogFn& log, std::string& error)
+{
+    SetRdpgfxRuntimeRequest(graphicsConfig.enabled, graphicsConfig.enabled && graphicsConfig.h264);
+    SetRdpgfxBridgeAttached(false);
+    ResetRdpgfxDiagnosticsStats();
+
+    if (!graphicsConfig.enabled) {
+        log("FreeRDP rdpgfx dynamic channel not requested: graphicsMode=gdi");
+        log(BuildGraphicsPipelineStatsLog());
+        return true;
+    }
+
+    if (api.clientAddDynamicChannel == nullptr) {
+        error = "FreeRDP rdpgfx dynamic channel helper is not loaded";
+        return false;
+    }
+    if (api.gdiGraphicsPipelineInit == nullptr || api.gdiGraphicsPipelineUninit == nullptr) {
+        error = "FreeRDP GDI graphics pipeline symbols are not loaded";
+        return false;
+    }
+
+    const char* params[] = {RDPGFX_CHANNEL_NAME};
+    if (!api.clientAddDynamicChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set rdpgfx dynamic channel failed";
+        return false;
+    }
+
+    log("FreeRDP rdpgfx requested: dynamic channel + GDI graphics pipeline bridge");
+    log(BuildGraphicsPipelineStatsLog());
+    return true;
+}
+
+void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
+{
+    if (gfx == nullptr) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+    if (g_rdpgfxHooks.find(gfx) != g_rdpgfxHooks.end()) {
+        return;
+    }
+
+    RdpgfxDiagnosticsHookState state;
+    state.startFrame = gfx->StartFrame;
+    state.endFrame = gfx->EndFrame;
+    state.surfaceCommand = gfx->SurfaceCommand;
+    state.capsConfirm = gfx->CapsConfirm;
+    g_rdpgfxHooks[gfx] = state;
+    if (state.startFrame != nullptr) {
+        gfx->StartFrame = HarmonyRdpgfxStartFrame;
+    }
+    if (state.endFrame != nullptr) {
+        gfx->EndFrame = HarmonyRdpgfxEndFrame;
+    }
+    if (state.surfaceCommand != nullptr) {
+        gfx->SurfaceCommand = HarmonyRdpgfxSurfaceCommand;
+    }
+    if (state.capsConfirm != nullptr) {
+        gfx->CapsConfirm = HarmonyRdpgfxCapsConfirm;
+    }
+}
+
+void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
+{
+    if (gfx == nullptr) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
+    auto iter = g_rdpgfxHooks.find(gfx);
+    if (iter == g_rdpgfxHooks.end()) {
+        return;
+    }
+
+    gfx->StartFrame = iter->second.startFrame;
+    gfx->EndFrame = iter->second.endFrame;
+    gfx->SurfaceCommand = iter->second.surfaceCommand;
+    gfx->CapsConfirm = iter->second.capsConfirm;
+    g_rdpgfxHooks.erase(iter);
+}
+#endif
+
+} // namespace rdp_bridge

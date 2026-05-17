@@ -25,6 +25,7 @@ add_library(entry SHARED
     channels/clipboard_bridge.cpp
     channels/clipboard_format.cpp
     channels/rdpgfx_diagnostics.cpp
+    channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp
