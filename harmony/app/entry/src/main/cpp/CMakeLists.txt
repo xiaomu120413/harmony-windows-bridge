@@ -36,6 +36,7 @@ add_library(entry SHARED
     napi_utils.cpp
     probe_utils.cpp
     rdp_channel_config.cpp
+    rdp_session_core.cpp
     rdp_session_channels.cpp
     rdp_session_input.cpp
     surface/latest_frame_renderer.cpp
