@@ -21,20 +21,20 @@ endif()
 add_library(entry SHARED
     bridge_log.cpp
     certificate_policy.cpp
-    clipboard_format.cpp
+    channels/clipboard_bridge.cpp
+    channels/clipboard_format.cpp
+    channels/rdpgfx_diagnostics.cpp
     frame_utils.cpp
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp
     graphics_config.cpp
-    harmony_clipboard_bridge.cpp
-    latest_frame_renderer.cpp
     net_utils.cpp
     napi_event_sink.cpp
     napi_init.cpp
     napi_utils.cpp
     probe_utils.cpp
     rdp_channel_config.cpp
-    rdpgfx_diagnostics.cpp
+    surface/latest_frame_renderer.cpp
     string_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC

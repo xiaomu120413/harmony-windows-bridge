@@ -1,4 +1,4 @@
-#include "harmony_clipboard_bridge.h"
+#include "clipboard_bridge.h"
 
 #include "bridge_log.h"
 #include "clipboard_format.h"
