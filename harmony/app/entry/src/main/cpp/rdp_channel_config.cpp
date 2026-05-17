@@ -13,10 +13,6 @@
 namespace rdp_bridge {
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-namespace {
-constexpr uint32_t kFilterRdpgfxCapVersion8 = 0x00000001U;
-}
-
 bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
     const std::function<void(const std::string&)>& log, std::string& error)
 {
@@ -46,8 +42,9 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const std::function<void(const std::string&)>& log, std::string& error)
 {
     const bool h264Requested = graphicsConfig.enabled && graphicsConfig.h264;
-    const bool avc444Requested = false;
-    const uint32_t gfxCapsFilter = h264Requested ? kFilterRdpgfxCapVersion8 : 0;
+    const bool avc444Requested = h264Requested;
+    const bool gfxSmallCache = true;
+    const uint32_t gfxCapsFilter = 0;
     const uint32_t frameAcknowledge = 2;
 
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
@@ -63,10 +60,10 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             "GfxAVC444v2", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_GfxCapsFilter, gfxCapsFilter, "GfxCapsFilter", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RemoteFxCodec, false, "RemoteFxCodec", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_NSCodec, false, "NSCodec", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_NSCodec, h264Requested, "NSCodec", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxProgressive, false, "GfxProgressive", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxProgressiveV2, false, "GfxProgressiveV2", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxSmallCache, true, "GfxSmallCache", error) ||
+        !SetFreerdpBool(api, settings, FreeRDP_GfxSmallCache, gfxSmallCache, "GfxSmallCache", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_FastPathOutput, true, "FastPathOutput", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_FrameMarkerCommandEnabled, true,
             "FrameMarkerCommandEnabled", error) ||
@@ -93,8 +90,10 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
             " avc444=" + std::string(avc444Requested ? "on" : "off") +
             " capsFilter=" + Hex32(gfxCapsFilter) +
-            " requestedCodec=" + std::string(h264Requested ? "avc420-only" : "none") +
-            " rfx=off nscodec=off progressive=off fastPath=on frameMarker=on frameAck=" +
+            " requestedCodec=" + std::string(h264Requested ? "avc420-avc444-diagnostic" : "none") +
+            " rfx=off nscodec=" + std::string(h264Requested ? "on" : "off") +
+            " smallCache=" + std::string(gfxSmallCache ? "on" : "off") +
+            " progressive=off fastPath=on frameMarker=on frameAck=" +
             std::to_string(frameAcknowledge));
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");

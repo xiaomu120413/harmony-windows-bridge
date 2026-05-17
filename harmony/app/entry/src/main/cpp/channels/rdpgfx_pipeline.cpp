@@ -101,6 +101,13 @@ bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
         (version >= RDPGFX_CAPVERSION_10 && (flags & RDPGFX_CAPS_FLAG_AVC_DISABLED) == 0);
 }
 
+bool IsH264SurfaceCodec(uint32_t codecId)
+{
+    return codecId == RDPGFX_CODECID_AVC420 ||
+        codecId == RDPGFX_CODECID_AVC444 ||
+        codecId == RDPGFX_CODECID_AVC444v2;
+}
+
 std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 {
     if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
@@ -186,7 +193,8 @@ UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CO
             LogThroughCallbacks("RDPGFX negotiated AVC420 surface mode: " + summary +
                 "; GDI remains active until the first AVC420 surface command");
         } else if (RdpgfxCapsConfirmAvc444(capsConfirm)) {
-            SwitchAvc420SurfaceToSoftwareFallback("server selected AVC444 buffer mode " + summary);
+            LogThroughCallbacks("RDPGFX negotiated AVC444 surface mode: " + summary +
+                "; AVC444 primary stream will use the AVC420 output surface");
         } else {
             SwitchAvc420SurfaceToSoftwareFallback("server selected non-AVC graphics mode " + summary);
         }
@@ -207,13 +215,14 @@ UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURF
 {
     if (command != nullptr) {
         RecordRdpgfxSurfaceCommand(*command);
-        if (g_avc420SurfaceOutputConfigured.load() && command->codecId == RDPGFX_CODECID_AVC420 &&
+        if (g_avc420SurfaceOutputConfigured.load() && IsH264SurfaceCodec(command->codecId) &&
             !g_avc420SurfaceOutputActive.exchange(true)) {
             RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
             if (callbacks.stopRenderPipeline != nullptr) {
                 callbacks.stopRenderPipeline();
             }
-            LogThroughCallbacks("AVC420 surface output activated by first AVC420 surface command: surface=" +
+            LogThroughCallbacks("AVC surface output activated by first " +
+                std::string(RdpgfxCodecName(command->codecId)) + " surface command: surface=" +
                 std::to_string(command->surfaceId) +
                 " size=" + std::to_string(command->width) + "x" + std::to_string(command->height));
         }
@@ -287,11 +296,9 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
     }
 
     api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
-    if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
-        callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, LogThroughCallbacks);
-    }
-    LogThroughCallbacks("AVC420 surface output updated after " + reason + ": " +
-        std::to_string(target.width) + "x" + std::to_string(target.height));
+    LogThroughCallbacks("AVC surface output updated after " + reason + ": " +
+        std::to_string(target.width) + "x" + std::to_string(target.height) +
+        " avc444=primary-avc420-surface");
 #else
     (void)reason;
 #endif
@@ -354,12 +361,9 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
 
     g_avc420SurfaceOutputConfigured.store(true);
     g_avc420SurfaceOutputActive.store(false);
-    if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
-        callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, log);
-    }
     log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=avc420-surface-armed avc444=not-advertised gdi=active-until-avc420");
+        " mode=avc-surface-armed avc444=primary-avc420-surface gdi=active-until-h264");
     return true;
 }
 
