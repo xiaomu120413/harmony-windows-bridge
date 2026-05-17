@@ -1,5 +1,7 @@
 #include "napi/native_api.h"
+#include "bridge_log.h"
 #include "napi_utils.h"
+#include "net_utils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -98,11 +100,6 @@ struct FreerdpProbeResult {
 
 struct CallbackData {
     std::string value;
-};
-
-struct TcpConnectResult {
-    bool ok = false;
-    std::string message;
 };
 
 struct SurfacePaintResult {
@@ -275,120 +272,6 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 std::string BuildRenderStatsLog();
 std::string BuildGraphicsPipelineStatsLog();
 std::string BuildOHAudioStatsLog();
-
-void EmitHilogInfo(const std::string& line)
-{
-    constexpr unsigned int kLogDomain = 0xF3D1;
-    constexpr const char* kLogTag = "FreeRDPBridge";
-    constexpr size_t kMaxHilogLine = 3500;
-    const std::string clipped = line.size() > kMaxHilogLine ? line.substr(0, kMaxHilogLine) : line;
-    OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
-}
-
-void EmitHilogError(const std::string& line)
-{
-    constexpr unsigned int kLogDomain = 0xF3D1;
-    constexpr const char* kLogTag = "FreeRDPBridge";
-    constexpr size_t kMaxHilogLine = 3500;
-    const std::string clipped = line.size() > kMaxHilogLine ? line.substr(0, kMaxHilogLine) : line;
-    OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
-}
-
-std::string SystemErrorMessage(int errorCode)
-{
-    if (errorCode == 0) {
-        return "ok";
-    }
-    return std::strerror(errorCode);
-}
-
-void CloseSocket(int fd)
-{
-    if (fd >= 0) {
-        ::close(fd);
-    }
-}
-
-TcpConnectResult TryConnectAddress(const addrinfo* address, int timeoutMs)
-{
-    int fd = ::socket(address->ai_family, address->ai_socktype, address->ai_protocol);
-    if (fd < 0) {
-        return {false, "socket failed: " + SystemErrorMessage(errno)};
-    }
-
-    int flags = ::fcntl(fd, F_GETFL, 0);
-    if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        int error = errno;
-        CloseSocket(fd);
-        return {false, "fcntl nonblock failed: " + SystemErrorMessage(error)};
-    }
-
-    int rc = ::connect(fd, address->ai_addr, address->ai_addrlen);
-    if (rc == 0) {
-        CloseSocket(fd);
-        return {true, "tcp socket connected"};
-    }
-
-    if (errno != EINPROGRESS) {
-        int error = errno;
-        CloseSocket(fd);
-        return {false, "connect failed: " + SystemErrorMessage(error)};
-    }
-
-    pollfd pollTarget = {};
-    pollTarget.fd = fd;
-    pollTarget.events = POLLOUT;
-    rc = ::poll(&pollTarget, 1, timeoutMs);
-    if (rc == 0) {
-        CloseSocket(fd);
-        return {false, "connect timed out"};
-    }
-    if (rc < 0) {
-        int error = errno;
-        CloseSocket(fd);
-        return {false, "poll failed: " + SystemErrorMessage(error)};
-    }
-
-    int socketError = 0;
-    socklen_t socketErrorLength = sizeof(socketError);
-    if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength) < 0) {
-        int error = errno;
-        CloseSocket(fd);
-        return {false, "getsockopt failed: " + SystemErrorMessage(error)};
-    }
-
-    CloseSocket(fd);
-    if (socketError == 0) {
-        return {true, "tcp socket connected"};
-    }
-    return {false, "connect failed: " + SystemErrorMessage(socketError)};
-}
-
-TcpConnectResult TestTcpConnect(const std::string& host, const std::string& port, int timeoutMs)
-{
-    addrinfo hints = {};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    addrinfo* addresses = nullptr;
-    int resolveStatus = ::getaddrinfo(host.c_str(), port.c_str(), &hints, &addresses);
-    if (resolveStatus != 0) {
-        return {false, "resolve failed: " + std::string(::gai_strerror(resolveStatus))};
-    }
-
-    std::string lastMessage = "no address candidates";
-    for (const addrinfo* address = addresses; address != nullptr; address = address->ai_next) {
-        TcpConnectResult result = TryConnectAddress(address, timeoutMs);
-        if (result.ok) {
-            ::freeaddrinfo(addresses);
-            return result;
-        }
-        lastMessage = result.message;
-    }
-
-    ::freeaddrinfo(addresses);
-    return {false, lastMessage};
-}
 
 struct RdpSessionRunResult {
     bool available = false;

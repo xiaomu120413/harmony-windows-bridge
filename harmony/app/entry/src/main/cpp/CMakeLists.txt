@@ -19,6 +19,8 @@ if(EXISTS ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/freerdp.h)
 endif()
 
 add_library(entry SHARED
+    bridge_log.cpp
+    net_utils.cpp
     napi_init.cpp
     napi_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
