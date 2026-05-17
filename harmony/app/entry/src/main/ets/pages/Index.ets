@@ -543,37 +543,41 @@ struct Index {
     if (nextWidth <= 0 || nextHeight <= 0) {
       return
     }
-    if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight) {
-      return
-    }
 
     let pixelScaleX = this.surfacePixelScaleX
     let pixelScaleY = this.surfacePixelScaleY
-    if (pixelScaleX <= 0 && this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
-      pixelScaleX = this.surfacePixelWidth / this.surfaceLayoutWidth
-    }
-    if (pixelScaleY <= 0 && this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
-      pixelScaleY = this.surfacePixelHeight / this.surfaceLayoutHeight
+    let nativeWidth = 0
+    let nativeHeight = 0
+    try {
+      const probe: NativeProbeResult = rdpNative.probe()
+      if (probe.surfaceReady && probe.surfaceWidth > 0 && probe.surfaceHeight > 0) {
+        nativeWidth = probe.surfaceWidth
+        nativeHeight = probe.surfaceHeight
+        pixelScaleX = probe.surfaceWidth / nextWidth
+        pixelScaleY = probe.surfaceHeight / nextHeight
+      }
+    } catch (error) {
+      this.appendLog(`Native surface scale probe failed: ${JSON.stringify(error)}`)
     }
 
-    if (pixelScaleX <= 0 || pixelScaleY <= 0) {
-      try {
-        const probe: NativeProbeResult = rdpNative.probe()
-        if (probe.surfaceWidth > 0 && probe.surfaceHeight > 0) {
-          this.surfacePixelWidth = probe.surfaceWidth
-          this.surfacePixelHeight = probe.surfaceHeight
-          pixelScaleX = probe.surfaceWidth / (this.surfaceLayoutWidth > 0 ? this.surfaceLayoutWidth : nextWidth)
-          pixelScaleY = probe.surfaceHeight / (this.surfaceLayoutHeight > 0 ? this.surfaceLayoutHeight : nextHeight)
-        }
-      } catch (error) {
-        this.appendLog(`Native surface scale probe failed: ${JSON.stringify(error)}`)
+    if (nativeWidth <= 0 || nativeHeight <= 0) {
+      if (pixelScaleX <= 0 && this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
+        pixelScaleX = this.surfacePixelWidth / this.surfaceLayoutWidth
       }
+      if (pixelScaleY <= 0 && this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
+        pixelScaleY = this.surfacePixelHeight / this.surfaceLayoutHeight
+      }
+      nativeWidth = Math.round(nextWidth * (pixelScaleX > 0 ? pixelScaleX : 1))
+      nativeHeight = Math.round(nextHeight * (pixelScaleY > 0 ? pixelScaleY : 1))
+    }
+
+    if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight &&
+      this.surfacePixelWidth === nativeWidth && this.surfacePixelHeight === nativeHeight) {
+      return
     }
 
     this.surfacePixelScaleX = pixelScaleX > 0 ? pixelScaleX : this.surfacePixelScaleX
     this.surfacePixelScaleY = pixelScaleY > 0 ? pixelScaleY : this.surfacePixelScaleY
-    const nativeWidth = Math.round(nextWidth * (pixelScaleX > 0 ? pixelScaleX : 1))
-    const nativeHeight = Math.round(nextHeight * (pixelScaleY > 0 ? pixelScaleY : 1))
     this.surfaceLayoutWidth = nextWidth
     this.surfaceLayoutHeight = nextHeight
     this.surfacePixelWidth = nativeWidth
@@ -715,14 +719,22 @@ struct Index {
     if (this.desktopPixelWidth > 0) {
       return this.desktopPixelWidth
     }
-    return this.parseResolutionPart(0)
+    const parsedWidth = this.parseResolutionPart(0)
+    if (parsedWidth > 0) {
+      return parsedWidth
+    }
+    return this.getRemoteViewportWidth()
   }
 
   private getRequestedDesktopHeight(): number {
     if (this.desktopPixelHeight > 0) {
       return this.desktopPixelHeight
     }
-    return this.parseResolutionPart(1)
+    const parsedHeight = this.parseResolutionPart(1)
+    if (parsedHeight > 0) {
+      return parsedHeight
+    }
+    return this.getRemoteViewportHeight()
   }
 
   private clampInt(value: number, minValue: number, maxValue: number): number {

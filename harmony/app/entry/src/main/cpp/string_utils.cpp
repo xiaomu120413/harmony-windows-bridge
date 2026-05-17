@@ -40,17 +40,20 @@ bool ParsePort(const std::string& value, uint32_t& port)
     return true;
 }
 
-void ParseResolutionOrDefault(const std::string& value, uint32_t& width, uint32_t& height)
+bool IsAutoResolution(const std::string& value)
 {
-    width = 1280;
-    height = 720;
+    const std::string normalized = ToLowerAscii(TrimAscii(value));
+    return normalized.empty() || normalized == "auto" || normalized == "window";
+}
 
+bool ParseResolution(const std::string& value, uint32_t& width, uint32_t& height)
+{
     size_t separator = value.find('x');
     if (separator == std::string::npos) {
         separator = value.find('X');
     }
     if (separator == std::string::npos) {
-        return;
+        return false;
     }
 
     uint32_t parsedWidth = 0;
@@ -58,11 +61,12 @@ void ParseResolutionOrDefault(const std::string& value, uint32_t& width, uint32_
     if (!ParseUInt32(value.substr(0, separator), parsedWidth) ||
         !ParseUInt32(value.substr(separator + 1), parsedHeight) ||
         parsedWidth < 320 || parsedHeight < 240) {
-        return;
+        return false;
     }
 
     width = parsedWidth;
     height = parsedHeight;
+    return true;
 }
 
 std::string ToLowerAscii(std::string value)

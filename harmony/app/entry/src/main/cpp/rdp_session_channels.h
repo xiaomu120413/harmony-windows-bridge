@@ -35,6 +35,7 @@ public:
     void ClearActive(freerdp* instance);
 #endif
     void RequestDisconnect();
+    void SetDynamicResizeAlignment(uint32_t alignment);
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message);
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
         std::string& message);
@@ -70,6 +71,7 @@ private:
     DispClientContext* activeDisp_ = nullptr;
     RdpgfxClientContext* activeGfx_ = nullptr;
     bool displayControlCapsReady_ = false;
+    uint32_t dynamicResizeAlignment_ = 1;
     uint32_t lastDynamicResizeWidth_ = 0;
     uint32_t lastDynamicResizeHeight_ = 0;
 #endif

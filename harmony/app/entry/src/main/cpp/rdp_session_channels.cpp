@@ -16,6 +16,16 @@
 #endif
 
 namespace rdp_bridge {
+namespace {
+uint32_t AlignDownToMultiple(uint32_t value, uint32_t alignment, uint32_t minimum)
+{
+    value -= value % alignment;
+    if (value >= minimum) {
+        return value;
+    }
+    return minimum + ((alignment - (minimum % alignment)) % alignment);
+}
+} // namespace
 
 void RdpSessionChannels::SetCallbacks(Callbacks callbacks)
 {
@@ -27,6 +37,18 @@ void RdpSessionChannels::EmitLog(const std::string& line)
     if (callbacks_.log != nullptr) {
         callbacks_.log(line);
     }
+}
+
+void RdpSessionChannels::SetDynamicResizeAlignment(uint32_t alignment)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    std::lock_guard<std::mutex> lock(activeMutex_);
+    dynamicResizeAlignment_ = std::max<uint32_t>(1U, alignment);
+    lastDynamicResizeWidth_ = 0;
+    lastDynamicResizeHeight_ = 0;
+#else
+    (void)alignment;
+#endif
 }
 
 void RdpSessionChannels::RequestDisconnect()
@@ -92,12 +114,12 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
     constexpr uint32_t maxDimension = 8192;
     width = std::clamp(width, minDimension, maxDimension);
     height = std::clamp(height, minDimension, maxDimension);
-    width -= width % 2U;
-    if (width < minDimension) {
-        width = minDimension;
-    }
 
     std::lock_guard<std::mutex> lock(activeMutex_);
+    if (dynamicResizeAlignment_ > 1U) {
+        width = AlignDownToMultiple(width, dynamicResizeAlignment_, minDimension);
+        height = AlignDownToMultiple(height, dynamicResizeAlignment_, minDimension);
+    }
     if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
         message = "display-control channel is not ready";
         return false;
@@ -191,6 +213,7 @@ void RdpSessionChannels::ClearActive(freerdp* instance)
     activeDisp_ = nullptr;
     activeGfx_ = nullptr;
     displayControlCapsReady_ = false;
+    dynamicResizeAlignment_ = 1;
     lastDynamicResizeWidth_ = 0;
     lastDynamicResizeHeight_ = 0;
 }

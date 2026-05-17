@@ -7,7 +7,8 @@ namespace rdp_bridge {
 
 bool ParseUInt32(const std::string& value, uint32_t& result);
 bool ParsePort(const std::string& value, uint32_t& port);
-void ParseResolutionOrDefault(const std::string& value, uint32_t& width, uint32_t& height);
+bool IsAutoResolution(const std::string& value);
+bool ParseResolution(const std::string& value, uint32_t& width, uint32_t& height);
 
 std::string ToLowerAscii(std::string value);
 std::string TrimAscii(const std::string& value);

@@ -17,6 +17,7 @@
 
 namespace rdp_bridge {
 namespace {
+constexpr uint32_t kH264DesktopAlignment = 16;
 
 void EmitCallback(const std::function<void(const std::string&)>& callback, const std::string& line)
 {
@@ -240,10 +241,48 @@ struct RdpSession::Impl {
     }
 #endif
 
-    static bool IsAutoInitialResolution(const std::string& resolution)
+    bool WaitForAutoInitialResolution(ConnectParams& params)
     {
-        const std::string normalized = ToLowerAscii(TrimAscii(resolution));
-        return normalized.empty() || normalized == "auto" || normalized == "window";
+        if (!IsAutoResolution(params.resolution)) {
+            return true;
+        }
+
+        constexpr int maxWaitMs = 3000;
+        constexpr int stepMs = 50;
+        bool waitLogged = false;
+        int elapsed = 0;
+        while (running.load()) {
+            const SurfaceSnapshot snapshot = SurfaceSnapshotValue();
+            if (snapshot.ready && snapshot.width >= 320 && snapshot.height >= 240) {
+                params.resolution = std::to_string(snapshot.width) + "x" +
+                    std::to_string(snapshot.height);
+                EmitLog("FreeRDP initial resolution auto from XComponent surface: " +
+                    params.resolution);
+                return true;
+            }
+
+            if (!waitLogged) {
+                EmitLog("FreeRDP initial resolution auto waiting for XComponent surface");
+                waitLogged = true;
+            }
+            if (elapsed >= maxWaitMs) {
+                break;
+            }
+            if (!SleepInterruptibly(stepMs)) {
+                EmitState("Disconnected");
+                EmitLog("native worker cancelled");
+                return false;
+            }
+            elapsed += stepMs;
+        }
+
+        const std::string message =
+            "FreeRDP initial resolution auto failed: XComponent surface is not ready";
+        EmitState("Failed");
+        EmitLog(message);
+        EmitError(message);
+        running.store(false);
+        return false;
     }
 
     void WorkerMain(ConnectParams params)
@@ -297,15 +336,8 @@ struct RdpSession::Impl {
 
         EmitState("Authenticating");
         EmitLog("state=Authenticating");
-        if (IsAutoInitialResolution(params.resolution)) {
-            SurfaceSnapshot snapshot = SurfaceSnapshotValue();
-            if (snapshot.width >= 320 && snapshot.height >= 240) {
-                params.resolution = std::to_string(snapshot.width) + "x" +
-                    std::to_string(snapshot.height);
-                EmitLog("FreeRDP initial resolution auto from surface: " + params.resolution);
-            } else {
-                EmitLog("FreeRDP initial resolution auto fallback: surface is not ready");
-            }
+        if (!WaitForAutoInitialResolution(params)) {
+            return;
         }
         RdpSessionRunResult session;
         const std::vector<std::string> graphicsModes = BuildGraphicsFallbackModes(params);
@@ -314,6 +346,10 @@ struct RdpSession::Impl {
         for (size_t attempt = 0; attempt < graphicsModes.size(); ++attempt) {
             ConnectParams attemptParams = params;
             attemptParams.graphicsMode = graphicsModes[attempt];
+            const GraphicsPipelineConfig attemptGraphicsConfig =
+                ParseGraphicsPipelineConfig(attemptParams);
+            channels.SetDynamicResizeAlignment(attemptGraphicsConfig.h264 ?
+                kH264DesktopAlignment : 1U);
             bool attemptConnected = false;
             EmitLog("graphics attempt " + std::to_string(attempt + 1) + "/" +
                 std::to_string(graphicsModes.size()) + ": mode=" + attemptParams.graphicsMode);

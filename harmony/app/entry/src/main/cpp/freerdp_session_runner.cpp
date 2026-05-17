@@ -53,10 +53,40 @@ UserParts SplitDomainUsername(const std::string& value)
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+constexpr uint32_t kH264DesktopAlignment = 16;
+
+uint32_t AlignDownToMultiple(uint32_t value, uint32_t alignment, uint32_t minimum)
+{
+    value -= value % alignment;
+    if (value >= minimum) {
+        return value;
+    }
+    return minimum + ((alignment - (minimum % alignment)) % alignment);
+}
+
 void StopRenderPipeline(const RdpSessionCallbacks& callbacks)
 {
     if (callbacks.stopRenderPipeline != nullptr) {
         callbacks.stopRenderPipeline();
+    }
+}
+
+void AlignH264DesktopSize(const GraphicsPipelineConfig& graphicsConfig, uint32_t& width,
+    uint32_t& height, const std::function<void(const std::string&)>& log)
+{
+    if (!graphicsConfig.enabled || !graphicsConfig.h264) {
+        return;
+    }
+
+    const uint32_t requestedWidth = width;
+    const uint32_t requestedHeight = height;
+    width = AlignDownToMultiple(width, kH264DesktopAlignment, 320U);
+    height = AlignDownToMultiple(height, kH264DesktopAlignment, 240U);
+
+    if ((width != requestedWidth || height != requestedHeight) && log) {
+        log("FreeRDP H264 desktop size aligned to 16px dimensions: " +
+            std::to_string(requestedWidth) + "x" + std::to_string(requestedHeight) +
+            " -> " + std::to_string(width) + "x" + std::to_string(height));
     }
 }
 #endif
@@ -84,9 +114,15 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
 
-    uint32_t width = 1280;
-    uint32_t height = 720;
-    ParseResolutionOrDefault(params.resolution, width, height);
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!ParseResolution(params.resolution, width, height)) {
+        result.message = "invalid RDP desktop resolution: " + params.resolution;
+        result.failed = true;
+        return result;
+    }
+    const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
+    AlignH264DesktopSize(graphicsConfig, width, height, log);
 
     std::string error;
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
@@ -152,7 +188,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     UserParts user = SplitDomainUsername(params.username);
     const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);
     const bool ignoreCertificate = certificatePolicy == CertificatePolicy::Ignore;
-    const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
 
     if (!SetFreerdpString(api, settings, FreeRDP_ServerHostname, params.host, "ServerHostname", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_ServerPort, port, "ServerPort", error) ||
