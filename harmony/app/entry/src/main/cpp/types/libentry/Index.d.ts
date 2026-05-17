@@ -105,6 +105,8 @@ declare const rdpNative: {
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
+  onMicrophonePermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
+  completeMicrophonePermissionRequest(result: { requestId: number; granted: boolean }): NativeCommandResult;
 };
 
 export default rdpNative;

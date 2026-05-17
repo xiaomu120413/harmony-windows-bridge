@@ -42,6 +42,7 @@ add_library(entry SHARED
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp
     graphics_config.cpp
+    microphone_permission_bridge.cpp
     module_init.cpp
     native_bridge_context.cpp
     net_utils.cpp

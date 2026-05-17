@@ -241,8 +241,8 @@ struct Index {
   private callbacksRegistered: boolean = false
   private pasteboardPermissionRequested: boolean = false
   private pasteboardPermissionInFlight: boolean = false
-  private microphonePermissionRequested: boolean = false
   private microphonePermissionInFlight: boolean = false
+  private microphonePermissionRequest: Promise<boolean> | null = null
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
   private longPressTriggered: boolean = false
@@ -298,7 +298,6 @@ struct Index {
   aboutToAppear(): void {
     this.registerNativeCallbacks()
     this.ensurePasteboardReadPermission('page appear')
-    this.ensureMicrophonePermission('page appear')
   }
 
   aboutToDisappear(): void {
@@ -337,6 +336,21 @@ struct Index {
         this.deferUiUpdate(() => {
           this.connectionState = 'Failed'
           this.appendLog(`Native error: ${message}`)
+        })
+      })
+      rdpNative.onMicrophonePermissionRequest((requestIdText: string) => {
+        this.deferUiUpdate(() => {
+          const requestId = Number(requestIdText)
+          this.appendLog(`Remote audio capture requested microphone permission: requestId=${requestIdText}`)
+          this.ensureMicrophonePermission('remote audio capture')
+            .then((granted: boolean) => {
+              const result: NativeCommandResult = rdpNative.completeMicrophonePermissionRequest({
+                requestId: isNaN(requestId) ? 0 : requestId,
+                granted: granted
+              })
+              this.appendLog(`${result.message}: granted=${granted}`)
+              this.appendNativeLogs(result.logs)
+            })
         })
       })
       this.callbacksRegistered = true
@@ -410,13 +424,13 @@ struct Index {
     }
   }
 
-  private ensureMicrophonePermission(trigger: string): void {
+  private ensureMicrophonePermission(trigger: string): Promise<boolean> {
     if (this.hasMicrophonePermission()) {
       this.appendLog(`Microphone permission granted: ${trigger}`)
-      return
+      return Promise.resolve(true)
     }
-    if (this.microphonePermissionRequested || this.microphonePermissionInFlight) {
-      return
+    if (this.microphonePermissionRequest !== null) {
+      return this.microphonePermissionRequest
     }
 
     let context: common.UIAbilityContext
@@ -424,26 +438,29 @@ struct Index {
       context = getContext(this) as common.UIAbilityContext
     } catch (error) {
       this.appendLog(`Microphone permission request skipped: no UIAbilityContext; ${JSON.stringify(error)}`)
-      return
+      return Promise.resolve(false)
     }
 
-    this.microphonePermissionRequested = true
     this.microphonePermissionInFlight = true
     const atManager = abilityAccessCtrl.createAtManager()
-    atManager.requestPermissionsFromUser(context, [MICROPHONE_PERMISSION])
+    this.microphonePermissionRequest = atManager.requestPermissionsFromUser(context, [MICROPHONE_PERMISSION])
       .then((result) => {
         const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
           result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
         const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
           this.hasMicrophonePermission()
         this.appendLog(`Microphone permission request result: granted=${granted} auth=${authResult}`)
+        return granted
       })
       .catch((error: Error) => {
         this.appendLog(`Microphone permission request failed: ${JSON.stringify(error)}`)
+        return false
       })
       .finally(() => {
         this.microphonePermissionInFlight = false
+        this.microphonePermissionRequest = null
       })
+    return this.microphonePermissionRequest
   }
 
   private probeNative(appendLogs: boolean = true): void {
@@ -530,7 +547,6 @@ struct Index {
     }
 
     try {
-      this.ensureMicrophonePermission('connect')
       const policy = this.normalizeCertPolicy(this.certPolicy)
       this.certPolicy = policy
       this.connectionState = 'Resolving'
@@ -906,8 +922,8 @@ struct Index {
   private sendKeyStroke(scancode: number): boolean {
     const keyCode = this.mapRdpScancodeToPlatformKeyCode(scancode)
     if (keyCode > 0) {
-      if (this.sendPlatformKeyEvent(keyCode, true)) {
-        return this.sendPlatformKeyEvent(keyCode, false)
+      if (this.sendMappedKeyEvent(keyCode, scancode, true)) {
+        return this.sendMappedKeyEvent(keyCode, scancode, false)
       }
       return false
     }
@@ -1021,8 +1037,12 @@ struct Index {
   }
 
   private handleInputBridgeWillDelete(value: DeleteValue): boolean {
+    const deleteCount = Math.max(1, value.deleteValue.length)
+    for (let i = 0; i < deleteCount; i++) {
+      this.sendKeyStroke(RDP_SCANCODE_BACKSPACE)
+    }
     this.logInputEvent('key.delete',
-      `TextInput delete blocked direction=${value.direction} count=${Math.max(1, value.deleteValue.length)}`,
+      `TextInput delete routed direction=${value.direction} count=${deleteCount}`,
       true)
     return false
   }
@@ -1388,12 +1408,16 @@ struct Index {
   }
 
   private isModifierPressed(event: KeyEvent, modifier: string): boolean {
-    try {
-      if (event.getModifierKeyState) {
-        return event.getModifierKeyState([modifier])
+    const normalized = modifier.toLowerCase()
+    const candidates: string[] = normalized === modifier ? [normalized] : [normalized, modifier]
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        if (event.getModifierKeyState && event.getModifierKeyState([candidates[i]])) {
+          return true
+        }
+      } catch (error) {
+        continue
       }
-    } catch (error) {
-      return false
     }
     return false
   }
@@ -1409,12 +1433,12 @@ struct Index {
 
   private isCtrlModifierPressed(event: KeyEvent): boolean {
     return this.ctrlModifierDown || this.rightCtrlModifierDown ||
-      this.isAnyModifierPressed(event, ['Ctrl'])
+      this.isAnyModifierPressed(event, ['ctrl'])
   }
 
   private isAltModifierPressed(event: KeyEvent): boolean {
     return this.altModifierDown || this.rightAltModifierDown ||
-      this.isAnyModifierPressed(event, ['Alt'])
+      this.isAnyModifierPressed(event, ['alt'])
   }
 
   private isWinModifierPressed(event: KeyEvent): boolean {
@@ -1470,7 +1494,7 @@ struct Index {
 
   private isShiftModifierPressed(event: KeyEvent): boolean {
     return this.leftShiftModifierDown || this.rightShiftModifierDown ||
-      this.isAnyModifierPressed(event, ['Shift'])
+      this.isAnyModifierPressed(event, ['shift'])
   }
 
   private hasRemoteShortcutModifier(event: KeyEvent): boolean {
@@ -1823,6 +1847,8 @@ struct Index {
       shortcut = true
     }
     const platformKey = this.isRemotePlatformKeyCode(event.keyCode)
+    const scancode = platformKey ? this.mapArkKeyCodeToRdpScancode(event.keyCode) : 0
+    const repeat = down && scancode > 0 && this.isRemoteScancodePressed(scancode)
     const surfacePrintableKeyEvent = printable && !fromInputBridge
     if (!printable || shortcut || hardwarePrintable || this.isFunctionKey(event.keyCode)) {
       this.logInputEvent('key',
@@ -1837,7 +1863,11 @@ struct Index {
     }
 
     if (platformKey && (!printable || shortcut || hardwarePrintable || surfacePrintableKeyEvent)) {
-      const sent = this.sendPlatformKeyEvent(event.keyCode, down, false, false, event)
+      const sent = this.sendPlatformKeyEvent(event.keyCode, down, false, repeat, event)
+      if (sent && scancode > 0) {
+        this.updateModifierState(scancode, down)
+        this.setRemoteScancodePressed(scancode, down)
+      }
       if (sent && hardwarePrintable) {
         this.rememberHardwareTextInputSuppression(event)
       }

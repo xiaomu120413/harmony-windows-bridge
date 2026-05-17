@@ -197,7 +197,7 @@ bool ConfigureAudioCaptureChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     }
 
     log("FreeRDP microphone capture requested with dynamic audin sys:ohos PCM 44.1kHz mono");
-    log("FreeRDP AudioCapture enabled; OHOS microphone permission is handled by the HAP validation shell");
+    log("FreeRDP AudioCapture enabled; OHOS microphone permission is requested when remote capture opens");
     return true;
 }
 #endif

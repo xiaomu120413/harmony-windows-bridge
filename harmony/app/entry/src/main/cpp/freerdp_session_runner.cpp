@@ -7,6 +7,7 @@
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp_gdi_bridge.h"
 #include "graphics_config.h"
+#include "microphone_permission_bridge.h"
 #include "rdp_channel_config.h"
 #include "string_utils.h"
 
@@ -147,6 +148,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
     log("FreeRDP runtime symbols loaded");
+    RegisterMicrophonePermissionBridge(api, log);
 
     freerdp* instance = api.freerdpNew();
     if (instance == nullptr) {

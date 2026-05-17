@@ -70,6 +70,12 @@ bool EventSink::Set(napi_env env, napi_value callback, const char* name, bool mi
     return true;
 }
 
+bool EventSink::IsSet()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return function_ != nullptr;
+}
+
 void EventSink::Emit(const std::string& value)
 {
     if (mirrorToHilog_.load()) {

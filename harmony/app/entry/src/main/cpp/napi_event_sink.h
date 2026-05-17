@@ -13,6 +13,7 @@ public:
     ~EventSink();
 
     bool Set(napi_env env, napi_value callback, const char* name, bool mirrorToHilog = false);
+    bool IsSet();
     void Emit(const std::string& value);
     void Reset();
 

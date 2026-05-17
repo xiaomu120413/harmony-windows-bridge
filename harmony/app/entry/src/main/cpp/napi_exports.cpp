@@ -7,6 +7,7 @@
 #include "channels/audio_diagnostics.h"
 #include "channels/rdpgfx_diagnostics.h"
 #include "input/ohos_keyboard_adapter.h"
+#include "microphone_permission_bridge.h"
 #include "napi_event_sink.h"
 #include "napi_utils.h"
 #include "probe_utils.h"
@@ -81,7 +82,8 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "core RDP/TLS/NLA + queued software GDI renderer; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
-        "static cliprdr text bridge, disp dynamic resolution, and rdpsnd/OHAudio playback requested; "
+        "static cliprdr text bridge, disp dynamic resolution, rdpsnd/OHAudio playback requested, "
+        "and audin microphone permission requested on remote capture open; "
         "rdpgfx runtime gated by graphicsMode; other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
@@ -492,6 +494,44 @@ napi_value OnError(napi_env env, napi_callback_info info)
     return RegisterCallback(env, info, BridgeEvents().error, "rdpErrorCallback", true);
 }
 
+napi_value OnMicrophonePermissionRequest(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, MicrophonePermissionRequestSink(),
+        "rdpMicrophonePermissionRequestCallback", true);
+}
+
+napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "microphone permission completion requires an object argument");
+        SetNamed(env, result, "logs", MakeStringArray(env, {"parameter validation failed"}));
+        return result;
+    }
+
+    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
+    const bool granted = GetBoolProperty(env, arg, "granted");
+    const bool ok = CompleteMicrophonePermissionRequestFromUi(requestId, granted);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Updated" : "Failed");
+    SetString(env, result, "message", ok ? "microphone permission result accepted" :
+        "microphone permission request is not pending");
+    SetNamed(env, result, "logs", MakeStringArray(env, {
+        "requestId=" + std::to_string(requestId) +
+            " granted=" + std::string(granted ? "true" : "false")
+    }));
+    return result;
+}
+
 } // namespace
 
 napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
@@ -510,6 +550,10 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
+        {"completeMicrophonePermissionRequest", nullptr, CompleteMicrophonePermissionRequest, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     InitializeNativeBridgeContext();
