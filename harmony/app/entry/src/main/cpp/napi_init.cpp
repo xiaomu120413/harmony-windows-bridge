@@ -1,6 +1,7 @@
 #include "napi/native_api.h"
 #include "bridge_types.h"
 #include "bridge_log.h"
+#include "certificate_policy.h"
 #include "clipboard_format.h"
 #include "frame_utils.h"
 #include "freerdp_runtime.h"
@@ -162,146 +163,6 @@ UserParts SplitDomainUsername(const std::string& value)
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-enum class CertificatePolicy {
-    Tofu,
-    Strict,
-    Ignore,
-};
-
-const char* CertificatePolicyName(CertificatePolicy policy)
-{
-    switch (policy) {
-        case CertificatePolicy::Strict:
-            return "strict";
-        case CertificatePolicy::Ignore:
-            return "ignore";
-        case CertificatePolicy::Tofu:
-        default:
-            return "tofu";
-    }
-}
-
-bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const ConnectParams& params, const std::function<void(const std::string&)>& log, std::string& error)
-{
-    std::string filesDir = TrimTrailingSlashes(TrimAscii(params.appFilesDir));
-    if (filesDir.empty()) {
-        error = "appFilesDir is required for FreeRDP certificate storage";
-        return false;
-    }
-
-    const std::string configPath = JoinPath(filesDir, "freerdp");
-    if (!EnsureDirectory(configPath, error) ||
-        !EnsureDirectory(JoinPath(configPath, "certs"), error) ||
-        !EnsureDirectory(JoinPath(configPath, "server"), error)) {
-        return false;
-    }
-
-    setenv("HOME", filesDir.c_str(), 1);
-    setenv("XDG_CONFIG_HOME", filesDir.c_str(), 1);
-    if (!SetFreerdpString(api, settings, FreeRDP_HomePath, filesDir, "HomePath", error) ||
-        !SetFreerdpString(api, settings, FreeRDP_ConfigPath, configPath, "ConfigPath", error)) {
-        return false;
-    }
-    log("FreeRDP storage path configured: " + configPath);
-    return true;
-}
-
-CertificatePolicy ParseCertificatePolicy(const std::string& value)
-{
-    const std::string normalized = ToLowerAscii(TrimAscii(value));
-    if (normalized == "strict" || normalized == "verify" || normalized == "valid-ca") {
-        return CertificatePolicy::Strict;
-    }
-    if (normalized == "ignore" || normalized == "accept" || normalized == "insecure") {
-        return CertificatePolicy::Ignore;
-    }
-    if (normalized == "deny" || normalized == "reject") {
-        return CertificatePolicy::Strict;
-    }
-    return CertificatePolicy::Tofu;
-}
-
-std::mutex g_certificatePolicyMutex;
-std::unordered_map<freerdp*, CertificatePolicy> g_certificatePolicies;
-
-void RegisterCertificatePolicy(freerdp* instance, CertificatePolicy policy)
-{
-    std::lock_guard<std::mutex> lock(g_certificatePolicyMutex);
-    if (instance == nullptr) {
-        return;
-    }
-    g_certificatePolicies[instance] = policy;
-}
-
-void UnregisterCertificatePolicy(freerdp* instance)
-{
-    std::lock_guard<std::mutex> lock(g_certificatePolicyMutex);
-    g_certificatePolicies.erase(instance);
-}
-
-CertificatePolicy LookupCertificatePolicy(freerdp* instance)
-{
-    std::lock_guard<std::mutex> lock(g_certificatePolicyMutex);
-    auto it = g_certificatePolicies.find(instance);
-    if (it == g_certificatePolicies.end()) {
-        return CertificatePolicy::Tofu;
-    }
-    return it->second;
-}
-
-DWORD HarmonyVerifyCertificateEx(freerdp* instance, const char* host, UINT16 port,
-    const char* commonName, const char* subject, const char* issuer, const char* fingerprint,
-    DWORD)
-{
-    CertificatePolicy policy = LookupCertificatePolicy(instance);
-    const std::string target = SafeCString(host) + ":" + std::to_string(port);
-    if (policy == CertificatePolicy::Ignore) {
-        EmitNativeLog("Certificate accepted for current session by ignore policy: " + target);
-        return 2;
-    }
-    if (policy == CertificatePolicy::Tofu) {
-        EmitNativeLog("Certificate accepted by TOFU policy and requested for FreeRDP store: " + target +
-            " cn=" + SafeCString(commonName));
-        return 1;
-    }
-
-    EmitNativeLog("Certificate rejected by strict policy: " + target +
-        " cn=" + SafeCString(commonName) + " issuer=" + SafeCString(issuer));
-    if (fingerprint != nullptr && fingerprint[0] != '\0') {
-        EmitNativeLog("Rejected certificate fingerprint/pem is available in native callback");
-    }
-    return 0;
-}
-
-DWORD HarmonyVerifyChangedCertificateEx(freerdp* instance, const char* host, UINT16 port,
-    const char* commonName, const char* subject, const char* issuer, const char* fingerprint,
-    const char* oldSubject, const char* oldIssuer, const char* oldFingerprint, DWORD)
-{
-    CertificatePolicy policy = LookupCertificatePolicy(instance);
-    const std::string target = SafeCString(host) + ":" + std::to_string(port);
-    if (policy == CertificatePolicy::Ignore) {
-        EmitNativeLog("Changed certificate accepted for current session by ignore policy: " + target);
-        return 2;
-    }
-
-    EmitNativeLog("Changed certificate rejected by " + std::string(CertificatePolicyName(policy)) +
-        " policy: " + target + " cn=" + SafeCString(commonName));
-    if ((subject != nullptr && subject[0] != '\0') || (oldSubject != nullptr && oldSubject[0] != '\0')) {
-        EmitNativeLog("Certificate subject changed from [" + SafeCString(oldSubject) + "] to [" +
-            SafeCString(subject) + "]");
-    }
-    if ((issuer != nullptr && issuer[0] != '\0') || (oldIssuer != nullptr && oldIssuer[0] != '\0')) {
-        EmitNativeLog("Certificate issuer changed from [" + SafeCString(oldIssuer) + "] to [" +
-            SafeCString(issuer) + "]");
-    }
-    if ((fingerprint != nullptr && fingerprint[0] != '\0') ||
-        (oldFingerprint != nullptr && oldFingerprint[0] != '\0')) {
-        EmitNativeLog("Changed certificate fingerprint/pem is available in native callback");
-    }
-    return 0;
-}
-
 std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
 std::atomic_uint32_t g_freerdpRenderSkipCount{0};
 std::atomic_uint32_t g_rdpDesktopWidth{0};
@@ -1642,6 +1503,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
         UnregisterCertificatePolicy(instance);
+        ClearCertificatePolicyLogSink();
         if (contextCreated && instance->context != nullptr) {
             api.abortConnectContext(instance->context);
             api.disconnect(instance);
@@ -1676,6 +1538,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         cleanup();
         return result;
     }
+    SetCertificatePolicyLogSink(log);
 
     UserParts user = SplitDomainUsername(params.username);
     const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);

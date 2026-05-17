@@ -20,6 +20,7 @@ endif()
 
 add_library(entry SHARED
     bridge_log.cpp
+    certificate_policy.cpp
     clipboard_format.cpp
     frame_utils.cpp
     freerdp_runtime.cpp
