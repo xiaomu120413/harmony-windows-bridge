@@ -13,6 +13,7 @@
 #include "net_utils.h"
 #include "probe_utils.h"
 #include "rdp_channel_config.h"
+#include "rdpgfx_diagnostics.h"
 #include "string_utils.h"
 
 #include <algorithm>
@@ -90,29 +91,6 @@ using namespace rdp_bridge;
 #define GL_TEXTURE_EXTERNAL_OES 0x8D65
 #endif
 
-std::atomic_bool g_rdpgfxRuntimeRequested{false};
-std::atomic_bool g_rdpgfxH264Requested{false};
-std::atomic_bool g_rdpgfxBridgeAttached{false};
-std::atomic_uint32_t g_rdpgfxConnectedCount{0};
-std::atomic_uint32_t g_rdpgfxDisconnectedCount{0};
-std::atomic_uint32_t g_rdpgfxInitFailedCount{0};
-std::atomic_uint64_t g_rdpgfxStartFrameCount{0};
-std::atomic_uint64_t g_rdpgfxEndFrameCount{0};
-std::atomic_uint64_t g_rdpgfxSurfaceCommandCount{0};
-std::atomic_uint64_t g_rdpgfxCodecUncompressedCount{0};
-std::atomic_uint64_t g_rdpgfxCodecCavideoCount{0};
-std::atomic_uint64_t g_rdpgfxCodecClearCodecCount{0};
-std::atomic_uint64_t g_rdpgfxCodecPlanarCount{0};
-std::atomic_uint64_t g_rdpgfxCodecProgressiveCount{0};
-std::atomic_uint64_t g_rdpgfxCodecAvc420Count{0};
-std::atomic_uint64_t g_rdpgfxCodecAlphaCount{0};
-std::atomic_uint64_t g_rdpgfxCodecAvc444Count{0};
-std::atomic_uint64_t g_rdpgfxCodecAvc444v2Count{0};
-std::atomic_uint64_t g_rdpgfxCodecUnknownCount{0};
-std::atomic_uint32_t g_rdpgfxLastCodecId{0};
-std::atomic_uint32_t g_rdpgfxLastSurfaceId{0};
-std::atomic_uint32_t g_rdpgfxLastCommandWidth{0};
-std::atomic_uint32_t g_rdpgfxLastCommandHeight{0};
 std::atomic_bool g_avc420SurfaceOutputEnabled{false};
 std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
 
@@ -130,7 +108,6 @@ void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t he
     uint32_t op, uint32_t codecId, void*);
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 std::string BuildRenderStatsLog();
-std::string BuildGraphicsPipelineStatsLog();
 std::string BuildOHAudioStatsLog();
 
 struct UserParts {
@@ -394,116 +371,6 @@ void HarmonyPostDisconnect(freerdp* instance)
     ClearRdpDesktopSize();
 }
 
-const char* RdpgfxCodecName(uint32_t codecId)
-{
-    switch (codecId) {
-        case RDPGFX_CODECID_UNCOMPRESSED:
-            return "UNCOMPRESSED";
-        case RDPGFX_CODECID_CAVIDEO:
-            return "CAVIDEO";
-        case RDPGFX_CODECID_CLEARCODEC:
-            return "CLEARCODEC";
-        case RDPGFX_CODECID_PLANAR:
-            return "PLANAR";
-        case RDPGFX_CODECID_CAPROGRESSIVE:
-            return "CAPROGRESSIVE";
-        case RDPGFX_CODECID_CAPROGRESSIVE_V2:
-            return "CAPROGRESSIVE_V2";
-        case RDPGFX_CODECID_AVC420:
-            return "AVC420";
-        case RDPGFX_CODECID_ALPHA:
-            return "ALPHA";
-        case RDPGFX_CODECID_AVC444:
-            return "AVC444";
-        case RDPGFX_CODECID_AVC444v2:
-            return "AVC444v2";
-        default:
-            return "UNKNOWN";
-    }
-}
-
-void ResetRdpgfxDiagnosticsStats()
-{
-    g_rdpgfxConnectedCount.store(0);
-    g_rdpgfxDisconnectedCount.store(0);
-    g_rdpgfxInitFailedCount.store(0);
-    g_rdpgfxStartFrameCount.store(0);
-    g_rdpgfxEndFrameCount.store(0);
-    g_rdpgfxSurfaceCommandCount.store(0);
-    g_rdpgfxCodecUncompressedCount.store(0);
-    g_rdpgfxCodecCavideoCount.store(0);
-    g_rdpgfxCodecClearCodecCount.store(0);
-    g_rdpgfxCodecPlanarCount.store(0);
-    g_rdpgfxCodecProgressiveCount.store(0);
-    g_rdpgfxCodecAvc420Count.store(0);
-    g_rdpgfxCodecAlphaCount.store(0);
-    g_rdpgfxCodecAvc444Count.store(0);
-    g_rdpgfxCodecAvc444v2Count.store(0);
-    g_rdpgfxCodecUnknownCount.store(0);
-    g_rdpgfxLastCodecId.store(0);
-    g_rdpgfxLastSurfaceId.store(0);
-    g_rdpgfxLastCommandWidth.store(0);
-    g_rdpgfxLastCommandHeight.store(0);
-}
-
-void RecordRdpgfxSurfaceCommand(const RDPGFX_SURFACE_COMMAND& command)
-{
-    const uint64_t total = g_rdpgfxSurfaceCommandCount.fetch_add(1) + 1;
-    g_rdpgfxLastCodecId.store(command.codecId);
-    g_rdpgfxLastSurfaceId.store(command.surfaceId);
-    g_rdpgfxLastCommandWidth.store(command.width);
-    g_rdpgfxLastCommandHeight.store(command.height);
-
-    switch (command.codecId) {
-        case RDPGFX_CODECID_UNCOMPRESSED:
-            g_rdpgfxCodecUncompressedCount.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_CAVIDEO:
-            g_rdpgfxCodecCavideoCount.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_CLEARCODEC:
-            g_rdpgfxCodecClearCodecCount.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_PLANAR:
-            g_rdpgfxCodecPlanarCount.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_CAPROGRESSIVE:
-        case RDPGFX_CODECID_CAPROGRESSIVE_V2:
-            g_rdpgfxCodecProgressiveCount.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_AVC420:
-            g_rdpgfxCodecAvc420Count.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_ALPHA:
-            g_rdpgfxCodecAlphaCount.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_AVC444:
-            g_rdpgfxCodecAvc444Count.fetch_add(1);
-            break;
-        case RDPGFX_CODECID_AVC444v2:
-            g_rdpgfxCodecAvc444v2Count.fetch_add(1);
-            break;
-        default:
-            g_rdpgfxCodecUnknownCount.fetch_add(1);
-            break;
-    }
-
-    if (total <= 5 || total % 120 == 0) {
-        EmitHilogInfo("rdpgfx surface command: total=" + std::to_string(total) +
-            " codec=" + RdpgfxCodecName(command.codecId) +
-            "(" + std::to_string(command.codecId) + ")" +
-            " surface=" + std::to_string(command.surfaceId) +
-            " rect=" + std::to_string(command.left) + "," + std::to_string(command.top) +
-            " " + std::to_string(command.width) + "x" + std::to_string(command.height) +
-            " counts=clear:" + std::to_string(g_rdpgfxCodecClearCodecCount.load()) +
-            ",progressive:" + std::to_string(g_rdpgfxCodecProgressiveCount.load()) +
-            ",avc420:" + std::to_string(g_rdpgfxCodecAvc420Count.load()) +
-            ",avc444:" + std::to_string(g_rdpgfxCodecAvc444Count.load()) +
-            ",raw:" + std::to_string(g_rdpgfxCodecUncompressedCount.load()) +
-            ",unknown:" + std::to_string(g_rdpgfxCodecUnknownCount.load()));
-    }
-}
-
 struct RdpgfxDiagnosticsHookState {
     pcRdpgfxStartFrame startFrame = nullptr;
     pcRdpgfxEndFrame endFrame = nullptr;
@@ -560,7 +427,7 @@ void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
 
 UINT HarmonyRdpgfxStartFrame(RdpgfxClientContext* context, const RDPGFX_START_FRAME_PDU* startFrame)
 {
-    g_rdpgfxStartFrameCount.fetch_add(1);
+    RecordRdpgfxStartFrame();
     pcRdpgfxStartFrame original = nullptr;
     {
         std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
@@ -574,7 +441,7 @@ UINT HarmonyRdpgfxStartFrame(RdpgfxClientContext* context, const RDPGFX_START_FR
 
 UINT HarmonyRdpgfxEndFrame(RdpgfxClientContext* context, const RDPGFX_END_FRAME_PDU* endFrame)
 {
-    g_rdpgfxEndFrameCount.fetch_add(1);
+    RecordRdpgfxEndFrame();
     pcRdpgfxEndFrame original = nullptr;
     {
         std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
@@ -737,9 +604,8 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
 bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig, const FreerdpLogFn& log, std::string& error)
 {
-    g_rdpgfxRuntimeRequested.store(graphicsConfig.enabled);
-    g_rdpgfxH264Requested.store(graphicsConfig.enabled && graphicsConfig.h264);
-    g_rdpgfxBridgeAttached.store(false);
+    SetRdpgfxRuntimeRequest(graphicsConfig.enabled, graphicsConfig.enabled && graphicsConfig.h264);
+    SetRdpgfxBridgeAttached(false);
     ResetRdpgfxDiagnosticsStats();
 
     if (!graphicsConfig.enabled) {
@@ -3511,10 +3377,10 @@ private:
             if (gfx == nullptr) {
                 message = "rdpgfx connected without client context";
             } else if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->gdi == nullptr) {
-                g_rdpgfxInitFailedCount.fetch_add(1);
+                IncrementRdpgfxInitFailed();
                 message = "rdpgfx connected before GDI context was ready";
             } else if (activeApi_->gdiGraphicsPipelineInit == nullptr) {
-                g_rdpgfxInitFailedCount.fetch_add(1);
+                IncrementRdpgfxInitFailed();
                 message = "rdpgfx GDI pipeline init symbol unavailable";
             } else {
                 if (activeGfx_ != nullptr && activeGfx_ != gfx) {
@@ -3523,12 +3389,12 @@ private:
                 if (activeApi_->gdiGraphicsPipelineInit(activeContext_->gdi, gfx)) {
                     InstallRdpgfxDiagnosticsHooks(gfx);
                     activeGfx_ = gfx;
-                    g_rdpgfxBridgeAttached.store(true);
-                    g_rdpgfxConnectedCount.fetch_add(1);
+                    SetRdpgfxBridgeAttached(true);
+                    IncrementRdpgfxConnected();
                     attached = true;
                     message = "rdpgfx connected to FreeRDP GDI graphics pipeline";
                 } else {
-                    g_rdpgfxInitFailedCount.fetch_add(1);
+                    IncrementRdpgfxInitFailed();
                     message = "rdpgfx GDI graphics pipeline init failed";
                 }
             }
@@ -3563,8 +3429,8 @@ private:
             activeApi_->gdiGraphicsPipelineUninit(activeContext_->gdi, activeGfx_);
         }
         activeGfx_ = nullptr;
-        g_rdpgfxBridgeAttached.store(false);
-        g_rdpgfxDisconnectedCount.fetch_add(1);
+        SetRdpgfxBridgeAttached(false);
+        IncrementRdpgfxDisconnected();
         return true;
     }
 #else
@@ -3828,49 +3694,6 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
-}
-
-std::string BuildGraphicsPipelineStatsLog()
-{
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    std::string error;
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
-        return "rdpgfx stats unavailable: " + error;
-    }
-
-    std::ostringstream out;
-    out << "rdpgfx stats: compiled=yes"
-        << " runtime=" << (g_rdpgfxRuntimeRequested.load() ? "requested" : "off")
-        << " h264=" << (g_rdpgfxH264Requested.load() ? "requested" : "off")
-        << " bridge=" << (g_rdpgfxBridgeAttached.load() ? "attached" : "detached")
-        << " connected=" << g_rdpgfxConnectedCount.load()
-        << " disconnected=" << g_rdpgfxDisconnectedCount.load()
-        << " initFailed=" << g_rdpgfxInitFailedCount.load()
-        << " frames=" << g_rdpgfxStartFrameCount.load() << "/" << g_rdpgfxEndFrameCount.load()
-        << " surfaceCommands=" << g_rdpgfxSurfaceCommandCount.load()
-        << " codecs=raw:" << g_rdpgfxCodecUncompressedCount.load()
-        << ",progressive:" << g_rdpgfxCodecProgressiveCount.load()
-        << ",cavideo:" << g_rdpgfxCodecCavideoCount.load()
-        << ",clear:" << g_rdpgfxCodecClearCodecCount.load()
-        << ",planar:" << g_rdpgfxCodecPlanarCount.load()
-        << ",avc420:" << g_rdpgfxCodecAvc420Count.load()
-        << ",avc444:" << g_rdpgfxCodecAvc444Count.load()
-        << ",avc444v2:" << g_rdpgfxCodecAvc444v2Count.load()
-        << ",alpha:" << g_rdpgfxCodecAlphaCount.load()
-        << ",unknown:" << g_rdpgfxCodecUnknownCount.load()
-        << " lastCodec=" << RdpgfxCodecName(g_rdpgfxLastCodecId.load())
-        << "(" << g_rdpgfxLastCodecId.load() << ")"
-        << " lastSurface=" << g_rdpgfxLastSurfaceId.load()
-        << " lastSize=" << g_rdpgfxLastCommandWidth.load() << "x" << g_rdpgfxLastCommandHeight.load()
-        << " symbols=gdiInit:" << (api.gdiGraphicsPipelineInit != nullptr ? "yes" : "no")
-        << ",gdiUninit:" << (api.gdiGraphicsPipelineUninit != nullptr ? "yes" : "no")
-        << ",ctxNew:" << (api.rdpgfxClientContextNew != nullptr ? "yes" : "no")
-        << ",ctxFree:" << (api.rdpgfxClientContextFree != nullptr ? "yes" : "no");
-    return out.str();
-#else
-    return "rdpgfx stats unavailable: FreeRDP headers not found at build time";
-#endif
 }
 
 std::string BuildOHAudioStatsLog()

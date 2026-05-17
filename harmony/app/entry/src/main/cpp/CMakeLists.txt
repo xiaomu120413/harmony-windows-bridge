@@ -33,6 +33,7 @@ add_library(entry SHARED
     napi_utils.cpp
     probe_utils.cpp
     rdp_channel_config.cpp
+    rdpgfx_diagnostics.cpp
     string_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
