@@ -2,7 +2,6 @@ import { abilityAccessCtrl, bundleManager, common } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
   AXIS_EVENT_DEDUP_MS,
-  BRIDGE_PRINTABLE_KEY_GUARD_MS,
   DOUBLE_TAP_DISTANCE,
   DOUBLE_TAP_TIMEOUT_MS,
   HILOG_DOMAIN,
@@ -10,7 +9,6 @@ import {
   INPUT_EVENT_LOG_INTERVAL_MS,
   LONG_PRESS_TIMEOUT_MS,
   MICROPHONE_PERMISSION,
-  OH_KEYCODE_DEL,
   POINTER_FAILURE_LOG_INTERVAL_MS,
   PTR_FLAGS_BUTTON1,
   PTR_FLAGS_BUTTON2,
@@ -25,14 +23,11 @@ import {
   READ_PASTEBOARD_PERMISSION,
   REMOTE_INPUT_BRIDGE_ID,
   REMOTE_SURFACE_FOCUS_ID,
-  REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS,
-  REMOTE_TEXT_BRIDGE_RESET_LENGTH,
   SYNTHETIC_MOUSE_SUPPRESS_MS,
   TOUCH_DRAG_THRESHOLD,
   TOUCH_WHEEL_THRESHOLD
 } from '../rdp/RdpConstants'
 import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
-import { RdpKeyboard } from '../rdp/RdpKeyboard'
 import { ConnectionState, NativeCommandResult, NativeProbeResult, PointerMapping } from '../rdp/RdpTypes'
 import rdpNative from 'libentry.so'
 
@@ -60,12 +55,6 @@ struct Index {
   @State private desktopPixelWidth: number = 0
   @State private desktopPixelHeight: number = 0
   @State private remoteTextInput: string = ''
-  private remoteTextBridgeValue: string = ''
-  private bridgePrintableKeyCode: number = 0
-  private bridgePrintableKeyAtMs: number = 0
-  private dispatchedRemoteKeyEvents: string[] = []
-  private suppressedTextInputChars: string[] = []
-  private remoteTextBridgeClearUntilMs: number = 0
   private callbacksRegistered: boolean = false
   private pasteboardPermissionRequested: boolean = false
   private pasteboardPermissionInFlight: boolean = false
@@ -564,67 +553,6 @@ struct Index {
     this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`)
   }
 
-  private sendPlatformKeyStroke(keyCode: number): boolean {
-    if (this.sendPlatformKeyEvent(keyCode, true)) {
-      return this.sendPlatformKeyEvent(keyCode, false)
-    }
-    return false
-  }
-
-  private sendPlatformKeyEvent(keyCode: number, down: boolean, logDisconnected: boolean = true,
-    repeat: boolean = false, event?: KeyEvent): boolean {
-    if (!this.isConnected()) {
-      if (logDisconnected) {
-        this.appendLog('Key input skipped: no active FreeRDP session')
-      }
-      return false
-    }
-
-    try {
-      const result: NativeCommandResult = rdpNative.sendPlatformKey({
-        keyCode: keyCode,
-        down: down,
-        repeat: repeat,
-        ctrl: event ? RdpKeyboard.isCtrlModifierPressed(event) : false,
-        shift: event ? RdpKeyboard.isShiftModifierPressed(event) : false,
-        alt: event ? RdpKeyboard.isAltModifierPressed(event) : false,
-        meta: event ? RdpKeyboard.isWinModifierPressed(event) : false
-      })
-      if (!result.ok) {
-        this.appendLog(result.message)
-      }
-      return result.ok
-    } catch (error) {
-      this.appendLog(`Native platform key input failed: ${JSON.stringify(error)}`)
-      return false
-    }
-  }
-
-  private sendUnicodeEvent(code: number, down: boolean): boolean {
-    if (!this.isConnected()) {
-      this.appendLog('Text input skipped: no active FreeRDP session')
-      return false
-    }
-
-    try {
-      const result: NativeCommandResult = rdpNative.sendUnicode({ code: code, down: down })
-      if (!result.ok) {
-        this.appendLog(result.message)
-      }
-      return result.ok
-    } catch (error) {
-      this.appendLog(`Native unicode input failed: ${JSON.stringify(error)}`)
-      return false
-    }
-  }
-
-  private sendUnicodeStroke(code: number): boolean {
-    if (this.sendUnicodeEvent(code, true)) {
-      return this.sendUnicodeEvent(code, false)
-    }
-    return false
-  }
-
   private focusRemoteInputBridge(): void {
     if (!this.isConnected()) {
       return
@@ -637,97 +565,14 @@ struct Index {
     })
   }
 
-  private consumeSuppressedTextInputFragment(value: string): string {
-    if (!value.length || this.suppressedTextInputChars.length <= 0) {
-      return value
-    }
-
-    let remaining = ''
-    let suppressed = ''
-    for (let i = 0; i < value.length; i++) {
-      const char = value.charAt(i)
-      const index = this.suppressedTextInputChars.indexOf(char)
-      if (index >= 0) {
-        this.suppressedTextInputChars.splice(index, 1)
-        suppressed += char
-      } else {
-        remaining += char
-      }
-    }
-    if (suppressed.length > 0) {
-      this.logInputEvent('key.hardware',
-        `suppressed TextInput echo chars=${suppressed.length} remaining=${remaining.length}`, true)
-    }
-    return remaining
-  }
-
   private handleInputBridgeWillInsert(value: InsertValue): boolean {
     const insertedText = value.insertValue
     if (!insertedText.length) {
-      return true
+      return false
     }
-    const remaining = this.consumeSuppressedTextInputFragment(insertedText)
-    return remaining.length === insertedText.length
-  }
-
-  private handleInputBridgeWillDelete(value: DeleteValue): boolean {
-    const deleteCount = Math.max(1, value.deleteValue.length)
-    for (let i = 0; i < deleteCount; i++) {
-      this.sendPlatformKeyStroke(OH_KEYCODE_DEL)
-    }
-    this.logInputEvent('key.delete',
-      `TextInput delete routed direction=${value.direction} count=${deleteCount}`,
-      true)
-    return false
-  }
-
-  private handleRemoteTextInputChange(value: string): void {
-    if (!value.length && Date.now() <= this.remoteTextBridgeClearUntilMs) {
-      this.remoteTextBridgeValue = ''
-      this.remoteTextInput = ''
-      return
-    }
-
-    const oldValue = this.remoteTextBridgeValue
-    if (value === oldValue) {
-      return
-    }
-
-    let prefixLength = 0
-    while (prefixLength < oldValue.length && prefixLength < value.length &&
-      oldValue.charAt(prefixLength) === value.charAt(prefixLength)) {
-      prefixLength++
-    }
-
-    let suffixLength = 0
-    while (suffixLength < oldValue.length - prefixLength &&
-      suffixLength < value.length - prefixLength &&
-      oldValue.charAt(oldValue.length - 1 - suffixLength) === value.charAt(value.length - 1 - suffixLength)) {
-      suffixLength++
-    }
-
-    const deleteCount = oldValue.length - prefixLength - suffixLength
-    const insertedText = value.substring(prefixLength, value.length - suffixLength)
-    const remoteDeleteCount = deleteCount
-    const remoteInsertedText = this.consumeSuppressedTextInputFragment(insertedText)
-
-    for (let i = 0; i < remoteDeleteCount; i++) {
-      this.sendPlatformKeyStroke(OH_KEYCODE_DEL)
-    }
-    this.sendRemoteTextFragment(remoteInsertedText)
-
-    this.remoteTextBridgeValue = value
-    this.remoteTextInput = value
-    this.resetRemoteTextBridgeIfNeeded()
-  }
-
-  private resetRemoteTextBridgeIfNeeded(): void {
-    if (this.remoteTextBridgeValue.length <= REMOTE_TEXT_BRIDGE_RESET_LENGTH) {
-      return
-    }
-    this.remoteTextBridgeClearUntilMs = Date.now() + REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS
-    this.remoteTextBridgeValue = ''
+    this.sendRemoteTextFragment(insertedText)
     this.remoteTextInput = ''
+    return false
   }
 
   private sendRemoteTextFragment(value: string): boolean {
@@ -752,9 +597,7 @@ struct Index {
   }
 
   private clearRemoteInputBridge(): void {
-    this.remoteTextBridgeValue = ''
     this.remoteTextInput = ''
-    this.suppressedTextInputChars = []
   }
 
   private clearPointerState(): void {
@@ -797,91 +640,6 @@ struct Index {
     }
   }
 
-  private addSuppressedTextInputText(value: string): void {
-    if (!value.length) {
-      return
-    }
-    for (let i = 0; i < value.length; i++) {
-      const char = value.charAt(i)
-      this.suppressedTextInputChars.push(char)
-      const lower = char.toLowerCase()
-      const upper = char.toUpperCase()
-      if (lower !== char) {
-        this.suppressedTextInputChars.push(lower)
-      }
-      if (upper !== char && upper !== lower) {
-        this.suppressedTextInputChars.push(upper)
-      }
-    }
-    while (this.suppressedTextInputChars.length > 32) {
-      this.suppressedTextInputChars.shift()
-    }
-  }
-
-  private rememberHardwareTextInputSuppression(event: KeyEvent): void {
-    if (event.type !== KeyType.Down) {
-      return
-    }
-    this.addSuppressedTextInputText(RdpKeyboard.getHardwarePrintableText(event))
-    this.addSuppressedTextInputText(RdpKeyboard.getPrintableTextByKeyCode(event.keyCode))
-  }
-
-  private keyEventId(event: KeyEvent): string {
-    return `${event.timestamp}:${event.keyCode}:${event.type}`
-  }
-
-  private rememberDispatchedRemoteKeyEvent(event: KeyEvent): void {
-    this.dispatchedRemoteKeyEvents.push(this.keyEventId(event))
-    if (this.dispatchedRemoteKeyEvents.length > 32) {
-      this.dispatchedRemoteKeyEvents.shift()
-    }
-  }
-
-  private consumeDispatchedRemoteKeyEvent(event: KeyEvent): boolean {
-    const index = this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event))
-    if (index < 0) {
-      return false
-    }
-    this.dispatchedRemoteKeyEvents.splice(index, 1)
-    return true
-  }
-
-  private hasDispatchedRemoteKeyEvent(event: KeyEvent): boolean {
-    return this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event)) >= 0
-  }
-
-  private getEventUnicode(event: KeyEvent): number {
-    if (event.unicode && event.unicode > 0) {
-      return event.unicode
-    }
-    if (event.keyText.length === 1) {
-      return event.keyText.charCodeAt(0)
-    }
-    return 0
-  }
-
-  private rememberInputBridgePrintableKey(event: KeyEvent): void {
-    if (event.type === KeyType.Down) {
-      this.bridgePrintableKeyCode = event.keyCode
-      this.bridgePrintableKeyAtMs = Date.now()
-    }
-  }
-
-  private shouldSkipBridgedPrintableKey(event: KeyEvent, printable: boolean, shortcut: boolean): boolean {
-    if (event.type !== KeyType.Down || !printable || shortcut) {
-      return false
-    }
-    if (event.keyCode !== this.bridgePrintableKeyCode) {
-      return false
-    }
-    if (Date.now() - this.bridgePrintableKeyAtMs > BRIDGE_PRINTABLE_KEY_GUARD_MS) {
-      return false
-    }
-    this.bridgePrintableKeyCode = 0
-    this.bridgePrintableKeyAtMs = 0
-    return true
-  }
-
   private shouldRouteRemoteKeyboard(): boolean {
     return this.currentTab === 'session'
   }
@@ -894,120 +652,44 @@ struct Index {
     }
   }
 
-  private shouldDispatchRemoteKey(event: KeyEvent): boolean {
+  private isModifierPressed(event: KeyEvent, modifier: string): boolean {
+    try {
+      return !!event.getModifierKeyState && event.getModifierKeyState([modifier])
+    } catch (error) {
+      return false
+    }
+  }
+
+  private forwardRemoteKeyEvent(event: KeyEvent): boolean {
     if (!this.shouldRouteRemoteKeyboard() || !this.isConnected()) {
       return false
     }
-    if (!RdpKeyboard.isPlatformKeyCode(event.keyCode)) {
+    if (event.type !== KeyType.Down && event.type !== KeyType.Up) {
       return false
     }
-    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
-    const hardwarePrintable = printable && RdpKeyboard.shouldSendPrintableAsHardwareKey(event.keyCode)
-    return !printable || hardwarePrintable || RdpKeyboard.hasShortcutModifier(event)
-  }
 
-  private handleRemoteKeyDispatch(event: KeyEvent, fromInputBridge: boolean): boolean {
-    if (!this.shouldRouteRemoteKeyboard()) {
-      return false
-    }
-    if (this.hasDispatchedRemoteKeyEvent(event)) {
+    const down = event.type === KeyType.Down
+    try {
+      const result: NativeCommandResult = rdpNative.sendPlatformKey({
+        keyCode: event.keyCode,
+        down: down,
+        repeat: false,
+        ctrl: this.isModifierPressed(event, 'ctrl'),
+        shift: this.isModifierPressed(event, 'shift'),
+        alt: this.isModifierPressed(event, 'alt'),
+        meta: this.isModifierPressed(event, 'meta') || this.isModifierPressed(event, 'win')
+      })
+      this.logInputEvent('key.forward',
+        `code=${event.keyCode} type=${event.type} down=${down} ok=${result.ok}`)
+      if (!result.ok) {
+        this.appendLog(result.message)
+      }
       this.stopKeyPropagation(event)
       return true
-    }
-    if (!this.shouldDispatchRemoteKey(event)) {
+    } catch (error) {
+      this.appendLog(`Native platform key input failed: ${JSON.stringify(error)}`)
       return false
     }
-    const sent = this.handleSurfaceKeyEvent(event, fromInputBridge)
-    if (!sent) {
-      return false
-    }
-    this.rememberDispatchedRemoteKeyEvent(event)
-    this.stopKeyPropagation(event)
-    return true
-  }
-
-  private handleInputBridgeKeyEvent(event: KeyEvent): boolean {
-    if (!this.shouldRouteRemoteKeyboard()) {
-      return false
-    }
-    if (this.consumeDispatchedRemoteKeyEvent(event)) {
-      return true
-    }
-    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
-    const shortcut = RdpKeyboard.hasShortcutModifier(event)
-    const hardwarePrintable = printable && RdpKeyboard.shouldSendPrintableAsHardwareKey(event.keyCode)
-    if (printable && !shortcut && !hardwarePrintable) {
-      this.rememberInputBridgePrintableKey(event)
-      return false
-    }
-    return this.handleSurfaceKeyEvent(event, true)
-  }
-
-  private handleInputBridgePreImeKeyEvent(event: KeyEvent): boolean {
-    if (!this.shouldRouteRemoteKeyboard()) {
-      return false
-    }
-    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
-    const systemShortcutModifier = RdpKeyboard.isCtrlModifierPressed(event) ||
-      RdpKeyboard.isAltModifierPressed(event) || RdpKeyboard.isWinModifierPressed(event)
-    if (printable && !systemShortcutModifier) {
-      return false
-    }
-    return this.handleRemoteKeyDispatch(event, true)
-  }
-
-  private handleSurfaceKeyEvent(event: KeyEvent, fromInputBridge: boolean = false): boolean {
-    if (!this.shouldRouteRemoteKeyboard()) {
-      return false
-    }
-    if (!fromInputBridge && this.consumeDispatchedRemoteKeyEvent(event)) {
-      return true
-    }
-    if (!this.isConnected()) {
-      return false
-    }
-    const down = event.type === KeyType.Down
-    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
-    const hardwarePrintable = printable && RdpKeyboard.shouldSendPrintableAsHardwareKey(event.keyCode)
-    const shortcut = RdpKeyboard.hasShortcutModifier(event)
-    const platformKey = RdpKeyboard.isPlatformKeyCode(event.keyCode)
-    const surfacePrintableKeyEvent = printable && !fromInputBridge
-    if (!printable || shortcut || hardwarePrintable || RdpKeyboard.isFunctionKey(event.keyCode)) {
-      this.logInputEvent('key',
-        `code=${event.keyCode} type=${event.type} platform=${platformKey} printable=${printable} ` +
-        `shortcut=${shortcut} hardware=${hardwarePrintable} bridge=${fromInputBridge} ` +
-        `ctrl=${RdpKeyboard.isCtrlModifierPressed(event)} alt=${RdpKeyboard.isAltModifierPressed(event)} ` +
-        `win=${RdpKeyboard.isWinModifierPressed(event)} shift=${RdpKeyboard.isShiftModifierPressed(event)}`,
-        true)
-    }
-    if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
-      return true
-    }
-
-    if (platformKey && (!printable || shortcut || hardwarePrintable || surfacePrintableKeyEvent)) {
-      const sent = this.sendPlatformKeyEvent(event.keyCode, down, false, false, event)
-      if (sent && hardwarePrintable) {
-        this.rememberHardwareTextInputSuppression(event)
-      }
-      if (sent && RdpKeyboard.isDeleteKeyCode(event.keyCode)) {
-        this.logInputEvent('key.delete',
-          `hardware keyCode=${event.keyCode} down=${down} sent=${sent}`,
-          true)
-      }
-      return sent
-    }
-
-    if (!down) {
-      return printable || platformKey
-    }
-
-    const unicode = RdpKeyboard.getEventUnicode(event)
-    if (unicode > 0 && unicode <= 0xFFFF) {
-      this.sendUnicodeStroke(unicode)
-      return true
-    }
-
-    return platformKey
   }
 
   private mouseButtonToPointerFlag(button: MouseButton): number {
@@ -1554,20 +1236,8 @@ struct Index {
           .onWillInsert((value: InsertValue): boolean => {
             return this.handleInputBridgeWillInsert(value)
           })
-          .onWillDelete((value: DeleteValue): boolean => {
-            return this.handleInputBridgeWillDelete(value)
-          })
-          .onChange((value: string) => {
-            this.handleRemoteTextInputChange(value)
-          })
-          .onKeyPreIme((event: KeyEvent): boolean => {
-            return this.handleInputBridgePreImeKeyEvent(event)
-          })
-          .onKeyEvent((event: KeyEvent): boolean => {
-            return this.handleInputBridgeKeyEvent(event)
-          })
           .onKeyEventDispatch((event: KeyEvent): boolean => {
-            return this.handleRemoteKeyDispatch(event, true)
+            return this.forwardRemoteKeyEvent(event)
           })
           .onAxisEvent((event: AxisEvent) => {
             this.handleSurfaceAxis(event)
@@ -1588,11 +1258,8 @@ struct Index {
       .onTouch((event: TouchEvent) => {
         this.handleSurfaceTouch(event)
       })
-      .onKeyEvent((event: KeyEvent): boolean => {
-        return this.handleSurfaceKeyEvent(event)
-      })
       .onKeyEventDispatch((event: KeyEvent): boolean => {
-        return this.handleRemoteKeyDispatch(event, false)
+        return this.forwardRemoteKeyEvent(event)
       })
       .onMouse((event: MouseEvent) => {
         this.handleSurfaceMouse(event)
@@ -1603,11 +1270,8 @@ struct Index {
     }
     .layoutWeight(1)
     .focusable(true)
-    .onKeyEvent((event: KeyEvent): boolean => {
-      return this.handleSurfaceKeyEvent(event)
-    })
     .onKeyEventDispatch((event: KeyEvent): boolean => {
-      return this.handleRemoteKeyDispatch(event, false)
+      return this.forwardRemoteKeyEvent(event)
     })
   }
 
