@@ -26,6 +26,7 @@ add_library(entry SHARED
     freerdp_runtime.cpp
     graphics_config.cpp
     net_utils.cpp
+    napi_event_sink.cpp
     napi_init.cpp
     napi_utils.cpp
     probe_utils.cpp
