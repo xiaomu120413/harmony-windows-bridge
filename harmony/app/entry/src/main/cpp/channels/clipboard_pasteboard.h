@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <chrono>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -36,6 +37,7 @@ private:
     OH_PasteboardObserver* observer_ = nullptr;
     bool subscribed_ = false;
     uint32_t ignoreLocalChanges_ = 0;
+    std::chrono::steady_clock::time_point ignoreLocalChangesUntil_{};
 };
 
 } // namespace rdp_bridge

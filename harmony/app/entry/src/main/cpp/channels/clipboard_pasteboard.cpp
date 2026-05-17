@@ -8,6 +8,11 @@
 #include <database/udmf/uds.h>
 
 namespace rdp_bridge {
+namespace {
+
+constexpr std::chrono::milliseconds kRemotePasteboardEchoSuppressWindow(1500);
+
+} // namespace
 
 ClipboardPasteboard::~ClipboardPasteboard()
 {
@@ -67,6 +72,7 @@ void ClipboardPasteboard::Uninitialize()
     {
         std::lock_guard<std::mutex> lock(mutex_);
         ignoreLocalChanges_ = 0;
+        ignoreLocalChangesUntil_ = {};
     }
     onLocalChange_ = nullptr;
     log_ = nullptr;
@@ -176,6 +182,8 @@ bool ClipboardPasteboard::WritePlainText(const std::string& text, std::string& e
     {
         std::lock_guard<std::mutex> lock(mutex_);
         ++ignoreLocalChanges_;
+        ignoreLocalChangesUntil_ = std::chrono::steady_clock::now() +
+            kRemotePasteboardEchoSuppressWindow;
     }
     rc = OH_Pasteboard_SetData(pasteboard_, data);
     OH_UdsPlainText_Destroy(plainText);
@@ -185,6 +193,9 @@ bool ClipboardPasteboard::WritePlainText(const std::string& text, std::string& e
         std::lock_guard<std::mutex> lock(mutex_);
         if (ignoreLocalChanges_ > 0) {
             --ignoreLocalChanges_;
+        }
+        if (ignoreLocalChanges_ == 0) {
+            ignoreLocalChangesUntil_ = {};
         }
         error = "OH_Pasteboard_SetData status=" + std::to_string(rc);
         return false;
@@ -213,9 +224,19 @@ void ClipboardPasteboard::HandlePasteboardChanged(Pasteboard_NotifyType type)
     ChangeFn onLocalChange;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (ignoreLocalChanges_ > 0) {
+        const auto now = std::chrono::steady_clock::now();
+        if (ignoreLocalChanges_ > 0 && now <= ignoreLocalChangesUntil_) {
             --ignoreLocalChanges_;
+            if (ignoreLocalChanges_ == 0) {
+                ignoreLocalChangesUntil_ = {};
+            }
+            Log("HarmonyOS Pasteboard local change suppressed after remote clipboard write");
             return;
+        }
+        if (ignoreLocalChanges_ > 0) {
+            ignoreLocalChanges_ = 0;
+            ignoreLocalChangesUntil_ = {};
+            Log("HarmonyOS Pasteboard remote-write suppression expired; forwarding local change");
         }
         onLocalChange = onLocalChange_;
     }
