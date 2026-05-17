@@ -23,6 +23,7 @@ add_library(entry SHARED
     certificate_policy.cpp
     clipboard_format.cpp
     frame_utils.cpp
+    freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp
     graphics_config.cpp
     harmony_clipboard_bridge.cpp

@@ -4,6 +4,7 @@
 #include "certificate_policy.h"
 #include "clipboard_format.h"
 #include "frame_utils.h"
+#include "freerdp_gdi_bridge.h"
 #include "freerdp_runtime.h"
 #include "graphics_config.h"
 #include "harmony_clipboard_bridge.h"
@@ -139,238 +140,6 @@ UserParts SplitDomainUsername(const std::string& value)
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
-std::atomic_uint32_t g_freerdpRenderSkipCount{0};
-std::atomic_uint32_t g_rdpDesktopWidth{0};
-std::atomic_uint32_t g_rdpDesktopHeight{0};
-
-void SetRdpDesktopSize(uint32_t width, uint32_t height)
-{
-    g_rdpDesktopWidth.store(width);
-    g_rdpDesktopHeight.store(height);
-}
-
-void ClearRdpDesktopSize()
-{
-    SetRdpDesktopSize(0, 0);
-}
-
-DirtyFrameStats CaptureGdiDirtyStats(const rdpGdi* gdi)
-{
-    DirtyFrameStats stats;
-    if (gdi == nullptr || gdi->width <= 0 || gdi->height <= 0 ||
-        gdi->primary == nullptr || gdi->primary->hdc == nullptr ||
-        gdi->primary->hdc->hwnd == nullptr) {
-        return stats;
-    }
-
-    HGDI_WND hwnd = gdi->primary->hdc->hwnd;
-    const uint32_t frameWidth = static_cast<uint32_t>(gdi->width);
-    const uint32_t frameHeight = static_cast<uint32_t>(gdi->height);
-    const uint64_t frameArea = static_cast<uint64_t>(frameWidth) * frameHeight;
-    if (frameArea == 0) {
-        return stats;
-    }
-
-    uint32_t minX = frameWidth;
-    uint32_t minY = frameHeight;
-    uint32_t maxX = 0;
-    uint32_t maxY = 0;
-    uint64_t dirtyArea = 0;
-
-    auto addRegion = [&](const GDI_RGN* region) {
-        if (region == nullptr || region->null || region->w <= 0 || region->h <= 0) {
-            return;
-        }
-
-        const int64_t left = std::max<int64_t>(0, region->x);
-        const int64_t top = std::max<int64_t>(0, region->y);
-        const int64_t right = std::min<int64_t>(frameWidth, static_cast<int64_t>(region->x) + region->w);
-        const int64_t bottom = std::min<int64_t>(frameHeight, static_cast<int64_t>(region->y) + region->h);
-        if (right <= left || bottom <= top) {
-            return;
-        }
-
-        const uint32_t clampedLeft = static_cast<uint32_t>(left);
-        const uint32_t clampedTop = static_cast<uint32_t>(top);
-        const uint32_t clampedRight = static_cast<uint32_t>(right);
-        const uint32_t clampedBottom = static_cast<uint32_t>(bottom);
-        minX = std::min(minX, clampedLeft);
-        minY = std::min(minY, clampedTop);
-        maxX = std::max(maxX, clampedRight);
-        maxY = std::max(maxY, clampedBottom);
-        dirtyArea += static_cast<uint64_t>(clampedRight - clampedLeft) *
-            static_cast<uint64_t>(clampedBottom - clampedTop);
-        ++stats.rectCount;
-    };
-
-    if (hwnd->ninvalid > 0 && hwnd->cinvalid != nullptr) {
-        for (INT32 i = 0; i < hwnd->ninvalid; ++i) {
-            addRegion(&hwnd->cinvalid[i]);
-        }
-    } else {
-        addRegion(hwnd->invalid);
-    }
-
-    if (stats.rectCount == 0) {
-        return stats;
-    }
-
-    stats.valid = true;
-    stats.x = minX;
-    stats.y = minY;
-    stats.width = maxX > minX ? maxX - minX : 0;
-    stats.height = maxY > minY ? maxY - minY : 0;
-    const uint64_t cappedArea = std::min(dirtyArea, frameArea);
-    stats.areaPermille = static_cast<uint32_t>((cappedArea * 1000U + frameArea / 2U) / frameArea);
-    return stats;
-}
-
-BOOL HarmonyBeginPaint(rdpContext* context)
-{
-    if (context == nullptr || context->gdi == nullptr || context->gdi->primary == nullptr ||
-        context->gdi->primary->hdc == nullptr || context->gdi->primary->hdc->hwnd == nullptr ||
-        context->gdi->primary->hdc->hwnd->invalid == nullptr) {
-        return TRUE;
-    }
-
-    context->gdi->primary->hdc->hwnd->invalid->null = TRUE;
-    return TRUE;
-}
-
-BOOL HarmonyEndPaint(rdpContext* context)
-{
-    if (context == nullptr || context->gdi == nullptr) {
-        return TRUE;
-    }
-    if (g_avc420SurfaceOutputEnabled.load()) {
-        return TRUE;
-    }
-
-    rdpGdi* gdi = context->gdi;
-    if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
-        gdi->height <= 0 || gdi->stride == 0) {
-        return TRUE;
-    }
-
-    if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
-        gdi->primary->hdc->hwnd != nullptr) {
-        HGDI_WND hwnd = gdi->primary->hdc->hwnd;
-        if (hwnd->invalid != nullptr && hwnd->invalid->null) {
-            return TRUE;
-        }
-    }
-
-    RgbaFrame frame = {
-        gdi->primary_buffer,
-        static_cast<uint32_t>(gdi->width),
-        static_cast<uint32_t>(gdi->height),
-        static_cast<int32_t>(gdi->stride),
-        "freerdp gdi",
-        CaptureGdiDirtyStats(gdi),
-    };
-    const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
-    std::string queueMessage;
-    if (!QueueSurfaceRgbaFrame(frame, queueMessage)) {
-        const uint32_t skipCount = ++g_freerdpRenderSkipCount;
-        if (skipCount <= 3 || skipCount % 120 == 0) {
-            EmitNativeLog("FreeRDP GDI frame queue skipped: " + queueMessage);
-        }
-    } else {
-        g_freerdpRenderSkipCount.store(0);
-        if (frameCount <= 3 || frameCount % 60 == 0) {
-            EmitNativeLog("FreeRDP GDI frame queued: " + queueMessage);
-        }
-    }
-
-    if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
-        gdi->primary->hdc->hwnd != nullptr) {
-        HGDI_WND hwnd = gdi->primary->hdc->hwnd;
-        if (hwnd->invalid != nullptr) {
-            hwnd->invalid->null = TRUE;
-        }
-        hwnd->ninvalid = 0;
-    }
-    return TRUE;
-}
-
-BOOL HarmonyDesktopResize(rdpContext* context)
-{
-    if (context == nullptr || context->settings == nullptr || context->gdi == nullptr) {
-        return FALSE;
-    }
-
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    const uint32_t width = api.settingsGetUint32(context->settings, FreeRDP_DesktopWidth);
-    const uint32_t height = api.settingsGetUint32(context->settings, FreeRDP_DesktopHeight);
-    StopRenderPipeline();
-    if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
-        if (!g_avc420SurfaceOutputEnabled.load()) {
-            StartRenderPipeline();
-        }
-        EmitNativeLog("FreeRDP desktop resize failed");
-        return FALSE;
-    }
-
-    SetRdpDesktopSize(width, height);
-    if (!g_avc420SurfaceOutputEnabled.load()) {
-        StartRenderPipeline();
-    }
-    EmitNativeLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
-    return TRUE;
-}
-
-BOOL HarmonyPostConnect(freerdp* instance)
-{
-    if (instance == nullptr || instance->context == nullptr || instance->context->update == nullptr) {
-        return FALSE;
-    }
-
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    if (api.gdiInit == nullptr || !api.gdiInit(instance, PIXEL_FORMAT_RGBA32)) {
-        EmitNativeLog("FreeRDP gdi_init failed");
-        return FALSE;
-    }
-
-    rdpUpdate* update = instance->context->update;
-    update->BeginPaint = HarmonyBeginPaint;
-    update->EndPaint = HarmonyEndPaint;
-    update->DesktopResize = HarmonyDesktopResize;
-    if (g_avc420SurfaceOutputEnabled.load()) {
-        StopRenderPipeline();
-    } else {
-        StartRenderPipeline();
-    }
-    g_freerdpRenderedFrameCount.store(0);
-    g_freerdpRenderSkipCount.store(0);
-    if (instance->context->settings != nullptr) {
-        const uint32_t width = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopWidth);
-        const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);
-        if (width > 0 && height > 0) {
-            SetRdpDesktopSize(width, height);
-            EmitNativeLog("FreeRDP desktop size: " + std::to_string(width) + "x" + std::to_string(height));
-        }
-    }
-    EmitNativeLog("FreeRDP GDI callbacks registered");
-    return TRUE;
-}
-
-void HarmonyPostDisconnect(freerdp* instance)
-{
-    StopRenderPipeline();
-    if (instance == nullptr || instance->context == nullptr || instance->context->gdi == nullptr) {
-        ClearRdpDesktopSize();
-        return;
-    }
-
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    if (api.gdiFree != nullptr) {
-        api.gdiFree(instance);
-        EmitNativeLog("FreeRDP GDI resources released");
-    }
-    ClearRdpDesktopSize();
-}
-
 struct RdpgfxDiagnosticsHookState {
     pcRdpgfxStartFrame startFrame = nullptr;
     pcRdpgfxEndFrame endFrame = nullptr;
@@ -828,6 +597,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     instance->PostDisconnect = HarmonyPostDisconnect;
     instance->VerifyCertificateEx = HarmonyVerifyCertificateEx;
     instance->VerifyChangedCertificateEx = HarmonyVerifyChangedCertificateEx;
+    SetGdiBridgeCallbacks({
+        []() { return g_avc420SurfaceOutputEnabled.load(); },
+        QueueSurfaceRgbaFrame,
+        StartRenderPipeline,
+        StopRenderPipeline,
+        EmitNativeLog,
+    });
     RegisterCertificatePolicy(instance, certificatePolicy);
     ClearRdpDesktopSize();
 
@@ -3802,8 +3578,8 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetUint32(env, result, "surfacePaintCount", surface.paintCount);
     SetString(env, result, "surfaceLastPaintMessage", surface.lastPaintMessage);
     SetBool(env, result, "sessionConnected", g_session.IsConnected());
-    SetUint32(env, result, "desktopWidth", g_rdpDesktopWidth.load());
-    SetUint32(env, result, "desktopHeight", g_rdpDesktopHeight.load());
+    SetUint32(env, result, "desktopWidth", RdpDesktopWidth());
+    SetUint32(env, result, "desktopHeight", RdpDesktopHeight());
     SetUint32(env, result, "inputQueueDepth", g_session.InputQueueDepth());
     SetUint32(env, result, "inputQueuedCount", g_session.InputQueuedCount());
     SetUint32(env, result, "inputSentCount", g_session.InputSentCount());
@@ -3844,8 +3620,8 @@ napi_value Probe(napi_env env, napi_callback_info info)
     } else {
         logs.push_back("XComponent callback not registered");
     }
-    const uint32_t desktopWidth = g_rdpDesktopWidth.load();
-    const uint32_t desktopHeight = g_rdpDesktopHeight.load();
+    const uint32_t desktopWidth = RdpDesktopWidth();
+    const uint32_t desktopHeight = RdpDesktopHeight();
     if (desktopWidth > 0 && desktopHeight > 0) {
         logs.push_back("FreeRDP desktop size ready: " + std::to_string(desktopWidth) + "x" +
             std::to_string(desktopHeight));
