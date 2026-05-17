@@ -1,5 +1,6 @@
 # Local runtime config and logs
 config.local.json
+agent.md
 app-server*.log
 
 # Dependencies and downloaded tools
