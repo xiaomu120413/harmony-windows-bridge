@@ -108,7 +108,7 @@ bool ConfigureOhosStandardChannels(FreerdpRuntimeApi& api, rdpSettings* settings
     }
 
     log(detail[0] == '\0' ? "OHOS FreeRDP standard channels added" : detail.data());
-    log("FreeRDP clipboard/display/audio channel parameters are owned by client/OHOS session helper");
+    log("FreeRDP clipboard/display/graphics/audio channel parameters are owned by client/OHOS session helper");
     return true;
 }
 #endif

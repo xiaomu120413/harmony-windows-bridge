@@ -463,6 +463,7 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
 bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig, const FreerdpLogFn& log, std::string& error)
 {
+    (void)settings;
     SetRdpgfxRuntimeRequest(graphicsConfig.enabled, graphicsConfig.enabled && graphicsConfig.h264);
     SetRdpgfxBridgeAttached(false);
     ResetRdpgfxDiagnosticsStats();
@@ -473,22 +474,12 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
         return true;
     }
 
-    if (api.clientAddDynamicChannel == nullptr) {
-        error = "FreeRDP rdpgfx dynamic channel helper is not loaded";
-        return false;
-    }
     if (api.gdiGraphicsPipelineInit == nullptr || api.gdiGraphicsPipelineUninit == nullptr) {
         error = "FreeRDP GDI graphics pipeline symbols are not loaded";
         return false;
     }
 
-    const char* params[] = {RDPGFX_CHANNEL_NAME};
-    if (!api.clientAddDynamicChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
-        error = "set rdpgfx dynamic channel failed";
-        return false;
-    }
-
-    log("FreeRDP rdpgfx requested: dynamic channel + GDI graphics pipeline bridge");
+    log("FreeRDP rdpgfx requested: dynamic channel owned by OHOS session helper + GDI graphics pipeline bridge");
     log(BuildGraphicsPipelineStatsLog());
     return true;
 }
