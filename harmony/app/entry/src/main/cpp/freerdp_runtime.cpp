@@ -126,6 +126,10 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosAvcodecSetAvc444SurfaceRouteEnabled);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_frame_callback",
             ohosAvcodecSetAvc444FrameCallback);
+        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_fallback_callback",
+            ohosAvcodecSetFallbackCallback);
+        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_get_diagnostics",
+            ohosAvcodecGetDiagnostics);
     }
     return loaded_;
 }

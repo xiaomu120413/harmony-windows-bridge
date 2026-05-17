@@ -220,7 +220,14 @@ std::string BuildGraphicsPipelineStatsLog()
         << " symbols=gdiInit:" << (api.gdiGraphicsPipelineInit != nullptr ? "yes" : "no")
         << ",gdiUninit:" << (api.gdiGraphicsPipelineUninit != nullptr ? "yes" : "no")
         << ",ctxNew:" << (api.rdpgfxClientContextNew != nullptr ? "yes" : "no")
-        << ",ctxFree:" << (api.rdpgfxClientContextFree != nullptr ? "yes" : "no");
+        << ",ctxFree:" << (api.rdpgfxClientContextFree != nullptr ? "yes" : "no")
+        << ",ohosAvcodec:" << (api.ohosAvcodecGetDiagnostics != nullptr ? "yes" : "no");
+    if (api.ohosAvcodecGetDiagnostics != nullptr) {
+        const char* diagnostics = api.ohosAvcodecGetDiagnostics();
+        if (diagnostics != nullptr && diagnostics[0] != '\0') {
+            out << " | " << diagnostics;
+        }
+    }
     return out.str();
 #else
     return "rdpgfx stats unavailable: FreeRDP headers not found at build time";

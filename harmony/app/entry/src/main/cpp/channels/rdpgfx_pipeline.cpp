@@ -86,12 +86,30 @@ void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     }
+    if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+        api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+    }
+    if (api.ohosAvcodecSetFallbackCallback != nullptr) {
+        api.ohosAvcodecSetFallbackCallback(nullptr, nullptr);
+    }
 
     RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
     if (callbacks.startRenderPipeline != nullptr) {
         callbacks.startRenderPipeline();
     }
     LogThroughCallbacks("AVC420 surface output disabled; using FreeRDP buffer/GLES fallback: " + reason);
+}
+
+void OnOhosAvcodecFallback(const char* reason, void*)
+{
+    SwitchAvc420SurfaceToSoftwareFallback(
+        std::string("OHOS AVCodec runtime fallback: ") + SafeCString(reason));
 }
 
 UINT HarmonyRdpgfxStartFrame(RdpgfxClientContext* context, const RDPGFX_START_FRAME_PDU* startFrame)
@@ -251,6 +269,9 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
     if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
         api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
     }
+    if (api.ohosAvcodecSetFallbackCallback != nullptr) {
+        api.ohosAvcodecSetFallbackCallback(nullptr, nullptr);
+    }
 }
 
 bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipelineConfig& graphicsConfig,
@@ -281,6 +302,9 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
         error = "OHOS AVCodec surface output setup failed";
         return false;
+    }
+    if (api.ohosAvcodecSetFallbackCallback != nullptr) {
+        api.ohosAvcodecSetFallbackCallback(OnOhosAvcodecFallback, nullptr);
     }
 
     g_avc420SurfaceOutputEnabled.store(true);
