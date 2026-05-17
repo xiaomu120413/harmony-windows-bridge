@@ -23,6 +23,7 @@
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
 #include <client/OHOS/ohos_keyboard.h>
+#include <client/OHOS/ohos_rdpgfx.h>
 #include <client/OHOS/ohos_session_config.h>
 #endif
 
@@ -113,11 +114,15 @@ public:
     using OhosGraphicsAlignDownToMultipleFn = UINT32 (*)(UINT32, UINT32, UINT32);
     using OhosGraphicsAlignH264DesktopSizeFn = void (*)(const FREERDP_OHOS_GRAPHICS_CONFIG*,
         UINT32*, UINT32*);
-    using OhosRdpgfxCapsConfirmIsAvc420Fn = BOOL (*)(UINT32, UINT32);
-    using OhosRdpgfxCapsConfirmIsAvc444Fn = BOOL (*)(UINT32, UINT32);
-    using OhosRdpgfxCodecIsH264Fn = BOOL (*)(UINT32);
-    using OhosRdpgfxSurfaceCommandIsFullWindowFn = BOOL (*)(UINT32, UINT32, UINT32, UINT32,
-        UINT32, UINT32);
+    using OhosRdpgfxBridgeNewFn = freerdpOhosRdpgfxBridge* (*)();
+    using OhosRdpgfxBridgeFreeFn = void (*)(freerdpOhosRdpgfxBridge*);
+    using OhosRdpgfxBridgeResetFn = void (*)(freerdpOhosRdpgfxBridge*, BOOL, BOOL);
+    using OhosRdpgfxBridgeSetSurfaceTargetFn = void (*)(freerdpOhosRdpgfxBridge*, UINT32, UINT32);
+    using OhosRdpgfxBridgeAttachFn = BOOL (*)(freerdpOhosRdpgfxBridge*, RdpgfxClientContext*,
+        const FREERDP_OHOS_RDPGFX_BRIDGE_CONFIG*, char*, size_t);
+    using OhosRdpgfxBridgeDetachFn = void (*)(freerdpOhosRdpgfxBridge*, RdpgfxClientContext*);
+    using OhosRdpgfxBridgeSetGdiAttachedFn = void (*)(freerdpOhosRdpgfxBridge*, BOOL);
+    using OhosRdpgfxBridgeGetDiagnosticsFn = const char* (*)(freerdpOhosRdpgfxBridge*);
     using OhosSessionConfigDefaultFn = FREERDP_OHOS_SESSION_CONFIG (*)();
     using OhosSessionApplySettingsFn = BOOL (*)(rdpSettings*,
         const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
@@ -196,10 +201,14 @@ public:
     OhosGraphicsShouldRetryFallbackFn ohosGraphicsShouldRetryFallback = nullptr;
     OhosGraphicsAlignDownToMultipleFn ohosGraphicsAlignDownToMultiple = nullptr;
     OhosGraphicsAlignH264DesktopSizeFn ohosGraphicsAlignH264DesktopSize = nullptr;
-    OhosRdpgfxCapsConfirmIsAvc420Fn ohosRdpgfxCapsConfirmIsAvc420 = nullptr;
-    OhosRdpgfxCapsConfirmIsAvc444Fn ohosRdpgfxCapsConfirmIsAvc444 = nullptr;
-    OhosRdpgfxCodecIsH264Fn ohosRdpgfxCodecIsH264 = nullptr;
-    OhosRdpgfxSurfaceCommandIsFullWindowFn ohosRdpgfxSurfaceCommandIsFullWindow = nullptr;
+    OhosRdpgfxBridgeNewFn ohosRdpgfxBridgeNew = nullptr;
+    OhosRdpgfxBridgeFreeFn ohosRdpgfxBridgeFree = nullptr;
+    OhosRdpgfxBridgeResetFn ohosRdpgfxBridgeReset = nullptr;
+    OhosRdpgfxBridgeSetSurfaceTargetFn ohosRdpgfxBridgeSetSurfaceTarget = nullptr;
+    OhosRdpgfxBridgeAttachFn ohosRdpgfxBridgeAttach = nullptr;
+    OhosRdpgfxBridgeDetachFn ohosRdpgfxBridgeDetach = nullptr;
+    OhosRdpgfxBridgeSetGdiAttachedFn ohosRdpgfxBridgeSetGdiAttached = nullptr;
+    OhosRdpgfxBridgeGetDiagnosticsFn ohosRdpgfxBridgeGetDiagnostics = nullptr;
     OhosSessionConfigDefaultFn ohosSessionConfigDefault = nullptr;
     OhosSessionApplySettingsFn ohosSessionApplySettings = nullptr;
     OhosSessionAddStandardChannelsFn ohosSessionAddStandardChannels = nullptr;

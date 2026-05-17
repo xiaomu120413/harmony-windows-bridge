@@ -5,27 +5,23 @@
 #include "string_utils.h"
 
 #include <atomic>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
-#include <unordered_map>
-
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-#include <freerdp/channels/rdpgfx.h>
-#include <freerdp/client/channels.h>
-#include <freerdp/constants.h>
-#include <freerdp/error.h>
-#endif
 
 namespace rdp_bridge {
 namespace {
 
 std::atomic_bool g_avc420SurfaceOutputConfigured{false};
 std::atomic_bool g_avc420SurfaceOutputActive{false};
-std::atomic<uint64_t> g_avcSurfaceSubrectSkipCount{0};
-std::atomic<uint64_t> g_avcSurfaceNoDirectCount{0};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+std::mutex g_ohosRdpgfxBridgeMutex;
+freerdpOhosRdpgfxBridge* g_ohosRdpgfxBridge = nullptr;
+#endif
 
 RdpgfxPipelineCallbacks SnapshotCallbacks()
 {
@@ -41,104 +37,48 @@ void LogThroughCallbacks(const std::string& line)
     }
 }
 
-bool ShouldLogAvcSurfaceCounter(uint64_t count)
-{
-    return count == 1 || (count % 300U) == 0;
-}
-
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-struct RdpgfxDiagnosticsHookState {
-    pcRdpgfxStartFrame startFrame = nullptr;
-    pcRdpgfxEndFrame endFrame = nullptr;
-    pcRdpgfxSurfaceCommand surfaceCommand = nullptr;
-    pcRdpgfxCapsConfirm capsConfirm = nullptr;
-};
-
-std::mutex g_rdpgfxHooksMutex;
-std::unordered_map<RdpgfxClientContext*, RdpgfxDiagnosticsHookState> g_rdpgfxHooks;
-
-struct RdpgfxPluginCapsSnapshot {
-    GENERIC_DYNVC_PLUGIN base;
-    void* zgfx;
-    UINT32 unacknowledgedFrames;
-    UINT32 totalDecodedFrames;
-    UINT64 startDecodingTime;
-    BOOL suspendFrameAcks;
-    BOOL sendFrameAcks;
-    void* surfaceTable;
-    UINT16 maxCacheSlots;
-    void* cacheSlots[25600];
-    void* persistent;
-    rdpContext* rdpcontext;
-    RDPGFX_CAPSET connectionCaps;
-    RdpgfxClientContext* context;
-};
-
-void RecordRdpgfxConnectionCapsSnapshot(RdpgfxClientContext* gfx)
+freerdpOhosRdpgfxBridge* EnsureOhosRdpgfxBridge(FreerdpRuntimeApi& api, std::string& error)
 {
-    if (gfx == nullptr || gfx->handle == nullptr) {
-        return;
+    std::lock_guard<std::mutex> lock(g_ohosRdpgfxBridgeMutex);
+    if (g_ohosRdpgfxBridge != nullptr) {
+        return g_ohosRdpgfxBridge;
     }
-
-    const auto* plugin = static_cast<const RdpgfxPluginCapsSnapshot*>(gfx->handle);
-    if (plugin->connectionCaps.version == 0) {
-        LogThroughCallbacks("RDPGFX connection caps snapshot unavailable: version=0");
-        return;
+    if (api.ohosRdpgfxBridgeNew == nullptr) {
+        error = "FreeRDP OHOS rdpgfx bridge symbols are not loaded";
+        return nullptr;
     }
-
-    RecordRdpgfxCapsConfirmValues(plugin->connectionCaps.version, plugin->connectionCaps.flags,
-        "connection-caps-snapshot");
-}
-
-bool RdpgfxCapsConfirmAvc420(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
-{
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    return capsConfirm != nullptr && capsConfirm->capsSet != nullptr &&
-        api.ohosRdpgfxCapsConfirmIsAvc420 != nullptr &&
-        api.ohosRdpgfxCapsConfirmIsAvc420(
-            capsConfirm->capsSet->version, capsConfirm->capsSet->flags);
-}
-
-bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
-{
-    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
-        return false;
+    g_ohosRdpgfxBridge = api.ohosRdpgfxBridgeNew();
+    if (g_ohosRdpgfxBridge == nullptr) {
+        error = "create FreeRDP OHOS rdpgfx bridge failed";
+        return nullptr;
     }
-
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    return api.ohosRdpgfxCapsConfirmIsAvc444 != nullptr &&
-        api.ohosRdpgfxCapsConfirmIsAvc444(
-        capsConfirm->capsSet->version, capsConfirm->capsSet->flags);
+    return g_ohosRdpgfxBridge;
 }
 
-bool IsH264SurfaceCodec(uint32_t codecId)
+freerdpOhosRdpgfxBridge* CurrentOhosRdpgfxBridge()
 {
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    return api.ohosRdpgfxCodecIsH264 != nullptr && api.ohosRdpgfxCodecIsH264(codecId);
+    std::lock_guard<std::mutex> lock(g_ohosRdpgfxBridgeMutex);
+    return g_ohosRdpgfxBridge;
 }
 
-std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+void UpdateOhosRdpgfxSurfaceTarget(FreerdpRuntimeApi& api, uint32_t width, uint32_t height)
 {
-    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
-        return "capsConfirm=null";
+    freerdpOhosRdpgfxBridge* bridge = CurrentOhosRdpgfxBridge();
+    if (bridge != nullptr && api.ohosRdpgfxBridgeSetSurfaceTarget != nullptr) {
+        api.ohosRdpgfxBridgeSetSurfaceTarget(bridge, width, height);
     }
-
-    const RDPGFX_CAPSET* capsSet = capsConfirm->capsSet;
-    return "version=" + Hex32(capsSet->version) + " flags=" + Hex32(capsSet->flags);
 }
 
-bool IsFullWindowAvcCommand(const RDPGFX_SURFACE_COMMAND* command, const DecoderSurfaceTarget& target)
+void OhosRdpgfxLogCallback(const char* message, void*)
 {
-    if (command == nullptr) {
-        return false;
+    if (message != nullptr && message[0] != '\0') {
+        LogThroughCallbacks(message);
     }
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    return api.ohosRdpgfxSurfaceCommandIsFullWindow != nullptr &&
-        api.ohosRdpgfxSurfaceCommandIsFullWindow(
-        command->left, command->top, command->width, command->height, target.width, target.height);
 }
 
-bool BindAvcSurfaceOutput(const std::string& reason, const RDPGFX_SURFACE_COMMAND* command)
+bool BindAvcSurfaceOutput(
+    const std::string& reason, const FREERDP_OHOS_RDPGFX_SURFACE_COMMAND_INFO* command)
 {
     if (!g_avc420SurfaceOutputConfigured.load()) {
         return false;
@@ -164,21 +104,7 @@ bool BindAvcSurfaceOutput(const std::string& reason, const RDPGFX_SURFACE_COMMAN
             ": XComponent surface unavailable");
         return false;
     }
-    if (!IsFullWindowAvcCommand(command, target)) {
-        const uint64_t skipCount =
-            g_avcSurfaceSubrectSkipCount.fetch_add(1, std::memory_order_relaxed) + 1;
-        if (ShouldLogAvcSurfaceCounter(skipCount)) {
-            LogThroughCallbacks("AVC surface output activation skipped after " + reason +
-                ": command is a sub-rectangle surface update, not a full-window frame; command=" +
-                std::to_string(command == nullptr ? 0 : command->width) + "x" +
-                std::to_string(command == nullptr ? 0 : command->height) + " at " +
-                std::to_string(command == nullptr ? 0 : command->left) + "," +
-                std::to_string(command == nullptr ? 0 : command->top) +
-                " target=" + std::to_string(target.width) + "x" + std::to_string(target.height) +
-                " count=" + std::to_string(skipCount));
-        }
-        return false;
-    }
+    UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
 
     if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
         LogThroughCallbacks("AVC surface output activation failed after " + reason +
@@ -243,92 +169,13 @@ void OnOhosAvcodecFallback(const char* reason, void*)
         std::string("OHOS AVCodec runtime fallback: ") + SafeCString(reason));
 }
 
-UINT HarmonyRdpgfxStartFrame(RdpgfxClientContext* context, const RDPGFX_START_FRAME_PDU* startFrame)
-{
-    RecordRdpgfxStartFrame();
-    pcRdpgfxStartFrame original = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
-        auto iter = g_rdpgfxHooks.find(context);
-        if (iter != g_rdpgfxHooks.end()) {
-            original = iter->second.startFrame;
-        }
-    }
-    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, startFrame);
-}
-
-UINT HarmonyRdpgfxEndFrame(RdpgfxClientContext* context, const RDPGFX_END_FRAME_PDU* endFrame)
-{
-    RecordRdpgfxEndFrame();
-    pcRdpgfxEndFrame original = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
-        auto iter = g_rdpgfxHooks.find(context);
-        if (iter != g_rdpgfxHooks.end()) {
-            original = iter->second.endFrame;
-        }
-    }
-    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, endFrame);
-}
-
-UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
-{
-    RecordRdpgfxCapsConfirm(capsConfirm);
-
-    if (g_avc420SurfaceOutputConfigured.load()) {
-        const std::string summary = RdpgfxCapsConfirmSummary(capsConfirm);
-        if (RdpgfxCapsConfirmAvc420(capsConfirm)) {
-            LogThroughCallbacks("RDPGFX negotiated AVC420 surface mode: " + summary +
-                "; GDI remains active until the first AVC420 surface command");
-        } else if (RdpgfxCapsConfirmAvc444(capsConfirm)) {
-            LogThroughCallbacks("RDPGFX negotiated AVC444 surface mode: " + summary +
-                "; AVC444 primary stream will use the AVC420 output surface");
-        } else {
-            SwitchAvc420SurfaceToSoftwareFallback("server selected non-AVC graphics mode " + summary);
-        }
-    }
-
-    pcRdpgfxCapsConfirm original = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
-        auto iter = g_rdpgfxHooks.find(context);
-        if (iter != g_rdpgfxHooks.end()) {
-            original = iter->second.capsConfirm;
-        }
-    }
-    return original == nullptr ? CHANNEL_RC_OK : original(context, capsConfirm);
-}
-
-UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURFACE_COMMAND* command)
+BOOL OhosRdpgfxH264SurfaceCommandCallback(
+    const FREERDP_OHOS_RDPGFX_SURFACE_COMMAND_INFO* command, void*)
 {
     if (command != nullptr) {
-        RecordRdpgfxSurfaceCommand(*command);
-        if (IsH264SurfaceCodec(command->codecId) && !g_avc420SurfaceOutputActive.load()) {
-            if (!BindAvcSurfaceOutput(std::string(RdpgfxCodecName(command->codecId)) +
-                " surface command", command)) {
-                const uint64_t noDirectCount =
-                    g_avcSurfaceNoDirectCount.fetch_add(1, std::memory_order_relaxed) + 1;
-                if (ShouldLogAvcSurfaceCounter(noDirectCount)) {
-                    LogThroughCallbacks("AVC surface command reached FreeRDP without direct surface output: codec=" +
-                        std::string(RdpgfxCodecName(command->codecId)) +
-                        " surface=" + std::to_string(command->surfaceId) +
-                        " size=" + std::to_string(command->width) + "x" +
-                        std::to_string(command->height) +
-                        " count=" + std::to_string(noDirectCount));
-                }
-            }
-        }
+        return BindAvcSurfaceOutput("RDPGFX H264 surface command", command) ? TRUE : FALSE;
     }
-
-    pcRdpgfxSurfaceCommand original = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
-        auto iter = g_rdpgfxHooks.find(context);
-        if (iter != g_rdpgfxHooks.end()) {
-            original = iter->second.surfaceCommand;
-        }
-    }
-    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, command);
+    return FALSE;
 }
 #endif
 
@@ -387,6 +234,7 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
         return;
     }
 
+    UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
     api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
     LogThroughCallbacks("AVC surface output updated after " + reason + ": " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
@@ -401,8 +249,6 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
 {
     g_avc420SurfaceOutputConfigured.store(false);
     g_avc420SurfaceOutputActive.store(false);
-    g_avcSurfaceSubrectSkipCount.store(0);
-    g_avcSurfaceNoDirectCount.store(0);
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     }
@@ -446,14 +292,13 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     }
 
     api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
     if (api.ohosAvcodecSetFallbackCallback != nullptr) {
         api.ohosAvcodecSetFallbackCallback(OnOhosAvcodecFallback, nullptr);
     }
 
     g_avc420SurfaceOutputConfigured.store(true);
     g_avc420SurfaceOutputActive.store(false);
-    g_avcSurfaceSubrectSkipCount.store(0);
-    g_avcSurfaceNoDirectCount.store(0);
     log("OHOS AVCodec output surface armed: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
         " mode=deferred-until-avc-surface-command avc444=primary-avc420-surface gdi=active-before-h264");
@@ -469,6 +314,10 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
     ResetRdpgfxDiagnosticsStats();
 
     if (!graphicsConfig.enabled) {
+        freerdpOhosRdpgfxBridge* bridge = CurrentOhosRdpgfxBridge();
+        if (bridge != nullptr && api.ohosRdpgfxBridgeReset != nullptr) {
+            api.ohosRdpgfxBridgeReset(bridge, FALSE, FALSE);
+        }
         log("FreeRDP rdpgfx dynamic channel not requested: graphicsMode=gdi");
         log(BuildGraphicsPipelineStatsLog());
         return true;
@@ -479,9 +328,27 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
         return false;
     }
 
+    freerdpOhosRdpgfxBridge* bridge = EnsureOhosRdpgfxBridge(api, error);
+    if (bridge == nullptr) {
+        return false;
+    }
+    if (api.ohosRdpgfxBridgeReset != nullptr) {
+        api.ohosRdpgfxBridgeReset(
+            bridge, TRUE, (graphicsConfig.h264 ? TRUE : FALSE));
+    }
+
     log("FreeRDP rdpgfx requested: dynamic channel owned by OHOS session helper + GDI graphics pipeline bridge");
     log(BuildGraphicsPipelineStatsLog());
     return true;
+}
+
+std::string OhosRdpgfxBridgeDiagnostics(FreerdpRuntimeApi& api)
+{
+    freerdpOhosRdpgfxBridge* bridge = CurrentOhosRdpgfxBridge();
+    if (bridge == nullptr || api.ohosRdpgfxBridgeGetDiagnostics == nullptr) {
+        return "";
+    }
+    return SafeCString(api.ohosRdpgfxBridgeGetDiagnostics(bridge));
 }
 
 void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
@@ -490,28 +357,35 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
-    if (g_rdpgfxHooks.find(gfx) != g_rdpgfxHooks.end()) {
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    std::string error;
+    freerdpOhosRdpgfxBridge* bridge = EnsureOhosRdpgfxBridge(api, error);
+    if (bridge == nullptr) {
+        LogThroughCallbacks("OHOS rdpgfx bridge attach skipped: " + error);
         return;
     }
 
-    RdpgfxDiagnosticsHookState state;
-    state.startFrame = gfx->StartFrame;
-    state.endFrame = gfx->EndFrame;
-    state.surfaceCommand = gfx->SurfaceCommand;
-    state.capsConfirm = gfx->CapsConfirm;
-    g_rdpgfxHooks[gfx] = state;
-    if (state.startFrame != nullptr) {
-        gfx->StartFrame = HarmonyRdpgfxStartFrame;
+    FREERDP_OHOS_RDPGFX_BRIDGE_CONFIG config = {};
+    config.h264SurfaceMode = g_avc420SurfaceOutputConfigured.load() ? TRUE : FALSE;
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.decoderSurfaceTarget != nullptr) {
+        const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+        config.surfaceTargetWidth = target.width;
+        config.surfaceTargetHeight = target.height;
     }
-    if (state.endFrame != nullptr) {
-        gfx->EndFrame = HarmonyRdpgfxEndFrame;
+    config.log = OhosRdpgfxLogCallback;
+    config.h264SurfaceCommand = OhosRdpgfxH264SurfaceCommandCallback;
+
+    std::array<char, 256> message {};
+    if (api.ohosRdpgfxBridgeAttach == nullptr ||
+        !api.ohosRdpgfxBridgeAttach(bridge, gfx, &config, message.data(), message.size())) {
+        LogThroughCallbacks("OHOS rdpgfx bridge attach failed: " +
+            std::string(message[0] == '\0' ? "symbol unavailable" : message.data()));
+        return;
     }
-    if (state.surfaceCommand != nullptr) {
-        gfx->SurfaceCommand = HarmonyRdpgfxSurfaceCommand;
+    if (api.ohosRdpgfxBridgeSetGdiAttached != nullptr) {
+        api.ohosRdpgfxBridgeSetGdiAttached(bridge, TRUE);
     }
-    gfx->CapsConfirm = HarmonyRdpgfxCapsConfirm;
-    RecordRdpgfxConnectionCapsSnapshot(gfx);
 }
 
 void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
@@ -520,17 +394,13 @@ void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_rdpgfxHooksMutex);
-    auto iter = g_rdpgfxHooks.find(gfx);
-    if (iter == g_rdpgfxHooks.end()) {
-        return;
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    freerdpOhosRdpgfxBridge* bridge = CurrentOhosRdpgfxBridge();
+    if (bridge != nullptr && api.ohosRdpgfxBridgeDetach != nullptr) {
+        api.ohosRdpgfxBridgeDetach(bridge, gfx);
+    } else if (bridge != nullptr && api.ohosRdpgfxBridgeSetGdiAttached != nullptr) {
+        api.ohosRdpgfxBridgeSetGdiAttached(bridge, FALSE);
     }
-
-    gfx->StartFrame = iter->second.startFrame;
-    gfx->EndFrame = iter->second.endFrame;
-    gfx->SurfaceCommand = iter->second.surfaceCommand;
-    gfx->CapsConfirm = iter->second.capsConfirm;
-    g_rdpgfxHooks.erase(iter);
 }
 #endif
 

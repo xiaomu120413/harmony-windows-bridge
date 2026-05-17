@@ -159,14 +159,22 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosGraphicsAlignDownToMultiple);
         LoadOptionalClientSymbol("freerdp_ohos_graphics_align_h264_desktop_size",
             ohosGraphicsAlignH264DesktopSize);
-        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_caps_confirm_is_avc420",
-            ohosRdpgfxCapsConfirmIsAvc420);
-        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_caps_confirm_is_avc444",
-            ohosRdpgfxCapsConfirmIsAvc444);
-        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_codec_is_h264",
-            ohosRdpgfxCodecIsH264);
-        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_surface_command_is_full_window",
-            ohosRdpgfxSurfaceCommandIsFullWindow);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_new",
+            ohosRdpgfxBridgeNew);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_free",
+            ohosRdpgfxBridgeFree);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_reset",
+            ohosRdpgfxBridgeReset);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_set_surface_target",
+            ohosRdpgfxBridgeSetSurfaceTarget);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_attach",
+            ohosRdpgfxBridgeAttach);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_detach",
+            ohosRdpgfxBridgeDetach);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_set_gdi_attached",
+            ohosRdpgfxBridgeSetGdiAttached);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_get_diagnostics",
+            ohosRdpgfxBridgeGetDiagnostics);
         LoadOptionalClientSymbol("freerdp_ohos_session_config_default",
             ohosSessionConfigDefault);
         LoadOptionalClientSymbol("freerdp_ohos_session_apply_settings",
