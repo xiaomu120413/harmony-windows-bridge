@@ -37,37 +37,6 @@ const HILOG_TAG: string = 'FreeRDPUi'
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
 const REMOTE_SURFACE_FOCUS_ID: string = 'rdpRemoteSurface'
 
-const RDP_SCANCODE_ESCAPE: number = 0x01
-const RDP_SCANCODE_BACKSPACE: number = 0x0E
-const RDP_SCANCODE_TAB: number = 0x0F
-const RDP_SCANCODE_ENTER: number = 0x1C
-const RDP_SCANCODE_LCONTROL: number = 0x1D
-const RDP_SCANCODE_RCONTROL: number = 0x011D
-const RDP_SCANCODE_A: number = 0x1E
-const RDP_SCANCODE_C: number = 0x2E
-const RDP_SCANCODE_V: number = 0x2F
-const RDP_SCANCODE_X: number = 0x2D
-const RDP_SCANCODE_LMENU: number = 0x38
-const RDP_SCANCODE_RMENU: number = 0x0138
-const RDP_SCANCODE_LWIN: number = 0x015B
-const RDP_SCANCODE_RWIN: number = 0x015C
-const RDP_SCANCODE_LSHIFT: number = 0x2A
-const RDP_SCANCODE_RSHIFT: number = 0x36
-const RDP_SCANCODE_INSERT: number = 0x0152
-const RDP_SCANCODE_DELETE: number = 0x0153
-const RDP_SCANCODE_UP: number = 0x0148
-const RDP_SCANCODE_DOWN: number = 0x0150
-const RDP_SCANCODE_LEFT: number = 0x014B
-const RDP_SCANCODE_RIGHT: number = 0x014D
-const RDP_SCANCODE_HOME: number = 0x0147
-const RDP_SCANCODE_END: number = 0x014F
-const RDP_SCANCODE_PAGE_UP: number = 0x0149
-const RDP_SCANCODE_PAGE_DOWN: number = 0x0151
-const RDP_SCANCODE_F1: number = 0x3B
-const RDP_SCANCODE_F10: number = 0x44
-const RDP_SCANCODE_F11: number = 0x57
-const RDP_SCANCODE_F12: number = 0x58
-
 const OH_KEYCODE_0: number = 2000
 const OH_KEYCODE_9: number = 2009
 const OH_KEYCODE_DPAD_UP: number = 2012
@@ -185,11 +154,6 @@ interface NativeCommandResult {
   logs: string[]
 }
 
-interface ShortcutSyntheticModifier {
-  keyCode: number
-  scancode: number
-}
-
 @Entry
 @Component
 struct Index {
@@ -204,9 +168,6 @@ struct Index {
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
   @State private nativeProbeText: string = 'Native bridge not probed'
-  @State private ctrlModifierDown: boolean = false
-  @State private altModifierDown: boolean = false
-  @State private winModifierDown: boolean = false
   @State private surfacePixelWidth: number = 0
   @State private surfacePixelHeight: number = 0
   @State private surfaceLayoutWidth: number = 0
@@ -224,18 +185,10 @@ struct Index {
   @State private nativeFeatureSummary: string = ''
   @State private nativeInputDispatchMode: string = ''
   @State private remoteTextInput: string = ''
-  private rightCtrlModifierDown: boolean = false
-  private rightAltModifierDown: boolean = false
-  private rightWinModifierDown: boolean = false
-  private leftShiftModifierDown: boolean = false
-  private rightShiftModifierDown: boolean = false
   private remoteTextBridgeValue: string = ''
   private bridgePrintableKeyCode: number = 0
   private bridgePrintableKeyAtMs: number = 0
-  private remoteShortcutPrintableKeysDown: number[] = []
-  private shortcutSyntheticModifiers: ShortcutSyntheticModifier[] = []
   private dispatchedRemoteKeyEvents: string[] = []
-  private remotePressedScancodes: number[] = []
   private suppressedTextInputChars: string[] = []
   private remoteTextBridgeClearUntilMs: number = 0
   private callbacksRegistered: boolean = false
@@ -321,7 +274,6 @@ struct Index {
             this.probeNative()
             this.focusRemoteInputBridge()
           } else if (nextState !== 'Connected') {
-            this.clearModifierState()
             this.clearPointerState()
             this.clearRemoteInputBridge()
           }
@@ -919,15 +871,10 @@ struct Index {
     this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`, true)
   }
 
-  private sendKeyStroke(scancode: number): boolean {
-    const keyCode = this.mapRdpScancodeToPlatformKeyCode(scancode)
-    if (keyCode > 0) {
-      if (this.sendMappedKeyEvent(keyCode, scancode, true)) {
-        return this.sendMappedKeyEvent(keyCode, scancode, false)
-      }
-      return false
+  private sendPlatformKeyStroke(keyCode: number): boolean {
+    if (this.sendPlatformKeyEvent(keyCode, true)) {
+      return this.sendPlatformKeyEvent(keyCode, false)
     }
-    this.appendLog(`Key stroke skipped: no platform key mapping for scancode=0x${scancode.toString(16)}`)
     return false
   }
 
@@ -945,10 +892,10 @@ struct Index {
         keyCode: keyCode,
         down: down,
         repeat: repeat,
-        ctrl: event ? this.isCtrlModifierPressed(event) : this.ctrlModifierDown || this.rightCtrlModifierDown,
-        shift: event ? this.isShiftModifierPressed(event) : this.leftShiftModifierDown || this.rightShiftModifierDown,
-        alt: event ? this.isAltModifierPressed(event) : this.altModifierDown || this.rightAltModifierDown,
-        meta: event ? this.isWinModifierPressed(event) : this.winModifierDown || this.rightWinModifierDown
+        ctrl: event ? this.isCtrlModifierPressed(event) : false,
+        shift: event ? this.isShiftModifierPressed(event) : false,
+        alt: event ? this.isAltModifierPressed(event) : false,
+        meta: event ? this.isWinModifierPressed(event) : false
       })
       if (!result.ok) {
         this.appendLog(result.message)
@@ -1039,7 +986,7 @@ struct Index {
   private handleInputBridgeWillDelete(value: DeleteValue): boolean {
     const deleteCount = Math.max(1, value.deleteValue.length)
     for (let i = 0; i < deleteCount; i++) {
-      this.sendKeyStroke(RDP_SCANCODE_BACKSPACE)
+      this.sendPlatformKeyStroke(OH_KEYCODE_DEL)
     }
     this.logInputEvent('key.delete',
       `TextInput delete routed direction=${value.direction} count=${deleteCount}`,
@@ -1078,7 +1025,7 @@ struct Index {
     const remoteInsertedText = this.consumeSuppressedTextInputFragment(insertedText)
 
     for (let i = 0; i < remoteDeleteCount; i++) {
-      this.sendKeyStroke(RDP_SCANCODE_BACKSPACE)
+      this.sendPlatformKeyStroke(OH_KEYCODE_DEL)
     }
     this.sendRemoteTextFragment(remoteInsertedText)
 
@@ -1126,20 +1073,6 @@ struct Index {
     this.suppressedTextInputChars = []
   }
 
-  private clearModifierState(): void {
-    this.ctrlModifierDown = false
-    this.altModifierDown = false
-    this.winModifierDown = false
-    this.rightCtrlModifierDown = false
-    this.rightAltModifierDown = false
-    this.rightWinModifierDown = false
-    this.leftShiftModifierDown = false
-    this.rightShiftModifierDown = false
-    this.remoteShortcutPrintableKeysDown = []
-    this.shortcutSyntheticModifiers = []
-    this.remotePressedScancodes = []
-  }
-
   private clearPointerState(): void {
     this.cancelLongPressTimer()
     this.pendingTouchActive = false
@@ -1167,7 +1100,6 @@ struct Index {
 
   private releaseActiveModifiers(): void {
     if (!this.isConnected()) {
-      this.clearModifierState()
       return
     }
 
@@ -1179,94 +1111,6 @@ struct Index {
     } catch (error) {
       this.appendLog(`Native release all keys failed: ${JSON.stringify(error)}`)
     }
-    this.clearModifierState()
-  }
-
-  private mapArkKeyCodeToRdpScancode(keyCode: number): number {
-    if (keyCode >= OH_KEYCODE_A && keyCode <= OH_KEYCODE_Z) {
-      const letterScancodes: number[] = [
-        0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32,
-        0x31, 0x18, 0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C
-      ]
-      return letterScancodes[keyCode - OH_KEYCODE_A]
-    }
-    if (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) {
-      const digitScancodes: number[] = [0x0B, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A]
-      return digitScancodes[keyCode - OH_KEYCODE_0]
-    }
-    if (keyCode >= OH_KEYCODE_F1 && keyCode <= OH_KEYCODE_F12) {
-      if (keyCode <= OH_KEYCODE_F1 + 9) {
-        return RDP_SCANCODE_F1 + keyCode - OH_KEYCODE_F1
-      }
-      if (keyCode === OH_KEYCODE_F1 + 10) {
-        return RDP_SCANCODE_F11
-      }
-      return RDP_SCANCODE_F12
-    }
-    if (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) {
-      const numpadScancodes: number[] = [0x52, 0x4F, 0x50, 0x51, 0x4B, 0x4C, 0x4D, 0x47, 0x48, 0x49]
-      return numpadScancodes[keyCode - OH_KEYCODE_NUMPAD_0]
-    }
-
-    const keyMap: Map<number, number> = new Map<number, number>([
-      [OH_KEYCODE_ESCAPE, RDP_SCANCODE_ESCAPE],
-      [OH_KEYCODE_TAB, RDP_SCANCODE_TAB],
-      [OH_KEYCODE_ENTER, RDP_SCANCODE_ENTER],
-      [OH_KEYCODE_DEL, RDP_SCANCODE_BACKSPACE],
-      [OH_KEYCODE_FORWARD_DEL, RDP_SCANCODE_DELETE],
-      [OH_KEYCODE_SPACE, 0x39],
-      [OH_KEYCODE_PAGE_UP, RDP_SCANCODE_PAGE_UP],
-      [OH_KEYCODE_PAGE_DOWN, RDP_SCANCODE_PAGE_DOWN],
-      [OH_KEYCODE_INSERT, RDP_SCANCODE_INSERT],
-      [OH_KEYCODE_DPAD_UP, RDP_SCANCODE_UP],
-      [OH_KEYCODE_DPAD_DOWN, RDP_SCANCODE_DOWN],
-      [OH_KEYCODE_DPAD_LEFT, RDP_SCANCODE_LEFT],
-      [OH_KEYCODE_DPAD_RIGHT, RDP_SCANCODE_RIGHT],
-      [OH_KEYCODE_MOVE_HOME, RDP_SCANCODE_HOME],
-      [OH_KEYCODE_MOVE_END, RDP_SCANCODE_END],
-      [OH_KEYCODE_CTRL_LEFT, RDP_SCANCODE_LCONTROL],
-      [OH_KEYCODE_CTRL_RIGHT, RDP_SCANCODE_RCONTROL],
-      [OH_KEYCODE_ALT_LEFT, RDP_SCANCODE_LMENU],
-      [OH_KEYCODE_ALT_RIGHT, RDP_SCANCODE_RMENU],
-      [OH_KEYCODE_META_LEFT, RDP_SCANCODE_LWIN],
-      [OH_KEYCODE_META_RIGHT, RDP_SCANCODE_RWIN],
-      [OH_KEYCODE_SHIFT_LEFT, RDP_SCANCODE_LSHIFT],
-      [OH_KEYCODE_SHIFT_RIGHT, RDP_SCANCODE_RSHIFT],
-      [OH_KEYCODE_GRAVE, 0x29],
-      [OH_KEYCODE_MINUS, 0x0C],
-      [OH_KEYCODE_EQUALS, 0x0D],
-      [OH_KEYCODE_LEFT_BRACKET, 0x1A],
-      [OH_KEYCODE_RIGHT_BRACKET, 0x1B],
-      [OH_KEYCODE_BACKSLASH, 0x2B],
-      [OH_KEYCODE_SEMICOLON, 0x27],
-      [OH_KEYCODE_APOSTROPHE, 0x28],
-      [OH_KEYCODE_COMMA, 0x33],
-      [OH_KEYCODE_PERIOD, 0x34],
-      [OH_KEYCODE_SLASH, 0x35],
-      [OH_KEYCODE_NUMPAD_DIVIDE, 0x0135],
-      [OH_KEYCODE_NUMPAD_MULTIPLY, 0x37],
-      [OH_KEYCODE_NUMPAD_SUBTRACT, 0x4A],
-      [OH_KEYCODE_NUMPAD_ADD, 0x4E],
-      [OH_KEYCODE_NUMPAD_DOT, 0x53],
-      [OH_KEYCODE_NUMPAD_ENTER, 0x011C]
-    ])
-    return keyMap.get(keyCode) ?? 0
-  }
-
-  private mapRdpScancodeToPlatformKeyCode(scancode: number): number {
-    const keyMap: Map<number, number> = new Map<number, number>([
-      [RDP_SCANCODE_BACKSPACE, OH_KEYCODE_DEL],
-      [RDP_SCANCODE_DELETE, OH_KEYCODE_FORWARD_DEL],
-      [RDP_SCANCODE_LCONTROL, OH_KEYCODE_CTRL_LEFT],
-      [RDP_SCANCODE_RCONTROL, OH_KEYCODE_CTRL_RIGHT],
-      [RDP_SCANCODE_LMENU, OH_KEYCODE_ALT_LEFT],
-      [RDP_SCANCODE_RMENU, OH_KEYCODE_ALT_RIGHT],
-      [RDP_SCANCODE_LWIN, OH_KEYCODE_META_LEFT],
-      [RDP_SCANCODE_RWIN, OH_KEYCODE_META_RIGHT],
-      [RDP_SCANCODE_LSHIFT, OH_KEYCODE_SHIFT_LEFT],
-      [RDP_SCANCODE_RSHIFT, OH_KEYCODE_SHIFT_RIGHT]
-    ])
-    return keyMap.get(scancode) ?? 0
   }
 
   private isPrintableArkKeyCode(keyCode: number): boolean {
@@ -1432,69 +1276,19 @@ struct Index {
   }
 
   private isCtrlModifierPressed(event: KeyEvent): boolean {
-    return this.ctrlModifierDown || this.rightCtrlModifierDown ||
-      this.isAnyModifierPressed(event, ['ctrl'])
+    return this.isAnyModifierPressed(event, ['ctrl'])
   }
 
   private isAltModifierPressed(event: KeyEvent): boolean {
-    return this.altModifierDown || this.rightAltModifierDown ||
-      this.isAnyModifierPressed(event, ['alt'])
+    return this.isAnyModifierPressed(event, ['alt'])
   }
 
   private isWinModifierPressed(event: KeyEvent): boolean {
-    return this.winModifierDown || this.rightWinModifierDown
-  }
-
-  private updateModifierState(scancode: number, down: boolean): void {
-    if (scancode === RDP_SCANCODE_LCONTROL) {
-      this.ctrlModifierDown = down
-    } else if (scancode === RDP_SCANCODE_RCONTROL) {
-      this.rightCtrlModifierDown = down
-    } else if (scancode === RDP_SCANCODE_LMENU) {
-      this.altModifierDown = down
-    } else if (scancode === RDP_SCANCODE_RMENU) {
-      this.rightAltModifierDown = down
-    } else if (scancode === RDP_SCANCODE_LWIN) {
-      this.winModifierDown = down
-    } else if (scancode === RDP_SCANCODE_RWIN) {
-      this.rightWinModifierDown = down
-    } else if (scancode === RDP_SCANCODE_LSHIFT) {
-      this.leftShiftModifierDown = down
-    } else if (scancode === RDP_SCANCODE_RSHIFT) {
-      this.rightShiftModifierDown = down
-    }
-  }
-
-  private isRemoteScancodePressed(scancode: number): boolean {
-    return this.remotePressedScancodes.indexOf(scancode) >= 0
-  }
-
-  private setRemoteScancodePressed(scancode: number, down: boolean): void {
-    const index = this.remotePressedScancodes.indexOf(scancode)
-    if (down) {
-      if (index < 0) {
-        this.remotePressedScancodes.push(scancode)
-      }
-      return
-    }
-    if (index >= 0) {
-      this.remotePressedScancodes.splice(index, 1)
-    }
-  }
-
-  private sendMappedKeyEvent(keyCode: number, scancode: number, down: boolean,
-    repeat: boolean = false, event?: KeyEvent): boolean {
-    const sent = this.sendPlatformKeyEvent(keyCode, down, false, repeat, event)
-    if (sent) {
-      this.updateModifierState(scancode, down)
-      this.setRemoteScancodePressed(scancode, down)
-    }
-    return sent
+    return this.isAnyModifierPressed(event, ['meta', 'win'])
   }
 
   private isShiftModifierPressed(event: KeyEvent): boolean {
-    return this.leftShiftModifierDown || this.rightShiftModifierDown ||
-      this.isAnyModifierPressed(event, ['shift'])
+    return this.isAnyModifierPressed(event, ['shift'])
   }
 
   private hasRemoteShortcutModifier(event: KeyEvent): boolean {
@@ -1502,176 +1296,8 @@ struct Index {
       this.isWinModifierPressed(event) || this.isShiftModifierPressed(event)
   }
 
-  private isTrackedRemoteShortcutPrintableKey(keyCode: number): boolean {
-    return this.remoteShortcutPrintableKeysDown.indexOf(keyCode) >= 0
-  }
-
-  private setRemoteShortcutPrintableKeyState(keyCode: number, down: boolean): void {
-    const index = this.remoteShortcutPrintableKeysDown.indexOf(keyCode)
-    if (down) {
-      if (index < 0) {
-        this.remoteShortcutPrintableKeysDown.push(keyCode)
-      }
-      return
-    }
-    if (index >= 0) {
-      this.remoteShortcutPrintableKeysDown.splice(index, 1)
-    }
-  }
-
   private isFunctionKey(keyCode: number): boolean {
     return keyCode >= OH_KEYCODE_F1 && keyCode <= OH_KEYCODE_F12
-  }
-
-  private isModifierScancode(scancode: number): boolean {
-    return scancode === RDP_SCANCODE_LCONTROL || scancode === RDP_SCANCODE_RCONTROL ||
-      scancode === RDP_SCANCODE_LMENU || scancode === RDP_SCANCODE_RMENU ||
-      scancode === RDP_SCANCODE_LWIN || scancode === RDP_SCANCODE_RWIN ||
-      scancode === RDP_SCANCODE_LSHIFT || scancode === RDP_SCANCODE_RSHIFT
-  }
-
-  private isDeleteScancode(scancode: number): boolean {
-    return scancode === RDP_SCANCODE_BACKSPACE || scancode === RDP_SCANCODE_DELETE
-  }
-
-  private addScancode(scancodes: number[], scancode: number): void {
-    if (scancode > 0 && scancodes.indexOf(scancode) < 0) {
-      scancodes.push(scancode)
-    }
-  }
-
-  private getActiveShortcutModifierScancodes(event: KeyEvent): number[] {
-    const scancodes: number[] = []
-    if (this.ctrlModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_LCONTROL)
-    }
-    if (this.rightCtrlModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_RCONTROL)
-    }
-    if (!this.ctrlModifierDown && !this.rightCtrlModifierDown && this.isCtrlModifierPressed(event)) {
-      this.addScancode(scancodes, RDP_SCANCODE_LCONTROL)
-    }
-
-    if (this.altModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_LMENU)
-    }
-    if (this.rightAltModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_RMENU)
-    }
-    if (!this.altModifierDown && !this.rightAltModifierDown && this.isAltModifierPressed(event)) {
-      this.addScancode(scancodes, RDP_SCANCODE_LMENU)
-    }
-
-    if (this.winModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_LWIN)
-    }
-    if (this.rightWinModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_RWIN)
-    }
-    if (!this.winModifierDown && !this.rightWinModifierDown && this.isWinModifierPressed(event)) {
-      this.addScancode(scancodes, RDP_SCANCODE_LWIN)
-    }
-
-    if (this.leftShiftModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_LSHIFT)
-    }
-    if (this.rightShiftModifierDown) {
-      this.addScancode(scancodes, RDP_SCANCODE_RSHIFT)
-    }
-    if (!this.leftShiftModifierDown && !this.rightShiftModifierDown && this.isShiftModifierPressed(event)) {
-      this.addScancode(scancodes, RDP_SCANCODE_LSHIFT)
-    }
-    return scancodes
-  }
-
-  private rememberShortcutSyntheticModifier(keyCode: number, scancode: number): void {
-    for (let i = 0; i < this.shortcutSyntheticModifiers.length; i++) {
-      const item = this.shortcutSyntheticModifiers[i]
-      if (item.keyCode === keyCode && item.scancode === scancode) {
-        return
-      }
-    }
-    this.shortcutSyntheticModifiers.push({ keyCode: keyCode, scancode: scancode })
-  }
-
-  private ensureShortcutModifiersPressed(keyCode: number, modifierScancodes: number[]): boolean {
-    let sent = true
-    for (let i = 0; i < modifierScancodes.length; i++) {
-      const modifierScancode = modifierScancodes[i]
-      if (this.isRemoteScancodePressed(modifierScancode)) {
-        continue
-      }
-      const modifierKeyCode = this.mapRdpScancodeToPlatformKeyCode(modifierScancode)
-      sent = modifierKeyCode > 0 &&
-        this.sendMappedKeyEvent(modifierKeyCode, modifierScancode, true, false) && sent
-      this.rememberShortcutSyntheticModifier(keyCode, modifierScancode)
-    }
-    return sent
-  }
-
-  private releaseShortcutSyntheticModifiers(keyCode: number): boolean {
-    let sent = true
-    for (let i = this.shortcutSyntheticModifiers.length - 1; i >= 0; i--) {
-      const item = this.shortcutSyntheticModifiers[i]
-      if (item.keyCode !== keyCode) {
-        continue
-      }
-      this.shortcutSyntheticModifiers.splice(i, 1)
-      if (this.isRemoteScancodePressed(item.scancode)) {
-        const modifierKeyCode = this.mapRdpScancodeToPlatformKeyCode(item.scancode)
-        sent = modifierKeyCode > 0 &&
-          this.sendMappedKeyEvent(modifierKeyCode, item.scancode, false, false) && sent
-      }
-    }
-    return sent
-  }
-
-  private formatScancodeList(scancodes: number[]): string {
-    const parts: string[] = []
-    for (let i = 0; i < scancodes.length; i++) {
-      parts.push(`0x${scancodes[i].toString(16)}`)
-    }
-    return parts.join(',')
-  }
-
-  private handleShortcutKeyEvent(event: KeyEvent, scancode: number, printable: boolean,
-    down: boolean, repeat: boolean, trackedShortcut: boolean): boolean {
-    if (scancode <= 0 || this.isModifierScancode(scancode)) {
-      return false
-    }
-
-    const modifierScancodes = this.getActiveShortcutModifierScancodes(event)
-    if (modifierScancodes.length <= 0 && !trackedShortcut) {
-      return false
-    }
-
-    if (down) {
-      const modifiersSent = this.ensureShortcutModifiersPressed(event.keyCode, modifierScancodes)
-      const keySent = this.sendMappedKeyEvent(event.keyCode, scancode, true, repeat, event)
-      if (keySent && printable) {
-        this.setRemoteShortcutPrintableKeyState(event.keyCode, true)
-        this.rememberHardwareTextInputSuppression(event)
-      }
-      this.logInputEvent('key.shortcut',
-        `code=${event.keyCode} scancode=0x${scancode.toString(16)} down=true repeat=${repeat} ` +
-        `modifiers=${this.formatScancodeList(modifierScancodes)} sent=${modifiersSent && keySent}`,
-        true)
-      return true
-    }
-
-    let keySent = true
-    if (this.isRemoteScancodePressed(scancode)) {
-      keySent = this.sendMappedKeyEvent(event.keyCode, scancode, false, false, event)
-    }
-    if (printable) {
-      this.setRemoteShortcutPrintableKeyState(event.keyCode, false)
-    }
-    const modifiersReleased = this.releaseShortcutSyntheticModifiers(event.keyCode)
-    this.logInputEvent('key.shortcut',
-      `code=${event.keyCode} scancode=0x${scancode.toString(16)} down=false ` +
-      `sent=${keySent && modifiersReleased}`,
-      true)
-    return true
   }
 
   private keyEventId(event: KeyEvent): string {
@@ -1696,29 +1322,6 @@ struct Index {
 
   private hasDispatchedRemoteKeyEvent(event: KeyEvent): boolean {
     return this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event)) >= 0
-  }
-
-  private sendRepeatKeyDown(keyCode: number, scancode: number, event: KeyEvent): boolean {
-    const sent = this.sendMappedKeyEvent(keyCode, scancode, true, true, event)
-    this.logInputEvent('key.repeat',
-      `down scancode=0x${scancode.toString(16)} sent=${sent}`,
-      true)
-    return sent
-  }
-
-  private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
-    trackedShortcut: boolean, hardwarePrintable: boolean, fromInputBridge: boolean, repeat: boolean): void {
-    if (!shortcut && !trackedShortcut && !hardwarePrintable && !this.isFunctionKey(event.keyCode) &&
-      (scancode <= 0 || printable)) {
-      return
-    }
-    this.logInputEvent('key',
-      `code=${event.keyCode} type=${event.type} scancode=${scancode} printable=${printable} ` +
-      `shortcut=${shortcut} tracked=${trackedShortcut} hardware=${hardwarePrintable} ` +
-      `repeat=${repeat} bridge=${fromInputBridge} ` +
-      `ctrl=${this.isCtrlModifierPressed(event)} alt=${this.isAltModifierPressed(event)} ` +
-      `win=${this.isWinModifierPressed(event)} shift=${this.isShiftModifierPressed(event)}`,
-      true)
   }
 
   private getEventUnicode(event: KeyEvent): number {
@@ -1774,8 +1377,7 @@ struct Index {
     }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
-    const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
-    return !printable || hardwarePrintable || this.hasRemoteShortcutModifier(event) || trackedShortcut
+    return !printable || hardwarePrintable || this.hasRemoteShortcutModifier(event)
   }
 
   private handleRemoteKeyDispatch(event: KeyEvent, fromInputBridge: boolean): boolean {
@@ -1841,14 +1443,8 @@ struct Index {
     const down = event.type === KeyType.Down
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
-    let shortcut = this.hasRemoteShortcutModifier(event)
-    const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
-    if (!down && trackedShortcut) {
-      shortcut = true
-    }
+    const shortcut = this.hasRemoteShortcutModifier(event)
     const platformKey = this.isRemotePlatformKeyCode(event.keyCode)
-    const scancode = platformKey ? this.mapArkKeyCodeToRdpScancode(event.keyCode) : 0
-    const repeat = down && scancode > 0 && this.isRemoteScancodePressed(scancode)
     const surfacePrintableKeyEvent = printable && !fromInputBridge
     if (!printable || shortcut || hardwarePrintable || this.isFunctionKey(event.keyCode)) {
       this.logInputEvent('key',
@@ -1863,16 +1459,9 @@ struct Index {
     }
 
     if (platformKey && (!printable || shortcut || hardwarePrintable || surfacePrintableKeyEvent)) {
-      const sent = this.sendPlatformKeyEvent(event.keyCode, down, false, repeat, event)
-      if (sent && scancode > 0) {
-        this.updateModifierState(scancode, down)
-        this.setRemoteScancodePressed(scancode, down)
-      }
+      const sent = this.sendPlatformKeyEvent(event.keyCode, down, false, false, event)
       if (sent && hardwarePrintable) {
         this.rememberHardwareTextInputSuppression(event)
-      }
-      if (sent && printable && shortcut) {
-        this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
       }
       if (sent && this.isDeletePlatformKeyCode(event.keyCode)) {
         this.logInputEvent('key.delete',
