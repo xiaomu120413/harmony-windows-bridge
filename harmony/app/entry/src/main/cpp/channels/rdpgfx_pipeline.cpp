@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <unordered_map>
 
@@ -21,6 +22,8 @@ namespace {
 
 std::atomic_bool g_avc420SurfaceOutputConfigured{false};
 std::atomic_bool g_avc420SurfaceOutputActive{false};
+std::atomic<uint64_t> g_avcSurfaceSubrectSkipCount{0};
+std::atomic<uint64_t> g_avcSurfaceNoDirectCount{0};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
 
@@ -36,6 +39,11 @@ void LogThroughCallbacks(const std::string& line)
     if (callbacks.log != nullptr) {
         callbacks.log(line);
     }
+}
+
+bool ShouldLogAvcSurfaceCounter(uint64_t count)
+{
+    return count == 1 || (count % 300U) == 0;
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -118,6 +126,23 @@ std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
     return "version=" + Hex32(capsSet->version) + " flags=" + Hex32(capsSet->flags);
 }
 
+bool IsFullWindowAvcCommand(const RDPGFX_SURFACE_COMMAND* command, const DecoderSurfaceTarget& target)
+{
+    if (command == nullptr) {
+        return false;
+    }
+    if (command->left != 0 || command->top != 0 || command->width == 0 || command->height == 0) {
+        return false;
+    }
+    if (target.width == 0 || target.height == 0 || command->width != target.width) {
+        return false;
+    }
+
+    const uint32_t heightDelta = target.height > command->height ?
+        target.height - command->height : command->height - target.height;
+    return heightDelta <= 16U;
+}
+
 bool BindAvcSurfaceOutput(const std::string& reason, const RDPGFX_SURFACE_COMMAND* command)
 {
     if (!g_avc420SurfaceOutputConfigured.load()) {
@@ -142,6 +167,21 @@ bool BindAvcSurfaceOutput(const std::string& reason, const RDPGFX_SURFACE_COMMAN
     if (target.window == nullptr || target.width == 0 || target.height == 0) {
         LogThroughCallbacks("AVC surface output activation skipped after " + reason +
             ": XComponent surface unavailable");
+        return false;
+    }
+    if (!IsFullWindowAvcCommand(command, target)) {
+        const uint64_t skipCount =
+            g_avcSurfaceSubrectSkipCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (ShouldLogAvcSurfaceCounter(skipCount)) {
+            LogThroughCallbacks("AVC surface output activation skipped after " + reason +
+                ": command is a sub-rectangle surface update, not a full-window frame; command=" +
+                std::to_string(command == nullptr ? 0 : command->width) + "x" +
+                std::to_string(command == nullptr ? 0 : command->height) + " at " +
+                std::to_string(command == nullptr ? 0 : command->left) + "," +
+                std::to_string(command == nullptr ? 0 : command->top) +
+                " target=" + std::to_string(target.width) + "x" + std::to_string(target.height) +
+                " count=" + std::to_string(skipCount));
+        }
         return false;
     }
 
@@ -269,13 +309,18 @@ UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURF
     if (command != nullptr) {
         RecordRdpgfxSurfaceCommand(*command);
         if (IsH264SurfaceCodec(command->codecId) && !g_avc420SurfaceOutputActive.load()) {
-            if (!BindAvcSurfaceOutput("first " + std::string(RdpgfxCodecName(command->codecId)) +
+            if (!BindAvcSurfaceOutput(std::string(RdpgfxCodecName(command->codecId)) +
                 " surface command", command)) {
-                LogThroughCallbacks("AVC surface command reached FreeRDP without direct surface output: codec=" +
-                    std::string(RdpgfxCodecName(command->codecId)) +
-                    " surface=" + std::to_string(command->surfaceId) +
-                    " size=" + std::to_string(command->width) + "x" +
-                    std::to_string(command->height));
+                const uint64_t noDirectCount =
+                    g_avcSurfaceNoDirectCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (ShouldLogAvcSurfaceCounter(noDirectCount)) {
+                    LogThroughCallbacks("AVC surface command reached FreeRDP without direct surface output: codec=" +
+                        std::string(RdpgfxCodecName(command->codecId)) +
+                        " surface=" + std::to_string(command->surfaceId) +
+                        " size=" + std::to_string(command->width) + "x" +
+                        std::to_string(command->height) +
+                        " count=" + std::to_string(noDirectCount));
+                }
             }
         }
     }
@@ -361,6 +406,8 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
 {
     g_avc420SurfaceOutputConfigured.store(false);
     g_avc420SurfaceOutputActive.store(false);
+    g_avcSurfaceSubrectSkipCount.store(0);
+    g_avcSurfaceNoDirectCount.store(0);
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     }
@@ -410,6 +457,8 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
 
     g_avc420SurfaceOutputConfigured.store(true);
     g_avc420SurfaceOutputActive.store(false);
+    g_avcSurfaceSubrectSkipCount.store(0);
+    g_avcSurfaceNoDirectCount.store(0);
     log("OHOS AVCodec output surface armed: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
         " mode=deferred-until-avc-surface-command avc444=primary-avc420-surface gdi=active-before-h264");
