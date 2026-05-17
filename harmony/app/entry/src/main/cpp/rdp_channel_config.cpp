@@ -13,6 +13,10 @@
 namespace rdp_bridge {
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+namespace {
+constexpr uint32_t kFilterRdpgfxCapVersion8 = 0x00000001U;
+}
+
 bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
     const std::function<void(const std::string&)>& log, std::string& error)
 {
@@ -43,7 +47,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
 {
     const bool h264Requested = graphicsConfig.enabled && graphicsConfig.h264;
     const bool avc444Requested = false;
-    const uint32_t gfxCapsFilter = 0;
+    const uint32_t gfxCapsFilter = h264Requested ? kFilterRdpgfxCapVersion8 : 0;
 
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_SupportDisplayControl, true, "SupportDisplayControl", error) ||

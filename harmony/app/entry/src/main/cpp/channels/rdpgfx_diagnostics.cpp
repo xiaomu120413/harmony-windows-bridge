@@ -156,18 +156,23 @@ void ResetRdpgfxDiagnosticsStats()
 
 void RecordRdpgfxCapsConfirm(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 {
-    g_rdpgfxCapsConfirmCount.fetch_add(1);
     if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
+        const uint32_t total = g_rdpgfxCapsConfirmCount.fetch_add(1) + 1;
         g_rdpgfxConfirmedCapsMode.store(RDPEGFX_CONFIRMED_NONE);
         g_rdpgfxConfirmedCapsVersion.store(0);
         g_rdpgfxConfirmedCapsFlags.store(0);
-        EmitHilogInfo("rdpgfx caps confirm: mode=none capsConfirm=null");
+        EmitHilogInfo("rdpgfx caps confirm: mode=none capsConfirm=null confirms=" +
+            std::to_string(total));
         return;
     }
 
     const RDPGFX_CAPSET* capsSet = capsConfirm->capsSet;
-    const uint32_t version = capsSet->version;
-    const uint32_t flags = capsSet->flags;
+    RecordRdpgfxCapsConfirmValues(capsSet->version, capsSet->flags, "callback");
+}
+
+void RecordRdpgfxCapsConfirmValues(uint32_t version, uint32_t flags, const char* source)
+{
+    const uint32_t total = g_rdpgfxCapsConfirmCount.fetch_add(1) + 1;
     const bool avc420 = version == RDPGFX_CAPVERSION_81 &&
         (flags & RDPGFX_CAPS_FLAG_AVC420_ENABLED) != 0;
     const bool avc444 = version == RDPGFX_CAPVERSION_101 ||
@@ -181,7 +186,8 @@ void RecordRdpgfxCapsConfirm(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
     EmitHilogInfo("rdpgfx caps confirm: mode=" + std::string(RdpgfxConfirmedModeName(mode)) +
         " version=" + Hex32(version) +
         " flags=" + Hex32(flags) +
-        " confirms=" + std::to_string(g_rdpgfxCapsConfirmCount.load()));
+        " source=" + SafeCString(source) +
+        " confirms=" + std::to_string(total));
 }
 
 void RecordRdpgfxSurfaceCommand(const RDPGFX_SURFACE_COMMAND& command)

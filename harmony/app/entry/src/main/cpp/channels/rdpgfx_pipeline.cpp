@@ -5,6 +5,7 @@
 #include "string_utils.h"
 
 #include <atomic>
+#include <cstddef>
 #include <mutex>
 #include <unordered_map>
 
@@ -46,6 +47,39 @@ struct RdpgfxDiagnosticsHookState {
 
 std::mutex g_rdpgfxHooksMutex;
 std::unordered_map<RdpgfxClientContext*, RdpgfxDiagnosticsHookState> g_rdpgfxHooks;
+
+struct RdpgfxPluginCapsSnapshot {
+    GENERIC_DYNVC_PLUGIN base;
+    void* zgfx;
+    UINT32 unacknowledgedFrames;
+    UINT32 totalDecodedFrames;
+    UINT64 startDecodingTime;
+    BOOL suspendFrameAcks;
+    BOOL sendFrameAcks;
+    void* surfaceTable;
+    UINT16 maxCacheSlots;
+    void* cacheSlots[25600];
+    void* persistent;
+    rdpContext* rdpcontext;
+    RDPGFX_CAPSET connectionCaps;
+    RdpgfxClientContext* context;
+};
+
+void RecordRdpgfxConnectionCapsSnapshot(RdpgfxClientContext* gfx)
+{
+    if (gfx == nullptr || gfx->handle == nullptr) {
+        return;
+    }
+
+    const auto* plugin = static_cast<const RdpgfxPluginCapsSnapshot*>(gfx->handle);
+    if (plugin->connectionCaps.version == 0) {
+        LogThroughCallbacks("RDPGFX connection caps snapshot unavailable: version=0");
+        return;
+    }
+
+    RecordRdpgfxCapsConfirmValues(plugin->connectionCaps.version, plugin->connectionCaps.flags,
+        "connection-caps-snapshot");
+}
 
 bool RdpgfxCapsConfirmAvc420(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 {
@@ -384,6 +418,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     if (state.capsConfirm != nullptr) {
         gfx->CapsConfirm = HarmonyRdpgfxCapsConfirm;
     }
+    RecordRdpgfxConnectionCapsSnapshot(gfx);
 }
 
 void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)

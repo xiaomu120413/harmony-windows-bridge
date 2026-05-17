@@ -20,6 +20,7 @@ void RecordRdpgfxStartFrame();
 void RecordRdpgfxEndFrame();
 void ResetRdpgfxDiagnosticsStats();
 void RecordRdpgfxCapsConfirm(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm);
+void RecordRdpgfxCapsConfirmValues(uint32_t version, uint32_t flags, const char* source);
 void RecordRdpgfxSurfaceCommand(const RDPGFX_SURFACE_COMMAND& command);
 #endif
 

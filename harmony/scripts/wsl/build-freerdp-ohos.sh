@@ -498,8 +498,11 @@ build_ffmpeg() {
 }
 
 freerdp_feature_profile() {
+  local freerdp_commit="unknown"
+  freerdp_commit="$(git -C "$FREE_RDP_SRC" rev-parse HEAD 2>/dev/null || true)"
   {
     printf 'profile=%s\n' "$FREERDP_FEATURE_PROFILE"
+    printf 'freerdp_commit=%s\n' "$freerdp_commit"
     printf 'uriparser=%s:%s\n' "$(cmake_bool "$ENABLE_URIPARSER")" "$URIPARSER_VERSION"
     printf 'openh264=%s:%s\n' "$(cmake_bool "$ENABLE_OPENH264")" "$OPENH264_VERSION"
     printf 'ffmpeg=%s:%s\n' "$(cmake_bool "$ENABLE_FFMPEG")" "$FFMPEG_VERSION"
