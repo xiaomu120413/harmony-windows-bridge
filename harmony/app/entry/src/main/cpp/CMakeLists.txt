@@ -35,6 +35,7 @@ add_library(entry SHARED
     probe_utils.cpp
     rdp_channel_config.cpp
     surface/latest_frame_renderer.cpp
+    surface/surface_bridge.cpp
     string_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
