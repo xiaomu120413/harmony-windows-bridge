@@ -17,6 +17,10 @@
 #include <freerdp/error.h>
 #endif
 
+#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+#include <client/OHOS/ohos_graphics.h>
+#endif
+
 namespace rdp_bridge {
 namespace {
 
@@ -93,8 +97,8 @@ void RecordRdpgfxConnectionCapsSnapshot(RdpgfxClientContext* gfx)
 bool RdpgfxCapsConfirmAvc420(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 {
     return capsConfirm != nullptr && capsConfirm->capsSet != nullptr &&
-        capsConfirm->capsSet->version == RDPGFX_CAPVERSION_81 &&
-        (capsConfirm->capsSet->flags & RDPGFX_CAPS_FLAG_AVC420_ENABLED) != 0;
+        freerdp_ohos_rdpgfx_caps_confirm_is_avc420(
+            capsConfirm->capsSet->version, capsConfirm->capsSet->flags);
 }
 
 bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
@@ -103,17 +107,13 @@ bool RdpgfxCapsConfirmAvc444(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
         return false;
     }
 
-    const uint32_t version = capsConfirm->capsSet->version;
-    const uint32_t flags = capsConfirm->capsSet->flags;
-    return version == RDPGFX_CAPVERSION_101 ||
-        (version >= RDPGFX_CAPVERSION_10 && (flags & RDPGFX_CAPS_FLAG_AVC_DISABLED) == 0);
+    return freerdp_ohos_rdpgfx_caps_confirm_is_avc444(
+        capsConfirm->capsSet->version, capsConfirm->capsSet->flags);
 }
 
 bool IsH264SurfaceCodec(uint32_t codecId)
 {
-    return codecId == RDPGFX_CODECID_AVC420 ||
-        codecId == RDPGFX_CODECID_AVC444 ||
-        codecId == RDPGFX_CODECID_AVC444v2;
+    return freerdp_ohos_rdpgfx_codec_is_h264(codecId);
 }
 
 std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
@@ -131,16 +131,8 @@ bool IsFullWindowAvcCommand(const RDPGFX_SURFACE_COMMAND* command, const Decoder
     if (command == nullptr) {
         return false;
     }
-    if (command->left != 0 || command->top != 0 || command->width == 0 || command->height == 0) {
-        return false;
-    }
-    if (target.width == 0 || target.height == 0 || command->width != target.width) {
-        return false;
-    }
-
-    const uint32_t heightDelta = target.height > command->height ?
-        target.height - command->height : command->height - target.height;
-    return heightDelta <= 16U;
+    return freerdp_ohos_rdpgfx_surface_command_is_full_window(
+        command->left, command->top, command->width, command->height, target.width, target.height);
 }
 
 bool BindAvcSurfaceOutput(const std::string& reason, const RDPGFX_SURFACE_COMMAND* command)

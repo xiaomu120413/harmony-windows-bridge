@@ -21,6 +21,10 @@
 #include <winpr/synch.h>
 #endif
 
+#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+#include <client/OHOS/ohos_graphics.h>
+#endif
+
 namespace rdp_bridge {
 namespace {
 
@@ -53,15 +57,17 @@ UserParts SplitDomainUsername(const std::string& value)
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-constexpr uint32_t kH264DesktopAlignment = 16;
-
 uint32_t AlignDownToMultiple(uint32_t value, uint32_t alignment, uint32_t minimum)
 {
+#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+    return freerdp_ohos_graphics_align_down_to_multiple(value, alignment, minimum);
+#else
     value -= value % alignment;
     if (value >= minimum) {
         return value;
     }
     return minimum + ((alignment - (minimum % alignment)) % alignment);
+#endif
 }
 
 void StopRenderPipeline(const RdpSessionCallbacks& callbacks)
@@ -80,8 +86,16 @@ void AlignH264DesktopSize(const GraphicsPipelineConfig& graphicsConfig, uint32_t
 
     const uint32_t requestedWidth = width;
     const uint32_t requestedHeight = height;
+#if defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+    FREERDP_OHOS_GRAPHICS_CONFIG nativeConfig = {};
+    nativeConfig.enabled = graphicsConfig.enabled;
+    nativeConfig.h264 = graphicsConfig.h264;
+    freerdp_ohos_graphics_align_h264_desktop_size(&nativeConfig, &width, &height);
+#else
+    constexpr uint32_t kH264DesktopAlignment = 16;
     width = AlignDownToMultiple(width, kH264DesktopAlignment, 320U);
     height = AlignDownToMultiple(height, kH264DesktopAlignment, 240U);
+#endif
 
     if ((width != requestedWidth || height != requestedHeight) && log) {
         log("FreeRDP H264 desktop size aligned to 16px dimensions: " +

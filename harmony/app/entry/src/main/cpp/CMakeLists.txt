@@ -34,6 +34,7 @@ add_library(entry SHARED
     frame_utils.cpp
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_clipboard.c
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.c
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_graphics.c
     input/ohos_keyboard_adapter.cpp
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.c
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.c
