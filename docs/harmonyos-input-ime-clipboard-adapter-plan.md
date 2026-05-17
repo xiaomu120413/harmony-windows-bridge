@@ -197,6 +197,40 @@ harmony/app/entry/src/main/cpp/channels/clipboard_format.cpp
 
 ArkTS 不实现 RDP 剪贴板语义。Ctrl+C/V 是键盘事件；剪贴板同步是 `cliprdr` 通道事件。
 
+后续为了更接近 FreeRDP Android、Wayland、X11 的结构，可以把这一组整理成 `client/OHOS` clipboard backend。这个动作不应该和当前键盘迁移混在一起，建议在文本剪贴板稳定后单独做。
+
+短期保留当前位置：
+
+```text
+harmony/app/entry/src/main/cpp/channels/clipboard_*.cpp
+```
+
+中期整理为 app 内的 OHOS client backend 目录，先不移动到 FreeRDP 子模块：
+
+```text
+harmony/app/entry/src/main/cpp/client/ohos/ohos_cliprdr.cpp
+harmony/app/entry/src/main/cpp/client/ohos/ohos_cliprdr.h
+harmony/app/entry/src/main/cpp/client/ohos/ohos_pasteboard.cpp
+harmony/app/entry/src/main/cpp/client/ohos/ohos_pasteboard.h
+harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.cpp
+harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.h
+```
+
+长期如果 FreeRDP 子模块需要形成完整 OHOS client，可再迁移到：
+
+```text
+harmony/third_party/FreeRDP/client/OHOS/ohos_cliprdr.c
+harmony/third_party/FreeRDP/client/OHOS/ohos_cliprdr.h
+```
+
+迁移原则：
+
+- ETS 仍只负责权限和用户提示。
+- `OH_Pasteboard` backend 可以进入 OHOS client backend。
+- `CliprdrClientContext` 回调注册、format list、data request/response 都放在 OHOS client backend。
+- N-API session runner 只负责初始化/销毁 OHOS client backend，不直接写剪贴板协议细节。
+- 第一轮只整理文件边界和接口，不扩大功能范围到 HTML、图片、文件剪贴板。
+
 ### FreeRDP Core / WinPR
 
 本阶段不改 FreeRDP core，除非发现真实平台兼容 bug。
@@ -514,6 +548,49 @@ void ClipboardPasteboard::HandlePasteboardChanged(Pasteboard_NotifyType type)
 
 - 中。第一阶段只支持纯文本；HTML、图片、文件剪贴板后续另做。
 
+### Phase 8：整理为 OHOS client clipboard backend
+
+修改范围：
+
+- 新增 app 内 `client/ohos/` 目录。
+- 将现有 `channels/clipboard_*` 按职责迁移或拆分到 `ohos_cliprdr`、`ohos_pasteboard`、`ohos_clipboard_format`。
+- `freerdp_session_runner.cpp` 只持有一个 `OhosClipboardBackend` 生命周期对象。
+- `rdp_channel_config.cpp` 仍只负责请求 `cliprdr` channel，不写回调细节。
+- 保持 ETS 权限逻辑不变。
+
+目标接口：
+
+```cpp
+class OhosClipboardBackend {
+public:
+    bool Initialize(rdpContext* context, FreerdpRuntimeApi& api, const LogFn& log, std::string& error);
+    void Uninitialize();
+};
+```
+
+目标目录：
+
+```text
+harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_backend.cpp
+harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_backend.h
+harmony/app/entry/src/main/cpp/client/ohos/ohos_cliprdr.cpp
+harmony/app/entry/src/main/cpp/client/ohos/ohos_pasteboard.cpp
+harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.cpp
+```
+
+验收：
+
+- 迁移前后的 Windows -> HarmonyOS 文本复制行为一致。
+- 迁移前后的 HarmonyOS -> Windows 文本粘贴行为一致。
+- `freerdp_session_runner.cpp` 不再依赖具体 clipboard message/format 细节。
+- 日志前缀统一为 `ohos.cliprdr` 或 `ohos.pasteboard`。
+- 不改变 HAP 权限声明，不新增无关权限。
+
+风险：
+
+- 中。纯文件迁移容易引入 CMake 链接、include path、生命周期顺序问题。
+- 中。如果后续直接迁入 FreeRDP 子模块，需要处理 OHOS Pasteboard 头文件和 FreeRDP CMake 对 HarmonyOS SDK 的发现方式。
+
 ## 5. 执行顺序
 
 推荐顺序：
@@ -525,6 +602,7 @@ void ClipboardPasteboard::HandlePasteboardChanged(Pasteboard_NotifyType type)
 5. 增加 native pressed-key table 和 repeat。
 6. 清理 IME 边界，移除硬件删除兜底。
 7. 复测并补强文本剪贴板日志。
+8. 文本剪贴板稳定后，单独整理为 OHOS client clipboard backend。
 
 每个阶段完成后单独提交，并报告完成度、验证结果、遗留风险。
 
@@ -595,4 +673,3 @@ IME：
 下一步：
 提交：
 ```
-
