@@ -32,6 +32,7 @@ add_library(entry SHARED
     freerdp_runtime.cpp
     graphics_config.cpp
     module_init.cpp
+    native_bridge_context.cpp
     net_utils.cpp
     napi_event_sink.cpp
     napi_exports.cpp

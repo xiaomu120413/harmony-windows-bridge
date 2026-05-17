@@ -1,356 +1,23 @@
 #include "napi_exports.h"
 
 #include "napi/native_api.h"
+#include "native_bridge_context.h"
 #include "bridge_types.h"
-#include "bridge_log.h"
-#include "certificate_policy.h"
-#include "frame_utils.h"
 #include "freerdp_gdi_bridge.h"
-#include "freerdp_runtime.h"
-#include "graphics_config.h"
 #include "channels/audio_diagnostics.h"
-#include "channels/clipboard_bridge.h"
 #include "channels/rdpgfx_diagnostics.h"
-#include "channels/rdpgfx_pipeline.h"
-#include "surface/avc444_surface_pool.h"
-#include "surface/gpu_rgba_renderer.h"
-#include "surface/latest_frame_renderer.h"
-#include "surface/surface_bridge.h"
 #include "napi_event_sink.h"
 #include "napi_utils.h"
-#include "net_utils.h"
 #include "probe_utils.h"
-#include "rdp_channel_config.h"
-#include "rdp_session_core.h"
-#include "string_utils.h"
 
 #include <algorithm>
-#include <atomic>
-#include <cctype>
-#include <cerrno>
-#include <chrono>
-#include <condition_variable>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <deque>
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <functional>
-#include <iomanip>
-#include <limits>
-#include <memory>
-#include <mutex>
-#include <netdb.h>
-#include <new>
-#include <poll.h>
 #include <string>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <thread>
-#include <unordered_map>
-#include <unistd.h>
 #include <vector>
-
-#include <ace/xcomponent/native_interface_xcomponent.h>
-#include <EGL/egl.h>
-#include <GLES3/gl3.h>
-#include <native_buffer/native_buffer.h>
-#include <native_image/native_image.h>
-#include <native_window/external_window.h>
-#include <database/pasteboard/oh_pasteboard.h>
-#include <database/pasteboard/oh_pasteboard_err_code.h>
-#include <database/udmf/udmf.h>
-#include <database/udmf/udmf_err_code.h>
-#include <database/udmf/uds.h>
-#include <hilog/log.h>
-
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-#include <freerdp/addin.h>
-#include <freerdp/client.h>
-#include <freerdp/client/channels.h>
-#include <freerdp/client/cliprdr.h>
-#include <freerdp/client/disp.h>
-#include <freerdp/client/rdpgfx.h>
-#include <freerdp/channels/cliprdr.h>
-#include <freerdp/channels/disp.h>
-#include <freerdp/channels/rdpgfx.h>
-#include <freerdp/codec/color.h>
-#include <freerdp/constants.h>
-#include <freerdp/error.h>
-#include <freerdp/event.h>
-#include <freerdp/freerdp.h>
-#include <freerdp/gdi/gfx.h>
-#include <freerdp/gdi/gdi.h>
-#include <freerdp/input.h>
-#include <freerdp/settings.h>
-#include <freerdp/settings_keys.h>
-#include <freerdp/update.h>
-#include <winpr/clipboard.h>
-#include <winpr/synch.h>
-#endif
 
 namespace {
 
 using namespace rdp_bridge;
-
-#ifndef GL_TEXTURE_EXTERNAL_OES
-#define GL_TEXTURE_EXTERNAL_OES 0x8D65
-#endif
-
-std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
-
-void EmitNativeLog(const std::string& line);
-SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame);
-bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender = false);
-void RequestSurfaceRepaint(const std::string& reason);
-void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason);
-void StartRenderPipeline();
-void StopRenderPipeline();
-DecoderSurfaceTarget SnapshotDecoderSurfaceTarget();
-bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
-    const std::function<void(const std::string&)>& log);
-void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t height,
-    uint32_t op, uint32_t codecId, void*);
-std::string BuildRenderStatsLog();
-SessionEventHub g_events;
-
-void EmitNativeLog(const std::string& line)
-{
-    g_events.log.Emit(line);
-}
-
-
-
-SurfaceBridge g_surface;
-
-DecoderSurfaceTarget SnapshotDecoderSurfaceTarget()
-{
-    return g_surface.DecoderSurface();
-}
-
-bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets,
-    std::string& error)
-{
-    return g_surface.EnsureAvc444SurfaceTargets(width, height, targets, error);
-}
-
-void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t height,
-    uint32_t op, uint32_t codecId, void*)
-{
-    const uint64_t count = ++g_avc444SurfaceFrameCallbackCount;
-    if (count <= 3 || (count % 120) == 0) {
-        EmitNativeLog("OHOS AVC444 surface frame callback: count=" + std::to_string(count) +
-            " surfaceId=" + std::to_string(surfaceId) +
-            " size=" + std::to_string(width) + "x" + std::to_string(height) +
-            " op=" + std::to_string(op) +
-            " codec=" + Hex32(codecId));
-    }
-}
-
-bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
-    const FreerdpLogFn& log)
-{
-    if (api.ohosAvcodecSetAvc444OutputSurfaces == nullptr) {
-        log("OHOS AVC444 NativeImage surface registration skipped: FreeRDP symbol unavailable");
-        return false;
-    }
-
-    Avc444SurfaceTargets targets;
-    std::string error;
-    if (!EnsureAvc444SurfaceTargets(width, height, targets, error)) {
-        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
-        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
-            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
-        }
-        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
-            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
-        }
-        log("OHOS AVC444 NativeImage surface registration failed: " + error);
-        return false;
-    }
-
-    api.ohosAvcodecSetAvc444OutputSurfaces(
-        targets.lumaWindow, targets.chromaWindow, targets.width, targets.height, TRUE);
-    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
-        api.ohosAvcodecSetAvc444FrameCallback(OnAvc444SurfaceFrameDecoded, nullptr);
-    }
-    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
-        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
-    }
-    log("OHOS AVC444 NativeImage decode surfaces registered: " +
-        std::to_string(targets.width) + "x" + std::to_string(targets.height) +
-        " lumaTex=" + std::to_string(targets.lumaTexture) +
-        " chromaTex=" + std::to_string(targets.chromaTexture) +
-        " lumaSurface=" + std::to_string(targets.lumaSurfaceId) +
-        " chromaSurface=" + std::to_string(targets.chromaSurfaceId) +
-        " route=disabled-until-compositor");
-    return true;
-}
-
-SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
-{
-    return g_surface.RenderRgbaFrame(frame);
-}
-
-LatestFrameRenderer g_frameRenderer;
-RdpSession g_session;
-
-bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender)
-{
-    return g_frameRenderer.Enqueue(frame, message, forceRender);
-}
-
-void StartRenderPipeline()
-{
-    g_frameRenderer.SetCallbacks(RenderSurfaceRgbaFrame, EmitNativeLog);
-    g_frameRenderer.Start();
-}
-
-void StopRenderPipeline()
-{
-    g_frameRenderer.Stop();
-}
-
-std::string BuildRenderStatsLog()
-{
-    return g_frameRenderer.BuildStatsLog();
-}
-
-void ConfigureRdpgfxPipelineCallbacks()
-{
-    SetRdpgfxPipelineCallbacks({
-        SnapshotDecoderSurfaceTarget,
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-        RegisterAvc444DecodeSurfaces,
-#endif
-        StartRenderPipeline,
-        StopRenderPipeline,
-        EmitNativeLog,
-    });
-}
-
-void ConfigureRdpSessionCallbacks()
-{
-    g_session.SetCallbacks({
-        [](const std::string& state) {
-            g_events.state.Emit(state);
-        },
-        [](const std::string& line) {
-            g_events.log.Emit(line);
-        },
-        [](const std::string& message) {
-            g_events.error.Emit(message);
-        },
-        []() {
-            return g_surface.Snapshot();
-        },
-        QueueSurfaceRgbaFrame,
-        StartRenderPipeline,
-        StopRenderPipeline,
-        RequestSurfaceRepaint,
-    });
-}
-
-void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
-{
-    g_surface.OnSurfaceCreated(component, window);
-    UpdateAvc420SurfaceOutputIfActive("surface created");
-    RequestSurfaceRepaint("surface created");
-}
-
-void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
-{
-    g_surface.OnSurfaceChanged(component, window);
-    UpdateAvc420SurfaceOutputIfActive("surface changed");
-    const SurfaceSnapshot snapshot = g_surface.Snapshot();
-    RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface changed");
-    RequestSurfaceRepaint("surface changed");
-}
-
-void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
-{
-    g_surface.OnSurfaceDestroyed(component, window);
-    UpdateAvc420SurfaceOutputIfActive("surface destroyed");
-}
-
-void OnXComponentTouchEvent(OH_NativeXComponent*, void*)
-{
-    g_surface.OnTouchEvent();
-}
-
-bool RegisterNativeXComponent(napi_env env, napi_value exports)
-{
-    g_surface.SetLogSink(EmitNativeLog);
-
-    napi_value nativeXComponentValue = nullptr;
-    napi_status status = napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &nativeXComponentValue);
-    if (status != napi_ok || nativeXComponentValue == nullptr) {
-        return false;
-    }
-
-    OH_NativeXComponent* component = nullptr;
-    status = napi_unwrap(env, nativeXComponentValue, reinterpret_cast<void**>(&component));
-    if (status != napi_ok || component == nullptr) {
-        return false;
-    }
-
-    static OH_NativeXComponent_Callback callback = {
-        OnXComponentSurfaceCreated,
-        OnXComponentSurfaceChanged,
-        OnXComponentSurfaceDestroyed,
-        OnXComponentTouchEvent,
-    };
-
-    int32_t rc = OH_NativeXComponent_RegisterCallback(component, &callback);
-    const bool ok = rc == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
-    g_surface.Register(component, ok);
-    if (ok) {
-        g_events.log.Emit("XComponent callback registered: " + g_surface.Snapshot().id);
-    }
-    return ok;
-}
-
-void RequestSurfaceRepaint(const std::string& reason)
-{
-    static std::atomic_uint32_t repaintLogCount{0};
-    static std::atomic_uint32_t repaintSkipLogCount{0};
-    std::string message;
-    if (g_session.RequestCurrentFrameRender(reason, message)) {
-        const uint32_t count = ++repaintLogCount;
-        if (count <= 3 || count % 30 == 0) {
-            EmitNativeLog("Surface repaint queued after " + reason + ": " + message +
-                " count=" + std::to_string(count));
-        }
-        return;
-    }
-
-    const uint32_t skipCount = ++repaintSkipLogCount;
-    if (skipCount <= 3 || skipCount % 30 == 0) {
-        EmitNativeLog("Surface repaint skipped after " + reason + ": " + message +
-            " count=" + std::to_string(skipCount));
-    }
-}
-
-void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason)
-{
-    static std::atomic_uint32_t resizeLogCount{0};
-    static std::atomic_uint32_t resizeSkipLogCount{0};
-    std::string message;
-    if (g_session.RequestDynamicDesktopResize(width, height, reason, message)) {
-        const uint32_t count = ++resizeLogCount;
-        if (count <= 3 || count % 30 == 0) {
-            EmitNativeLog(message + " count=" + std::to_string(count));
-        }
-        return;
-    }
-
-    const uint32_t skipCount = ++resizeSkipLogCount;
-    if (skipCount <= 3 || skipCount % 30 == 0) {
-        EmitNativeLog("display-control resize skipped after " + reason + ": " + message +
-            " count=" + std::to_string(skipCount));
-    }
-}
 
 ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
 {
@@ -383,7 +50,7 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
-    SurfaceSnapshot surface = g_surface.Snapshot();
+    SurfaceSnapshot surface = BridgeSurfaceSnapshot();
     const std::string featureSummary =
         "core RDP/TLS/NLA + queued software GDI renderer; client channels on; "
         "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
@@ -392,7 +59,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "rdpgfx runtime gated by graphicsMode; other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
-    const std::string renderStats = BuildRenderStatsLog();
+    const std::string renderStats = BridgeRenderStatsLog();
     const std::string graphicsStats = BuildGraphicsPipelineStatsLog();
 
     napi_value result = MakeObject(env);
@@ -424,13 +91,13 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetUint32(env, result, "surfaceTouchCount", surface.touchCount);
     SetUint32(env, result, "surfacePaintCount", surface.paintCount);
     SetString(env, result, "surfaceLastPaintMessage", surface.lastPaintMessage);
-    SetBool(env, result, "sessionConnected", g_session.IsConnected());
+    SetBool(env, result, "sessionConnected", BridgeSession().IsConnected());
     SetUint32(env, result, "desktopWidth", RdpDesktopWidth());
     SetUint32(env, result, "desktopHeight", RdpDesktopHeight());
-    SetUint32(env, result, "inputQueueDepth", g_session.InputQueueDepth());
-    SetUint32(env, result, "inputQueuedCount", g_session.InputQueuedCount());
-    SetUint32(env, result, "inputSentCount", g_session.InputSentCount());
-    SetUint32(env, result, "inputDroppedCount", g_session.InputDroppedCount());
+    SetUint32(env, result, "inputQueueDepth", BridgeSession().InputQueueDepth());
+    SetUint32(env, result, "inputQueuedCount", BridgeSession().InputQueuedCount());
+    SetUint32(env, result, "inputSentCount", BridgeSession().InputSentCount());
+    SetUint32(env, result, "inputDroppedCount", BridgeSession().InputDroppedCount());
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
@@ -500,7 +167,7 @@ napi_value Connect(napi_env env, napi_callback_info info)
     logs.push_back("starting native worker");
 
     std::string message;
-    bool started = g_session.Connect(params, message);
+    bool started = BridgeSession().Connect(params, message);
     if (!started) {
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
@@ -519,9 +186,9 @@ napi_value Connect(napi_env env, napi_callback_info info)
 
 napi_value Disconnect(napi_env env, napi_callback_info info)
 {
-    const bool closing = g_session.RequestDisconnect();
-    g_events.state.Emit("Disconnected");
-    g_events.log.Emit("native disconnect requested");
+    const bool closing = BridgeSession().RequestDisconnect();
+    BridgeEvents().state.Emit("Disconnected");
+    BridgeEvents().log.Emit("native disconnect requested");
 
     napi_value result = MakeObject(env);
     SetBool(env, result, "ok", true);
@@ -559,9 +226,9 @@ napi_value SendPointer(napi_env env, napi_callback_info info)
     logs.push_back("flags=" + std::to_string(flags) + " x=" + std::to_string(x) + " y=" + std::to_string(y));
 
     std::string message;
-    const bool ok = g_session.SendPointer(static_cast<uint16_t>(flags & 0xFFFFU),
+    const bool ok = BridgeSession().SendPointer(static_cast<uint16_t>(flags & 0xFFFFU),
         static_cast<uint16_t>(std::min(x, 0xFFFFU)), static_cast<uint16_t>(std::min(y, 0xFFFFU)), message);
-    g_events.log.Emit(message);
+    BridgeEvents().log.Emit(message);
 
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Connected" : "Disconnected");
@@ -597,8 +264,8 @@ napi_value SendKey(napi_env env, napi_callback_info info)
         (repeat ? " repeat" : ""));
 
     std::string message;
-    const bool ok = g_session.SendKey(scancode, down, repeat, message);
-    g_events.log.Emit(message);
+    const bool ok = BridgeSession().SendKey(scancode, down, repeat, message);
+    BridgeEvents().log.Emit(message);
 
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Connected" : "Disconnected");
@@ -632,8 +299,8 @@ napi_value SendUnicode(napi_env env, napi_callback_info info)
     logs.push_back("code=" + std::to_string(code) + (down ? " down" : " up"));
 
     std::string message;
-    const bool ok = g_session.SendUnicode(code, down, message);
-    g_events.log.Emit(message);
+    const bool ok = BridgeSession().SendUnicode(code, down, message);
+    BridgeEvents().log.Emit(message);
 
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Connected" : "Disconnected");
@@ -667,13 +334,7 @@ napi_value NotifySurfaceLayout(napi_env env, napi_callback_info info)
     logs.push_back("width=" + std::to_string(width) + " height=" + std::to_string(height));
 
     std::string message;
-    const bool changed = g_surface.OnSurfaceLayout(width, height, message);
-    if (changed) {
-        EmitNativeLog(message);
-        UpdateAvc420SurfaceOutputIfActive("surface layout changed");
-        RequestRemoteDesktopResize(width, height, "surface layout changed");
-        RequestSurfaceRepaint("surface layout changed");
-    }
+    const bool changed = NotifyBridgeSurfaceLayout(width, height, message);
 
     SetBool(env, result, "ok", width > 0 && height > 0);
     SetString(env, result, "state", changed ? "Updated" : "Unchanged");
@@ -701,17 +362,17 @@ napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& si
 
 napi_value OnState(napi_env env, napi_callback_info info)
 {
-    return RegisterCallback(env, info, g_events.state, "rdpStateCallback");
+    return RegisterCallback(env, info, BridgeEvents().state, "rdpStateCallback");
 }
 
 napi_value OnLog(napi_env env, napi_callback_info info)
 {
-    return RegisterCallback(env, info, g_events.log, "rdpLogCallback", true);
+    return RegisterCallback(env, info, BridgeEvents().log, "rdpLogCallback", true);
 }
 
 napi_value OnError(napi_env env, napi_callback_info info)
 {
-    return RegisterCallback(env, info, g_events.error, "rdpErrorCallback", true);
+    return RegisterCallback(env, info, BridgeEvents().error, "rdpErrorCallback", true);
 }
 
 } // namespace
@@ -731,8 +392,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
-    ConfigureRdpgfxPipelineCallbacks();
-    ConfigureRdpSessionCallbacks();
+    InitializeNativeBridgeContext();
     RegisterNativeXComponent(env, exports);
     return exports;
 }
