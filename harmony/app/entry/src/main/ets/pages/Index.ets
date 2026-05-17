@@ -1,124 +1,40 @@
-import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit'
+import { abilityAccessCtrl, bundleManager, common } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
+import {
+  AXIS_EVENT_DEDUP_MS,
+  BRIDGE_PRINTABLE_KEY_GUARD_MS,
+  DOUBLE_TAP_DISTANCE,
+  DOUBLE_TAP_TIMEOUT_MS,
+  HILOG_DOMAIN,
+  HILOG_TAG,
+  INPUT_EVENT_LOG_INTERVAL_MS,
+  LONG_PRESS_TIMEOUT_MS,
+  MICROPHONE_PERMISSION,
+  OH_KEYCODE_DEL,
+  POINTER_FAILURE_LOG_INTERVAL_MS,
+  PTR_FLAGS_BUTTON1,
+  PTR_FLAGS_BUTTON2,
+  PTR_FLAGS_BUTTON3,
+  PTR_FLAGS_DOWN,
+  PTR_FLAGS_HWHEEL,
+  PTR_FLAGS_MOVE,
+  PTR_FLAGS_WHEEL,
+  PTR_FLAGS_WHEEL_NEGATIVE,
+  RDP_WHEEL_DELTA,
+  RDP_WHEEL_DELTA_NEGATIVE,
+  READ_PASTEBOARD_PERMISSION,
+  REMOTE_INPUT_BRIDGE_ID,
+  REMOTE_SURFACE_FOCUS_ID,
+  REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS,
+  REMOTE_TEXT_BRIDGE_RESET_LENGTH,
+  SYNTHETIC_MOUSE_SUPPRESS_MS,
+  TOUCH_DRAG_THRESHOLD,
+  TOUCH_WHEEL_THRESHOLD
+} from '../rdp/RdpConstants'
+import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
+import { RdpKeyboard } from '../rdp/RdpKeyboard'
+import { ConnectionState, NativeCommandResult, NativeProbeResult, PointerMapping } from '../rdp/RdpTypes'
 import rdpNative from 'libentry.so'
-
-type ConnectionState = 'Idle' | 'Resolving' | 'TCP connected' | 'Negotiating' | 'Authenticating' | 'Connected' | 'Bridge ready' | 'Disconnected' | 'Failed'
-
-const PTR_FLAGS_MOVE: number = 0x0800
-const PTR_FLAGS_HWHEEL: number = 0x0400
-const PTR_FLAGS_WHEEL: number = 0x0200
-const PTR_FLAGS_WHEEL_NEGATIVE: number = 0x0100
-const PTR_FLAGS_DOWN: number = 0x8000
-const PTR_FLAGS_BUTTON1: number = 0x1000
-const PTR_FLAGS_BUTTON2: number = 0x2000
-const PTR_FLAGS_BUTTON3: number = 0x4000
-const RDP_WHEEL_DELTA: number = 0x0078
-const RDP_WHEEL_DELTA_NEGATIVE: number = 0x0088
-const TOUCH_DRAG_THRESHOLD: number = 8
-const TOUCH_WHEEL_THRESHOLD: number = 24
-const LONG_PRESS_TIMEOUT_MS: number = 550
-const DOUBLE_TAP_TIMEOUT_MS: number = 320
-const DOUBLE_TAP_DISTANCE: number = 24
-const POINTER_FAILURE_LOG_INTERVAL_MS: number = 800
-const INPUT_EVENT_LOG_INTERVAL_MS: number = 650
-const SYNTHETIC_MOUSE_SUPPRESS_MS: number = 80
-const AXIS_EVENT_DEDUP_MS: number = 12
-// Real-device key callback echo was observed under 30ms; keep a wider window without masking fast typing.
-const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 120
-const REMOTE_TEXT_BRIDGE_RESET_LENGTH: number = 32
-const REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS: number = 500
-const HILOG_DOMAIN: number = 0xF3D1
-const HILOG_TAG: string = 'FreeRDPUi'
-const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
-const REMOTE_SURFACE_FOCUS_ID: string = 'rdpRemoteSurface'
-
-const OH_KEYCODE_0: number = 2000
-const OH_KEYCODE_9: number = 2009
-const OH_KEYCODE_DPAD_UP: number = 2012
-const OH_KEYCODE_DPAD_DOWN: number = 2013
-const OH_KEYCODE_DPAD_LEFT: number = 2014
-const OH_KEYCODE_DPAD_RIGHT: number = 2015
-const OH_KEYCODE_A: number = 2017
-const OH_KEYCODE_Z: number = 2042
-const OH_KEYCODE_COMMA: number = 2043
-const OH_KEYCODE_PERIOD: number = 2044
-const OH_KEYCODE_ALT_LEFT: number = 2045
-const OH_KEYCODE_ALT_RIGHT: number = 2046
-const OH_KEYCODE_SHIFT_LEFT: number = 2047
-const OH_KEYCODE_SHIFT_RIGHT: number = 2048
-const OH_KEYCODE_TAB: number = 2049
-const OH_KEYCODE_SPACE: number = 2050
-const OH_KEYCODE_ENTER: number = 2054
-const OH_KEYCODE_DEL: number = 2055
-const OH_KEYCODE_GRAVE: number = 2056
-const OH_KEYCODE_MINUS: number = 2057
-const OH_KEYCODE_EQUALS: number = 2058
-const OH_KEYCODE_LEFT_BRACKET: number = 2059
-const OH_KEYCODE_RIGHT_BRACKET: number = 2060
-const OH_KEYCODE_BACKSLASH: number = 2061
-const OH_KEYCODE_SEMICOLON: number = 2062
-const OH_KEYCODE_APOSTROPHE: number = 2063
-const OH_KEYCODE_SLASH: number = 2064
-const OH_KEYCODE_PAGE_UP: number = 2068
-const OH_KEYCODE_PAGE_DOWN: number = 2069
-const OH_KEYCODE_ESCAPE: number = 2070
-const OH_KEYCODE_FORWARD_DEL: number = 2071
-const OH_KEYCODE_CTRL_LEFT: number = 2072
-const OH_KEYCODE_CTRL_RIGHT: number = 2073
-const OH_KEYCODE_META_LEFT: number = 2076
-const OH_KEYCODE_META_RIGHT: number = 2077
-const OH_KEYCODE_MOVE_HOME: number = 2081
-const OH_KEYCODE_MOVE_END: number = 2082
-const OH_KEYCODE_INSERT: number = 2083
-const OH_KEYCODE_F1: number = 2090
-const OH_KEYCODE_F12: number = 2101
-const OH_KEYCODE_NUMPAD_0: number = 2103
-const OH_KEYCODE_NUMPAD_9: number = 2112
-const OH_KEYCODE_NUMPAD_DIVIDE: number = 2113
-const OH_KEYCODE_NUMPAD_MULTIPLY: number = 2114
-const OH_KEYCODE_NUMPAD_SUBTRACT: number = 2115
-const OH_KEYCODE_NUMPAD_ADD: number = 2116
-const OH_KEYCODE_NUMPAD_DOT: number = 2117
-const OH_KEYCODE_NUMPAD_ENTER: number = 2119
-const READ_PASTEBOARD_PERMISSION: Permissions = 'ohos.permission.READ_PASTEBOARD'
-const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE'
-
-interface NativeProbeResult {
-  surfaceReady: boolean
-  surfaceWidth: number
-  surfaceHeight: number
-  surfaceViewportX: number
-  surfaceViewportY: number
-  surfaceViewportWidth: number
-  surfaceViewportHeight: number
-  desktopWidth: number
-  desktopHeight: number
-  logs: string[]
-}
-
-interface PointerMapping {
-  ok: boolean
-  x: number
-  y: number
-  surfaceX: number
-  surfaceY: number
-  scaleX: number
-  scaleY: number
-  viewportX: number
-  viewportY: number
-  viewportWidth: number
-  viewportHeight: number
-  desktopWidth: number
-  desktopHeight: number
-  reason: string
-}
-
-interface NativeCommandResult {
-  ok: boolean
-  state: string
-  message: string
-  logs: string[]
-}
 
 @Entry
 @Component
@@ -461,21 +377,9 @@ struct Index {
     return `0x${flags.toString(16).toUpperCase()}`
   }
 
-  private areaLengthToNumber(value: Length): number {
-    if (typeof value === 'number') {
-      return value
-    }
-
-    const text = `${value}`
-    const unitIndex = text.search(/[a-zA-Z%]/)
-    const numericText = unitIndex >= 0 ? text.substring(0, unitIndex) : text
-    const numeric = Number(numericText)
-    return numeric > 0 ? numeric : 0
-  }
-
   private updateSurfaceLayout(width: Length, height: Length): void {
-    const nextWidth = this.areaLengthToNumber(width)
-    const nextHeight = this.areaLengthToNumber(height)
+    const nextWidth = PointerMapper.areaLengthToNumber(width)
+    const nextHeight = PointerMapper.areaLengthToNumber(height)
     if (nextWidth <= 0 || nextHeight <= 0) {
       return
     }
@@ -528,18 +432,20 @@ struct Index {
     }
   }
 
-  private getPointerScaleX(): number {
-    if (this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
-      return this.surfacePixelWidth / this.surfaceLayoutWidth
+  private getPointerViewport(): PointerViewport {
+    return {
+      resolution: this.resolution,
+      surfacePixelWidth: this.surfacePixelWidth,
+      surfacePixelHeight: this.surfacePixelHeight,
+      surfaceLayoutWidth: this.surfaceLayoutWidth,
+      surfaceLayoutHeight: this.surfaceLayoutHeight,
+      surfaceViewportX: this.surfaceViewportX,
+      surfaceViewportY: this.surfaceViewportY,
+      surfaceViewportWidth: this.surfaceViewportWidth,
+      surfaceViewportHeight: this.surfaceViewportHeight,
+      desktopPixelWidth: this.desktopPixelWidth,
+      desktopPixelHeight: this.desktopPixelHeight
     }
-    return 1
-  }
-
-  private getPointerScaleY(): number {
-    if (this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
-      return this.surfacePixelHeight / this.surfaceLayoutHeight
-    }
-    return 1
   }
 
   private pointerMappingFailureShouldLog(traceLabel: string): boolean {
@@ -599,7 +505,7 @@ struct Index {
     }
 
     try {
-      const mapped = this.mapPointerToDesktop(x, y, allowClamp)
+      const mapped = PointerMapper.mapToDesktop(this.getPointerViewport(), x, y, allowClamp)
       if (!mapped.ok) {
         if (this.pointerMappingFailureShouldLog(traceLabel)) {
           this.logPointerDiagnostic(traceLabel || 'input', flags, x, y, mapped)
@@ -620,126 +526,6 @@ struct Index {
       this.appendLog(`Native pointer input failed (${traceLabel || 'input'}): ${JSON.stringify(error)}`)
       return false
     }
-  }
-
-  private parseResolutionPart(index: number): number {
-    const parts = this.resolution.toLowerCase().split('x')
-    if (parts.length !== 2) {
-      return 0
-    }
-
-    const value = Number(parts[index])
-    if (value > 0) {
-      return value
-    }
-    return 0
-  }
-
-  private getRequestedDesktopWidth(): number {
-    if (this.desktopPixelWidth > 0) {
-      return this.desktopPixelWidth
-    }
-    const parsedWidth = this.parseResolutionPart(0)
-    if (parsedWidth > 0) {
-      return parsedWidth
-    }
-    return this.getRemoteViewportWidth()
-  }
-
-  private getRequestedDesktopHeight(): number {
-    if (this.desktopPixelHeight > 0) {
-      return this.desktopPixelHeight
-    }
-    const parsedHeight = this.parseResolutionPart(1)
-    if (parsedHeight > 0) {
-      return parsedHeight
-    }
-    return this.getRemoteViewportHeight()
-  }
-
-  private clampInt(value: number, minValue: number, maxValue: number): number {
-    return Math.max(minValue, Math.min(maxValue, Math.round(value)))
-  }
-
-  private getRemoteViewportX(): number {
-    return this.surfaceViewportWidth > 0 && this.surfaceViewportHeight > 0 ? this.surfaceViewportX : 0
-  }
-
-  private getRemoteViewportY(): number {
-    return this.surfaceViewportWidth > 0 && this.surfaceViewportHeight > 0 ? this.surfaceViewportY : 0
-  }
-
-  private getRemoteViewportWidth(): number {
-    return this.surfaceViewportWidth > 0 ? this.surfaceViewportWidth : this.surfacePixelWidth
-  }
-
-  private getRemoteViewportHeight(): number {
-    return this.surfaceViewportHeight > 0 ? this.surfaceViewportHeight : this.surfacePixelHeight
-  }
-
-  private isPointInRemoteViewport(x: number, y: number): boolean {
-    const surfaceX = x * this.getPointerScaleX()
-    const surfaceY = y * this.getPointerScaleY()
-    const viewportX = this.getRemoteViewportX()
-    const viewportY = this.getRemoteViewportY()
-    const viewportWidth = this.getRemoteViewportWidth()
-    const viewportHeight = this.getRemoteViewportHeight()
-    if (viewportWidth <= 0 || viewportHeight <= 0) {
-      return false
-    }
-    return surfaceX >= viewportX && surfaceX < viewportX + viewportWidth &&
-      surfaceY >= viewportY && surfaceY < viewportY + viewportHeight
-  }
-
-  private mapPointerToDesktop(x: number, y: number, allowClamp: boolean): PointerMapping {
-    const scaleX = this.getPointerScaleX()
-    const scaleY = this.getPointerScaleY()
-    const surfaceX = x * scaleX
-    const surfaceY = y * scaleY
-    const viewportX = this.getRemoteViewportX()
-    const viewportY = this.getRemoteViewportY()
-    const viewportWidth = this.getRemoteViewportWidth()
-    const viewportHeight = this.getRemoteViewportHeight()
-    const desktopWidth = this.getRequestedDesktopWidth()
-    const desktopHeight = this.getRequestedDesktopHeight()
-    const base: PointerMapping = {
-      ok: false,
-      x: 0,
-      y: 0,
-      surfaceX: surfaceX,
-      surfaceY: surfaceY,
-      scaleX: scaleX,
-      scaleY: scaleY,
-      viewportX: viewportX,
-      viewportY: viewportY,
-      viewportWidth: viewportWidth,
-      viewportHeight: viewportHeight,
-      desktopWidth: desktopWidth,
-      desktopHeight: desktopHeight,
-      reason: ''
-    }
-    if (viewportWidth <= 0 || viewportHeight <= 0 || desktopWidth <= 0 || desktopHeight <= 0) {
-      base.reason = 'surface viewport or remote desktop size is not ready'
-      return base
-    }
-
-    const localX = surfaceX - viewportX
-    const localY = surfaceY - viewportY
-    const inside = localX >= 0 && localX < viewportWidth && localY >= 0 && localY < viewportHeight
-    if (!inside && !allowClamp) {
-      base.reason = 'point is outside rendered remote viewport'
-      return base
-    }
-
-    const clampedX = this.clampInt(localX, 0, viewportWidth - 1)
-    const clampedY = this.clampInt(localY, 0, viewportHeight - 1)
-    const mappedX = this.clampInt(clampedX * desktopWidth / viewportWidth, 0, desktopWidth - 1)
-    const mappedY = this.clampInt(clampedY * desktopHeight / viewportHeight, 0, desktopHeight - 1)
-    base.ok = true
-    base.x = mappedX
-    base.y = mappedY
-    base.reason = 'ok'
-    return base
   }
 
   private sendWheel(deltaY: number, x: number, y: number): void {
@@ -799,10 +585,10 @@ struct Index {
         keyCode: keyCode,
         down: down,
         repeat: repeat,
-        ctrl: event ? this.isCtrlModifierPressed(event) : false,
-        shift: event ? this.isShiftModifierPressed(event) : false,
-        alt: event ? this.isAltModifierPressed(event) : false,
-        meta: event ? this.isWinModifierPressed(event) : false
+        ctrl: event ? RdpKeyboard.isCtrlModifierPressed(event) : false,
+        shift: event ? RdpKeyboard.isShiftModifierPressed(event) : false,
+        alt: event ? RdpKeyboard.isAltModifierPressed(event) : false,
+        meta: event ? RdpKeyboard.isWinModifierPressed(event) : false
       })
       if (!result.ok) {
         this.appendLog(result.message)
@@ -1011,116 +797,6 @@ struct Index {
     }
   }
 
-  private isPrintableArkKeyCode(keyCode: number): boolean {
-    return (keyCode >= OH_KEYCODE_A && keyCode <= OH_KEYCODE_Z) ||
-      (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) ||
-      (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) ||
-      keyCode === OH_KEYCODE_SPACE ||
-      keyCode === OH_KEYCODE_GRAVE ||
-      keyCode === OH_KEYCODE_MINUS ||
-      keyCode === OH_KEYCODE_EQUALS ||
-      keyCode === OH_KEYCODE_LEFT_BRACKET ||
-      keyCode === OH_KEYCODE_RIGHT_BRACKET ||
-      keyCode === OH_KEYCODE_BACKSLASH ||
-      keyCode === OH_KEYCODE_SEMICOLON ||
-      keyCode === OH_KEYCODE_APOSTROPHE ||
-      keyCode === OH_KEYCODE_COMMA ||
-      keyCode === OH_KEYCODE_PERIOD ||
-      keyCode === OH_KEYCODE_SLASH ||
-      keyCode === OH_KEYCODE_NUMPAD_DIVIDE ||
-      keyCode === OH_KEYCODE_NUMPAD_MULTIPLY ||
-      keyCode === OH_KEYCODE_NUMPAD_SUBTRACT ||
-      keyCode === OH_KEYCODE_NUMPAD_ADD ||
-      keyCode === OH_KEYCODE_NUMPAD_DOT
-  }
-
-  private shouldSendPrintableAsHardwareKey(keyCode: number): boolean {
-    return (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) ||
-      (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) ||
-      keyCode === OH_KEYCODE_NUMPAD_DIVIDE ||
-      keyCode === OH_KEYCODE_NUMPAD_MULTIPLY ||
-      keyCode === OH_KEYCODE_NUMPAD_SUBTRACT ||
-      keyCode === OH_KEYCODE_NUMPAD_ADD ||
-      keyCode === OH_KEYCODE_NUMPAD_DOT
-  }
-
-  private isRemotePlatformKeyCode(keyCode: number): boolean {
-    if (this.isPrintableArkKeyCode(keyCode) || this.isFunctionKey(keyCode)) {
-      return true
-    }
-    const keyCodes: number[] = [
-      OH_KEYCODE_ESCAPE,
-      OH_KEYCODE_TAB,
-      OH_KEYCODE_ENTER,
-      OH_KEYCODE_DEL,
-      OH_KEYCODE_FORWARD_DEL,
-      OH_KEYCODE_PAGE_UP,
-      OH_KEYCODE_PAGE_DOWN,
-      OH_KEYCODE_INSERT,
-      OH_KEYCODE_DPAD_UP,
-      OH_KEYCODE_DPAD_DOWN,
-      OH_KEYCODE_DPAD_LEFT,
-      OH_KEYCODE_DPAD_RIGHT,
-      OH_KEYCODE_MOVE_HOME,
-      OH_KEYCODE_MOVE_END,
-      OH_KEYCODE_CTRL_LEFT,
-      OH_KEYCODE_CTRL_RIGHT,
-      OH_KEYCODE_ALT_LEFT,
-      OH_KEYCODE_ALT_RIGHT,
-      OH_KEYCODE_META_LEFT,
-      OH_KEYCODE_META_RIGHT,
-      OH_KEYCODE_SHIFT_LEFT,
-      OH_KEYCODE_SHIFT_RIGHT,
-      OH_KEYCODE_NUMPAD_ENTER
-    ]
-    return keyCodes.indexOf(keyCode) >= 0
-  }
-
-  private isDeletePlatformKeyCode(keyCode: number): boolean {
-    return keyCode === OH_KEYCODE_DEL || keyCode === OH_KEYCODE_FORWARD_DEL
-  }
-
-  private getHardwarePrintableText(event: KeyEvent): string {
-    const unicode = this.getEventUnicode(event)
-    if (unicode > 0 && unicode <= 0xFFFF) {
-      return String.fromCharCode(unicode)
-    }
-    if (event.keyCode >= OH_KEYCODE_0 && event.keyCode <= OH_KEYCODE_9) {
-      return `${event.keyCode - OH_KEYCODE_0}`
-    }
-    if (event.keyCode >= OH_KEYCODE_NUMPAD_0 && event.keyCode <= OH_KEYCODE_NUMPAD_9) {
-      return `${event.keyCode - OH_KEYCODE_NUMPAD_0}`
-    }
-    const keyMap: Map<number, string> = new Map<number, string>([
-      [OH_KEYCODE_NUMPAD_DIVIDE, '/'],
-      [OH_KEYCODE_NUMPAD_MULTIPLY, '*'],
-      [OH_KEYCODE_NUMPAD_SUBTRACT, '-'],
-      [OH_KEYCODE_NUMPAD_ADD, '+'],
-      [OH_KEYCODE_NUMPAD_DOT, '.']
-    ])
-    return keyMap.get(event.keyCode) ?? ''
-  }
-
-  private getPrintableTextByKeyCode(keyCode: number): string {
-    if (keyCode >= OH_KEYCODE_A && keyCode <= OH_KEYCODE_Z) {
-      return String.fromCharCode('a'.charCodeAt(0) + keyCode - OH_KEYCODE_A)
-    }
-    if (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) {
-      return `${keyCode - OH_KEYCODE_0}`
-    }
-    if (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) {
-      return `${keyCode - OH_KEYCODE_NUMPAD_0}`
-    }
-    const keyMap: Map<number, string> = new Map<number, string>([
-      [OH_KEYCODE_NUMPAD_DIVIDE, '/'],
-      [OH_KEYCODE_NUMPAD_MULTIPLY, '*'],
-      [OH_KEYCODE_NUMPAD_SUBTRACT, '-'],
-      [OH_KEYCODE_NUMPAD_ADD, '+'],
-      [OH_KEYCODE_NUMPAD_DOT, '.']
-    ])
-    return keyMap.get(keyCode) ?? ''
-  }
-
   private addSuppressedTextInputText(value: string): void {
     if (!value.length) {
       return
@@ -1146,57 +822,8 @@ struct Index {
     if (event.type !== KeyType.Down) {
       return
     }
-    this.addSuppressedTextInputText(this.getHardwarePrintableText(event))
-    this.addSuppressedTextInputText(this.getPrintableTextByKeyCode(event.keyCode))
-  }
-
-  private isModifierPressed(event: KeyEvent, modifier: string): boolean {
-    const normalized = modifier.toLowerCase()
-    const candidates: string[] = normalized === modifier ? [normalized] : [normalized, modifier]
-    for (let i = 0; i < candidates.length; i++) {
-      try {
-        if (event.getModifierKeyState && event.getModifierKeyState([candidates[i]])) {
-          return true
-        }
-      } catch (error) {
-        continue
-      }
-    }
-    return false
-  }
-
-  private isAnyModifierPressed(event: KeyEvent, modifiers: string[]): boolean {
-    for (let i = 0; i < modifiers.length; i++) {
-      if (this.isModifierPressed(event, modifiers[i])) {
-        return true
-      }
-    }
-    return false
-  }
-
-  private isCtrlModifierPressed(event: KeyEvent): boolean {
-    return this.isAnyModifierPressed(event, ['ctrl'])
-  }
-
-  private isAltModifierPressed(event: KeyEvent): boolean {
-    return this.isAnyModifierPressed(event, ['alt'])
-  }
-
-  private isWinModifierPressed(event: KeyEvent): boolean {
-    return this.isAnyModifierPressed(event, ['meta', 'win'])
-  }
-
-  private isShiftModifierPressed(event: KeyEvent): boolean {
-    return this.isAnyModifierPressed(event, ['shift'])
-  }
-
-  private hasRemoteShortcutModifier(event: KeyEvent): boolean {
-    return this.isCtrlModifierPressed(event) || this.isAltModifierPressed(event) ||
-      this.isWinModifierPressed(event) || this.isShiftModifierPressed(event)
-  }
-
-  private isFunctionKey(keyCode: number): boolean {
-    return keyCode >= OH_KEYCODE_F1 && keyCode <= OH_KEYCODE_F12
+    this.addSuppressedTextInputText(RdpKeyboard.getHardwarePrintableText(event))
+    this.addSuppressedTextInputText(RdpKeyboard.getPrintableTextByKeyCode(event.keyCode))
   }
 
   private keyEventId(event: KeyEvent): string {
@@ -1271,12 +898,12 @@ struct Index {
     if (!this.shouldRouteRemoteKeyboard() || !this.isConnected()) {
       return false
     }
-    if (!this.isRemotePlatformKeyCode(event.keyCode)) {
+    if (!RdpKeyboard.isPlatformKeyCode(event.keyCode)) {
       return false
     }
-    const printable = this.isPrintableArkKeyCode(event.keyCode)
-    const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
-    return !printable || hardwarePrintable || this.hasRemoteShortcutModifier(event)
+    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
+    const hardwarePrintable = printable && RdpKeyboard.shouldSendPrintableAsHardwareKey(event.keyCode)
+    return !printable || hardwarePrintable || RdpKeyboard.hasShortcutModifier(event)
   }
 
   private handleRemoteKeyDispatch(event: KeyEvent, fromInputBridge: boolean): boolean {
@@ -1306,9 +933,9 @@ struct Index {
     if (this.consumeDispatchedRemoteKeyEvent(event)) {
       return true
     }
-    const printable = this.isPrintableArkKeyCode(event.keyCode)
-    const shortcut = this.hasRemoteShortcutModifier(event)
-    const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
+    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
+    const shortcut = RdpKeyboard.hasShortcutModifier(event)
+    const hardwarePrintable = printable && RdpKeyboard.shouldSendPrintableAsHardwareKey(event.keyCode)
     if (printable && !shortcut && !hardwarePrintable) {
       this.rememberInputBridgePrintableKey(event)
       return false
@@ -1320,9 +947,9 @@ struct Index {
     if (!this.shouldRouteRemoteKeyboard()) {
       return false
     }
-    const printable = this.isPrintableArkKeyCode(event.keyCode)
-    const systemShortcutModifier = this.isCtrlModifierPressed(event) || this.isAltModifierPressed(event) ||
-      this.isWinModifierPressed(event)
+    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
+    const systemShortcutModifier = RdpKeyboard.isCtrlModifierPressed(event) ||
+      RdpKeyboard.isAltModifierPressed(event) || RdpKeyboard.isWinModifierPressed(event)
     if (printable && !systemShortcutModifier) {
       return false
     }
@@ -1340,17 +967,17 @@ struct Index {
       return false
     }
     const down = event.type === KeyType.Down
-    const printable = this.isPrintableArkKeyCode(event.keyCode)
-    const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
-    const shortcut = this.hasRemoteShortcutModifier(event)
-    const platformKey = this.isRemotePlatformKeyCode(event.keyCode)
+    const printable = RdpKeyboard.isPrintableKeyCode(event.keyCode)
+    const hardwarePrintable = printable && RdpKeyboard.shouldSendPrintableAsHardwareKey(event.keyCode)
+    const shortcut = RdpKeyboard.hasShortcutModifier(event)
+    const platformKey = RdpKeyboard.isPlatformKeyCode(event.keyCode)
     const surfacePrintableKeyEvent = printable && !fromInputBridge
-    if (!printable || shortcut || hardwarePrintable || this.isFunctionKey(event.keyCode)) {
+    if (!printable || shortcut || hardwarePrintable || RdpKeyboard.isFunctionKey(event.keyCode)) {
       this.logInputEvent('key',
         `code=${event.keyCode} type=${event.type} platform=${platformKey} printable=${printable} ` +
         `shortcut=${shortcut} hardware=${hardwarePrintable} bridge=${fromInputBridge} ` +
-        `ctrl=${this.isCtrlModifierPressed(event)} alt=${this.isAltModifierPressed(event)} ` +
-        `win=${this.isWinModifierPressed(event)} shift=${this.isShiftModifierPressed(event)}`,
+        `ctrl=${RdpKeyboard.isCtrlModifierPressed(event)} alt=${RdpKeyboard.isAltModifierPressed(event)} ` +
+        `win=${RdpKeyboard.isWinModifierPressed(event)} shift=${RdpKeyboard.isShiftModifierPressed(event)}`,
         true)
     }
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
@@ -1362,7 +989,7 @@ struct Index {
       if (sent && hardwarePrintable) {
         this.rememberHardwareTextInputSuppression(event)
       }
-      if (sent && this.isDeletePlatformKeyCode(event.keyCode)) {
+      if (sent && RdpKeyboard.isDeleteKeyCode(event.keyCode)) {
         this.logInputEvent('key.delete',
           `hardware keyCode=${event.keyCode} down=${down} sent=${sent}`,
           true)
@@ -1374,7 +1001,7 @@ struct Index {
       return printable || platformKey
     }
 
-    const unicode = this.getEventUnicode(event)
+    const unicode = RdpKeyboard.getEventUnicode(event)
     if (unicode > 0 && unicode <= 0xFFFF) {
       this.sendUnicodeStroke(unicode)
       return true
@@ -1449,9 +1076,10 @@ struct Index {
     if (event.action === MouseAction.Press) {
       this.focusRemoteInputBridge()
       this.logPointerDiagnostic('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
-        this.mapPointerToDesktop(event.x, event.y, false))
-      if (buttonFlag === 0 || !this.isPointInRemoteViewport(event.x, event.y)) {
-        this.appendLog(`Mouse press skipped: button=${buttonFlag} inside=${this.isPointInRemoteViewport(event.x, event.y)}`)
+        PointerMapper.mapToDesktop(this.getPointerViewport(), event.x, event.y, false))
+      if (buttonFlag === 0 ||
+        !PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y)) {
+        this.appendLog(`Mouse press skipped: button=${buttonFlag} inside=${PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y)}`)
         return
       }
       this.mouseButtonFlags |= buttonFlag
@@ -1491,8 +1119,10 @@ struct Index {
     if (this.shouldSkipDuplicateAxisEvent(event, deltaX, deltaY)) {
       return
     }
-    const axisX = this.isPointInRemoteViewport(event.x, event.y) ? event.x : this.lastTouchX
-    const axisY = this.isPointInRemoteViewport(event.x, event.y) ? event.y : this.lastTouchY
+    const axisX = PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y) ?
+      event.x : this.lastTouchX
+    const axisY = PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y) ?
+      event.y : this.lastTouchY
     this.logInputEvent('axis',
       `action=${event.action} dx=${this.formatNumber(deltaX)} dy=${this.formatNumber(deltaY)} ` +
       `x=${this.formatNumber(event.x)} y=${this.formatNumber(event.y)} target=${this.formatNumber(axisX)},${this.formatNumber(axisY)}`)
@@ -1511,8 +1141,9 @@ struct Index {
   }
 
   private startPendingTouch(x: number, y: number): void {
-    this.logPointerDiagnostic('touch.down', PTR_FLAGS_MOVE, x, y, this.mapPointerToDesktop(x, y, false))
-    if (!this.isPointInRemoteViewport(x, y)) {
+    this.logPointerDiagnostic('touch.down', PTR_FLAGS_MOVE, x, y,
+      PointerMapper.mapToDesktop(this.getPointerViewport(), x, y, false))
+    if (!PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), x, y)) {
       this.cancelPendingTouch()
       return
     }
