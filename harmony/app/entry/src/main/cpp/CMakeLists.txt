@@ -23,7 +23,8 @@ add_library(entry SHARED
     net_utils.cpp
     napi_init.cpp
     napi_utils.cpp
-    probe_utils.cpp)
+    probe_utils.cpp
+    string_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so
