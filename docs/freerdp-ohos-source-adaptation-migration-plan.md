@@ -234,3 +234,8 @@ P1 adds the first FreeRDP-owned keyboard state backend:
 - modifier synthesis for Ctrl/Shift/Alt/Win shortcuts
 - long-press repeat generation in the FreeRDP input pump
 - release-all-keys N-API hook used by the HAP validation shell on focus/lifecycle cleanup
+
+P1b updates the HAP validation shell so the session key path forwards OHOS
+platform key events directly. The page no longer dispatches session shortcuts by
+RDP scancode or synthesizes modifier scancodes; those semantics live in
+`client/OHOS/ohos_keyboard.*`.

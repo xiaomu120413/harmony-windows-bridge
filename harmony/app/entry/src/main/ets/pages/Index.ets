@@ -1238,6 +1238,41 @@ struct Index {
       keyCode === OH_KEYCODE_NUMPAD_DOT
   }
 
+  private isRemotePlatformKeyCode(keyCode: number): boolean {
+    if (this.isPrintableArkKeyCode(keyCode) || this.isFunctionKey(keyCode)) {
+      return true
+    }
+    const keyCodes: number[] = [
+      OH_KEYCODE_ESCAPE,
+      OH_KEYCODE_TAB,
+      OH_KEYCODE_ENTER,
+      OH_KEYCODE_DEL,
+      OH_KEYCODE_FORWARD_DEL,
+      OH_KEYCODE_PAGE_UP,
+      OH_KEYCODE_PAGE_DOWN,
+      OH_KEYCODE_INSERT,
+      OH_KEYCODE_DPAD_UP,
+      OH_KEYCODE_DPAD_DOWN,
+      OH_KEYCODE_DPAD_LEFT,
+      OH_KEYCODE_DPAD_RIGHT,
+      OH_KEYCODE_MOVE_HOME,
+      OH_KEYCODE_MOVE_END,
+      OH_KEYCODE_CTRL_LEFT,
+      OH_KEYCODE_CTRL_RIGHT,
+      OH_KEYCODE_ALT_LEFT,
+      OH_KEYCODE_ALT_RIGHT,
+      OH_KEYCODE_META_LEFT,
+      OH_KEYCODE_META_RIGHT,
+      OH_KEYCODE_SHIFT_LEFT,
+      OH_KEYCODE_SHIFT_RIGHT
+    ]
+    return keyCodes.indexOf(keyCode) >= 0
+  }
+
+  private isDeletePlatformKeyCode(keyCode: number): boolean {
+    return keyCode === OH_KEYCODE_DEL || keyCode === OH_KEYCODE_FORWARD_DEL
+  }
+
   private getHardwarePrintableText(event: KeyEvent): string {
     const unicode = this.getEventUnicode(event)
     if (unicode > 0 && unicode <= 0xFFFF) {
@@ -1666,8 +1701,7 @@ struct Index {
     if (!this.shouldRouteRemoteKeyboard() || !this.isConnected()) {
       return false
     }
-    const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
-    if (scancode <= 0) {
+    if (!this.isRemotePlatformKeyCode(event.keyCode)) {
       return false
     }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
@@ -1736,7 +1770,6 @@ struct Index {
     if (!this.isConnected()) {
       return false
     }
-    const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
     const down = event.type === KeyType.Down
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
@@ -1745,43 +1778,38 @@ struct Index {
     if (!down && trackedShortcut) {
       shortcut = true
     }
-    const repeat = down && scancode > 0 && this.isRemoteScancodePressed(scancode)
+    const platformKey = this.isRemotePlatformKeyCode(event.keyCode)
     const surfacePrintableKeyEvent = printable && !fromInputBridge
-    this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, hardwarePrintable,
-      fromInputBridge, repeat)
+    if (!printable || shortcut || hardwarePrintable || this.isFunctionKey(event.keyCode)) {
+      this.logInputEvent('key',
+        `code=${event.keyCode} type=${event.type} platform=${platformKey} printable=${printable} ` +
+        `shortcut=${shortcut} hardware=${hardwarePrintable} bridge=${fromInputBridge} ` +
+        `ctrl=${this.isCtrlModifierPressed(event)} alt=${this.isAltModifierPressed(event)} ` +
+        `win=${this.isWinModifierPressed(event)} shift=${this.isShiftModifierPressed(event)}`,
+        true)
+    }
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
       return true
     }
 
-    if (down && repeat && !this.isModifierScancode(scancode)) {
-      return this.sendRepeatKeyDown(event.keyCode, scancode, event)
-    }
-
-    if (this.handleShortcutKeyEvent(event, scancode, printable, down, repeat, trackedShortcut)) {
-      if (hardwarePrintable) {
-        this.rememberHardwareTextInputSuppression(event)
-      }
-      return true
-    }
-
-    if (scancode > 0 && (!printable || shortcut || hardwarePrintable || surfacePrintableKeyEvent)) {
-      const sent = this.sendMappedKeyEvent(event.keyCode, scancode, down, repeat, event)
-      if (sent && printable && shortcut) {
-        this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
-      }
+    if (platformKey && (!printable || shortcut || hardwarePrintable || surfacePrintableKeyEvent)) {
+      const sent = this.sendPlatformKeyEvent(event.keyCode, down, false, false, event)
       if (sent && hardwarePrintable) {
         this.rememberHardwareTextInputSuppression(event)
       }
-      if (sent && this.isDeleteScancode(scancode)) {
+      if (sent && printable && shortcut) {
+        this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
+      }
+      if (sent && this.isDeletePlatformKeyCode(event.keyCode)) {
         this.logInputEvent('key.delete',
-          `hardware scancode=0x${scancode.toString(16)} down=${down} repeat=${repeat} sent=${sent}`,
+          `hardware keyCode=${event.keyCode} down=${down} sent=${sent}`,
           true)
       }
       return sent
     }
 
     if (!down) {
-      return printable || scancode > 0
+      return printable || platformKey
     }
 
     const unicode = this.getEventUnicode(event)
@@ -1790,7 +1818,7 @@ struct Index {
       return true
     }
 
-    return scancode > 0
+    return platformKey
   }
 
   private mouseButtonToPointerFlag(button: MouseButton): number {
