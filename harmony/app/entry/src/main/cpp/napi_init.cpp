@@ -667,7 +667,9 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-        return input_.EnqueuePointer(flags, x, y, message);
+        return input_.EnqueuePointer(flags, x, y, message, [this](const std::string& line) {
+            EmitLog(line);
+        });
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -681,7 +683,9 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-        return input_.EnqueueKey(rdpScancode, down, repeat, message);
+        return input_.EnqueueKey(rdpScancode, down, repeat, message, [this](const std::string& line) {
+            EmitLog(line);
+        });
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -695,7 +699,9 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-        return input_.EnqueueUnicode(code, down, message);
+        return input_.EnqueueUnicode(code, down, message, [this](const std::string& line) {
+            EmitLog(line);
+        });
 #else
         message = "FreeRDP headers not found at build time";
         return false;
