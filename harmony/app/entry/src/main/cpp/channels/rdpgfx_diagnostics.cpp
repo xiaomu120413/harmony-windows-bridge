@@ -2,6 +2,7 @@
 
 #include "bridge_log.h"
 #include "freerdp_runtime.h"
+#include "string_utils.h"
 
 #include <atomic>
 #include <sstream>
@@ -30,10 +31,19 @@ std::atomic_uint64_t g_rdpgfxCodecAlphaCount{0};
 std::atomic_uint64_t g_rdpgfxCodecAvc444Count{0};
 std::atomic_uint64_t g_rdpgfxCodecAvc444v2Count{0};
 std::atomic_uint64_t g_rdpgfxCodecUnknownCount{0};
+std::atomic_uint32_t g_rdpgfxCapsConfirmCount{0};
+std::atomic_uint32_t g_rdpgfxConfirmedCapsMode{0};
+std::atomic_uint32_t g_rdpgfxConfirmedCapsVersion{0};
+std::atomic_uint32_t g_rdpgfxConfirmedCapsFlags{0};
 std::atomic_uint32_t g_rdpgfxLastCodecId{0};
 std::atomic_uint32_t g_rdpgfxLastSurfaceId{0};
 std::atomic_uint32_t g_rdpgfxLastCommandWidth{0};
 std::atomic_uint32_t g_rdpgfxLastCommandHeight{0};
+
+constexpr uint32_t RDPEGFX_CONFIRMED_NONE = 0;
+constexpr uint32_t RDPEGFX_CONFIRMED_AVC420 = 1;
+constexpr uint32_t RDPEGFX_CONFIRMED_AVC444 = 2;
+constexpr uint32_t RDPEGFX_CONFIRMED_NON_AVC = 3;
 
 } // namespace
 
@@ -62,6 +72,21 @@ const char* RdpgfxCodecName(uint32_t codecId)
             return "AVC444v2";
         default:
             return "UNKNOWN";
+    }
+}
+
+const char* RdpgfxConfirmedModeName(uint32_t mode)
+{
+    switch (mode) {
+        case RDPEGFX_CONFIRMED_AVC420:
+            return "avc420";
+        case RDPEGFX_CONFIRMED_AVC444:
+            return "avc444";
+        case RDPEGFX_CONFIRMED_NON_AVC:
+            return "non-avc";
+        case RDPEGFX_CONFIRMED_NONE:
+        default:
+            return "none";
     }
 }
 
@@ -119,10 +144,44 @@ void ResetRdpgfxDiagnosticsStats()
     g_rdpgfxCodecAvc444Count.store(0);
     g_rdpgfxCodecAvc444v2Count.store(0);
     g_rdpgfxCodecUnknownCount.store(0);
+    g_rdpgfxCapsConfirmCount.store(0);
+    g_rdpgfxConfirmedCapsMode.store(RDPEGFX_CONFIRMED_NONE);
+    g_rdpgfxConfirmedCapsVersion.store(0);
+    g_rdpgfxConfirmedCapsFlags.store(0);
     g_rdpgfxLastCodecId.store(0);
     g_rdpgfxLastSurfaceId.store(0);
     g_rdpgfxLastCommandWidth.store(0);
     g_rdpgfxLastCommandHeight.store(0);
+}
+
+void RecordRdpgfxCapsConfirm(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
+{
+    g_rdpgfxCapsConfirmCount.fetch_add(1);
+    if (capsConfirm == nullptr || capsConfirm->capsSet == nullptr) {
+        g_rdpgfxConfirmedCapsMode.store(RDPEGFX_CONFIRMED_NONE);
+        g_rdpgfxConfirmedCapsVersion.store(0);
+        g_rdpgfxConfirmedCapsFlags.store(0);
+        EmitHilogInfo("rdpgfx caps confirm: mode=none capsConfirm=null");
+        return;
+    }
+
+    const RDPGFX_CAPSET* capsSet = capsConfirm->capsSet;
+    const uint32_t version = capsSet->version;
+    const uint32_t flags = capsSet->flags;
+    const bool avc420 = version == RDPGFX_CAPVERSION_81 &&
+        (flags & RDPGFX_CAPS_FLAG_AVC420_ENABLED) != 0;
+    const bool avc444 = version == RDPGFX_CAPVERSION_101 ||
+        (version >= RDPGFX_CAPVERSION_10 && (flags & RDPGFX_CAPS_FLAG_AVC_DISABLED) == 0);
+    const uint32_t mode = avc420 ? RDPEGFX_CONFIRMED_AVC420 :
+        (avc444 ? RDPEGFX_CONFIRMED_AVC444 : RDPEGFX_CONFIRMED_NON_AVC);
+
+    g_rdpgfxConfirmedCapsMode.store(mode);
+    g_rdpgfxConfirmedCapsVersion.store(version);
+    g_rdpgfxConfirmedCapsFlags.store(flags);
+    EmitHilogInfo("rdpgfx caps confirm: mode=" + std::string(RdpgfxConfirmedModeName(mode)) +
+        " version=" + Hex32(version) +
+        " flags=" + Hex32(flags) +
+        " confirms=" + std::to_string(g_rdpgfxCapsConfirmCount.load()));
 }
 
 void RecordRdpgfxSurfaceCommand(const RDPGFX_SURFACE_COMMAND& command)
@@ -203,6 +262,10 @@ std::string BuildGraphicsPipelineStatsLog()
         << " initFailed=" << g_rdpgfxInitFailedCount.load()
         << " frames=" << g_rdpgfxStartFrameCount.load() << "/" << g_rdpgfxEndFrameCount.load()
         << " surfaceCommands=" << g_rdpgfxSurfaceCommandCount.load()
+        << " confirmed=" << RdpgfxConfirmedModeName(g_rdpgfxConfirmedCapsMode.load())
+        << " capsVersion=" << Hex32(g_rdpgfxConfirmedCapsVersion.load())
+        << " capsFlags=" << Hex32(g_rdpgfxConfirmedCapsFlags.load())
+        << " capsConfirms=" << g_rdpgfxCapsConfirmCount.load()
         << " codecs=raw:" << g_rdpgfxCodecUncompressedCount.load()
         << ",progressive:" << g_rdpgfxCodecProgressiveCount.load()
         << ",cavideo:" << g_rdpgfxCodecCavideoCount.load()

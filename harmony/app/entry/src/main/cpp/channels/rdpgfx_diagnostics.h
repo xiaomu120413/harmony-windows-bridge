@@ -19,6 +19,7 @@ void IncrementRdpgfxInitFailed();
 void RecordRdpgfxStartFrame();
 void RecordRdpgfxEndFrame();
 void ResetRdpgfxDiagnosticsStats();
+void RecordRdpgfxCapsConfirm(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm);
 void RecordRdpgfxSurfaceCommand(const RDPGFX_SURFACE_COMMAND& command);
 #endif
 

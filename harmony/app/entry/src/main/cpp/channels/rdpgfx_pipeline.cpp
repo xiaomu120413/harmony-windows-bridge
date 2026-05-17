@@ -142,6 +142,8 @@ UINT HarmonyRdpgfxEndFrame(RdpgfxClientContext* context, const RDPGFX_END_FRAME_
 
 UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
 {
+    RecordRdpgfxCapsConfirm(capsConfirm);
+
     if (g_avc420SurfaceOutputEnabled.load()) {
         const std::string summary = RdpgfxCapsConfirmSummary(capsConfirm);
         if (RdpgfxCapsConfirmAvc420(capsConfirm)) {
