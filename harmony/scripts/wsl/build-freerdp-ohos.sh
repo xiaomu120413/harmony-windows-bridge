@@ -30,6 +30,7 @@ ENABLE_OPENH264="${ENABLE_OPENH264:-1}"
 ENABLE_FFMPEG="${ENABLE_FFMPEG:-1}"
 ENABLE_OHAUDIO="${ENABLE_OHAUDIO:-1}"
 ENABLE_OHOS_AVCODEC="${ENABLE_OHOS_AVCODEC:-1}"
+ENABLE_OHOS_PASTEBOARD="${ENABLE_OHOS_PASTEBOARD:-1}"
 ENABLE_OPENSLES="${ENABLE_OPENSLES:-0}"
 ENABLE_CUPS="${ENABLE_CUPS:-0}"
 ENABLE_PCSC="${ENABLE_PCSC:-0}"
@@ -38,8 +39,9 @@ ENABLE_FUSE="${ENABLE_FUSE:-0}"
 
 WITH_OHAUDIO=OFF
 WITH_OHOS_AVCODEC=OFF
+WITH_OHOS_PASTEBOARD=OFF
 WITH_OPENSLES=OFF
-FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-probe-v1"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-v1"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -195,6 +197,26 @@ detect_optional_backends() {
     }
   fi
 
+  WITH_OHOS_PASTEBOARD="$(cmake_bool "$ENABLE_OHOS_PASTEBOARD")"
+  if [[ "$WITH_OHOS_PASTEBOARD" == "ON" ]]; then
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/database/pasteboard/oh_pasteboard.h" ]] || {
+      printf 'Pasteboard header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/database/pasteboard" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/database/udmf/udmf.h" ]] || {
+      printf 'UDMF header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/database/udmf" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libpasteboard.so" ]] || {
+      printf 'Pasteboard library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libudmf.so" ]] || {
+      printf 'UDMF library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+      exit 1
+    }
+  fi
+
   if is_auto "$ENABLE_OPENSLES"; then
     if find "$OHOS_NDK_HOME" \( -path '*/SLES/OpenSLES.h' -o -name 'libOpenSLES.so' \) -print -quit | grep -q .; then
       WITH_OPENSLES=ON
@@ -206,8 +228,8 @@ detect_optional_backends() {
   fi
 
   log "optional backends"
-  printf 'OHAudio=%s OHOS_AVCodec=%s OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
-    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
+  printf 'OHAudio=%s OHOS_AVCodec=%s OHOS_Pasteboard=%s OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
+    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OHOS_PASTEBOARD" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
 }
 
 install_ohos_opensles_android_shim() {
@@ -511,6 +533,7 @@ freerdp_feature_profile() {
     printf 'openh264=%s:%s\n' "$(cmake_bool "$ENABLE_OPENH264")" "$OPENH264_VERSION"
     printf 'ffmpeg=%s:%s\n' "$(cmake_bool "$ENABLE_FFMPEG")" "$FFMPEG_VERSION"
     printf 'ohos_avcodec=%s\n' "$WITH_OHOS_AVCODEC"
+    printf 'ohos_pasteboard=%s\n' "$WITH_OHOS_PASTEBOARD"
     printf 'opensles=%s\n' "$WITH_OPENSLES"
     printf 'cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
@@ -586,6 +609,7 @@ build_freerdp() {
     -DWITH_JPEG=OFF \
     -DWITH_OPENH264="$(cmake_bool "$ENABLE_OPENH264")" \
     -DWITH_OHOS_AVCODEC="$WITH_OHOS_AVCODEC" \
+    -DWITH_OHOS_PASTEBOARD="$WITH_OHOS_PASTEBOARD" \
     -DWITH_GFX_AV1=OFF \
     -DWITH_ALSA=OFF \
     -DWITH_PULSE=OFF \
@@ -826,6 +850,7 @@ write_manifest() {
     printf 'ffmpeg_version=%s\n' "$FFMPEG_VERSION"
     printf 'with_ohaudio=%s\n' "$WITH_OHAUDIO"
     printf 'with_ohos_avcodec=%s\n' "$WITH_OHOS_AVCODEC"
+    printf 'with_ohos_pasteboard=%s\n' "$WITH_OHOS_PASTEBOARD"
     printf 'with_opensles=%s\n' "$WITH_OPENSLES"
     printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
