@@ -10,8 +10,8 @@ import {
 import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
 import { RemotePointerInput } from '../rdp/RemotePointerInput'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import { ConnectionState, NativeCommandResult, NativeProbeResult, PointerMapping } from '../rdp/RdpTypes'
-import rdpNative from 'libentry.so'
+import { ConnectionState, PointerMapping } from '../rdp/RdpTypes'
+import rdpNative, { NativeCommandResult, NativeProbeResult } from 'libentry.so'
 
 @Entry
 @Component
@@ -73,7 +73,11 @@ struct Index {
 
   private getUiAbilityContext(): common.UIAbilityContext | null {
     try {
-      return getContext(this) as common.UIAbilityContext
+      const hostContext = this.getUIContext().getHostContext()
+      if (!hostContext) {
+        return null
+      }
+      return hostContext as common.UIAbilityContext
     } catch (error) {
       this.appendLog(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
       return null
@@ -166,6 +170,12 @@ struct Index {
       const result: NativeProbeResult = rdpNative.probe()
       this.surfacePixelWidth = result.surfaceWidth
       this.surfacePixelHeight = result.surfaceHeight
+      if (this.surfaceLayoutWidth > 0 && result.surfaceWidth > 0) {
+        this.surfacePixelScaleX = result.surfaceWidth / this.surfaceLayoutWidth
+      }
+      if (this.surfaceLayoutHeight > 0 && result.surfaceHeight > 0) {
+        this.surfacePixelScaleY = result.surfaceHeight / this.surfaceLayoutHeight
+      }
       this.surfaceViewportX = result.surfaceViewportX
       this.surfaceViewportY = result.surfaceViewportY
       this.surfaceViewportWidth = result.surfaceViewportWidth
@@ -256,30 +266,29 @@ struct Index {
 
     let pixelScaleX = this.surfacePixelScaleX
     let pixelScaleY = this.surfacePixelScaleY
-    let nativeWidth = 0
-    let nativeHeight = 0
     try {
       const probe: NativeProbeResult = rdpNative.probe()
+      const layoutUnchanged = this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight
       if (probe.surfaceReady && probe.surfaceWidth > 0 && probe.surfaceHeight > 0) {
-        nativeWidth = probe.surfaceWidth
-        nativeHeight = probe.surfaceHeight
-        pixelScaleX = probe.surfaceWidth / nextWidth
-        pixelScaleY = probe.surfaceHeight / nextHeight
+        if (layoutUnchanged || pixelScaleX <= 0) {
+          pixelScaleX = probe.surfaceWidth / nextWidth
+        }
+        if (layoutUnchanged || pixelScaleY <= 0) {
+          pixelScaleY = probe.surfaceHeight / nextHeight
+        }
       }
     } catch (error) {
       this.appendLog(`Native surface scale probe failed: ${JSON.stringify(error)}`)
     }
 
-    if (nativeWidth <= 0 || nativeHeight <= 0) {
-      if (pixelScaleX <= 0 && this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
-        pixelScaleX = this.surfacePixelWidth / this.surfaceLayoutWidth
-      }
-      if (pixelScaleY <= 0 && this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
-        pixelScaleY = this.surfacePixelHeight / this.surfaceLayoutHeight
-      }
-      nativeWidth = Math.round(nextWidth * (pixelScaleX > 0 ? pixelScaleX : 1))
-      nativeHeight = Math.round(nextHeight * (pixelScaleY > 0 ? pixelScaleY : 1))
+    if (pixelScaleX <= 0 && this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
+      pixelScaleX = this.surfacePixelWidth / this.surfaceLayoutWidth
     }
+    if (pixelScaleY <= 0 && this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
+      pixelScaleY = this.surfacePixelHeight / this.surfaceLayoutHeight
+    }
+    const nativeWidth = Math.round(nextWidth * (pixelScaleX > 0 ? pixelScaleX : 1))
+    const nativeHeight = Math.round(nextHeight * (pixelScaleY > 0 ? pixelScaleY : 1))
 
     if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight &&
       this.surfacePixelWidth === nativeWidth && this.surfacePixelHeight === nativeHeight) {
@@ -343,7 +352,10 @@ struct Index {
 
   private logPointerDiagnostic(label: string, flags: number, x: number, y: number, mapped: PointerMapping): void {
     const status = mapped.ok ? 'mapped' : `blocked: ${mapped.reason}`
-    this.appendLog(`Pointer ${label} ${status}: ${this.describePointerMapping(flags, x, y, mapped)}`)
+    const line = `Pointer ${label} ${status}: ${this.describePointerMapping(flags, x, y, mapped)}`
+    this.appendLog(line)
+    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
+    console.info(line)
   }
 
   private logInputEvent(label: string, detail: string, force: boolean = false): void {

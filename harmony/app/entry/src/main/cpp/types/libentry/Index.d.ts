@@ -93,20 +93,20 @@ export interface NativeSurfaceLayoutInput {
 
 declare const rdpNative: {
   probe(): NativeProbeResult;
-  connect(params: NativeConnectParams): NativeCommandResult;
+  connect(params: Object): NativeCommandResult;
   disconnect(): NativeCommandResult;
-  sendPointer(input: NativePointerInput): NativeCommandResult;
-  sendKey(input: NativeKeyInput): NativeCommandResult;
-  sendPlatformKey(input: NativePlatformKeyInput): NativeCommandResult;
-  sendUnicode(input: NativeUnicodeInput): NativeCommandResult;
-  sendText(input: NativeTextInput): NativeCommandResult;
+  sendPointer(input: Object): NativeCommandResult;
+  sendKey(input: Object): NativeCommandResult;
+  sendPlatformKey(input: Object): NativeCommandResult;
+  sendUnicode(input: Object): NativeCommandResult;
+  sendText(input: Object): NativeCommandResult;
   releaseAllKeys(): NativeCommandResult;
-  notifySurfaceLayout(input: NativeSurfaceLayoutInput): NativeCommandResult;
+  notifySurfaceLayout(input: Object): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
   onMicrophonePermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
-  completeMicrophonePermissionRequest(result: { requestId: number; granted: boolean }): NativeCommandResult;
+  completeMicrophonePermissionRequest(result: Object): NativeCommandResult;
 };
 
 export default rdpNative;

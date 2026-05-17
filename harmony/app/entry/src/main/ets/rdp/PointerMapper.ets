@@ -14,6 +14,13 @@ export interface PointerViewport {
   desktopPixelHeight: number
 }
 
+interface RemoteViewportRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export class PointerMapper {
   static areaLengthToNumber(value: Length): number {
     if (typeof value === 'number') {
@@ -120,23 +127,17 @@ export class PointerMapper {
   }
 
   private static getRequestedDesktopWidth(viewport: PointerViewport): number {
-    if (viewport.desktopPixelWidth > 0) {
-      return viewport.desktopPixelWidth
-    }
-    const parsedWidth = PointerMapper.parseResolutionPart(viewport.resolution, 0)
-    if (parsedWidth > 0) {
-      return parsedWidth
+    const desktopWidth = PointerMapper.getKnownDesktopWidth(viewport)
+    if (desktopWidth > 0) {
+      return desktopWidth
     }
     return PointerMapper.getRemoteViewportWidth(viewport)
   }
 
   private static getRequestedDesktopHeight(viewport: PointerViewport): number {
-    if (viewport.desktopPixelHeight > 0) {
-      return viewport.desktopPixelHeight
-    }
-    const parsedHeight = PointerMapper.parseResolutionPart(viewport.resolution, 1)
-    if (parsedHeight > 0) {
-      return parsedHeight
+    const desktopHeight = PointerMapper.getKnownDesktopHeight(viewport)
+    if (desktopHeight > 0) {
+      return desktopHeight
     }
     return PointerMapper.getRemoteViewportHeight(viewport)
   }
@@ -146,20 +147,76 @@ export class PointerMapper {
   }
 
   private static getRemoteViewportX(viewport: PointerViewport): number {
-    return viewport.surfaceViewportWidth > 0 && viewport.surfaceViewportHeight > 0 ?
-      viewport.surfaceViewportX : 0
+    const fitted = PointerMapper.computeRemoteViewport(viewport)
+    if (fitted !== null) {
+      return fitted.x
+    }
+    return viewport.surfaceViewportWidth > 0 && viewport.surfaceViewportHeight > 0 ? viewport.surfaceViewportX : 0
   }
 
   private static getRemoteViewportY(viewport: PointerViewport): number {
-    return viewport.surfaceViewportWidth > 0 && viewport.surfaceViewportHeight > 0 ?
-      viewport.surfaceViewportY : 0
+    const fitted = PointerMapper.computeRemoteViewport(viewport)
+    if (fitted !== null) {
+      return fitted.y
+    }
+    return viewport.surfaceViewportWidth > 0 && viewport.surfaceViewportHeight > 0 ? viewport.surfaceViewportY : 0
   }
 
   private static getRemoteViewportWidth(viewport: PointerViewport): number {
+    const fitted = PointerMapper.computeRemoteViewport(viewport)
+    if (fitted !== null) {
+      return fitted.width
+    }
     return viewport.surfaceViewportWidth > 0 ? viewport.surfaceViewportWidth : viewport.surfacePixelWidth
   }
 
   private static getRemoteViewportHeight(viewport: PointerViewport): number {
+    const fitted = PointerMapper.computeRemoteViewport(viewport)
+    if (fitted !== null) {
+      return fitted.height
+    }
     return viewport.surfaceViewportHeight > 0 ? viewport.surfaceViewportHeight : viewport.surfacePixelHeight
+  }
+
+  private static getKnownDesktopWidth(viewport: PointerViewport): number {
+    if (viewport.desktopPixelWidth > 0) {
+      return viewport.desktopPixelWidth
+    }
+    return PointerMapper.parseResolutionPart(viewport.resolution, 0)
+  }
+
+  private static getKnownDesktopHeight(viewport: PointerViewport): number {
+    if (viewport.desktopPixelHeight > 0) {
+      return viewport.desktopPixelHeight
+    }
+    return PointerMapper.parseResolutionPart(viewport.resolution, 1)
+  }
+
+  private static computeRemoteViewport(viewport: PointerViewport): RemoteViewportRect | null {
+    const surfaceWidth = viewport.surfacePixelWidth
+    const surfaceHeight = viewport.surfacePixelHeight
+    const desktopWidth = PointerMapper.getKnownDesktopWidth(viewport)
+    const desktopHeight = PointerMapper.getKnownDesktopHeight(viewport)
+    if (surfaceWidth <= 0 || surfaceHeight <= 0 || desktopWidth <= 0 || desktopHeight <= 0) {
+      return null
+    }
+
+    let width = 0
+    let height = 0
+    if (surfaceWidth * desktopHeight <= surfaceHeight * desktopWidth) {
+      width = surfaceWidth
+      height = Math.max(1, Math.floor(surfaceWidth * desktopHeight / desktopWidth))
+    } else {
+      height = surfaceHeight
+      width = Math.max(1, Math.floor(surfaceHeight * desktopWidth / desktopHeight))
+    }
+    width = Math.min(width, surfaceWidth)
+    height = Math.min(height, surfaceHeight)
+    return {
+      x: Math.floor((surfaceWidth - width) / 2),
+      y: Math.floor((surfaceHeight - height) / 2),
+      width: width,
+      height: height
+    }
   }
 }
