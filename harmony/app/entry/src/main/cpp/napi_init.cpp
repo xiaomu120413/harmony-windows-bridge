@@ -19,6 +19,7 @@
 #include "net_utils.h"
 #include "probe_utils.h"
 #include "rdp_channel_config.h"
+#include "rdp_session_channels.h"
 #include "rdp_session_input.h"
 #include "string_utils.h"
 
@@ -612,6 +613,20 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
 
 class RdpSession {
 public:
+    RdpSession()
+    {
+        channels_.SetCallbacks({
+            [this](const std::string& line) {
+                EmitLog(line);
+            },
+            []() {
+                return g_surface.Snapshot();
+            },
+            QueueSurfaceRgbaFrame,
+            RequestSurfaceRepaint,
+        });
+    }
+
     ~RdpSession()
     {
         Disconnect();
@@ -740,37 +755,7 @@ public:
             return false;
         }
 
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeContext_ == nullptr || activeContext_->gdi == nullptr) {
-            message = "FreeRDP GDI context is not ready";
-            return false;
-        }
-
-        rdpGdi* gdi = activeContext_->gdi;
-        if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
-            gdi->height <= 0 || gdi->stride == 0) {
-            message = "FreeRDP GDI primary buffer is not ready";
-            return false;
-        }
-
-        RgbaFrame frame = {
-            gdi->primary_buffer,
-            static_cast<uint32_t>(gdi->width),
-            static_cast<uint32_t>(gdi->height),
-            static_cast<int32_t>(gdi->stride),
-            reason.empty() ? "surface repaint" : reason,
-            DirtyFrameStats{},
-        };
-
-        std::string queueMessage;
-        if (!QueueSurfaceRgbaFrame(frame, queueMessage, true)) {
-            message = queueMessage;
-            return false;
-        }
-
-        message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-            " current-gdi";
-        return true;
+        return channels_.RequestCurrentFrameRender(reason, message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -786,53 +771,7 @@ public:
             return false;
         }
 
-        constexpr uint32_t minDimension = 200;
-        constexpr uint32_t maxDimension = 8192;
-        width = std::clamp(width, minDimension, maxDimension);
-        height = std::clamp(height, minDimension, maxDimension);
-        width -= width % 2U;
-        if (width < minDimension) {
-            width = minDimension;
-        }
-
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
-            message = "display-control channel is not ready";
-            return false;
-        }
-        if (!displayControlCapsReady_) {
-            message = "display-control caps are not ready";
-            return false;
-        }
-        if (lastDynamicResizeWidth_ == width && lastDynamicResizeHeight_ == height) {
-            message = "display-control resize unchanged: " + std::to_string(width) + "x" +
-                std::to_string(height);
-            return true;
-        }
-
-        DISPLAY_CONTROL_MONITOR_LAYOUT layout = {};
-        layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
-        layout.Left = 0;
-        layout.Top = 0;
-        layout.Width = width;
-        layout.Height = height;
-        layout.PhysicalWidth = width;
-        layout.PhysicalHeight = height;
-        layout.Orientation = ORIENTATION_LANDSCAPE;
-        layout.DesktopScaleFactor = 100;
-        layout.DeviceScaleFactor = 100;
-
-        const UINT rc = activeDisp_->SendMonitorLayout(activeDisp_, 1, &layout);
-        if (rc != CHANNEL_RC_OK) {
-            message = "display-control resize failed: " + std::to_string(rc);
-            return false;
-        }
-
-        lastDynamicResizeWidth_ = width;
-        lastDynamicResizeHeight_ = height;
-        message = "display-control resize requested after " + reason + ": " +
-            std::to_string(width) + "x" + std::to_string(height);
-        return true;
+        return channels_.RequestDynamicDesktopResize(width, height, reason, message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -867,295 +806,19 @@ private:
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
     {
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            activeApi_ = api;
-            activeInstance_ = instance;
-            activeContext_ = context;
-            activeDisp_ = nullptr;
-            activeGfx_ = nullptr;
-            displayControlCapsReady_ = false;
-            lastDynamicResizeWidth_ = 0;
-            lastDynamicResizeHeight_ = 0;
-        }
-
-        RegisterSession(context, this);
-        if (api != nullptr && api->pubSubSubscribe != nullptr && context != nullptr &&
-            context->pubSub != nullptr) {
-            (void)api->pubSubSubscribe(context->pubSub, "ChannelConnected", OnChannelConnected);
-            (void)api->pubSubSubscribe(context->pubSub, "ChannelDisconnected", OnChannelDisconnected);
-        }
+        channels_.SetActive(api, instance, context);
     }
 
     void ClearActiveNative(freerdp* instance)
     {
-        rdpContext* oldContext = nullptr;
-        FreerdpRuntimeApi* oldApi = nullptr;
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeInstance_ != instance) {
-            return;
-        }
-
-        oldContext = activeContext_;
-        oldApi = activeApi_;
-        DetachGraphicsPipelineLocked(activeGfx_);
-        if (oldApi != nullptr && oldApi->pubSubUnsubscribe != nullptr && oldContext != nullptr &&
-            oldContext->pubSub != nullptr) {
-            (void)oldApi->pubSubUnsubscribe(oldContext->pubSub, "ChannelConnected", OnChannelConnected);
-            (void)oldApi->pubSubUnsubscribe(oldContext->pubSub, "ChannelDisconnected", OnChannelDisconnected);
-        }
-        UnregisterSession(oldContext);
-        activeApi_ = nullptr;
-        activeInstance_ = nullptr;
-        activeContext_ = nullptr;
-        activeDisp_ = nullptr;
-        activeGfx_ = nullptr;
-        displayControlCapsReady_ = false;
-        lastDynamicResizeWidth_ = 0;
-        lastDynamicResizeHeight_ = 0;
+        channels_.ClearActive(instance);
     }
+#endif
 
     void RequestNativeDisconnect()
     {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeApi_ != nullptr && activeContext_ != nullptr) {
-            activeApi_->abortConnectContext(activeContext_);
-        }
+        channels_.RequestDisconnect();
     }
-
-    static std::mutex& RegistryMutex()
-    {
-        static std::mutex mutex;
-        return mutex;
-    }
-
-    static std::unordered_map<rdpContext*, RdpSession*>& Registry()
-    {
-        static std::unordered_map<rdpContext*, RdpSession*> registry;
-        return registry;
-    }
-
-    static void RegisterSession(rdpContext* context, RdpSession* session)
-    {
-        if (context == nullptr || session == nullptr) {
-            return;
-        }
-        std::lock_guard<std::mutex> lock(RegistryMutex());
-        Registry()[context] = session;
-    }
-
-    static void UnregisterSession(rdpContext* context)
-    {
-        if (context == nullptr) {
-            return;
-        }
-        std::lock_guard<std::mutex> lock(RegistryMutex());
-        Registry().erase(context);
-    }
-
-    static RdpSession* FindSession(rdpContext* context)
-    {
-        std::lock_guard<std::mutex> lock(RegistryMutex());
-        auto iter = Registry().find(context);
-        return iter == Registry().end() ? nullptr : iter->second;
-    }
-
-    static bool IsDisplayControlChannel(const char* name)
-    {
-        return name != nullptr &&
-            (std::strcmp(name, DISP_CHANNEL_NAME) == 0 ||
-                std::strcmp(name, DISP_DVC_CHANNEL_NAME) == 0);
-    }
-
-    static bool IsGraphicsPipelineChannel(const char* name)
-    {
-        return name != nullptr && std::strcmp(name, RDPGFX_DVC_CHANNEL_NAME) == 0;
-    }
-
-    static void OnChannelConnected(void* context, const ChannelConnectedEventArgs* event)
-    {
-        if (context == nullptr || event == nullptr || event->name == nullptr) {
-            return;
-        }
-
-        RdpSession* session = FindSession(static_cast<rdpContext*>(context));
-        if (session == nullptr) {
-            return;
-        }
-        if (IsDisplayControlChannel(event->name)) {
-            session->AttachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
-        } else if (IsGraphicsPipelineChannel(event->name)) {
-            session->AttachGraphicsPipeline(static_cast<RdpgfxClientContext*>(event->pInterface));
-        }
-    }
-
-    static void OnChannelDisconnected(void* context, const ChannelDisconnectedEventArgs* event)
-    {
-        if (context == nullptr || event == nullptr || event->name == nullptr) {
-            return;
-        }
-
-        RdpSession* session = FindSession(static_cast<rdpContext*>(context));
-        if (session == nullptr) {
-            return;
-        }
-        if (IsDisplayControlChannel(event->name)) {
-            session->DetachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
-        } else if (IsGraphicsPipelineChannel(event->name)) {
-            session->DetachGraphicsPipeline(static_cast<RdpgfxClientContext*>(event->pInterface));
-        }
-    }
-
-    static UINT DisplayControlCaps(DispClientContext* disp, UINT32 maxNumMonitors,
-        UINT32 maxMonitorAreaFactorA, UINT32 maxMonitorAreaFactorB)
-    {
-        auto* session = disp == nullptr ? nullptr : static_cast<RdpSession*>(disp->custom);
-        if (session != nullptr) {
-            session->HandleDisplayControlCaps(maxNumMonitors, maxMonitorAreaFactorA,
-                maxMonitorAreaFactorB);
-        }
-        return CHANNEL_RC_OK;
-    }
-
-    void HandleDisplayControlCaps(UINT32 maxNumMonitors, UINT32 maxMonitorAreaFactorA,
-        UINT32 maxMonitorAreaFactorB)
-    {
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            displayControlCapsReady_ = true;
-            lastDynamicResizeWidth_ = 0;
-            lastDynamicResizeHeight_ = 0;
-        }
-
-        EmitLog("display-control caps: maxMonitors=" + std::to_string(maxNumMonitors) +
-            " areaFactor=" + std::to_string(maxMonitorAreaFactorA) + "/" +
-            std::to_string(maxMonitorAreaFactorB));
-
-        const SurfaceSnapshot snapshot = g_surface.Snapshot();
-        if (snapshot.width > 0 && snapshot.height > 0) {
-            std::string resizeMessage;
-            if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-                "display-control caps", resizeMessage)) {
-                EmitLog(resizeMessage);
-            } else {
-                EmitLog("display-control resize skipped after display-control caps: " +
-                    resizeMessage);
-            }
-        }
-    }
-
-    void AttachDisplayControl(DispClientContext* disp)
-    {
-        if (disp == nullptr) {
-            EmitLog("display-control connected without client context");
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            activeDisp_ = disp;
-            activeDisp_->custom = this;
-            activeDisp_->DisplayControlCaps = DisplayControlCaps;
-            displayControlCapsReady_ = false;
-            lastDynamicResizeWidth_ = 0;
-            lastDynamicResizeHeight_ = 0;
-        }
-        EmitLog("display-control connected to HarmonyOS window resize bridge");
-
-        const SurfaceSnapshot snapshot = g_surface.Snapshot();
-        if (snapshot.width > 0 && snapshot.height > 0) {
-            std::string resizeMessage;
-            if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-                "display-control connected", resizeMessage)) {
-                EmitLog(resizeMessage);
-            } else {
-                EmitLog("display-control resize skipped after display-control connected: " +
-                    resizeMessage);
-            }
-        }
-    }
-
-    void DetachDisplayControl(DispClientContext* disp)
-    {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        if (activeDisp_ != nullptr && activeDisp_ == disp) {
-            activeDisp_->custom = nullptr;
-            activeDisp_ = nullptr;
-            displayControlCapsReady_ = false;
-            lastDynamicResizeWidth_ = 0;
-            lastDynamicResizeHeight_ = 0;
-            EmitLog("display-control disconnected from HarmonyOS window resize bridge");
-        }
-    }
-
-    void AttachGraphicsPipeline(RdpgfxClientContext* gfx)
-    {
-        std::string message;
-        bool attached = false;
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            if (gfx == nullptr) {
-                message = "rdpgfx connected without client context";
-            } else if (activeApi_ == nullptr || activeContext_ == nullptr || activeContext_->gdi == nullptr) {
-                IncrementRdpgfxInitFailed();
-                message = "rdpgfx connected before GDI context was ready";
-            } else if (activeApi_->gdiGraphicsPipelineInit == nullptr) {
-                IncrementRdpgfxInitFailed();
-                message = "rdpgfx GDI pipeline init symbol unavailable";
-            } else {
-                if (activeGfx_ != nullptr && activeGfx_ != gfx) {
-                    DetachGraphicsPipelineLocked(activeGfx_);
-                }
-                if (activeApi_->gdiGraphicsPipelineInit(activeContext_->gdi, gfx)) {
-                    InstallRdpgfxDiagnosticsHooks(gfx);
-                    activeGfx_ = gfx;
-                    SetRdpgfxBridgeAttached(true);
-                    IncrementRdpgfxConnected();
-                    attached = true;
-                    message = "rdpgfx connected to FreeRDP GDI graphics pipeline";
-                } else {
-                    IncrementRdpgfxInitFailed();
-                    message = "rdpgfx GDI graphics pipeline init failed";
-                }
-            }
-        }
-
-        EmitLog(message);
-        if (attached) {
-            RequestSurfaceRepaint("rdpgfx connected");
-        }
-    }
-
-    void DetachGraphicsPipeline(RdpgfxClientContext* gfx)
-    {
-        bool detached = false;
-        {
-            std::lock_guard<std::mutex> lock(activeMutex_);
-            detached = DetachGraphicsPipelineLocked(gfx);
-        }
-        if (detached) {
-            EmitLog("rdpgfx disconnected from FreeRDP GDI graphics pipeline");
-        }
-    }
-
-    bool DetachGraphicsPipelineLocked(RdpgfxClientContext* gfx)
-    {
-        if (activeGfx_ == nullptr || activeGfx_ != gfx) {
-            return false;
-        }
-        RestoreRdpgfxDiagnosticsHooks(activeGfx_);
-        if (activeApi_ != nullptr && activeApi_->gdiGraphicsPipelineUninit != nullptr &&
-            activeContext_ != nullptr && activeContext_->gdi != nullptr) {
-            activeApi_->gdiGraphicsPipelineUninit(activeContext_->gdi, activeGfx_);
-        }
-        activeGfx_ = nullptr;
-        SetRdpgfxBridgeAttached(false);
-        IncrementRdpgfxDisconnected();
-        return true;
-    }
-#else
-    void RequestNativeDisconnect() {}
-#endif
 
     void WorkerMain(ConnectParams params)
     {
@@ -1320,22 +983,13 @@ private:
     std::atomic_bool connected_ = false;
     std::thread worker_;
     RdpSessionInput input_;
+    RdpSessionChannels channels_;
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     static bool IsAutoInitialResolution(const std::string& resolution)
     {
         const std::string normalized = ToLowerAscii(TrimAscii(resolution));
         return normalized.empty() || normalized == "auto" || normalized == "window";
     }
-
-    std::mutex activeMutex_;
-    FreerdpRuntimeApi* activeApi_ = nullptr;
-    freerdp* activeInstance_ = nullptr;
-    rdpContext* activeContext_ = nullptr;
-    DispClientContext* activeDisp_ = nullptr;
-    RdpgfxClientContext* activeGfx_ = nullptr;
-    bool displayControlCapsReady_ = false;
-    uint32_t lastDynamicResizeWidth_ = 0;
-    uint32_t lastDynamicResizeHeight_ = 0;
 #endif
 };
 
