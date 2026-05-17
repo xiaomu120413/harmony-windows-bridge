@@ -10,7 +10,9 @@
 #include <cstdint>
 #include <string>
 
+#include <arkui/ui_input_event.h>
 #include <ace/xcomponent/native_interface_xcomponent.h>
+#include <ace/xcomponent/native_xcomponent_key_event.h>
 
 namespace rdp_bridge {
 namespace {
@@ -216,6 +218,83 @@ void OnXComponentTouchEvent(OH_NativeXComponent*, void*)
     g_surface.OnTouchEvent();
 }
 
+void OnXComponentFocusEvent(OH_NativeXComponent*, void*)
+{
+    EmitNativeLog("XComponent focused for native input");
+}
+
+void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
+{
+    std::string message;
+    if (g_session.ReleaseAllKeys(message)) {
+        EmitNativeLog("XComponent blurred; " + message);
+    } else {
+        EmitNativeLog("XComponent blurred; release keys skipped: " + message);
+    }
+}
+
+bool IsModifierPressed(uint64_t modifiers, ArkUI_ModifierKeyName modifier)
+{
+    return (modifiers & static_cast<uint64_t>(modifier)) != 0;
+}
+
+bool OnXComponentKeyEvent(OH_NativeXComponent* component, void*)
+{
+    if (component == nullptr) {
+        return false;
+    }
+
+    OH_NativeXComponent_KeyEvent* keyEvent = nullptr;
+    if (OH_NativeXComponent_GetKeyEvent(component, &keyEvent) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS ||
+        keyEvent == nullptr) {
+        EmitNativeLog("XComponent native key skipped: key event unavailable");
+        return false;
+    }
+
+    OH_NativeXComponent_KeyAction action = OH_NATIVEXCOMPONENT_KEY_ACTION_UNKNOWN;
+    OH_NativeXComponent_KeyCode keyCode = KEY_UNKNOWN;
+    if (OH_NativeXComponent_GetKeyEventAction(keyEvent, &action) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS ||
+        OH_NativeXComponent_GetKeyEventCode(keyEvent, &keyCode) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
+        EmitNativeLog("XComponent native key skipped: action/code unavailable");
+        return false;
+    }
+
+    if (action != OH_NATIVEXCOMPONENT_KEY_ACTION_DOWN &&
+        action != OH_NATIVEXCOMPONENT_KEY_ACTION_UP) {
+        return false;
+    }
+
+    uint64_t modifiers = 0;
+    OH_NativeXComponent_GetKeyEventModifierKeyStates(keyEvent, &modifiers);
+    const OhosKeyEvent event {
+        static_cast<uint32_t>(keyCode),
+        action == OH_NATIVEXCOMPONENT_KEY_ACTION_DOWN,
+        false,
+        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_CTRL),
+        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_SHIFT),
+        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_ALT),
+        false,
+    };
+
+    std::string message;
+    const bool ok = g_session.SendPlatformKey(event, message);
+    static std::atomic_uint32_t keyLogCount{0};
+    const uint32_t logIndex = keyLogCount.fetch_add(1);
+    const bool importantKey = event.keyCode == KEY_ENTER || event.keyCode == KEY_NUMPAD_ENTER ||
+        event.keyCode == KEY_DEL || event.keyCode == KEY_FORWARD_DEL || event.ctrl ||
+        event.keyCode == KEY_CTRL_LEFT || event.keyCode == KEY_CTRL_RIGHT;
+    if (importantKey || logIndex < 40 || (logIndex % 200) == 0 || !ok) {
+        EmitNativeLog("XComponent native key: keyCode=" + std::to_string(event.keyCode) +
+            (event.down ? " down " : " up ") +
+            "mods=" + std::to_string(modifiers) +
+            " ctrl=" + std::to_string(event.ctrl ? 1 : 0) +
+            " shift=" + std::to_string(event.shift ? 1 : 0) +
+            " alt=" + std::to_string(event.alt ? 1 : 0) +
+            " result=" + (ok ? "ok " : "failed ") + message);
+    }
+    return ok;
+}
+
 } // namespace
 
 SessionEventHub& BridgeEvents()
@@ -269,9 +348,17 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
 
     int32_t rc = OH_NativeXComponent_RegisterCallback(component, &callback);
     const bool ok = rc == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
+    const int32_t focusRc = OH_NativeXComponent_RegisterFocusEventCallback(component, OnXComponentFocusEvent);
+    const int32_t blurRc = OH_NativeXComponent_RegisterBlurEventCallback(component, OnXComponentBlurEvent);
+    const int32_t keyRc = OH_NativeXComponent_RegisterKeyEventCallbackWithResult(component, OnXComponentKeyEvent);
+    const int32_t softKeyboardRc = OH_NativeXComponent_SetNeedSoftKeyboard(component, true);
     g_surface.Register(component, ok);
     if (ok) {
-        g_events.log.Emit("XComponent callback registered: " + g_surface.Snapshot().id);
+        g_events.log.Emit("XComponent callback registered: " + g_surface.Snapshot().id +
+            " focusRc=" + std::to_string(focusRc) +
+            " blurRc=" + std::to_string(blurRc) +
+            " keyRc=" + std::to_string(keyRc) +
+            " softKeyboardRc=" + std::to_string(softKeyboardRc));
     }
     return ok;
 }

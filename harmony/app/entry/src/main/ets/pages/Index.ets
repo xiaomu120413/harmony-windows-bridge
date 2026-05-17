@@ -5,7 +5,6 @@ import {
   HILOG_TAG,
   INPUT_EVENT_LOG_INTERVAL_MS,
   POINTER_FAILURE_LOG_INTERVAL_MS,
-  REMOTE_INPUT_BRIDGE_ID,
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
@@ -37,14 +36,12 @@ struct Index {
   @State private surfaceViewportHeight: number = 0
   @State private desktopPixelWidth: number = 0
   @State private desktopPixelHeight: number = 0
-  @State private remoteTextInput: string = ''
   private callbacksRegistered: boolean = false
   private lastPointerFailureLogAtMs: number = 0
   private lastInputEventLogAtMs: number = 0
   private surfacePixelScaleX: number = 0
   private surfacePixelScaleY: number = 0
   private surfaceController: XComponentController = new XComponentController()
-  private remoteInputController: TextInputController = new TextInputController()
   private pointerInput: RemotePointerInput | null = null
   private permissionManager: RdpPermissionManager | null = null
 
@@ -87,7 +84,7 @@ struct Index {
     if (this.pointerInput === null) {
       this.pointerInput = new RemotePointerInput(
         (): boolean => this.isConnected(),
-        (): void => this.focusRemoteInputBridge(),
+        (): void => this.focusRemoteSurface(),
         (): PointerViewport => this.getPointerViewport(),
         (flags: number, x: number, y: number, allowClamp?: boolean, traceLabel?: string): boolean =>
           this.sendPointer(flags, x, y, !!allowClamp, traceLabel ?? ''),
@@ -126,10 +123,9 @@ struct Index {
           if (nextState === 'Connected' && !wasConnected) {
             this.currentTab = 'session'
             this.refreshNativeState()
-            this.focusRemoteInputBridge()
+            this.focusRemoteSurface()
           } else if (nextState !== 'Connected') {
             this.getPointerInput().clearState()
-            this.clearRemoteInputBridge()
           }
         })
       })
@@ -402,51 +398,16 @@ struct Index {
     }
   }
 
-  private focusRemoteInputBridge(): void {
+  private focusRemoteSurface(): void {
     if (!this.isConnected()) {
       return
     }
     this.deferUiUpdate(() => {
-      const focused = focusControl.requestFocus(REMOTE_INPUT_BRIDGE_ID)
+      const focused = focusControl.requestFocus(REMOTE_SURFACE_FOCUS_ID)
       if (!focused) {
-        this.appendLog('Remote input bridge focus failed')
+        this.appendLog('Remote surface focus failed')
       }
     })
-  }
-
-  private handleInputBridgeWillInsert(value: InsertValue): boolean {
-    const insertedText = value.insertValue
-    if (!insertedText.length) {
-      return false
-    }
-    this.sendRemoteTextFragment(insertedText)
-    this.remoteTextInput = ''
-    return false
-  }
-
-  private sendRemoteTextFragment(value: string): boolean {
-    if (!value.length) {
-      return false
-    }
-    if (!this.isConnected()) {
-      this.appendLog('Text input skipped: no active FreeRDP session')
-      return false
-    }
-
-    try {
-      const result: NativeCommandResult = rdpNative.sendText({ text: value })
-      if (!result.ok) {
-        this.appendLog(result.message)
-      }
-      return result.ok
-    } catch (error) {
-      this.appendLog(`Native committed text input failed: ${JSON.stringify(error)}`)
-      return false
-    }
-  }
-
-  private clearRemoteInputBridge(): void {
-    this.remoteTextInput = ''
   }
 
   private releaseActiveModifiers(): void {
@@ -461,58 +422,6 @@ struct Index {
       }
     } catch (error) {
       this.appendLog(`Native release all keys failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private shouldRouteRemoteKeyboard(): boolean {
-    return this.currentTab === 'session'
-  }
-
-  private stopKeyPropagation(event: KeyEvent): void {
-    try {
-      event.stopPropagation()
-    } catch (error) {
-      this.logInputEvent('key.stop', `failed ${JSON.stringify(error)}`, true)
-    }
-  }
-
-  private isModifierPressed(event: KeyEvent, modifier: string): boolean {
-    try {
-      return !!event.getModifierKeyState && event.getModifierKeyState([modifier])
-    } catch (error) {
-      return false
-    }
-  }
-
-  private forwardRemoteKeyEvent(event: KeyEvent): boolean {
-    if (!this.shouldRouteRemoteKeyboard() || !this.isConnected()) {
-      return false
-    }
-    if (event.type !== KeyType.Down && event.type !== KeyType.Up) {
-      return false
-    }
-
-    const down = event.type === KeyType.Down
-    try {
-      const result: NativeCommandResult = rdpNative.sendPlatformKey({
-        keyCode: event.keyCode,
-        down: down,
-        repeat: false,
-        ctrl: this.isModifierPressed(event, 'ctrl'),
-        shift: this.isModifierPressed(event, 'shift'),
-        alt: this.isModifierPressed(event, 'alt'),
-        meta: this.isModifierPressed(event, 'meta') || this.isModifierPressed(event, 'win')
-      })
-      this.logInputEvent('key.forward',
-        `code=${event.keyCode} type=${event.type} down=${down} ok=${result.ok}`)
-      if (!result.ok) {
-        this.appendLog(result.message)
-      }
-      this.stopKeyPropagation(event)
-      return true
-    } catch (error) {
-      this.appendLog(`Native platform key input failed: ${JSON.stringify(error)}`)
-      return false
     }
   }
 
@@ -662,7 +571,7 @@ struct Index {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent loaded')
               this.refreshNativeState()
-              this.focusRemoteInputBridge()
+              this.focusRemoteSurface()
             })
           })
           .onDestroy(() => {
@@ -676,31 +585,10 @@ struct Index {
               this.refreshNativeState()
             })
           })
-          .onAxisEvent((event: AxisEvent) => {
-            this.getPointerInput().handleAxis(event)
-          })
-
-        TextInput({ text: this.remoteTextInput, controller: this.remoteInputController })
-          .id(REMOTE_INPUT_BRIDGE_ID)
-          .width(1)
-          .height(1)
-          .position({ x: 0, y: 0 })
-          .opacity(0.01)
-          .fontSize(1)
-          .fontColor('#00000000')
-          .backgroundColor('#00000000')
-          .caretColor('#00000000')
+          .id(REMOTE_SURFACE_FOCUS_ID)
           .focusable(true)
-          .copyOption(CopyOptions.None)
-          .onWillInsert((value: InsertValue): boolean => {
-            return this.handleInputBridgeWillInsert(value)
-          })
-          .onKeyEventDispatch((event: KeyEvent): boolean => {
-            return this.forwardRemoteKeyEvent(event)
-          })
-          .onAxisEvent((event: AxisEvent) => {
-            this.getPointerInput().handleAxis(event)
-          })
+          .focusOnTouch(true)
+          .defaultFocus(true)
 
         if (!this.isConnected()) {
           Text('Remote desktop surface')
@@ -708,7 +596,6 @@ struct Index {
             .fontColor('#667085')
         }
       }
-      .id(REMOTE_SURFACE_FOCUS_ID)
       .layoutWeight(1)
       .width('100%')
       .backgroundColor('#101828')
@@ -716,9 +603,7 @@ struct Index {
       .focusOnTouch(true)
       .onTouch((event: TouchEvent) => {
         this.getPointerInput().handleTouch(event)
-      })
-      .onKeyEventDispatch((event: KeyEvent): boolean => {
-        return this.forwardRemoteKeyEvent(event)
+        this.focusRemoteSurface()
       })
       .onMouse((event: MouseEvent) => {
         this.getPointerInput().handleMouse(event)
@@ -728,10 +613,6 @@ struct Index {
       })
     }
     .layoutWeight(1)
-    .focusable(true)
-    .onKeyEventDispatch((event: KeyEvent): boolean => {
-      return this.forwardRemoteKeyEvent(event)
-    })
   }
 
   build() {

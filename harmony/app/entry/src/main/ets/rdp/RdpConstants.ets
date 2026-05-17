@@ -23,7 +23,6 @@ export const AXIS_EVENT_DEDUP_MS: number = 12
 
 export const HILOG_DOMAIN: number = 0xF3D1
 export const HILOG_TAG: string = 'FreeRDPUi'
-export const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
 export const REMOTE_SURFACE_FOCUS_ID: string = 'rdpRemoteSurface'
 
 export const READ_PASTEBOARD_PERMISSION: Permissions = 'ohos.permission.READ_PASTEBOARD'
