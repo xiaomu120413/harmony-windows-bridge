@@ -305,7 +305,7 @@ struct Index {
           if (nextState === 'Connected' && !wasConnected) {
             this.currentTab = 'session'
             this.probeNative()
-            this.focusRemoteSurface()
+            this.focusRemoteInputBridge()
           } else if (nextState !== 'Connected') {
             this.clearModifierState()
             this.clearPointerState()
@@ -869,14 +869,14 @@ struct Index {
     return false
   }
 
-  private focusRemoteSurface(): void {
+  private focusRemoteInputBridge(): void {
     if (!this.isConnected()) {
       return
     }
     this.deferUiUpdate(() => {
-      const focused = focusControl.requestFocus(REMOTE_SURFACE_FOCUS_ID)
+      const focused = focusControl.requestFocus(REMOTE_INPUT_BRIDGE_ID)
       if (!focused) {
-        this.appendLog('Remote surface focus failed')
+        this.appendLog('Remote input bridge focus failed')
       }
     })
   }
@@ -1636,7 +1636,7 @@ struct Index {
     this.lastTouchX = event.x
     this.lastTouchY = event.y
     if (event.action === MouseAction.Press) {
-      this.focusRemoteSurface()
+      this.focusRemoteInputBridge()
       this.logPointerDiagnostic('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
         this.mapPointerToDesktop(event.x, event.y, false))
       if (buttonFlag === 0 || !this.isPointInRemoteViewport(event.x, event.y)) {
@@ -1833,7 +1833,7 @@ struct Index {
     this.lastTouchY = y
 
     if (event.type === TouchType.Down) {
-      this.focusRemoteSurface()
+      this.focusRemoteInputBridge()
       this.startPendingTouch(x, y)
       return
     }
@@ -2085,7 +2085,7 @@ struct Index {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent loaded')
               this.probeNative()
-              this.focusRemoteSurface()
+              this.focusRemoteInputBridge()
             })
           })
           .onDestroy(() => {
@@ -2114,15 +2114,15 @@ struct Index {
           .fontColor('#00000000')
           .backgroundColor('#00000000')
           .caretColor('#00000000')
-          .focusable(false)
+          .focusable(true)
           .copyOption(CopyOptions.None)
           .onChange((value: string) => {
             this.handleRemoteTextInputChange(value)
           })
           .onPaste((content: string, event: PasteEvent) => {
             event.preventDefault?.()
-            this.focusRemoteSurface()
-            this.logInputEvent('paste', `hidden TextInput paste suppressed; surface refocused len=${content.length}`, true)
+            this.focusRemoteInputBridge()
+            this.logInputEvent('paste', `hidden TextInput paste suppressed; bridge refocused len=${content.length}`, true)
           })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
             this.handleInputBridgeSubmit()
