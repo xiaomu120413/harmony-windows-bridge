@@ -1,3 +1,5 @@
+#include "napi_exports.h"
+
 #include "napi/native_api.h"
 #include "bridge_types.h"
 #include "bridge_log.h"
@@ -714,8 +716,7 @@ napi_value OnError(napi_env env, napi_callback_info info)
 
 } // namespace
 
-EXTERN_C_START
-static napi_value Init(napi_env env, napi_value exports)
+napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -734,20 +735,4 @@ static napi_value Init(napi_env env, napi_value exports)
     ConfigureRdpSessionCallbacks();
     RegisterNativeXComponent(env, exports);
     return exports;
-}
-EXTERN_C_END
-
-static napi_module rdpNativeModule = {
-    .nm_version = 1,
-    .nm_flags = 0,
-    .nm_filename = nullptr,
-    .nm_register_func = Init,
-    .nm_modname = "entry",
-    .nm_priv = ((void*)0),
-    .reserved = {0},
-};
-
-extern "C" __attribute__((constructor)) void RegisterEntryModule(void)
-{
-    napi_module_register(&rdpNativeModule);
 }

@@ -30,9 +30,10 @@ add_library(entry SHARED
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp
     graphics_config.cpp
+    module_init.cpp
     net_utils.cpp
     napi_event_sink.cpp
-    napi_init.cpp
+    napi_exports.cpp
     napi_utils.cpp
     probe_utils.cpp
     rdp_channel_config.cpp
