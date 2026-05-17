@@ -351,6 +351,23 @@ napi_value SendUnicode(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    std::vector<std::string> logs = {"native release all keys invoked"};
+    std::string message;
+    const bool ok = BridgeSession().ReleaseAllKeys(message);
+    BridgeEvents().log.Emit(message);
+
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value NotifySurfaceLayout(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
@@ -428,6 +445,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPlatformKey", nullptr, SendPlatformKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"notifySurfaceLayout", nullptr, NotifySurfaceLayout, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},

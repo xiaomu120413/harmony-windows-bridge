@@ -70,6 +70,8 @@ Risk:
 
 ### P1: Keyboard State Backend in FreeRDP Source
 
+Status: implemented in source; pending final remote manual validation.
+
 Modification scope:
 
 - Extend `client/OHOS/ohos_keyboard.*` with:
@@ -96,6 +98,8 @@ Risk:
 - HarmonyOS may not deliver explicit modifier down/up for every keyboard path.
   If that happens, modifier synthesis must live inside the FreeRDP OHOS keyboard
   backend, not ArkTS.
+- The current implementation keeps a single active native repeat key, matching
+  common desktop behavior. Multi-key repeat is not supported.
 
 ### P2: IME Boundary Cleanup
 
@@ -223,3 +227,10 @@ Each phase is committed separately. Commit messages must include:
 P0 source migration has started by adding `client/OHOS/ohos_keyboard.*` and
 using it from the HAP wrapper. Runtime behavior is intentionally unchanged until
 P1 implements the actual state backend.
+
+P1 adds the first FreeRDP-owned keyboard state backend:
+
+- native pressed-key table
+- modifier synthesis for Ctrl/Shift/Alt/Win shortcuts
+- long-press repeat generation in the FreeRDP input pump
+- release-all-keys N-API hook used by the HAP validation shell on focus/lifecycle cleanup

@@ -5,6 +5,7 @@ namespace {
 
 constexpr uint32_t kWinprKeyboardTypeIbmEnhanced = 0x00000004U;
 constexpr uint32_t kWinprKeyboardExtendedFlag = 0x0100U;
+constexpr size_t kMaxOhosKeyPackets = 96;
 
 std::string HexInput(uint32_t value)
 {
@@ -22,6 +23,21 @@ std::string HexInput(uint32_t value)
 }
 
 } // namespace
+
+RdpSessionInput::RdpSessionInput()
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    keyboardState_ = freerdp_ohos_keyboard_state_new();
+#endif
+}
+
+RdpSessionInput::~RdpSessionInput()
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    freerdp_ohos_keyboard_state_free(keyboardState_);
+    keyboardState_ = nullptr;
+#endif
+}
 
 bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message,
     const std::function<void(const std::string&)>& log)
@@ -81,6 +97,10 @@ bool RdpSessionInput::EnqueuePlatformKey(const OhosKeyEvent& key, std::string& m
     event.vk = vk;
     event.down = key.down;
     event.repeat = key.repeat;
+    event.ctrl = key.ctrl;
+    event.shift = key.shift;
+    event.alt = key.alt;
+    event.meta = key.meta;
     event.extended = OhosKeyCodeRequiresExtendedScancode(key.keyCode);
     return EnqueueInput(event, key.down ? (key.repeat ? "platform key down queued repeat" :
         "platform key down queued") : "platform key up queued", message, log);
@@ -115,11 +135,28 @@ bool RdpSessionInput::EnqueueUnicode(uint32_t code, bool down, std::string& mess
 #endif
 }
 
+bool RdpSessionInput::EnqueueReleaseAllKeys(std::string& message,
+    const std::function<void(const std::string&)>& log)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    QueuedInputEvent event;
+    event.type = QueuedInputType::PlatformKey;
+    event.keyCode = 0;
+    event.synthetic = true;
+    return EnqueueInput(event, "platform key release-all queued", message, log);
+#else
+    (void)log;
+    message = "FreeRDP headers not found at build time";
+    return false;
+#endif
+}
+
 void RdpSessionInput::Clear()
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(inputMutex_);
     inputQueue_.clear();
+    freerdp_ohos_keyboard_state_reset(keyboardState_);
 #endif
     inputQueueDepth_.store(0);
 }
@@ -168,6 +205,9 @@ const char* RdpSessionInput::InputTypeName(const QueuedInputEvent& event) const
     if (event.type == QueuedInputType::PlatformKey) {
         return "platform-key";
     }
+    if (event.type == QueuedInputType::PlatformKeyPacket) {
+        return "platform-key-packet";
+    }
     return "unicode";
 }
 
@@ -208,43 +248,54 @@ bool RdpSessionInput::DropOldestDroppablePointerEventLocked()
     return false;
 }
 
+bool RdpSessionInput::EnqueueInputLocked(const QueuedInputEvent& event, const char* okMessage,
+    std::string& message, bool& droppedOldPointer, bool& droppedNewEvent)
+{
+    constexpr size_t maxInputQueue = 4096;
+
+    droppedOldPointer = false;
+    droppedNewEvent = false;
+
+    if (IsPointerMotionEvent(event) && !inputQueue_.empty() &&
+        IsPointerMotionEvent(inputQueue_.back()) &&
+        HasSamePointerMotionClass(event, inputQueue_.back())) {
+        inputQueue_.back() = event;
+        inputQueuedCount_.fetch_add(1);
+        message = okMessage;
+        return true;
+    }
+
+    if (inputQueue_.size() >= maxInputQueue) {
+        const bool mustProtectNewEvent = event.type != QueuedInputType::Pointer || !IsDroppablePointerEvent(event);
+        if (mustProtectNewEvent && DropOldestDroppablePointerEventLocked()) {
+            inputDroppedCount_.fetch_add(1);
+            droppedOldPointer = true;
+        }
+    }
+
+    if (inputQueue_.size() >= maxInputQueue) {
+        inputDroppedCount_.fetch_add(1);
+        message = std::string("FreeRDP input queue is full; dropped ") + InputTypeName(event) + " event";
+        droppedNewEvent = true;
+        return false;
+    }
+
+    inputQueue_.push_back(event);
+    inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
+    inputQueuedCount_.fetch_add(1);
+    message = okMessage;
+    return true;
+}
+
 bool RdpSessionInput::EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message,
     const std::function<void(const std::string&)>& log)
 {
-    constexpr size_t maxInputQueue = 4096;
     bool droppedOldPointer = false;
     bool droppedNewEvent = false;
 
     {
         std::lock_guard<std::mutex> lock(inputMutex_);
-
-        if (IsPointerMotionEvent(event) && !inputQueue_.empty() &&
-            IsPointerMotionEvent(inputQueue_.back()) &&
-            HasSamePointerMotionClass(event, inputQueue_.back())) {
-            inputQueue_.back() = event;
-            inputQueuedCount_.fetch_add(1);
-            message = okMessage;
-            return true;
-        }
-
-        if (inputQueue_.size() >= maxInputQueue) {
-            const bool mustProtectNewEvent = event.type != QueuedInputType::Pointer || !IsDroppablePointerEvent(event);
-            if (mustProtectNewEvent && DropOldestDroppablePointerEventLocked()) {
-                inputDroppedCount_.fetch_add(1);
-                droppedOldPointer = true;
-            }
-        }
-
-        if (inputQueue_.size() >= maxInputQueue) {
-            inputDroppedCount_.fetch_add(1);
-            message = std::string("FreeRDP input queue is full; dropped ") + InputTypeName(event) + " event";
-            droppedNewEvent = true;
-        } else {
-            inputQueue_.push_back(event);
-            inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
-            inputQueuedCount_.fetch_add(1);
-            message = okMessage;
-        }
+        EnqueueInputLocked(event, okMessage, message, droppedOldPointer, droppedNewEvent);
     }
 
     if (droppedOldPointer) {
@@ -258,18 +309,105 @@ bool RdpSessionInput::EnqueueInput(const QueuedInputEvent& event, const char* ok
     return true;
 }
 
+void RdpSessionInput::AppendPlatformKeyPacketLocked(const FREERDP_OHOS_KEY_PACKET& packet,
+    std::deque<QueuedInputEvent>& pending)
+{
+    QueuedInputEvent event;
+    event.type = QueuedInputType::PlatformKeyPacket;
+    event.keyCode = packet.keyCode;
+    event.vk = packet.windowsVk;
+    event.down = packet.down != 0;
+    event.repeat = packet.repeat != 0;
+    event.extended = packet.extended != 0;
+    event.synthetic = packet.synthetic != 0;
+    pending.push_back(event);
+}
+
+bool RdpSessionInput::AppendPlatformKeyPacketsLocked(const QueuedInputEvent& event,
+    std::deque<QueuedInputEvent>& pending, const std::function<void(const std::string&)>& log)
+{
+    FREERDP_OHOS_KEY_PACKET packets[kMaxOhosKeyPackets] = {};
+    size_t packetCount = 0;
+    bool ok = false;
+
+    if (keyboardState_ == nullptr) {
+        LogInputFailure("OHOS keyboard state backend is not initialized", log);
+        return false;
+    }
+
+    if (event.synthetic && event.keyCode == 0) {
+        ok = freerdp_ohos_keyboard_state_release_all(keyboardState_, packets,
+            kMaxOhosKeyPackets, &packetCount) != 0;
+    } else {
+        FREERDP_OHOS_KEY_EVENT nativeEvent {
+            event.keyCode,
+            event.down ? 1 : 0,
+            event.repeat ? 1 : 0,
+            event.ctrl ? 1 : 0,
+            event.shift ? 1 : 0,
+            event.alt ? 1 : 0,
+            event.meta ? 1 : 0,
+        };
+        ok = freerdp_ohos_keyboard_state_handle_event(keyboardState_, &nativeEvent, packets,
+            kMaxOhosKeyPackets, &packetCount) != 0;
+    }
+
+    if (!ok) {
+        LogInputFailure("OHOS keyboard state backend failed for keyCode=" +
+            std::to_string(event.keyCode), log);
+        return false;
+    }
+
+    for (size_t index = 0; index < packetCount; ++index) {
+        AppendPlatformKeyPacketLocked(packets[index], pending);
+    }
+    return true;
+}
+
+void RdpSessionInput::AppendDueRepeatPacketsLocked(std::deque<QueuedInputEvent>& pending,
+    const std::function<void(const std::string&)>& log)
+{
+    FREERDP_OHOS_KEY_PACKET packets[kMaxOhosKeyPackets] = {};
+    size_t packetCount = 0;
+
+    if (keyboardState_ == nullptr) {
+        return;
+    }
+
+    if (freerdp_ohos_keyboard_state_collect_due_repeats(keyboardState_, packets,
+        kMaxOhosKeyPackets, &packetCount) == 0) {
+        LogInputFailure("OHOS keyboard repeat collection failed", log);
+        return;
+    }
+
+    for (size_t index = 0; index < packetCount; ++index) {
+        AppendPlatformKeyPacketLocked(packets[index], pending);
+    }
+}
+
 void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
     const std::function<void(const std::string&)>& log)
 {
     std::deque<QueuedInputEvent> pending;
     {
         std::lock_guard<std::mutex> lock(inputMutex_);
-        if (inputQueue_.empty()) {
+        std::deque<QueuedInputEvent> queued;
+        queued.swap(inputQueue_);
+        inputQueueDepth_.store(0);
+
+        for (const QueuedInputEvent& event : queued) {
+            if (event.type == QueuedInputType::PlatformKey) {
+                AppendPlatformKeyPacketsLocked(event, pending, log);
+            } else {
+                pending.push_back(event);
+            }
+        }
+        AppendDueRepeatPacketsLocked(pending, log);
+
+        if (pending.empty()) {
             inputQueueDepth_.store(0);
             return;
         }
-        pending.swap(inputQueue_);
-        inputQueueDepth_.store(0);
     }
 
     if (api == nullptr || context == nullptr || context->input == nullptr) {
@@ -299,7 +437,7 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
                 ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
                     event.repeat ? TRUE : FALSE, event.scancode);
             }
-        } else if (event.type == QueuedInputType::PlatformKey) {
+        } else if (event.type == QueuedInputType::PlatformKeyPacket) {
             if (api->inputSendKeyboardEventEx != nullptr &&
                 api->getVirtualScanCodeFromVirtualKeyCode != nullptr) {
                 const uint32_t vkForScancode = event.vk |
@@ -380,6 +518,7 @@ void RdpSessionInput::LogPlatformKeyDispatch(const QueuedInputEvent& event, uint
         (event.extended ? " extended" : "") +
         (event.down ? " down" : " up") +
         (event.repeat ? " repeat" : "") +
+        (event.synthetic ? " synthetic" : "") +
         (ok ? " ok" : " failed"));
 }
 

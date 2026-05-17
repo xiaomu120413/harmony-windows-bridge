@@ -8,6 +8,7 @@
 #include <string>
 
 #include "input/ohos_keyboard_adapter.h"
+#include "client/OHOS/ohos_keyboard.h"
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include "freerdp_runtime.h"
@@ -17,6 +18,9 @@ namespace rdp_bridge {
 
 class RdpSessionInput {
 public:
+    RdpSessionInput();
+    ~RdpSessionInput();
+
     bool EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message,
         const std::function<void(const std::string&)>& log);
     bool EnqueueKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message,
@@ -25,6 +29,7 @@ public:
         const std::function<void(const std::string&)>& log);
     bool EnqueueUnicode(uint32_t code, bool down, std::string& message,
         const std::function<void(const std::string&)>& log);
+    bool EnqueueReleaseAllKeys(std::string& message, const std::function<void(const std::string&)>& log);
 
     void Clear();
     void Reset();
@@ -45,6 +50,7 @@ private:
         Pointer,
         Key,
         PlatformKey,
+        PlatformKeyPacket,
         Unicode,
     };
 
@@ -57,9 +63,14 @@ private:
         uint32_t keyCode = 0;
         uint32_t vk = 0;
         uint32_t code = 0;
+        bool ctrl = false;
+        bool shift = false;
+        bool alt = false;
+        bool meta = false;
         bool down = false;
         bool repeat = false;
         bool extended = false;
+        bool synthetic = false;
     };
 
     const char* InputTypeName(const QueuedInputEvent& event) const;
@@ -68,8 +79,16 @@ private:
     bool HasSamePointerMotionClass(const QueuedInputEvent& lhs, const QueuedInputEvent& rhs) const;
     bool IsDroppablePointerEvent(const QueuedInputEvent& event) const;
     bool DropOldestDroppablePointerEventLocked();
+    void AppendPlatformKeyPacketLocked(const FREERDP_OHOS_KEY_PACKET& packet,
+        std::deque<QueuedInputEvent>& pending);
+    bool AppendPlatformKeyPacketsLocked(const QueuedInputEvent& event,
+        std::deque<QueuedInputEvent>& pending, const std::function<void(const std::string&)>& log);
+    void AppendDueRepeatPacketsLocked(std::deque<QueuedInputEvent>& pending,
+        const std::function<void(const std::string&)>& log);
     bool EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message,
         const std::function<void(const std::string&)>& log);
+    bool EnqueueInputLocked(const QueuedInputEvent& event, const char* okMessage, std::string& message,
+        bool& droppedOldPointer, bool& droppedNewEvent);
     void LogInputFailure(const std::string& message, const std::function<void(const std::string&)>& log);
     void LogInputBackpressure(const std::string& message, const std::function<void(const std::string&)>& log);
     void LogKeyDispatch(const QueuedInputEvent& event, uint16_t flags, bool ok,
@@ -79,6 +98,7 @@ private:
 
     std::mutex inputMutex_;
     std::deque<QueuedInputEvent> inputQueue_;
+    FREERDP_OHOS_KEYBOARD_STATE* keyboardState_ = nullptr;
 #endif
 
     std::atomic_uint32_t inputQueueDepth_{0};

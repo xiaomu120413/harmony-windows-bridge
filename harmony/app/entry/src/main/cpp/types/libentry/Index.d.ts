@@ -95,6 +95,7 @@ declare const rdpNative: {
   sendKey(input: NativeKeyInput): NativeCommandResult;
   sendPlatformKey(input: NativePlatformKeyInput): NativeCommandResult;
   sendUnicode(input: NativeUnicodeInput): NativeCommandResult;
+  releaseAllKeys(): NativeCommandResult;
   notifySurfaceLayout(input: NativeSurfaceLayoutInput): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onLog(callback: (line: string) => void): NativeCommandResult;

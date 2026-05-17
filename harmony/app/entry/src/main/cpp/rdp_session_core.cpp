@@ -174,6 +174,23 @@ struct RdpSession::Impl {
 #endif
     }
 
+    bool ReleaseAllKeys(std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected.load()) {
+            input.Clear();
+            message = "no active FreeRDP session";
+            return false;
+        }
+        return input.EnqueueReleaseAllKeys(message, [this](const std::string& line) {
+            EmitLog(line);
+        });
+#else
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -506,6 +523,11 @@ bool RdpSession::SendPlatformKey(const OhosKeyEvent& event, std::string& message
 bool RdpSession::SendUnicode(uint32_t code, bool down, std::string& message)
 {
     return impl_->SendUnicode(code, down, message);
+}
+
+bool RdpSession::ReleaseAllKeys(std::string& message)
+{
+    return impl_->ReleaseAllKeys(message);
 }
 
 uint32_t RdpSession::InputQueueDepth() const

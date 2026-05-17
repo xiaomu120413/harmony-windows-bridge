@@ -1107,29 +1107,13 @@ struct Index {
       return
     }
 
-    if (this.winModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_META_LEFT, false, false)
-    }
-    if (this.rightWinModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_META_RIGHT, false, false)
-    }
-    if (this.altModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_ALT_LEFT, false, false)
-    }
-    if (this.rightAltModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_ALT_RIGHT, false, false)
-    }
-    if (this.ctrlModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_CTRL_LEFT, false, false)
-    }
-    if (this.rightCtrlModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_CTRL_RIGHT, false, false)
-    }
-    if (this.leftShiftModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_SHIFT_LEFT, false, false)
-    }
-    if (this.rightShiftModifierDown) {
-      this.sendPlatformKeyEvent(OH_KEYCODE_SHIFT_RIGHT, false, false)
+    try {
+      const result: NativeCommandResult = rdpNative.releaseAllKeys()
+      if (!result.ok) {
+        this.appendLog(result.message)
+      }
+    } catch (error) {
+      this.appendLog(`Native release all keys failed: ${JSON.stringify(error)}`)
     }
     this.clearModifierState()
   }
