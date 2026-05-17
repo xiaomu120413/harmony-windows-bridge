@@ -19,6 +19,7 @@
 #include "net_utils.h"
 #include "probe_utils.h"
 #include "rdp_channel_config.h"
+#include "rdp_session_input.h"
 #include "string_utils.h"
 
 #include <algorithm>
@@ -610,25 +611,6 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
 }
 
 class RdpSession {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    enum class QueuedInputType {
-        Pointer,
-        Key,
-        Unicode,
-    };
-
-    struct QueuedInputEvent {
-        QueuedInputType type = QueuedInputType::Pointer;
-        uint16_t flags = 0;
-        uint16_t x = 0;
-        uint16_t y = 0;
-        uint32_t scancode = 0;
-        uint32_t code = 0;
-        bool down = false;
-        bool repeat = false;
-    };
-#endif
-
 public:
     ~RdpSession()
     {
@@ -647,7 +629,7 @@ public:
 
         running_.store(true);
         connected_.store(false);
-        ResetInputState();
+        input_.Reset();
         message = "native worker started";
         worker_ = std::thread([this, params]() {
             WorkerMain(params);
@@ -667,7 +649,7 @@ public:
     {
         running_.store(false);
         connected_.store(false);
-        ClearInputQueue();
+        input_.Clear();
         ClearRdpDesktopSize();
         RequestNativeDisconnect();
         return worker_.joinable();
@@ -685,12 +667,7 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-        QueuedInputEvent event;
-        event.type = QueuedInputType::Pointer;
-        event.flags = flags;
-        event.x = x;
-        event.y = y;
-        return EnqueueInput(event, "pointer event queued", message);
+        return input_.EnqueuePointer(flags, x, y, message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -704,13 +681,7 @@ public:
             message = "no active FreeRDP session";
             return false;
         }
-        QueuedInputEvent event;
-        event.type = QueuedInputType::Key;
-        event.scancode = rdpScancode;
-        event.down = down;
-        event.repeat = repeat;
-        return EnqueueInput(event, down ? (repeat ? "key down queued repeat" : "key down queued") : "key up queued",
-            message);
+        return input_.EnqueueKey(rdpScancode, down, repeat, message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -720,19 +691,11 @@ public:
     bool SendUnicode(uint32_t code, bool down, std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-        if (code == 0 || code > 0xFFFFU) {
-            message = "unicode input requires a BMP UTF-16 code unit";
-            return false;
-        }
         if (!connected_.load()) {
             message = "no active FreeRDP session";
             return false;
         }
-        QueuedInputEvent event;
-        event.type = QueuedInputType::Unicode;
-        event.code = code;
-        event.down = down;
-        return EnqueueInput(event, down ? "unicode key down queued" : "unicode key up queued", message);
+        return input_.EnqueueUnicode(code, down, message);
 #else
         message = "FreeRDP headers not found at build time";
         return false;
@@ -741,22 +704,22 @@ public:
 
     uint32_t InputQueueDepth() const
     {
-        return inputQueueDepth_.load();
+        return input_.QueueDepth();
     }
 
     uint32_t InputQueuedCount() const
     {
-        return inputQueuedCount_.load();
+        return input_.QueuedCount();
     }
 
     uint32_t InputSentCount() const
     {
-        return inputSentCount_.load();
+        return input_.SentCount();
     }
 
     uint32_t InputDroppedCount() const
     {
-        return inputDroppedCount_.load();
+        return input_.DroppedCount();
     }
 
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message)
@@ -895,200 +858,7 @@ private:
         return running_.load();
     }
 
-    void ClearInputQueue()
-    {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-        std::lock_guard<std::mutex> lock(inputMutex_);
-        inputQueue_.clear();
-        inputQueueDepth_.store(0);
-#else
-        inputQueueDepth_.store(0);
-#endif
-    }
-
-    void ResetInputState()
-    {
-        ClearInputQueue();
-        inputQueuedCount_.store(0);
-        inputSentCount_.store(0);
-        inputDroppedCount_.store(0);
-        inputDispatchLogCount_.store(0);
-        inputFailureLogCount_.store(0);
-        inputBackpressureLogCount_.store(0);
-    }
-
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    const char* InputTypeName(const QueuedInputEvent& event) const
-    {
-        if (event.type == QueuedInputType::Pointer) {
-            return "pointer";
-        }
-        if (event.type == QueuedInputType::Key) {
-            return "key";
-        }
-        return "unicode";
-    }
-
-    bool IsPointerWheelEvent(const QueuedInputEvent& event) const
-    {
-        return event.type == QueuedInputType::Pointer &&
-            (event.flags & (PTR_FLAGS_WHEEL | PTR_FLAGS_HWHEEL)) != 0;
-    }
-
-    bool IsPointerMotionEvent(const QueuedInputEvent& event) const
-    {
-        return event.type == QueuedInputType::Pointer &&
-            (event.flags & PTR_FLAGS_MOVE) != 0 &&
-            !IsPointerWheelEvent(event);
-    }
-
-    bool HasSamePointerMotionClass(const QueuedInputEvent& lhs, const QueuedInputEvent& rhs) const
-    {
-        constexpr uint16_t pointerStateMask = PTR_FLAGS_BUTTON1 | PTR_FLAGS_BUTTON2 | PTR_FLAGS_BUTTON3 | PTR_FLAGS_DOWN;
-        return (lhs.flags & pointerStateMask) == (rhs.flags & pointerStateMask);
-    }
-
-    bool IsDroppablePointerEvent(const QueuedInputEvent& event) const
-    {
-        return IsPointerMotionEvent(event) || IsPointerWheelEvent(event);
-    }
-
-    bool DropOldestDroppablePointerEventLocked()
-    {
-        for (auto iter = inputQueue_.begin(); iter != inputQueue_.end(); ++iter) {
-            if (IsDroppablePointerEvent(*iter)) {
-                inputQueue_.erase(iter);
-                inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message)
-    {
-        constexpr size_t maxInputQueue = 4096;
-        bool droppedOldPointer = false;
-        bool droppedNewEvent = false;
-
-        {
-            std::lock_guard<std::mutex> lock(inputMutex_);
-
-            if (IsPointerMotionEvent(event) && !inputQueue_.empty() &&
-                IsPointerMotionEvent(inputQueue_.back()) &&
-                HasSamePointerMotionClass(event, inputQueue_.back())) {
-                inputQueue_.back() = event;
-                inputQueuedCount_.fetch_add(1);
-                message = okMessage;
-                return true;
-            }
-
-            if (inputQueue_.size() >= maxInputQueue) {
-                const bool mustProtectNewEvent = event.type != QueuedInputType::Pointer || !IsDroppablePointerEvent(event);
-                if (mustProtectNewEvent && DropOldestDroppablePointerEventLocked()) {
-                    inputDroppedCount_.fetch_add(1);
-                    droppedOldPointer = true;
-                }
-            }
-
-            if (inputQueue_.size() >= maxInputQueue) {
-                inputDroppedCount_.fetch_add(1);
-                message = std::string("FreeRDP input queue is full; dropped ") + InputTypeName(event) + " event";
-                droppedNewEvent = true;
-            } else {
-                inputQueue_.push_back(event);
-                inputQueueDepth_.store(static_cast<uint32_t>(inputQueue_.size()));
-                inputQueuedCount_.fetch_add(1);
-                message = okMessage;
-            }
-        }
-
-        if (droppedOldPointer) {
-            LogInputBackpressure(std::string("FreeRDP input queue protected ") + InputTypeName(event) +
-                " event by dropping pending pointer motion");
-        }
-        if (droppedNewEvent) {
-            LogInputFailure(message);
-            return false;
-        }
-        return true;
-    }
-
-    void DrainInputQueue(FreerdpRuntimeApi* api, rdpContext* context)
-    {
-        std::deque<QueuedInputEvent> pending;
-        {
-            std::lock_guard<std::mutex> lock(inputMutex_);
-            if (inputQueue_.empty()) {
-                inputQueueDepth_.store(0);
-                return;
-            }
-            pending.swap(inputQueue_);
-            inputQueueDepth_.store(0);
-        }
-
-        if (api == nullptr || context == nullptr || context->input == nullptr) {
-            inputDroppedCount_.fetch_add(static_cast<uint32_t>(pending.size()));
-            LogInputFailure("FreeRDP input context is not ready; queued input dropped");
-            return;
-        }
-
-        uint32_t sent = 0;
-        for (const QueuedInputEvent& event : pending) {
-            BOOL ok = FALSE;
-            if (event.type == QueuedInputType::Pointer) {
-                if (api->inputSendMouseEvent != nullptr) {
-                    ok = api->inputSendMouseEvent(context->input, event.flags, event.x, event.y);
-                }
-            } else if (event.type == QueuedInputType::Key) {
-                if (api->inputSendKeyboardEventEx != nullptr) {
-                    ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
-                        event.repeat ? TRUE : FALSE,
-                        event.scancode);
-                }
-            } else {
-                if (api->inputSendUnicodeKeyboardEvent != nullptr) {
-                    const UINT16 flags = event.down ? 0 : KBD_FLAGS_RELEASE;
-                    ok = api->inputSendUnicodeKeyboardEvent(context->input, flags, static_cast<UINT16>(event.code));
-                }
-            }
-
-            if (ok) {
-                ++sent;
-            } else {
-                inputDroppedCount_.fetch_add(1);
-                LogInputFailure("FreeRDP input dispatch failed on worker thread");
-            }
-        }
-
-        if (sent == 0) {
-            return;
-        }
-
-        const uint32_t totalSent = inputSentCount_.fetch_add(sent) + sent;
-        const uint32_t logIndex = inputDispatchLogCount_.fetch_add(1);
-        if (logIndex < 5 || totalSent % 200 == 0) {
-            EmitLog("FreeRDP input dispatched on worker thread: " + std::to_string(sent) +
-                " event(s), total=" + std::to_string(totalSent));
-        }
-    }
-
-    void LogInputFailure(const std::string& message)
-    {
-        const uint32_t logIndex = inputFailureLogCount_.fetch_add(1);
-        if (logIndex < 5 || logIndex % 100 == 0) {
-            EmitLog(message);
-        }
-    }
-
-    void LogInputBackpressure(const std::string& message)
-    {
-        const uint32_t logIndex = inputBackpressureLogCount_.fetch_add(1);
-        if (logIndex < 5 || logIndex % 100 == 0) {
-            EmitLog(message);
-        }
-    }
-
     void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
     {
         {
@@ -1483,9 +1253,11 @@ private:
                     }
                 },
                 [this](FreerdpRuntimeApi* api, rdpContext* context) {
-                    DrainInputQueue(api, context);
+                    input_.Drain(api, context, [this](const std::string& line) {
+                        EmitLog(line);
+                    });
                 });
-            ClearInputQueue();
+            input_.Clear();
 
             if (session.cancelled || !running_.load()) {
                 break;
@@ -1513,7 +1285,7 @@ private:
         (void)graphicsModes;
         session = RunFreerdpSessionUnavailable();
 #endif
-        ClearInputQueue();
+        input_.Clear();
 
         if (session.cancelled || !running_.load()) {
             connected_.store(false);
@@ -1541,13 +1313,7 @@ private:
     std::atomic_bool running_ = false;
     std::atomic_bool connected_ = false;
     std::thread worker_;
-    std::atomic_uint32_t inputQueueDepth_{0};
-    std::atomic_uint32_t inputQueuedCount_{0};
-    std::atomic_uint32_t inputSentCount_{0};
-    std::atomic_uint32_t inputDroppedCount_{0};
-    std::atomic_uint32_t inputDispatchLogCount_{0};
-    std::atomic_uint32_t inputFailureLogCount_{0};
-    std::atomic_uint32_t inputBackpressureLogCount_{0};
+    RdpSessionInput input_;
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     static bool IsAutoInitialResolution(const std::string& resolution)
     {
@@ -1564,8 +1330,6 @@ private:
     bool displayControlCapsReady_ = false;
     uint32_t lastDynamicResizeWidth_ = 0;
     uint32_t lastDynamicResizeHeight_ = 0;
-    std::mutex inputMutex_;
-    std::deque<QueuedInputEvent> inputQueue_;
 #endif
 };
 
