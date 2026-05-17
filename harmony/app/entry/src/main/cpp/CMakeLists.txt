@@ -29,12 +29,10 @@ add_library(entry SHARED
     certificate_policy.cpp
     channels/audio_diagnostics.cpp
     channels/clipboard_bridge.cpp
-    channels/clipboard_client_messages.cpp
-    channels/clipboard_format.cpp
-    channels/clipboard_pasteboard.cpp
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_clipboard.c
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.c
     input/ohos_keyboard_adapter.cpp
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.c
