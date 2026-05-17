@@ -227,6 +227,22 @@ bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::stri
 #endif
 }
 
+bool RdpSessionInput::EnqueueFocusIn(uint16_t toggleStates, std::string& message,
+    const std::function<void(const std::string&)>& log)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    QueuedInputEvent event;
+    event.type = QueuedInputType::FocusIn;
+    event.flags = toggleStates;
+    return EnqueueInput(event, "focus-in event queued", message, log);
+#else
+    (void)toggleStates;
+    (void)log;
+    message = "FreeRDP headers not found at build time";
+    return false;
+#endif
+}
+
 bool RdpSessionInput::EnqueueReleaseAllKeys(std::string& message,
     const std::function<void(const std::string&)>& log)
 {
@@ -302,6 +318,9 @@ const char* RdpSessionInput::InputTypeName(const QueuedInputEvent& event) const
     }
     if (event.type == QueuedInputType::PlatformKeyPacket) {
         return "platform-key-packet";
+    }
+    if (event.type == QueuedInputType::FocusIn) {
+        return "focus-in";
     }
     return "unicode";
 }
@@ -570,6 +589,14 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
                     ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
                         event.repeat ? TRUE : FALSE, event.scancode);
                     LogPlatformKeyDispatch(event, event.scancode, ok == TRUE, log);
+                }
+            }
+        } else if (event.type == QueuedInputType::FocusIn) {
+            if (api->inputSendFocusInEvent != nullptr) {
+                ok = api->inputSendFocusInEvent(context->input, event.flags);
+                if (log != nullptr) {
+                    log("FreeRDP focus-in dispatch: toggleStates=" +
+                        HexInput(event.flags) + (ok ? " ok" : " failed"));
                 }
             }
         } else {

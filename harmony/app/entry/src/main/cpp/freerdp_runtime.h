@@ -66,6 +66,7 @@ public:
     using InputSendKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT8);
     using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
     using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
+    using InputSendFocusInEventFn = BOOL (*)(rdpInput*, UINT16);
     using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
     using ClientLoadChannelsFn = BOOL (*)(freerdp*);
     using ClientAddStaticChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
@@ -163,6 +164,7 @@ public:
     InputSendKeyboardEventFn inputSendKeyboardEvent = nullptr;
     InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
     InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
+    InputSendFocusInEventFn inputSendFocusInEvent = nullptr;
     ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;
     ClientLoadChannelsFn clientLoadChannels = nullptr;
     ClientAddStaticChannelFn clientAddStaticChannel = nullptr;

@@ -599,8 +599,6 @@ struct Index {
       .layoutWeight(1)
       .width('100%')
       .backgroundColor('#101828')
-      .focusable(true)
-      .focusOnTouch(true)
       .onTouch((event: TouchEvent) => {
         this.getPointerInput().handleTouch(event)
         this.focusRemoteSurface()

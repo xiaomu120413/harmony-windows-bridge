@@ -104,6 +104,7 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadFreerdpSymbol("freerdp_input_send_keyboard_event", inputSendKeyboardEvent, error) &&
         LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
         LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
+        LoadFreerdpSymbol("freerdp_input_send_focus_in_event", inputSendFocusInEvent, error) &&
         LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
         LoadClientSymbol("freerdp_client_load_channels", clientLoadChannels, error) &&
         LoadClientSymbol("freerdp_client_add_static_channel", clientAddStaticChannel, error) &&

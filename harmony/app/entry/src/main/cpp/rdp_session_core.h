@@ -42,6 +42,7 @@ public:
     bool SendPlatformKey(const OhosKeyEvent& event, std::string& message);
     bool SendUnicode(uint32_t code, bool down, std::string& message);
     bool SendCommittedText(const std::u16string& text, std::string& message);
+    bool SendFocusIn(uint16_t toggleStates, std::string& message);
     bool ReleaseAllKeys(std::string& message);
 
     uint32_t InputQueueDepth() const;

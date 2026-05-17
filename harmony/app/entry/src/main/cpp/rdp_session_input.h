@@ -32,6 +32,8 @@ public:
         const std::function<void(const std::string&)>& log);
     bool EnqueueCommittedText(const std::u16string& text, std::string& message,
         const std::function<void(const std::string&)>& log);
+    bool EnqueueFocusIn(uint16_t toggleStates, std::string& message,
+        const std::function<void(const std::string&)>& log);
     bool EnqueueReleaseAllKeys(std::string& message, const std::function<void(const std::string&)>& log);
 
     void Clear();
@@ -55,6 +57,7 @@ private:
         PlatformKey,
         PlatformKeyPacket,
         Unicode,
+        FocusIn,
     };
 
     struct QueuedInputEvent {

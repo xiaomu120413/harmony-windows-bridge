@@ -191,6 +191,23 @@ struct RdpSession::Impl {
 #endif
     }
 
+    bool SendFocusIn(uint16_t toggleStates, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+        return input.EnqueueFocusIn(toggleStates, message, [this](const std::string& line) {
+            EmitLog(line);
+        });
+#else
+        (void)toggleStates;
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
     bool ReleaseAllKeys(std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -422,6 +439,14 @@ struct RdpSession::Impl {
                     EmitLog("graphics mode selected: " + selectedMode);
                     EmitLog("FreeRDP persistent session loop is active");
                     EmitLog("FreeRDP input bridge is using worker-thread dispatch");
+                    std::string focusMessage;
+                    if (SendFocusIn(0, focusMessage)) {
+                        EmitLog("FreeRDP focus-in queued after session connected: " +
+                            focusMessage);
+                    } else {
+                        EmitLog("FreeRDP focus-in skipped after session connected: " +
+                            focusMessage);
+                    }
                     const SurfaceSnapshot snapshot = SurfaceSnapshotValue();
                     if (snapshot.width > 0 && snapshot.height > 0) {
                         std::string resizeMessage;
@@ -545,6 +570,11 @@ bool RdpSession::SendUnicode(uint32_t code, bool down, std::string& message)
 bool RdpSession::SendCommittedText(const std::u16string& text, std::string& message)
 {
     return impl_->SendCommittedText(text, message);
+}
+
+bool RdpSession::SendFocusIn(uint16_t toggleStates, std::string& message)
+{
+    return impl_->SendFocusIn(toggleStates, message);
 }
 
 bool RdpSession::ReleaseAllKeys(std::string& message)
