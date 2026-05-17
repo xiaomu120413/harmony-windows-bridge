@@ -24,6 +24,7 @@ export class RemotePointerInput {
   private isConnectedCallback: () => boolean
   private focusRemoteInputCallback: () => void
   private getViewportCallback: () => PointerViewport
+  private refreshViewportStateCallback: (force?: boolean) => void
   private sendPointerCallback: (flags: number, x: number, y: number, allowClamp?: boolean,
     traceLabel?: string) => boolean
   private appendLogCallback: (line: string) => void
@@ -57,6 +58,7 @@ export class RemotePointerInput {
   constructor(isConnected: () => boolean,
     focusRemoteInput: () => void,
     getViewport: () => PointerViewport,
+    refreshViewportState: (force?: boolean) => void,
     sendPointer: (flags: number, x: number, y: number, allowClamp?: boolean, traceLabel?: string) => boolean,
     appendLog: (line: string) => void,
     logInputEvent: (label: string, detail: string, force?: boolean) => void,
@@ -64,6 +66,7 @@ export class RemotePointerInput {
     this.isConnectedCallback = isConnected
     this.focusRemoteInputCallback = focusRemoteInput
     this.getViewportCallback = getViewport
+    this.refreshViewportStateCallback = refreshViewportState
     this.sendPointerCallback = sendPointer
     this.appendLogCallback = appendLog
     this.logInputEventCallback = logInputEvent
@@ -114,6 +117,9 @@ export class RemotePointerInput {
       this.logInputEventCallback('mouse.synthetic', `suppressed action=${event.action}`, true)
       return
     }
+    if (event.action === MouseAction.Press || event.action === MouseAction.Release) {
+      this.refreshViewportStateCallback(true)
+    }
     this.lastTouchX = event.x
     this.lastTouchY = event.y
     if (event.action === MouseAction.Press) {
@@ -163,6 +169,7 @@ export class RemotePointerInput {
     if (this.shouldSkipDuplicateAxisEvent(event, deltaX, deltaY)) {
       return
     }
+    this.refreshViewportStateCallback(true)
     const axisX = PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), event.x, event.y) ?
       event.x : this.lastTouchX
     const axisY = PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), event.x, event.y) ?
@@ -225,6 +232,7 @@ export class RemotePointerInput {
     this.lastTouchY = y
 
     if (event.type === TouchType.Down) {
+      this.refreshViewportStateCallback(true)
       this.focusRemoteInputCallback()
       this.startPendingTouch(x, y)
       return

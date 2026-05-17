@@ -369,7 +369,8 @@ bool NotifyBridgeSurfaceLayout(uint32_t width, uint32_t height, std::string& mes
     if (changed) {
         EmitNativeLog(message);
         UpdateAvc420SurfaceOutputIfActive("surface layout changed");
-        RequestRemoteDesktopResize(width, height, "surface layout changed");
+        const SurfaceSnapshot snapshot = g_surface.Snapshot();
+        RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface layout changed");
         RequestSurfaceRepaint("surface layout changed");
     }
     return changed;

@@ -101,16 +101,23 @@ public:
         }
 
         SurfaceSnapshot snapshot;
+        uint32_t targetWidth = width;
+        uint32_t targetHeight = height;
+        bool resolvedNativeSize = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (width_ == width && height_ == height) {
-                message = "XComponent layout unchanged: " + std::to_string(width) + "x" +
-                    std::to_string(height);
+            resolvedNativeSize = ResolveNativeSurfaceSizeLocked(targetWidth, targetHeight);
+            if (width_ == targetWidth && height_ == targetHeight) {
+                message = "XComponent layout unchanged: " + std::to_string(targetWidth) + "x" +
+                    std::to_string(targetHeight);
+                if (resolvedNativeSize && (targetWidth != width || targetHeight != height)) {
+                    message += " requested=" + std::to_string(width) + "x" + std::to_string(height);
+                }
                 return false;
             }
 
-            width_ = width;
-            height_ = height;
+            width_ = targetWidth;
+            height_ = targetHeight;
             ClearNativeWindowConfigLocked();
             ClearViewportLocked();
             ++changedCount_;
@@ -119,6 +126,9 @@ public:
 
         message = "XComponent layout changed: " + snapshot.id + " " +
             std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height);
+        if (resolvedNativeSize && (snapshot.width != width || snapshot.height != height)) {
+            message += " requested=" + std::to_string(width) + "x" + std::to_string(height);
+        }
         return true;
     }
 
@@ -269,6 +279,25 @@ private:
         avc444Surfaces_.Destroy();
         nativePainter_.Destroy();
         gpuFallbackLogged_ = false;
+    }
+
+    bool ResolveNativeSurfaceSizeLocked(uint32_t& width, uint32_t& height) const
+    {
+        if (component_ == nullptr || window_ == nullptr) {
+            return false;
+        }
+
+        uint64_t nativeWidth = 0;
+        uint64_t nativeHeight = 0;
+        const int32_t rc = OH_NativeXComponent_GetXComponentSize(component_, window_, &nativeWidth, &nativeHeight);
+        if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS || nativeWidth == 0 || nativeHeight == 0) {
+            return false;
+        }
+
+        constexpr uint64_t maxDimension = std::numeric_limits<uint32_t>::max();
+        width = static_cast<uint32_t>(std::min(nativeWidth, maxDimension));
+        height = static_cast<uint32_t>(std::min(nativeHeight, maxDimension));
+        return true;
     }
 
     static RenderViewport FitFrameIntoTarget(uint32_t targetWidth, uint32_t targetHeight,

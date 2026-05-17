@@ -5,6 +5,7 @@ import {
   HILOG_TAG,
   INPUT_EVENT_LOG_INTERVAL_MS,
   POINTER_FAILURE_LOG_INTERVAL_MS,
+  POINTER_STATE_REFRESH_INTERVAL_MS,
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
@@ -38,6 +39,7 @@ struct Index {
   @State private desktopPixelHeight: number = 0
   private callbacksRegistered: boolean = false
   private lastPointerFailureLogAtMs: number = 0
+  private lastPointerStateRefreshAtMs: number = 0
   private lastInputEventLogAtMs: number = 0
   private surfacePixelScaleX: number = 0
   private surfacePixelScaleY: number = 0
@@ -90,6 +92,7 @@ struct Index {
         (): boolean => this.isConnected(),
         (): void => this.focusRemoteSurface(),
         (): PointerViewport => this.getPointerViewport(),
+        (force?: boolean): void => this.refreshPointerState(!!force),
         (flags: number, x: number, y: number, allowClamp?: boolean, traceLabel?: string): boolean =>
           this.sendPointer(flags, x, y, !!allowClamp, traceLabel ?? ''),
         (line: string): void => this.appendLog(line),
@@ -190,6 +193,21 @@ struct Index {
     }
   }
 
+  private refreshPointerState(force: boolean = false): void {
+    if (!this.isConnected()) {
+      return
+    }
+
+    const now = Date.now()
+    if (!force && this.surfacePixelWidth > 0 && this.desktopPixelWidth > 0 &&
+      now - this.lastPointerStateRefreshAtMs < POINTER_STATE_REFRESH_INTERVAL_MS) {
+      return
+    }
+
+    this.lastPointerStateRefreshAtMs = now
+    this.refreshNativeState()
+  }
+
   private normalizeCertPolicy(value: string): string {
     const normalized = value.trim().toLowerCase()
     if (normalized === 'strict' || normalized === 'verify' || normalized === 'valid-ca' ||
@@ -264,54 +282,18 @@ struct Index {
       return
     }
 
-    let pixelScaleX = this.surfacePixelScaleX
-    let pixelScaleY = this.surfacePixelScaleY
-    try {
-      const probe: NativeProbeResult = rdpNative.probe()
-      const layoutUnchanged = this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight
-      if (probe.surfaceReady && probe.surfaceWidth > 0 && probe.surfaceHeight > 0) {
-        if (layoutUnchanged || pixelScaleX <= 0) {
-          pixelScaleX = probe.surfaceWidth / nextWidth
-        }
-        if (layoutUnchanged || pixelScaleY <= 0) {
-          pixelScaleY = probe.surfaceHeight / nextHeight
-        }
-      }
-    } catch (error) {
-      this.appendLog(`Native surface scale probe failed: ${JSON.stringify(error)}`)
-    }
-
-    if (pixelScaleX <= 0 && this.surfaceLayoutWidth > 0 && this.surfacePixelWidth > 0) {
-      pixelScaleX = this.surfacePixelWidth / this.surfaceLayoutWidth
-    }
-    if (pixelScaleY <= 0 && this.surfaceLayoutHeight > 0 && this.surfacePixelHeight > 0) {
-      pixelScaleY = this.surfacePixelHeight / this.surfaceLayoutHeight
-    }
-    const nativeWidth = Math.round(nextWidth * (pixelScaleX > 0 ? pixelScaleX : 1))
-    const nativeHeight = Math.round(nextHeight * (pixelScaleY > 0 ? pixelScaleY : 1))
-
-    if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight &&
-      this.surfacePixelWidth === nativeWidth && this.surfacePixelHeight === nativeHeight) {
+    if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight) {
       return
     }
 
-    this.surfacePixelScaleX = pixelScaleX > 0 ? pixelScaleX : this.surfacePixelScaleX
-    this.surfacePixelScaleY = pixelScaleY > 0 ? pixelScaleY : this.surfacePixelScaleY
     this.surfaceLayoutWidth = nextWidth
     this.surfaceLayoutHeight = nextHeight
-    this.surfacePixelWidth = nativeWidth
-    this.surfacePixelHeight = nativeHeight
-    try {
-      rdpNative.notifySurfaceLayout({
-        width: nativeWidth,
-        height: nativeHeight
-      })
-    } catch (error) {
-      this.appendLog(`Native surface layout notify failed: ${JSON.stringify(error)}`)
-    }
+    this.lastPointerStateRefreshAtMs = 0
+    this.refreshNativeState()
   }
 
   private getPointerViewport(): PointerViewport {
+    this.refreshPointerState()
     return {
       resolution: this.resolution,
       surfacePixelWidth: this.surfacePixelWidth,
