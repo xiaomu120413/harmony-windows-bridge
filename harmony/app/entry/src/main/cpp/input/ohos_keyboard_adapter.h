@@ -20,6 +20,7 @@ public:
     bool SendPlatformKey(const OhosKeyEvent& event, std::string& message) const;
 };
 
+uint32_t MapOhosKeyCodeToWindowsVk(uint32_t keyCode);
 std::string FormatOhosKeyEvent(const OhosKeyEvent& event);
 
 } // namespace rdp_bridge
