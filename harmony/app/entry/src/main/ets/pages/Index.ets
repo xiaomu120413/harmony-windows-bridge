@@ -120,6 +120,7 @@ const OH_KEYCODE_NUMPAD_ADD: number = 2116
 const OH_KEYCODE_NUMPAD_DOT: number = 2117
 const OH_KEYCODE_NUMPAD_ENTER: number = 2119
 const READ_PASTEBOARD_PERMISSION: Permissions = 'ohos.permission.READ_PASTEBOARD'
+const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE'
 
 interface NativeProbeResult {
   bridgeVersion: string
@@ -240,6 +241,8 @@ struct Index {
   private callbacksRegistered: boolean = false
   private pasteboardPermissionRequested: boolean = false
   private pasteboardPermissionInFlight: boolean = false
+  private microphonePermissionRequested: boolean = false
+  private microphonePermissionInFlight: boolean = false
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
   private longPressTriggered: boolean = false
@@ -295,6 +298,7 @@ struct Index {
   aboutToAppear(): void {
     this.registerNativeCallbacks()
     this.ensurePasteboardReadPermission('page appear')
+    this.ensureMicrophonePermission('page appear')
   }
 
   aboutToDisappear(): void {
@@ -395,6 +399,53 @@ struct Index {
       })
   }
 
+  private hasMicrophonePermission(): boolean {
+    try {
+      const atManager = abilityAccessCtrl.createAtManager()
+      const status = atManager.checkAccessTokenSync(this.getSelfAccessTokenId(), MICROPHONE_PERMISSION)
+      return status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
+    } catch (error) {
+      this.appendLog(`Microphone permission check failed: ${JSON.stringify(error)}`)
+      return false
+    }
+  }
+
+  private ensureMicrophonePermission(trigger: string): void {
+    if (this.hasMicrophonePermission()) {
+      this.appendLog(`Microphone permission granted: ${trigger}`)
+      return
+    }
+    if (this.microphonePermissionRequested || this.microphonePermissionInFlight) {
+      return
+    }
+
+    let context: common.UIAbilityContext
+    try {
+      context = getContext(this) as common.UIAbilityContext
+    } catch (error) {
+      this.appendLog(`Microphone permission request skipped: no UIAbilityContext; ${JSON.stringify(error)}`)
+      return
+    }
+
+    this.microphonePermissionRequested = true
+    this.microphonePermissionInFlight = true
+    const atManager = abilityAccessCtrl.createAtManager()
+    atManager.requestPermissionsFromUser(context, [MICROPHONE_PERMISSION])
+      .then((result) => {
+        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
+          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
+        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
+          this.hasMicrophonePermission()
+        this.appendLog(`Microphone permission request result: granted=${granted} auth=${authResult}`)
+      })
+      .catch((error: Error) => {
+        this.appendLog(`Microphone permission request failed: ${JSON.stringify(error)}`)
+      })
+      .finally(() => {
+        this.microphonePermissionInFlight = false
+      })
+  }
+
   private probeNative(appendLogs: boolean = true): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
@@ -479,6 +530,7 @@ struct Index {
     }
 
     try {
+      this.ensureMicrophonePermission('connect')
       const policy = this.normalizeCertPolicy(this.certPolicy)
       this.certPolicy = policy
       this.connectionState = 'Resolving'

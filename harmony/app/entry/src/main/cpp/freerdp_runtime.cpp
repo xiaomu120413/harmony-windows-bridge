@@ -120,6 +120,7 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("rdpgfx_client_context_free", rdpgfxClientContextFree);
         LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
         LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_diagnostics", rdpsndOhosGetDiagnostics);
+        LoadOptionalClientSymbol("freerdp_audin_ohos_get_diagnostics", audinOhosGetDiagnostics);
         LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);

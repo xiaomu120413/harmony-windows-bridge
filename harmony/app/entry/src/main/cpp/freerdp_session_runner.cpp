@@ -226,7 +226,8 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     if (!clipboardBridge.Initialize(instance->context, api, log, error) ||
-        !ConfigureAudioPlaybackChannel(api, settings, log, error)) {
+        !ConfigureAudioPlaybackChannel(api, settings, log, error) ||
+        !ConfigureAudioCaptureChannel(api, settings, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();

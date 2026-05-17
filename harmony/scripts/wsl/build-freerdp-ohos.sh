@@ -169,6 +169,10 @@ detect_optional_backends() {
       printf 'OHAudio header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/ohaudio" >&2
       exit 1
     }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/ohaudio/native_audiocapturer.h" ]] || {
+      printf 'OHAudio capturer header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/ohaudio" >&2
+      exit 1
+    }
     [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libohaudio.so" ]] || {
       printf 'OHAudio library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
       exit 1

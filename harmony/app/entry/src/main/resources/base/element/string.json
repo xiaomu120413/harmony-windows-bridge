@@ -15,6 +15,10 @@
     {
       "name": "read_pasteboard_reason",
       "value": "Read the local clipboard so FreeRDP can redirect text paste operations to the remote desktop."
+    },
+    {
+      "name": "microphone_reason",
+      "value": "Capture microphone audio so FreeRDP can redirect local voice input to the remote desktop."
     }
   ]
 }

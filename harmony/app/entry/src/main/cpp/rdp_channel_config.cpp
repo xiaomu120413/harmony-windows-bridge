@@ -98,7 +98,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     }
-    log("FreeRDP audio playback is requested through explicit rdpsnd sys:ohos channels");
+    log("FreeRDP audio playback/capture is requested through explicit OHAudio channels");
     log("FreeRDP rdpdr base channel enabled; drive/printer/smartcard runtime toggles remain disabled by default");
     return true;
 }
@@ -170,7 +170,34 @@ bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings
 
     log("FreeRDP audio playback requested with static and dynamic rdpsnd sys:ohos PCM 44.1kHz stereo latency 100ms");
     log("FreeRDP AudioPlayback enabled so the logon Info Packet does not request no-audio playback");
-    log("FreeRDP microphone capture remains disabled");
+    return true;
+}
+
+bool ConfigureAudioCaptureChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const std::function<void(const std::string&)>& log, std::string& error)
+{
+    if (api.clientAddDynamicChannel == nullptr) {
+        error = "FreeRDP audin channel helper is not loaded";
+        return false;
+    }
+
+    const char* params[] = {
+        "audin",
+        "sys:ohos",
+        "format:1",
+        "rate:44100",
+        "channel:1"
+    };
+    if (!api.clientAddDynamicChannel(settings, sizeof(params) / sizeof(params[0]), params)) {
+        error = "set audin dynamic channel failed";
+        return false;
+    }
+    if (!SetFreerdpBool(api, settings, FreeRDP_AudioCapture, true, "AudioCapture", error)) {
+        return false;
+    }
+
+    log("FreeRDP microphone capture requested with dynamic audin sys:ohos PCM 44.1kHz mono");
+    log("FreeRDP AudioCapture enabled; OHOS microphone permission is handled by the HAP validation shell");
     return true;
 }
 #endif

@@ -25,6 +25,8 @@ bool ConfigureClipboardChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     const std::function<void(const std::string&)>& log, std::string& error);
 bool ConfigureAudioPlaybackChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     const std::function<void(const std::string&)>& log, std::string& error);
+bool ConfigureAudioCaptureChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const std::function<void(const std::string&)>& log, std::string& error);
 #endif
 
 } // namespace rdp_bridge

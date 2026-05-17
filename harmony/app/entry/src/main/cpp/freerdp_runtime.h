@@ -70,6 +70,7 @@ public:
     using RdpsndOhosGetStatsFn = BOOL (*)(UINT64*, UINT64*, UINT64*, UINT64*, UINT64*, UINT64*,
         UINT64*, UINT64*, UINT32*, UINT16*, UINT16*, UINT32*);
     using RdpsndOhosGetDiagnosticsFn = const char* (*)();
+    using AudinOhosGetDiagnosticsFn = const char* (*)();
     using RdpsndClientGetDiagnosticsFn = const char* (*)();
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
@@ -119,6 +120,7 @@ public:
     RdpgfxClientContextFreeFn rdpgfxClientContextFree = nullptr;
     RdpsndOhosGetStatsFn rdpsndOhosGetStats = nullptr;
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
+    AudinOhosGetDiagnosticsFn audinOhosGetDiagnostics = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;

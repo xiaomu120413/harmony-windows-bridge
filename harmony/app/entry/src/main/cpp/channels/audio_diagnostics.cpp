@@ -22,14 +22,23 @@ std::string BuildOHAudioStatsLog()
             rdpsndClientDiagnostics += diagnostics;
         }
     }
+    std::string audinDiagnostics;
+    if (api.audinOhosGetDiagnostics != nullptr) {
+        const char* diagnostics = api.audinOhosGetDiagnostics();
+        if (diagnostics != nullptr && diagnostics[0] != '\0') {
+            audinDiagnostics = " | ";
+            audinDiagnostics += diagnostics;
+        }
+    }
     if (api.rdpsndOhosGetDiagnostics != nullptr) {
         const char* diagnostics = api.rdpsndOhosGetDiagnostics();
         if (diagnostics != nullptr && diagnostics[0] != '\0') {
-            return std::string(diagnostics) + rdpsndClientDiagnostics;
+            return std::string(diagnostics) + rdpsndClientDiagnostics + audinDiagnostics;
         }
     }
     if (api.rdpsndOhosGetStats == nullptr) {
-        return "OHAudio stats unavailable: backend symbol not exported" + rdpsndClientDiagnostics;
+        return "OHAudio stats unavailable: backend symbol not exported" + rdpsndClientDiagnostics +
+            audinDiagnostics;
     }
 
     UINT64 registeredCount = 0;
@@ -61,7 +70,7 @@ std::string BuildOHAudioStatsLog()
         << " underrunBytes=" << underrunBytes
         << " lastFormat=" << lastRate << "Hz/" << lastChannels << "ch/" << lastBits
         << "bit latency=" << lastLatencyMs << "ms";
-    return out.str() + rdpsndClientDiagnostics;
+    return out.str() + rdpsndClientDiagnostics + audinDiagnostics;
 #else
     return "OHAudio stats unavailable: FreeRDP headers not found at build time";
 #endif
