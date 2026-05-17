@@ -2,13 +2,8 @@
 
 #include "bridge_log.h"
 #include "clipboard_format.h"
+#include "clipboard_pasteboard.h"
 #include "string_utils.h"
-
-#include <database/pasteboard/oh_pasteboard.h>
-#include <database/pasteboard/oh_pasteboard_err_code.h>
-#include <database/udmf/udmf.h>
-#include <database/udmf/udmf_err_code.h>
-#include <database/udmf/uds.h>
 
 #include <memory>
 #include <mutex>
@@ -72,33 +67,9 @@ public:
         subscribedDisconnected_ = true;
         Log("cliprdr bridge subscribed to FreeRDP channel events");
 
-        pasteboard_ = OH_Pasteboard_Create();
-        if (pasteboard_ == nullptr) {
-            Log("HarmonyOS Pasteboard create failed; cliprdr will advertise no local text");
-            return true;
-        }
-        Log("HarmonyOS Pasteboard created for cliprdr text bridge");
-
-        observer_ = OH_PasteboardObserver_Create();
-        if (observer_ == nullptr) {
-            Log("HarmonyOS Pasteboard observer create failed; local clipboard changes require reconnect");
-            return true;
-        }
-
-        rc = OH_PasteboardObserver_SetData(observer_, this, OnPasteboardChanged, OnPasteboardFinalize);
-        if (rc != ERR_OK) {
-            Log("HarmonyOS Pasteboard observer setup failed: " + std::to_string(rc));
-            return true;
-        }
-
-        rc = OH_Pasteboard_Subscribe(pasteboard_, NOTIFY_LOCAL_DATA_CHANGE, observer_);
-        if (rc == ERR_OK) {
-            pasteboardSubscribed_ = true;
-            Log("HarmonyOS Pasteboard observer subscribed");
-        } else {
-            Log("HarmonyOS Pasteboard subscribe warning: " + std::to_string(rc));
-        }
-
+        pasteboard_.Initialize(log_, [this]() {
+            (void)SendLocalFormatList("pasteboard changed");
+        });
         return true;
     }
 
@@ -108,18 +79,7 @@ public:
             DetachCliprdr(cliprdr_);
         }
 
-        if (pasteboard_ != nullptr && observer_ != nullptr && pasteboardSubscribed_) {
-            (void)OH_Pasteboard_Unsubscribe(pasteboard_, NOTIFY_LOCAL_DATA_CHANGE, observer_);
-            pasteboardSubscribed_ = false;
-        }
-        if (observer_ != nullptr) {
-            (void)OH_PasteboardObserver_Destroy(observer_);
-            observer_ = nullptr;
-        }
-        if (pasteboard_ != nullptr) {
-            OH_Pasteboard_Destroy(pasteboard_);
-            pasteboard_ = nullptr;
-        }
+        pasteboard_.Uninitialize();
 
         if (api_ != nullptr && context_ != nullptr && context_->pubSub != nullptr) {
             if (subscribedConnected_) {
@@ -186,19 +146,6 @@ private:
         if (std::strcmp(event->name, CLIPRDR_SVC_CHANNEL_NAME) == 0) {
             bridge->DetachCliprdr(static_cast<CliprdrClientContext*>(event->pInterface));
         }
-    }
-
-    static void OnPasteboardChanged(void* context, Pasteboard_NotifyType type)
-    {
-        auto* bridge = static_cast<Impl*>(context);
-        if (bridge == nullptr || type != NOTIFY_LOCAL_DATA_CHANGE) {
-            return;
-        }
-        bridge->HandleLocalPasteboardChanged();
-    }
-
-    static void OnPasteboardFinalize(void*)
-    {
     }
 
     static UINT CliprdrMonitorReady(CliprdrClientContext* cliprdr,
@@ -391,7 +338,7 @@ private:
 
         std::string text;
         std::string error;
-        const bool hasText = ReadLocalPlainText(text, error);
+        const bool hasText = pasteboard_.ReadPlainText(text, error);
         if (!hasText && !error.empty()) {
             Log("HarmonyOS Pasteboard read warning: " + error);
         }
@@ -471,7 +418,7 @@ private:
 
         std::string text;
         std::string error;
-        const bool ok = ReadLocalPlainText(text, error);
+        const bool ok = pasteboard_.ReadPlainText(text, error);
         std::vector<BYTE> data;
         if (ok && request.requestedFormatId == CF_UNICODETEXT) {
             data = Utf8ToUtf16LeClipboard(text);
@@ -523,7 +470,7 @@ private:
         }
 
         std::string error;
-        if (!WriteLocalPlainText(text, error)) {
+        if (!pasteboard_.WritePlainText(text, error)) {
             Log("HarmonyOS Pasteboard write failed: " + error);
             return ERROR_INTERNAL_ERROR;
         }
@@ -531,138 +478,6 @@ private:
         Log("cliprdr remote text copied to HarmonyOS Pasteboard: " +
             std::to_string(text.size()) + " bytes utf8");
         return CHANNEL_RC_OK;
-    }
-
-    void HandleLocalPasteboardChanged()
-    {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (ignoreLocalPasteboardChanges_ > 0) {
-                --ignoreLocalPasteboardChanges_;
-                return;
-            }
-        }
-        (void)SendLocalFormatList("pasteboard changed");
-    }
-
-    bool ReadLocalPlainText(std::string& text, std::string& error)
-    {
-        text.clear();
-        if (pasteboard_ == nullptr) {
-            error = "pasteboard unavailable";
-            return false;
-        }
-
-        int status = ERR_OK;
-        OH_UdmfData* data = OH_Pasteboard_GetData(pasteboard_, &status);
-        if (status != ERR_OK || data == nullptr) {
-            error = "OH_Pasteboard_GetData status=" + std::to_string(status);
-            return false;
-        }
-
-        OH_UdsPlainText* primaryPlainText = OH_UdsPlainText_Create();
-        if (primaryPlainText != nullptr) {
-            const int primaryRc = OH_UdmfData_GetPrimaryPlainText(data, primaryPlainText);
-            if (primaryRc == UDMF_E_OK) {
-                const char* content = OH_UdsPlainText_GetContent(primaryPlainText);
-                if (content != nullptr) {
-                    text = content;
-                }
-            }
-            OH_UdsPlainText_Destroy(primaryPlainText);
-            if (!text.empty()) {
-                OH_UdmfData_Destroy(data);
-                return true;
-            }
-        }
-
-        const int recordCount = OH_UdmfData_GetRecordCount(data);
-        for (int index = 0; index < recordCount; ++index) {
-            OH_UdmfRecord* record = OH_UdmfData_GetRecord(data, static_cast<unsigned int>(index));
-            if (record == nullptr) {
-                continue;
-            }
-            OH_UdsPlainText* plainText = OH_UdsPlainText_Create();
-            if (plainText == nullptr) {
-                continue;
-            }
-            const int rc = OH_UdmfRecord_GetPlainText(record, plainText);
-            if (rc == UDMF_E_OK) {
-                const char* content = OH_UdsPlainText_GetContent(plainText);
-                if (content != nullptr) {
-                    text = content;
-                }
-            }
-            OH_UdsPlainText_Destroy(plainText);
-            if (!text.empty()) {
-                break;
-            }
-        }
-
-        OH_UdmfData_Destroy(data);
-        if (text.empty()) {
-            error = "pasteboard has no plain text record";
-            return false;
-        }
-        return true;
-    }
-
-    bool WriteLocalPlainText(const std::string& text, std::string& error)
-    {
-        if (pasteboard_ == nullptr) {
-            error = "pasteboard unavailable";
-            return false;
-        }
-
-        OH_UdsPlainText* plainText = OH_UdsPlainText_Create();
-        OH_UdmfRecord* record = OH_UdmfRecord_Create();
-        OH_UdmfData* data = OH_UdmfData_Create();
-        if (plainText == nullptr || record == nullptr || data == nullptr) {
-            error = "UDMF allocation failed";
-            if (plainText != nullptr) {
-                OH_UdsPlainText_Destroy(plainText);
-            }
-            if (record != nullptr) {
-                OH_UdmfRecord_Destroy(record);
-            }
-            if (data != nullptr) {
-                OH_UdmfData_Destroy(data);
-            }
-            return false;
-        }
-
-        int rc = OH_UdsPlainText_SetContent(plainText, text.c_str());
-        if (rc == UDMF_E_OK) {
-            rc = OH_UdmfRecord_AddPlainText(record, plainText);
-        }
-        if (rc == UDMF_E_OK) {
-            rc = OH_UdmfData_AddRecord(data, record);
-        }
-        if (rc != UDMF_E_OK) {
-            error = "UDMF plain text setup failed: " + std::to_string(rc);
-            OH_UdsPlainText_Destroy(plainText);
-            OH_UdmfRecord_Destroy(record);
-            OH_UdmfData_Destroy(data);
-            return false;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            ++ignoreLocalPasteboardChanges_;
-        }
-        rc = OH_Pasteboard_SetData(pasteboard_, data);
-        OH_UdsPlainText_Destroy(plainText);
-        OH_UdmfRecord_Destroy(record);
-        OH_UdmfData_Destroy(data);
-        if (rc != ERR_OK) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (ignoreLocalPasteboardChanges_ > 0) {
-                --ignoreLocalPasteboardChanges_;
-            }
-            error = "OH_Pasteboard_SetData status=" + std::to_string(rc);
-            return false;
-        }
-        return true;
     }
 
     void RemoveFromRegistry()
@@ -691,14 +506,11 @@ private:
     FreerdpRuntimeApi* api_ = nullptr;
     LogFn log_;
     CliprdrClientContext* cliprdr_ = nullptr;
-    OH_Pasteboard* pasteboard_ = nullptr;
-    OH_PasteboardObserver* observer_ = nullptr;
-    bool pasteboardSubscribed_ = false;
+    ClipboardPasteboard pasteboard_;
     bool subscribedConnected_ = false;
     bool subscribedDisconnected_ = false;
     std::vector<UINT32> serverFormats_;
     UINT32 requestedFormatId_ = 0;
-    uint32_t ignoreLocalPasteboardChanges_ = 0;
 };
 
 

@@ -24,6 +24,7 @@ add_library(entry SHARED
     channels/audio_diagnostics.cpp
     channels/clipboard_bridge.cpp
     channels/clipboard_format.cpp
+    channels/clipboard_pasteboard.cpp
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
