@@ -1,33 +1,16 @@
-import { abilityAccessCtrl, bundleManager, common } from '@kit.AbilityKit'
+import { common } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
-  AXIS_EVENT_DEDUP_MS,
-  DOUBLE_TAP_DISTANCE,
-  DOUBLE_TAP_TIMEOUT_MS,
   HILOG_DOMAIN,
   HILOG_TAG,
   INPUT_EVENT_LOG_INTERVAL_MS,
-  LONG_PRESS_TIMEOUT_MS,
-  MICROPHONE_PERMISSION,
   POINTER_FAILURE_LOG_INTERVAL_MS,
-  PTR_FLAGS_BUTTON1,
-  PTR_FLAGS_BUTTON2,
-  PTR_FLAGS_BUTTON3,
-  PTR_FLAGS_DOWN,
-  PTR_FLAGS_HWHEEL,
-  PTR_FLAGS_MOVE,
-  PTR_FLAGS_WHEEL,
-  PTR_FLAGS_WHEEL_NEGATIVE,
-  RDP_WHEEL_DELTA,
-  RDP_WHEEL_DELTA_NEGATIVE,
-  READ_PASTEBOARD_PERMISSION,
   REMOTE_INPUT_BRIDGE_ID,
-  REMOTE_SURFACE_FOCUS_ID,
-  SYNTHETIC_MOUSE_SUPPRESS_MS,
-  TOUCH_DRAG_THRESHOLD,
-  TOUCH_WHEEL_THRESHOLD
+  REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
+import { RemotePointerInput } from '../rdp/RemotePointerInput'
+import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
 import { ConnectionState, NativeCommandResult, NativeProbeResult, PointerMapping } from '../rdp/RdpTypes'
 import rdpNative from 'libentry.so'
 
@@ -56,39 +39,14 @@ struct Index {
   @State private desktopPixelHeight: number = 0
   @State private remoteTextInput: string = ''
   private callbacksRegistered: boolean = false
-  private pasteboardPermissionRequested: boolean = false
-  private pasteboardPermissionInFlight: boolean = false
-  private microphonePermissionInFlight: boolean = false
-  private microphonePermissionRequest: Promise<boolean> | null = null
-  private pointerDown: boolean = false
-  private pendingTouchActive: boolean = false
-  private longPressTriggered: boolean = false
-  private longPressTimer: number = -1
-  private pendingTouchStartX: number = 0
-  private pendingTouchStartY: number = 0
-  private lastTouchX: number = 0
-  private lastTouchY: number = 0
-  private twoFingerScrollActive: boolean = false
-  private touchGestureSuppressed: boolean = false
-  private lastTouchEventAtMs: number = 0
-  private twoFingerLastX: number = 0
-  private twoFingerLastY: number = 0
-  private mouseButtonFlags: number = 0
-  private lastTapAtMs: number = 0
-  private lastTapX: number = 0
-  private lastTapY: number = 0
   private lastPointerFailureLogAtMs: number = 0
   private lastInputEventLogAtMs: number = 0
-  private lastAxisEventAtMs: number = 0
-  private lastAxisAction: number = -1
-  private lastAxisX: number = 0
-  private lastAxisY: number = 0
-  private lastAxisDeltaX: number = 0
-  private lastAxisDeltaY: number = 0
   private surfacePixelScaleX: number = 0
   private surfacePixelScaleY: number = 0
   private surfaceController: XComponentController = new XComponentController()
   private remoteInputController: TextInputController = new TextInputController()
+  private pointerInput: RemotePointerInput | null = null
+  private permissionManager: RdpPermissionManager | null = null
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -100,11 +58,6 @@ struct Index {
     this.logText = `${this.logText}\n${line}`
   }
 
-  private appendPasteboardPermissionLog(line: string): void {
-    this.appendLog(line)
-    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
-  }
-
   private appendNativeLogs(lines: string[]): void {
     for (let i = 0; i < lines.length; i++) {
       this.appendLog(lines[i])
@@ -113,12 +66,50 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerNativeCallbacks()
-    this.ensurePasteboardReadPermission('page appear')
+    this.getPermissionManager().ensurePasteboardReadPermission('page appear')
   }
 
   aboutToDisappear(): void {
-    this.releasePointerButtons()
+    this.getPointerInput().releaseButtons()
     this.releaseActiveModifiers()
+  }
+
+  private getUiAbilityContext(): common.UIAbilityContext | null {
+    try {
+      return getContext(this) as common.UIAbilityContext
+    } catch (error) {
+      this.appendLog(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
+      return null
+    }
+  }
+
+  private getPointerInput(): RemotePointerInput {
+    if (this.pointerInput === null) {
+      this.pointerInput = new RemotePointerInput(
+        (): boolean => this.isConnected(),
+        (): void => this.focusRemoteInputBridge(),
+        (): PointerViewport => this.getPointerViewport(),
+        (flags: number, x: number, y: number, allowClamp?: boolean, traceLabel?: string): boolean =>
+          this.sendPointer(flags, x, y, !!allowClamp, traceLabel ?? ''),
+        (line: string): void => this.appendLog(line),
+        (label: string, detail: string, force?: boolean): void =>
+          this.logInputEvent(label, detail, !!force),
+        (label: string, flags: number, x: number, y: number, mapped: PointerMapping): void =>
+          this.logPointerDiagnostic(label, flags, x, y, mapped)
+      )
+    }
+    return this.pointerInput
+  }
+
+  private getPermissionManager(): RdpPermissionManager {
+    if (this.permissionManager === null) {
+      const delegate = new RdpPermissionCallbackDelegate(
+        (): common.UIAbilityContext | null => this.getUiAbilityContext(),
+        (line: string): void => this.appendLog(line)
+      )
+      this.permissionManager = new RdpPermissionManager(delegate)
+    }
+    return this.permissionManager
   }
 
   private registerNativeCallbacks(): void {
@@ -137,7 +128,7 @@ struct Index {
             this.refreshNativeState()
             this.focusRemoteInputBridge()
           } else if (nextState !== 'Connected') {
-            this.clearPointerState()
+            this.getPointerInput().clearState()
             this.clearRemoteInputBridge()
           }
         })
@@ -157,7 +148,7 @@ struct Index {
         this.deferUiUpdate(() => {
           const requestId = Number(requestIdText)
           this.appendLog(`Remote audio capture requested microphone permission: requestId=${requestIdText}`)
-          this.ensureMicrophonePermission('remote audio capture')
+          this.getPermissionManager().ensureMicrophonePermission('remote audio capture')
             .then((granted: boolean) => {
               const result: NativeCommandResult = rdpNative.completeMicrophonePermissionRequest({
                 requestId: isNaN(requestId) ? 0 : requestId,
@@ -172,110 +163,6 @@ struct Index {
     } catch (error) {
       this.appendLog(`Native callback registration failed: ${JSON.stringify(error)}`)
     }
-  }
-
-  private getSelfAccessTokenId(): number {
-    const bundleInfo = bundleManager.getBundleInfoForSelfSync(
-      bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION
-    )
-    return bundleInfo.appInfo.accessTokenId
-  }
-
-  private hasPasteboardReadPermission(): boolean {
-    try {
-      const atManager = abilityAccessCtrl.createAtManager()
-      const status = atManager.checkAccessTokenSync(this.getSelfAccessTokenId(), READ_PASTEBOARD_PERMISSION)
-      return status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
-    } catch (error) {
-      this.appendPasteboardPermissionLog(`Pasteboard permission check failed: ${JSON.stringify(error)}`)
-      return false
-    }
-  }
-
-  private ensurePasteboardReadPermission(trigger: string): void {
-    if (this.hasPasteboardReadPermission()) {
-      this.appendPasteboardPermissionLog(`Pasteboard read permission granted: ${trigger}`)
-      return
-    }
-    if (this.pasteboardPermissionRequested || this.pasteboardPermissionInFlight) {
-      return
-    }
-
-    let context: common.UIAbilityContext
-    try {
-      context = getContext(this) as common.UIAbilityContext
-    } catch (error) {
-      this.appendPasteboardPermissionLog(`Pasteboard permission request skipped: no UIAbilityContext; ${JSON.stringify(error)}`)
-      return
-    }
-
-    this.pasteboardPermissionRequested = true
-    this.pasteboardPermissionInFlight = true
-    const atManager = abilityAccessCtrl.createAtManager()
-    atManager.requestPermissionsFromUser(context, [READ_PASTEBOARD_PERMISSION])
-      .then((result) => {
-        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
-          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
-        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
-          this.hasPasteboardReadPermission()
-        this.appendPasteboardPermissionLog(`Pasteboard read permission request result: granted=${granted} auth=${authResult}`)
-      })
-      .catch((error: Error) => {
-        this.appendPasteboardPermissionLog(`Pasteboard read permission request failed: ${JSON.stringify(error)}`)
-      })
-      .finally(() => {
-        this.pasteboardPermissionInFlight = false
-      })
-  }
-
-  private hasMicrophonePermission(): boolean {
-    try {
-      const atManager = abilityAccessCtrl.createAtManager()
-      const status = atManager.checkAccessTokenSync(this.getSelfAccessTokenId(), MICROPHONE_PERMISSION)
-      return status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
-    } catch (error) {
-      this.appendLog(`Microphone permission check failed: ${JSON.stringify(error)}`)
-      return false
-    }
-  }
-
-  private ensureMicrophonePermission(trigger: string): Promise<boolean> {
-    if (this.hasMicrophonePermission()) {
-      this.appendLog(`Microphone permission granted: ${trigger}`)
-      return Promise.resolve(true)
-    }
-    if (this.microphonePermissionRequest !== null) {
-      return this.microphonePermissionRequest
-    }
-
-    let context: common.UIAbilityContext
-    try {
-      context = getContext(this) as common.UIAbilityContext
-    } catch (error) {
-      this.appendLog(`Microphone permission request skipped: no UIAbilityContext; ${JSON.stringify(error)}`)
-      return Promise.resolve(false)
-    }
-
-    this.microphonePermissionInFlight = true
-    const atManager = abilityAccessCtrl.createAtManager()
-    this.microphonePermissionRequest = atManager.requestPermissionsFromUser(context, [MICROPHONE_PERMISSION])
-      .then((result) => {
-        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
-          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
-        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
-          this.hasMicrophonePermission()
-        this.appendLog(`Microphone permission request result: granted=${granted} auth=${authResult}`)
-        return granted
-      })
-      .catch((error: Error) => {
-        this.appendLog(`Microphone permission request failed: ${JSON.stringify(error)}`)
-        return false
-      })
-      .finally(() => {
-        this.microphonePermissionInFlight = false
-        this.microphonePermissionRequest = null
-      })
-    return this.microphonePermissionRequest
   }
 
   private refreshNativeState(appendLogs: boolean = false): void {
@@ -310,13 +197,11 @@ struct Index {
   }
 
   private getAppFilesDir(): string {
-    try {
-      const context = getContext(this) as common.UIAbilityContext
-      return context.filesDir
-    } catch (error) {
-      this.appendLog(`App files dir unavailable: ${JSON.stringify(error)}`)
+    const context = this.getUiAbilityContext()
+    if (context === null) {
       return ''
     }
+    return context.filesDir
   }
 
   private connectNative(): void {
@@ -517,42 +402,6 @@ struct Index {
     }
   }
 
-  private sendWheel(deltaY: number, x: number, y: number): void {
-    const flags = deltaY > 0 ?
-      PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
-      PTR_FLAGS_WHEEL | RDP_WHEEL_DELTA
-    this.sendPointer(flags, x, y, false, 'wheel.vertical')
-  }
-
-  private sendHorizontalWheel(deltaX: number, x: number, y: number): void {
-    const flags = deltaX > 0 ?
-      PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
-      PTR_FLAGS_HWHEEL | RDP_WHEEL_DELTA
-    this.sendPointer(flags, x, y, false, 'wheel.horizontal')
-  }
-
-  private sendLeftButtonDown(x: number, y: number, label: string): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
-    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
-  }
-
-  private sendLeftButtonUp(x: number, y: number, label: string): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, true, `${label}.move`)
-    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, true, `${label}.up`)
-  }
-
-  private sendLeftClick(x: number, y: number, label: string = 'tap.left'): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
-    this.sendPointer(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
-    this.sendPointer(PTR_FLAGS_BUTTON1, x, y, false, `${label}.up`)
-  }
-
-  private sendRightClick(x: number, y: number, label: string = 'longPress.right'): void {
-    this.sendPointer(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
-    this.sendPointer(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
-    this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`)
-  }
-
   private focusRemoteInputBridge(): void {
     if (!this.isConnected()) {
       return
@@ -598,31 +447,6 @@ struct Index {
 
   private clearRemoteInputBridge(): void {
     this.remoteTextInput = ''
-  }
-
-  private clearPointerState(): void {
-    this.cancelLongPressTimer()
-    this.pendingTouchActive = false
-    this.longPressTriggered = false
-    this.pointerDown = false
-    this.twoFingerScrollActive = false
-    this.touchGestureSuppressed = false
-    this.mouseButtonFlags = 0
-    this.lastTapAtMs = 0
-  }
-
-  private releasePointerButtons(): void {
-    if (!this.isConnected()) {
-      this.clearPointerState()
-      return
-    }
-    if (this.pointerDown) {
-      this.sendLeftButtonUp(this.lastTouchX, this.lastTouchY, 'touch.releaseOnExit')
-    }
-    if (this.mouseButtonFlags !== 0) {
-      this.sendPointer(PTR_FLAGS_MOVE | this.mouseButtonFlags, this.lastTouchX, this.lastTouchY, true)
-    }
-    this.clearPointerState()
   }
 
   private releaseActiveModifiers(): void {
@@ -690,371 +514,6 @@ struct Index {
       this.appendLog(`Native platform key input failed: ${JSON.stringify(error)}`)
       return false
     }
-  }
-
-  private mouseButtonToPointerFlag(button: MouseButton): number {
-    if (button === MouseButton.Left) {
-      return PTR_FLAGS_BUTTON1
-    }
-    if (button === MouseButton.Right) {
-      return PTR_FLAGS_BUTTON2
-    }
-    if (button === MouseButton.Middle) {
-      return PTR_FLAGS_BUTTON3
-    }
-    return 0
-  }
-
-  private getPressedMouseButtonFlags(event: MouseEvent): number {
-    let flags = this.mouseButtonFlags
-    if (event.pressedButtons) {
-      flags = 0
-      for (let i = 0; i < event.pressedButtons.length; i++) {
-        flags |= this.mouseButtonToPointerFlag(event.pressedButtons[i])
-      }
-    }
-    return flags
-  }
-
-  private getPrimaryPressedMouseButtonFlag(flags: number): number {
-    if ((flags & PTR_FLAGS_BUTTON1) !== 0) {
-      return PTR_FLAGS_BUTTON1
-    }
-    if ((flags & PTR_FLAGS_BUTTON2) !== 0) {
-      return PTR_FLAGS_BUTTON2
-    }
-    if ((flags & PTR_FLAGS_BUTTON3) !== 0) {
-      return PTR_FLAGS_BUTTON3
-    }
-    return 0
-  }
-
-  private isSyntheticMouseAfterTouch(): boolean {
-    return Date.now() - this.lastTouchEventAtMs < SYNTHETIC_MOUSE_SUPPRESS_MS
-  }
-
-  private handleSurfaceMouse(event: MouseEvent): void {
-    const rawButtonFlag = this.mouseButtonToPointerFlag(event.button)
-    const pressedFlags = this.getPressedMouseButtonFlags(event)
-    const pressedButtonFlag = this.getPrimaryPressedMouseButtonFlag(pressedFlags)
-    const buttonFlag = rawButtonFlag !== 0 ? rawButtonFlag : pressedButtonFlag
-    this.logInputEvent('mouse',
-      `action=${event.action} button=${event.button} rawFlag=${this.formatPointerFlags(rawButtonFlag)} ` +
-      `pressed=${this.formatPointerFlags(pressedFlags)} x=${this.formatNumber(event.x)} y=${this.formatNumber(event.y)}`)
-
-    if (!this.isConnected()) {
-      if (this.pointerMappingFailureShouldLog('')) {
-        this.appendLog('Mouse input skipped: no active FreeRDP session')
-      }
-      return
-    }
-    if ((event.action === MouseAction.Press || event.action === MouseAction.Release) &&
-      this.isSyntheticMouseAfterTouch()) {
-      this.logInputEvent('mouse.synthetic', `suppressed action=${event.action}`, true)
-      return
-    }
-    this.lastTouchX = event.x
-    this.lastTouchY = event.y
-    if (event.action === MouseAction.Press) {
-      this.focusRemoteInputBridge()
-      this.logPointerDiagnostic('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
-        PointerMapper.mapToDesktop(this.getPointerViewport(), event.x, event.y, false))
-      if (buttonFlag === 0 ||
-        !PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y)) {
-        this.appendLog(`Mouse press skipped: button=${buttonFlag} inside=${PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y)}`)
-        return
-      }
-      this.mouseButtonFlags |= buttonFlag
-      this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, false, 'mouse.press.move')
-      this.sendPointer(buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down')
-      return
-    }
-    if (event.action === MouseAction.Release) {
-      const releaseFlag = buttonFlag !== 0 ? buttonFlag : this.mouseButtonFlags
-      if (releaseFlag !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.release.move')
-        this.sendPointer(releaseFlag, event.x, event.y, true, 'mouse.release.up')
-        this.mouseButtonFlags &= ~releaseFlag
-      }
-      return
-    }
-    if (event.action === MouseAction.Move || event.action === MouseAction.Hover) {
-      if (pressedFlags !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE | pressedFlags | PTR_FLAGS_DOWN, event.x, event.y, true, 'mouse.drag.move')
-      } else {
-        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y)
-      }
-      return
-    }
-    if (event.action === MouseAction.CANCEL) {
-      if (this.mouseButtonFlags !== 0) {
-        this.sendPointer(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.cancel.move')
-        this.sendPointer(this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release')
-      }
-      this.mouseButtonFlags = 0
-    }
-  }
-
-  private handleSurfaceAxis(event: AxisEvent): void {
-    const deltaY = event.getVerticalAxisValue()
-    const deltaX = event.getHorizontalAxisValue()
-    if (this.shouldSkipDuplicateAxisEvent(event, deltaX, deltaY)) {
-      return
-    }
-    const axisX = PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y) ?
-      event.x : this.lastTouchX
-    const axisY = PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), event.x, event.y) ?
-      event.y : this.lastTouchY
-    this.logInputEvent('axis',
-      `action=${event.action} dx=${this.formatNumber(deltaX)} dy=${this.formatNumber(deltaY)} ` +
-      `x=${this.formatNumber(event.x)} y=${this.formatNumber(event.y)} target=${this.formatNumber(axisX)},${this.formatNumber(axisY)}`)
-
-    if (!this.isConnected() || event.action !== AxisAction.UPDATE) {
-      return
-    }
-
-    if (Math.abs(deltaY) >= Math.abs(deltaX) && Math.abs(deltaY) > 0) {
-      this.sendWheel(deltaY, axisX, axisY)
-      return
-    }
-    if (Math.abs(deltaX) > 0) {
-      this.sendHorizontalWheel(deltaX, axisX, axisY)
-    }
-  }
-
-  private startPendingTouch(x: number, y: number): void {
-    this.logPointerDiagnostic('touch.down', PTR_FLAGS_MOVE, x, y,
-      PointerMapper.mapToDesktop(this.getPointerViewport(), x, y, false))
-    if (!PointerMapper.isPointInRemoteViewport(this.getPointerViewport(), x, y)) {
-      this.cancelPendingTouch()
-      return
-    }
-    this.cancelLongPressTimer()
-    this.pendingTouchActive = true
-    this.longPressTriggered = false
-    this.pendingTouchStartX = x
-    this.pendingTouchStartY = y
-    this.lastTouchX = x
-    this.lastTouchY = y
-    this.longPressTimer = setTimeout(() => {
-      if (!this.pendingTouchActive || this.pointerDown) {
-        return
-      }
-      this.pendingTouchActive = false
-      this.longPressTriggered = true
-      this.longPressTimer = -1
-      this.sendRightClick(this.pendingTouchStartX, this.pendingTouchStartY)
-    }, LONG_PRESS_TIMEOUT_MS)
-  }
-
-  private cancelLongPressTimer(): void {
-    if (this.longPressTimer >= 0) {
-      clearTimeout(this.longPressTimer)
-      this.longPressTimer = -1
-    }
-  }
-
-  private cancelPendingTouch(): void {
-    this.cancelLongPressTimer()
-    this.pendingTouchActive = false
-    this.longPressTriggered = false
-  }
-
-  private beginLeftDrag(x: number, y: number): void {
-    this.cancelLongPressTimer()
-    this.pendingTouchActive = false
-    this.pointerDown = true
-    this.logInputEvent('touch.drag', `start ${this.formatNumber(this.pendingTouchStartX)},${this.formatNumber(this.pendingTouchStartY)} -> ${this.formatNumber(x)},${this.formatNumber(y)}`, true)
-    this.sendLeftButtonDown(this.pendingTouchStartX, this.pendingTouchStartY, 'touch.drag.start')
-    this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true, 'touch.drag.move')
-  }
-
-  private isDoubleTap(x: number, y: number): boolean {
-    const now = Date.now()
-    if (now - this.lastTapAtMs > DOUBLE_TAP_TIMEOUT_MS) {
-      return false
-    }
-
-    const dx = x - this.lastTapX
-    const dy = y - this.lastTapY
-    return Math.abs(dx) <= DOUBLE_TAP_DISTANCE && Math.abs(dy) <= DOUBLE_TAP_DISTANCE
-  }
-
-  private recordTap(x: number, y: number): void {
-    this.lastTapAtMs = Date.now()
-    this.lastTapX = x
-    this.lastTapY = y
-  }
-
-  private finishSingleTouch(x: number, y: number, cancelled: boolean): void {
-    this.cancelLongPressTimer()
-
-    if (this.longPressTriggered) {
-      this.pendingTouchActive = false
-      this.longPressTriggered = false
-      this.pointerDown = false
-      return
-    }
-
-    if (this.pendingTouchActive) {
-      this.pendingTouchActive = false
-      if (!cancelled) {
-        if (this.isDoubleTap(x, y)) {
-          this.appendLog(`Touch double tap: event=${this.formatNumber(x)},${this.formatNumber(y)}`)
-          this.lastTapAtMs = 0
-          this.sendLeftClick(x, y, 'tap.double')
-        } else {
-          this.recordTap(x, y)
-          this.sendLeftClick(x, y)
-        }
-      }
-      return
-    }
-
-    if (this.pointerDown) {
-      this.pointerDown = false
-      this.sendLeftButtonUp(x, y, 'touch.drag.release')
-    }
-  }
-
-  private handleSurfaceTouch(event: TouchEvent): void {
-    this.lastTouchEventAtMs = Date.now()
-    const touchCount = event.touches.length
-    const firstX = touchCount > 0 ? event.touches[0].x : this.lastTouchX
-    const firstY = touchCount > 0 ? event.touches[0].y : this.lastTouchY
-    this.logInputEvent('touch',
-      `type=${event.type} count=${touchCount} x=${this.formatNumber(firstX)} y=${this.formatNumber(firstY)} ` +
-      `pending=${this.pendingTouchActive} down=${this.pointerDown}`)
-    if (this.touchGestureSuppressed && event.touches.length < 2) {
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel || event.touches.length === 0) {
-        this.touchGestureSuppressed = false
-      }
-      this.cancelPendingTouch()
-      return
-    }
-
-    if (this.twoFingerScrollActive && event.touches.length < 2) {
-      this.twoFingerScrollActive = false
-      this.touchGestureSuppressed = true
-      return
-    }
-
-    if (this.handleTwoFingerScroll(event)) {
-      return
-    }
-
-    if (event.touches.length < 1) {
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.finishSingleTouch(this.lastTouchX, this.lastTouchY, event.type === TouchType.Cancel)
-      }
-      return
-    }
-
-    const touch = event.touches[0]
-    const x = touch.x
-    const y = touch.y
-    this.lastTouchX = x
-    this.lastTouchY = y
-
-    if (event.type === TouchType.Down) {
-      this.focusRemoteInputBridge()
-      this.startPendingTouch(x, y)
-      return
-    }
-
-    if (event.type === TouchType.Move) {
-      if (this.pendingTouchActive) {
-        const dx = x - this.pendingTouchStartX
-        const dy = y - this.pendingTouchStartY
-        if (Math.abs(dx) >= TOUCH_DRAG_THRESHOLD || Math.abs(dy) >= TOUCH_DRAG_THRESHOLD) {
-          this.beginLeftDrag(x, y)
-        }
-        return
-      }
-
-      if (this.pointerDown) {
-        this.sendPointer(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true, 'touch.drag.move')
-      } else {
-        this.sendPointer(PTR_FLAGS_MOVE, x, y)
-      }
-      return
-    }
-
-    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-      this.finishSingleTouch(x, y, event.type === TouchType.Cancel)
-    }
-  }
-
-  private handleTwoFingerScroll(event: TouchEvent): boolean {
-    if (event.touches.length < 2) {
-      return false
-    }
-
-    const firstTouch = event.touches[0]
-    const secondTouch = event.touches[1]
-    const centerX = (firstTouch.x + secondTouch.x) / 2
-    const centerY = (firstTouch.y + secondTouch.y) / 2
-
-    if (this.pendingTouchActive || this.longPressTriggered) {
-      this.cancelPendingTouch()
-    }
-
-    if (this.pointerDown) {
-      this.pointerDown = false
-      this.sendLeftButtonUp(firstTouch.x, firstTouch.y, 'touch.scroll.releaseDrag')
-    }
-
-    if (event.type === TouchType.Down || !this.twoFingerScrollActive) {
-      this.twoFingerScrollActive = true
-      this.touchGestureSuppressed = true
-      this.twoFingerLastX = centerX
-      this.twoFingerLastY = centerY
-      this.logInputEvent('touch.scroll',
-        `start center=${this.formatNumber(centerX)},${this.formatNumber(centerY)}`, true)
-      return true
-    }
-
-    if (event.type === TouchType.Move) {
-      const deltaX = centerX - this.twoFingerLastX
-      const deltaY = centerY - this.twoFingerLastY
-      if (Math.abs(deltaY) >= TOUCH_WHEEL_THRESHOLD || Math.abs(deltaX) >= TOUCH_WHEEL_THRESHOLD) {
-        this.logInputEvent('touch.scroll',
-          `dx=${this.formatNumber(deltaX)} dy=${this.formatNumber(deltaY)} ` +
-          `center=${this.formatNumber(centerX)},${this.formatNumber(centerY)}`, true)
-        if (Math.abs(deltaY) >= Math.abs(deltaX)) {
-          this.sendWheel(deltaY, centerX, centerY)
-        } else {
-          this.sendHorizontalWheel(deltaX, centerX, centerY)
-        }
-        this.twoFingerLastX = centerX
-        this.twoFingerLastY = centerY
-      }
-      return true
-    }
-
-    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-      this.twoFingerScrollActive = false
-      return true
-    }
-
-    return true
-  }
-
-  private shouldSkipDuplicateAxisEvent(event: AxisEvent, deltaX: number, deltaY: number): boolean {
-    const now = Date.now()
-    const duplicate = now - this.lastAxisEventAtMs <= AXIS_EVENT_DEDUP_MS &&
-      this.lastAxisAction === event.action &&
-      Math.abs(this.lastAxisX - event.x) < 0.01 &&
-      Math.abs(this.lastAxisY - event.y) < 0.01 &&
-      Math.abs(this.lastAxisDeltaX - deltaX) < 0.01 &&
-      Math.abs(this.lastAxisDeltaY - deltaY) < 0.01
-    this.lastAxisEventAtMs = now
-    this.lastAxisAction = event.action
-    this.lastAxisX = event.x
-    this.lastAxisY = event.y
-    this.lastAxisDeltaX = deltaX
-    this.lastAxisDeltaY = deltaY
-    return duplicate
   }
 
   private toConnectionState(value: string): ConnectionState {
@@ -1218,7 +677,7 @@ struct Index {
             })
           })
           .onAxisEvent((event: AxisEvent) => {
-            this.handleSurfaceAxis(event)
+            this.getPointerInput().handleAxis(event)
           })
 
         TextInput({ text: this.remoteTextInput, controller: this.remoteInputController })
@@ -1240,7 +699,7 @@ struct Index {
             return this.forwardRemoteKeyEvent(event)
           })
           .onAxisEvent((event: AxisEvent) => {
-            this.handleSurfaceAxis(event)
+            this.getPointerInput().handleAxis(event)
           })
 
         if (!this.isConnected()) {
@@ -1256,16 +715,16 @@ struct Index {
       .focusable(true)
       .focusOnTouch(true)
       .onTouch((event: TouchEvent) => {
-        this.handleSurfaceTouch(event)
+        this.getPointerInput().handleTouch(event)
       })
       .onKeyEventDispatch((event: KeyEvent): boolean => {
         return this.forwardRemoteKeyEvent(event)
       })
       .onMouse((event: MouseEvent) => {
-        this.handleSurfaceMouse(event)
+        this.getPointerInput().handleMouse(event)
       })
       .onAxisEvent((event: AxisEvent) => {
-        this.handleSurfaceAxis(event)
+        this.getPointerInput().handleAxis(event)
       })
     }
     .layoutWeight(1)
