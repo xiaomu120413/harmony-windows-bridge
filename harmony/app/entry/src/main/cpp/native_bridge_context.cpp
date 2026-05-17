@@ -18,10 +18,6 @@ namespace rdp_bridge {
 namespace {
 
 std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
-std::atomic_bool g_ctrlDown{false};
-std::atomic_bool g_shiftDown{false};
-std::atomic_bool g_altDown{false};
-std::atomic_bool g_metaDown{false};
 SessionEventHub g_events;
 SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
@@ -227,17 +223,8 @@ void OnXComponentFocusEvent(OH_NativeXComponent*, void*)
     EmitNativeLog("XComponent focused for native input");
 }
 
-void ResetNativeModifierState()
-{
-    g_ctrlDown.store(false);
-    g_shiftDown.store(false);
-    g_altDown.store(false);
-    g_metaDown.store(false);
-}
-
 void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
 {
-    ResetNativeModifierState();
     std::string message;
     if (g_session.ReleaseAllKeys(message)) {
         EmitNativeLog("XComponent blurred; " + message);
@@ -249,30 +236,6 @@ void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
 bool IsModifierPressed(uint64_t modifiers, ArkUI_ModifierKeyName modifier)
 {
     return (modifiers & static_cast<uint64_t>(modifier)) != 0;
-}
-
-void UpdateNativeModifierState(uint32_t keyCode, bool down)
-{
-    switch (keyCode) {
-        case KEY_CTRL_LEFT:
-        case KEY_CTRL_RIGHT:
-            g_ctrlDown.store(down);
-            break;
-        case KEY_SHIFT_LEFT:
-        case KEY_SHIFT_RIGHT:
-            g_shiftDown.store(down);
-            break;
-        case KEY_ALT_LEFT:
-        case KEY_ALT_RIGHT:
-            g_altDown.store(down);
-            break;
-        case KEY_META_LEFT:
-        case KEY_META_RIGHT:
-            g_metaDown.store(down);
-            break;
-        default:
-            break;
-    }
 }
 
 bool OnXComponentKeyEvent(OH_NativeXComponent* component, void*)
@@ -303,17 +266,14 @@ bool OnXComponentKeyEvent(OH_NativeXComponent* component, void*)
 
     uint64_t modifiers = 0;
     OH_NativeXComponent_GetKeyEventModifierKeyStates(keyEvent, &modifiers);
-    const uint32_t keyCodeValue = static_cast<uint32_t>(keyCode);
-    const bool down = action == OH_NATIVEXCOMPONENT_KEY_ACTION_DOWN;
-    UpdateNativeModifierState(keyCodeValue, down);
     const OhosKeyEvent event {
-        keyCodeValue,
-        down,
+        static_cast<uint32_t>(keyCode),
+        action == OH_NATIVEXCOMPONENT_KEY_ACTION_DOWN,
         false,
-        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_CTRL) || g_ctrlDown.load(),
-        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_SHIFT) || g_shiftDown.load(),
-        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_ALT) || g_altDown.load(),
-        g_metaDown.load(),
+        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_CTRL),
+        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_SHIFT),
+        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_ALT),
+        false,
     };
 
     std::string message;
@@ -330,9 +290,6 @@ bool OnXComponentKeyEvent(OH_NativeXComponent* component, void*)
             " ctrl=" + std::to_string(event.ctrl ? 1 : 0) +
             " shift=" + std::to_string(event.shift ? 1 : 0) +
             " alt=" + std::to_string(event.alt ? 1 : 0) +
-            " physCtrl=" + std::to_string(g_ctrlDown.load() ? 1 : 0) +
-            " physShift=" + std::to_string(g_shiftDown.load() ? 1 : 0) +
-            " physAlt=" + std::to_string(g_altDown.load() ? 1 : 0) +
             " result=" + (ok ? "ok " : "failed ") + message);
     }
     return ok;
