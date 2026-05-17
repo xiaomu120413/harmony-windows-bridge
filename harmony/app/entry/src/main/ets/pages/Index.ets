@@ -25,8 +25,10 @@ const SYNTHETIC_MOUSE_SUPPRESS_MS: number = 80
 const AXIS_EVENT_DEDUP_MS: number = 12
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
-const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 250
-const TEXT_INPUT_DELETE_GUARD_MS: number = 500
+// Real-device key callback echo was observed under 30ms; keep a wider window without masking fast typing.
+const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 120
+// TextInput delete and hardware key callbacks pair under 130ms in normal paths; the timer covers TextInput-only deletes.
+const TEXT_INPUT_DELETE_GUARD_MS: number = 250
 const HILOG_DOMAIN: number = 0xF3D1
 const HILOG_TAG: string = 'FreeRDPUi'
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
@@ -229,6 +231,8 @@ struct Index {
   private suppressedTextInputDeleteCount: number = 0
   private pendingTextInputDeleteScancode: number = 0
   private pendingTextInputDeleteAtMs: number = 0
+  private pendingTextInputDeleteCount: number = 0
+  private pendingTextInputDeleteToken: number = 0
   private lastEnterDispatchDownAtMs: number = 0
   private suppressNextSubmitFallbackEnterUp: boolean = false
   private callbacksRegistered: boolean = false
@@ -933,11 +937,20 @@ struct Index {
   private handleInputBridgeWillDelete(value: DeleteValue): boolean {
     const deleteCount = Math.max(1, value.deleteValue.length)
     const scancode = value.direction === TextDeleteDirection.FORWARD ? RDP_SCANCODE_DELETE : RDP_SCANCODE_BACKSPACE
+    const now = Date.now()
+    if (this.pendingTextInputDeleteScancode === scancode &&
+      now - this.pendingTextInputDeleteAtMs <= TEXT_INPUT_DELETE_GUARD_MS) {
+      this.pendingTextInputDeleteCount += deleteCount
+    } else {
+      this.pendingTextInputDeleteCount = deleteCount
+    }
     this.pendingTextInputDeleteScancode = scancode
-    this.pendingTextInputDeleteAtMs = Date.now()
+    this.pendingTextInputDeleteAtMs = now
+    this.pendingTextInputDeleteToken++
     this.suppressedTextInputDeleteCount += deleteCount
     this.logInputEvent('key.delete',
       `TextInput delete direction=${value.direction} count=${deleteCount} scancode=0x${scancode.toString(16)}`, true)
+    this.schedulePendingTextInputDeleteFallback(scancode, this.pendingTextInputDeleteToken)
     return true
   }
 
@@ -1522,6 +1535,32 @@ struct Index {
   private clearPendingTextInputDelete(): void {
     this.pendingTextInputDeleteScancode = 0
     this.pendingTextInputDeleteAtMs = 0
+    this.pendingTextInputDeleteCount = 0
+    this.pendingTextInputDeleteToken++
+  }
+
+  private schedulePendingTextInputDeleteFallback(scancode: number, token: number): void {
+    setTimeout((): void => {
+      if (token !== this.pendingTextInputDeleteToken ||
+        scancode !== this.pendingTextInputDeleteScancode ||
+        this.pendingTextInputDeleteCount <= 0) {
+        return
+      }
+      if (Date.now() - this.pendingTextInputDeleteAtMs < TEXT_INPUT_DELETE_GUARD_MS) {
+        return
+      }
+      const sendCount = this.pendingTextInputDeleteCount
+      this.clearPendingTextInputDelete()
+      this.suppressedTextInputDeleteCount = Math.max(0, this.suppressedTextInputDeleteCount - sendCount)
+      let sent = this.isConnected()
+      if (sent) {
+        for (let i = 0; i < sendCount; i++) {
+          sent = this.sendKeyStroke(scancode) && sent
+        }
+      }
+      this.logInputEvent('key.delete',
+        `TextInput delete fallback scancode=0x${scancode.toString(16)} count=${sendCount} sent=${sent}`, true)
+    }, TEXT_INPUT_DELETE_GUARD_MS)
   }
 
   private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
