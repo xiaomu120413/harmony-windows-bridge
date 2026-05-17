@@ -118,6 +118,59 @@ std::string RdpgfxCapsConfirmSummary(const RDPGFX_CAPS_CONFIRM_PDU* capsConfirm)
     return "version=" + Hex32(capsSet->version) + " flags=" + Hex32(capsSet->flags);
 }
 
+bool BindAvcSurfaceOutput(const std::string& reason, const RDPGFX_SURFACE_COMMAND* command)
+{
+    if (!g_avc420SurfaceOutputConfigured.load()) {
+        return false;
+    }
+
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosAvcodecSetOutputSurface == nullptr) {
+        LogThroughCallbacks("AVC surface output activation skipped after " + reason +
+            ": OHOS AVCodec surface symbol is not loaded");
+        return false;
+    }
+
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.decoderSurfaceTarget == nullptr) {
+        LogThroughCallbacks("AVC surface output activation skipped after " + reason +
+            ": decoder surface callback is not configured");
+        return false;
+    }
+
+    const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+    if (target.window == nullptr || target.width == 0 || target.height == 0) {
+        LogThroughCallbacks("AVC surface output activation skipped after " + reason +
+            ": XComponent surface unavailable");
+        return false;
+    }
+
+    if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
+        LogThroughCallbacks("AVC surface output activation failed after " + reason +
+            ": OHOS AVCodec surface setup failed");
+        return false;
+    }
+
+    if (!g_avc420SurfaceOutputActive.exchange(true)) {
+        if (callbacks.stopRenderPipeline != nullptr) {
+            callbacks.stopRenderPipeline();
+        }
+        std::string commandText;
+        if (command != nullptr) {
+            commandText = " surface=" + std::to_string(command->surfaceId) +
+                " size=" + std::to_string(command->width) + "x" +
+                std::to_string(command->height);
+        }
+        LogThroughCallbacks("AVC surface output activated after " + reason +
+            ": target=" + std::to_string(target.width) + "x" + std::to_string(target.height) +
+            commandText);
+    } else {
+        LogThroughCallbacks("AVC surface output updated after " + reason + ": target=" +
+            std::to_string(target.width) + "x" + std::to_string(target.height));
+    }
+    return true;
+}
+
 void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
 {
     if (!g_avc420SurfaceOutputConfigured.exchange(false)) {
@@ -215,16 +268,15 @@ UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURF
 {
     if (command != nullptr) {
         RecordRdpgfxSurfaceCommand(*command);
-        if (g_avc420SurfaceOutputConfigured.load() && IsH264SurfaceCodec(command->codecId) &&
-            !g_avc420SurfaceOutputActive.exchange(true)) {
-            RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-            if (callbacks.stopRenderPipeline != nullptr) {
-                callbacks.stopRenderPipeline();
+        if (IsH264SurfaceCodec(command->codecId) && !g_avc420SurfaceOutputActive.load()) {
+            if (!BindAvcSurfaceOutput("first " + std::string(RdpgfxCodecName(command->codecId)) +
+                " surface command", command)) {
+                LogThroughCallbacks("AVC surface command reached FreeRDP without direct surface output: codec=" +
+                    std::string(RdpgfxCodecName(command->codecId)) +
+                    " surface=" + std::to_string(command->surfaceId) +
+                    " size=" + std::to_string(command->width) + "x" +
+                    std::to_string(command->height));
             }
-            LogThroughCallbacks("AVC surface output activated by first " +
-                std::string(RdpgfxCodecName(command->codecId)) + " surface command: surface=" +
-                std::to_string(command->surfaceId) +
-                " size=" + std::to_string(command->width) + "x" + std::to_string(command->height));
         }
     }
 
@@ -256,7 +308,7 @@ bool IsAvc420SurfaceOutputEnabled()
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    if (!g_avc420SurfaceOutputConfigured.load()) {
+    if (!g_avc420SurfaceOutputConfigured.load() || !g_avc420SurfaceOutputActive.load()) {
         return;
     }
 
@@ -351,19 +403,16 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
         return false;
     }
 
-    if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
-        error = "OHOS AVCodec surface output setup failed";
-        return false;
-    }
+    api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     if (api.ohosAvcodecSetFallbackCallback != nullptr) {
         api.ohosAvcodecSetFallbackCallback(OnOhosAvcodecFallback, nullptr);
     }
 
     g_avc420SurfaceOutputConfigured.store(true);
     g_avc420SurfaceOutputActive.store(false);
-    log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
+    log("OHOS AVCodec output surface armed: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=avc-surface-armed avc444=primary-avc420-surface gdi=active-until-h264");
+        " mode=deferred-until-avc-surface-command avc444=primary-avc420-surface gdi=active-before-h264");
     return true;
 }
 
