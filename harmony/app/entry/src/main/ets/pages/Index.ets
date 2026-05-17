@@ -25,10 +25,16 @@ const SYNTHETIC_MOUSE_SUPPRESS_MS: number = 80
 const AXIS_EVENT_DEDUP_MS: number = 12
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
+const INPUT_PROBE_ON_INPUT: boolean = false
+const INPUT_EVENT_UI_LOG_ENABLED: boolean = false
+const INPUT_EVENT_VERBOSE_LOG_ENABLED: boolean = false
 // Real-device key callback echo was observed under 30ms; keep a wider window without masking fast typing.
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 120
 // TextInput delete and hardware key callbacks pair under 130ms in normal paths; the timer covers TextInput-only deletes.
 const TEXT_INPUT_DELETE_GUARD_MS: number = 250
+const REMOTE_TEXT_BRIDGE_RESET_LENGTH: number = 32
+const REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS: number = 500
+const REMOTE_SHORTCUT_FALLBACK_GUARD_MS: number = 250
 const HILOG_DOMAIN: number = 0xF3D1
 const HILOG_TAG: string = 'FreeRDPUi'
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
@@ -40,6 +46,10 @@ const RDP_SCANCODE_TAB: number = 0x0F
 const RDP_SCANCODE_ENTER: number = 0x1C
 const RDP_SCANCODE_LCONTROL: number = 0x1D
 const RDP_SCANCODE_RCONTROL: number = 0x011D
+const RDP_SCANCODE_A: number = 0x1E
+const RDP_SCANCODE_C: number = 0x2E
+const RDP_SCANCODE_V: number = 0x2F
+const RDP_SCANCODE_X: number = 0x2D
 const RDP_SCANCODE_LMENU: number = 0x38
 const RDP_SCANCODE_RMENU: number = 0x0138
 const RDP_SCANCODE_LWIN: number = 0x015B
@@ -70,6 +80,7 @@ const OH_KEYCODE_DPAD_RIGHT: number = 2015
 const OH_KEYCODE_A: number = 2017
 const OH_KEYCODE_C: number = OH_KEYCODE_A + 2
 const OH_KEYCODE_V: number = OH_KEYCODE_A + 21
+const OH_KEYCODE_X: number = OH_KEYCODE_A + 23
 const OH_KEYCODE_Z: number = 2042
 const OH_KEYCODE_COMMA: number = 2043
 const OH_KEYCODE_PERIOD: number = 2044
@@ -233,6 +244,10 @@ struct Index {
   private pendingTextInputDeleteAtMs: number = 0
   private pendingTextInputDeleteCount: number = 0
   private pendingTextInputDeleteToken: number = 0
+  private remoteTextBridgeClearUntilMs: number = 0
+  private lastCtrlModifierDownAtMs: number = 0
+  private lastRemoteShortcutKeyCode: number = 0
+  private lastRemoteShortcutAtMs: number = 0
   private lastEnterDispatchDownAtMs: number = 0
   private suppressNextSubmitFallbackEnterUp: boolean = false
   private callbacksRegistered: boolean = false
@@ -628,8 +643,19 @@ struct Index {
     }
     this.lastInputEventLogAtMs = now
     const line = `Input ${label}: ${detail}`
-    this.appendLog(line)
-    console.info(line)
+    if (INPUT_EVENT_UI_LOG_ENABLED) {
+      this.appendLog(line)
+    }
+    const shouldLogVerbose = INPUT_EVENT_VERBOSE_LOG_ENABLED ||
+      label === 'key.shortcut' ||
+      label === 'paste' ||
+      label === 'copy' ||
+      label === 'cut' ||
+      label === 'key.delete'
+    if (shouldLogVerbose) {
+      hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
+      console.info(line)
+    }
   }
 
   private sendPointer(flags: number, x: number, y: number, allowClamp: boolean = false,
@@ -656,17 +682,23 @@ struct Index {
       })
       if (!result.ok) {
         this.appendLog(`Pointer ${traceLabel || 'input'} failed: ${result.message}; ${this.describePointerMapping(flags, x, y, mapped)}`)
-        this.scheduleInputProbe()
+        if (INPUT_PROBE_ON_INPUT) {
+          this.scheduleInputProbe()
+        }
         return false
       }
-      if (logSuccess) {
+      if (logSuccess && INPUT_EVENT_UI_LOG_ENABLED) {
         this.appendLog(`Pointer ${traceLabel || 'input'} queued: ${this.describePointerMapping(flags, x, y, mapped)}`)
       }
-      this.scheduleInputProbe()
+      if (INPUT_PROBE_ON_INPUT) {
+        this.scheduleInputProbe()
+      }
       return result.ok
     } catch (error) {
       this.appendLog(`Native pointer input failed (${traceLabel || 'input'}): ${JSON.stringify(error)}`)
-      this.scheduleInputProbe()
+      if (INPUT_PROBE_ON_INPUT) {
+        this.scheduleInputProbe()
+      }
       return false
     }
   }
@@ -833,7 +865,7 @@ struct Index {
       if (!result.ok) {
         this.appendLog(result.message)
       }
-      if (result.ok) {
+      if (result.ok && INPUT_PROBE_ON_INPUT) {
         this.scheduleInputProbe()
       }
       return result.ok
@@ -861,7 +893,7 @@ struct Index {
       if (!result.ok) {
         this.appendLog(result.message)
       }
-      if (result.ok) {
+      if (result.ok && INPUT_PROBE_ON_INPUT) {
         this.scheduleInputProbe()
       }
       return result.ok
@@ -955,6 +987,12 @@ struct Index {
   }
 
   private handleRemoteTextInputChange(value: string): void {
+    if (!value.length && Date.now() <= this.remoteTextBridgeClearUntilMs) {
+      this.remoteTextBridgeValue = ''
+      this.remoteTextInput = ''
+      return
+    }
+
     const oldValue = this.remoteTextBridgeValue
     if (value === oldValue) {
       return
@@ -985,6 +1023,16 @@ struct Index {
 
     this.remoteTextBridgeValue = value
     this.remoteTextInput = value
+    this.resetRemoteTextBridgeIfNeeded()
+  }
+
+  private resetRemoteTextBridgeIfNeeded(): void {
+    if (this.remoteTextBridgeValue.length <= REMOTE_TEXT_BRIDGE_RESET_LENGTH) {
+      return
+    }
+    this.remoteTextBridgeClearUntilMs = Date.now() + REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS
+    this.remoteTextBridgeValue = ''
+    this.remoteTextInput = ''
   }
 
   private sendRemoteTextFragment(value: string): boolean {
@@ -1264,24 +1312,29 @@ struct Index {
 
   private isCtrlModifierPressed(event: KeyEvent): boolean {
     return this.ctrlModifierDown || this.rightCtrlModifierDown ||
-      this.isAnyModifierPressed(event, ['ctrl', 'Ctrl', 'CTRL', 'control', 'Control', 'CONTROL'])
+      this.isAnyModifierPressed(event, ['ctrl'])
   }
 
   private isAltModifierPressed(event: KeyEvent): boolean {
     return this.altModifierDown || this.rightAltModifierDown ||
-      this.isAnyModifierPressed(event, ['alt', 'Alt', 'ALT'])
+      this.isAnyModifierPressed(event, ['alt'])
   }
 
   private isWinModifierPressed(event: KeyEvent): boolean {
-    return this.winModifierDown || this.rightWinModifierDown ||
-      this.isAnyModifierPressed(event, ['meta', 'Meta', 'META', 'win', 'Win', 'WIN'])
+    return this.winModifierDown || this.rightWinModifierDown
   }
 
   private updateModifierState(scancode: number, down: boolean): void {
     if (scancode === RDP_SCANCODE_LCONTROL) {
       this.ctrlModifierDown = down
+      if (down) {
+        this.lastCtrlModifierDownAtMs = Date.now()
+      }
     } else if (scancode === RDP_SCANCODE_RCONTROL) {
       this.rightCtrlModifierDown = down
+      if (down) {
+        this.lastCtrlModifierDownAtMs = Date.now()
+      }
     } else if (scancode === RDP_SCANCODE_LMENU) {
       this.altModifierDown = down
     } else if (scancode === RDP_SCANCODE_RMENU) {
@@ -1325,7 +1378,7 @@ struct Index {
 
   private isShiftModifierPressed(event: KeyEvent): boolean {
     return this.leftShiftModifierDown || this.rightShiftModifierDown ||
-      this.isAnyModifierPressed(event, ['shift', 'Shift', 'SHIFT'])
+      this.isAnyModifierPressed(event, ['shift'])
   }
 
   private hasRemoteShortcutModifier(event: KeyEvent): boolean {
@@ -1457,6 +1510,72 @@ struct Index {
     return parts.join(',')
   }
 
+  private rememberRemoteShortcutDispatch(keyCode: number): void {
+    this.lastRemoteShortcutKeyCode = keyCode
+    this.lastRemoteShortcutAtMs = Date.now()
+  }
+
+  private shouldSuppressRemoteShortcutFallback(keyCode: number): boolean {
+    return this.lastRemoteShortcutKeyCode === keyCode &&
+      Date.now() - this.lastRemoteShortcutAtMs <= REMOTE_SHORTCUT_FALLBACK_GUARD_MS
+  }
+
+  private sendRemoteCtrlShortcutFallback(keyCode: number, scancode: number, label: string): boolean {
+    if (!this.shouldRouteRemoteKeyboard() || !this.isConnected() || scancode <= 0) {
+      return false
+    }
+    if (this.shouldSuppressRemoteShortcutFallback(keyCode)) {
+      this.logInputEvent('key.shortcut', `${label} fallback suppressed after key event`, true)
+      return true
+    }
+
+    const ctrlScancode = this.rightCtrlModifierDown ? RDP_SCANCODE_RCONTROL : RDP_SCANCODE_LCONTROL
+    const ctrlAlreadyPressed = this.isRemoteScancodePressed(RDP_SCANCODE_LCONTROL) ||
+      this.isRemoteScancodePressed(RDP_SCANCODE_RCONTROL)
+    let sent = true
+    if (!ctrlAlreadyPressed) {
+      sent = this.sendMappedKeyEvent(ctrlScancode, true, false) && sent
+    }
+    sent = this.sendMappedKeyEvent(scancode, true, false) && sent
+    sent = this.sendMappedKeyEvent(scancode, false, false) && sent
+    if (!ctrlAlreadyPressed) {
+      sent = this.sendMappedKeyEvent(ctrlScancode, false, false) && sent
+    }
+    this.rememberRemoteShortcutDispatch(keyCode)
+    this.logInputEvent('key.shortcut',
+      `${label} fallback scancode=0x${scancode.toString(16)} ctrlAlreadyPressed=${ctrlAlreadyPressed} sent=${sent}`,
+      true)
+    return sent
+  }
+
+  private handleInputBridgeCopy(value: string): void {
+    const sent = this.sendRemoteCtrlShortcutFallback(OH_KEYCODE_C, RDP_SCANCODE_C, 'copy')
+    this.logInputEvent('copy', `hidden TextInput copy converted to remote Ctrl+C len=${value.length} sent=${sent}`, true)
+  }
+
+  private handleInputBridgeCut(value: string): void {
+    const sent = this.sendRemoteCtrlShortcutFallback(OH_KEYCODE_X, RDP_SCANCODE_X, 'cut')
+    this.logInputEvent('cut', `hidden TextInput cut converted to remote Ctrl+X len=${value.length} sent=${sent}`, true)
+  }
+
+  private handleInputBridgePaste(content: string, event: PasteEvent): void {
+    event.preventDefault?.()
+    const sent = this.sendRemoteCtrlShortcutFallback(OH_KEYCODE_V, RDP_SCANCODE_V, 'paste')
+    this.focusRemoteInputBridge()
+    this.logInputEvent('paste',
+      `hidden TextInput paste converted to remote Ctrl+V len=${content.length} sent=${sent}`, true)
+  }
+
+  private handleInputBridgeTextSelectionChange(selectionStart: number, selectionEnd: number): void {
+    if (this.remoteTextBridgeValue.length <= 0 ||
+      selectionStart !== 0 ||
+      selectionEnd < this.remoteTextBridgeValue.length ||
+      Date.now() - this.lastCtrlModifierDownAtMs > REMOTE_SHORTCUT_FALLBACK_GUARD_MS) {
+      return
+    }
+    this.sendRemoteCtrlShortcutFallback(OH_KEYCODE_A, RDP_SCANCODE_A, 'selectAll')
+  }
+
   private handleShortcutKeyEvent(event: KeyEvent, scancode: number, printable: boolean,
     down: boolean, repeat: boolean, trackedShortcut: boolean): boolean {
     if (scancode <= 0 || this.isModifierScancode(scancode)) {
@@ -1473,6 +1592,9 @@ struct Index {
       const keySent = this.sendMappedKeyEvent(scancode, true, repeat)
       if (keySent && printable) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, true)
+      }
+      if (keySent) {
+        this.rememberRemoteShortcutDispatch(event.keyCode)
       }
       this.logInputEvent('key.shortcut',
         `code=${event.keyCode} scancode=0x${scancode.toString(16)} down=true repeat=${repeat} ` +
@@ -1770,7 +1892,6 @@ struct Index {
     const unicode = this.getEventUnicode(event)
     if (unicode > 0 && unicode <= 0xFFFF) {
       this.sendUnicodeStroke(unicode)
-      this.scheduleInputProbe()
       return true
     }
 
@@ -2333,10 +2454,17 @@ struct Index {
           .onKeyPreIme((event: KeyEvent): boolean => {
             return this.handleInputBridgePreImeKeyEvent(event)
           })
+          .onCopy((value: string) => {
+            this.handleInputBridgeCopy(value)
+          })
+          .onCut((value: string) => {
+            this.handleInputBridgeCut(value)
+          })
           .onPaste((content: string, event: PasteEvent) => {
-            event.preventDefault?.()
-            this.focusRemoteInputBridge()
-            this.logInputEvent('paste', `hidden TextInput paste suppressed; bridge refocused len=${content.length}`, true)
+            this.handleInputBridgePaste(content, event)
+          })
+          .onTextSelectionChange((selectionStart: number, selectionEnd: number) => {
+            this.handleInputBridgeTextSelectionChange(selectionStart, selectionEnd)
           })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
             this.handleInputBridgeSubmit()
