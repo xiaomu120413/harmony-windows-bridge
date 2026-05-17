@@ -5,27 +5,20 @@
 #include "freerdp_gdi_bridge.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <unordered_map>
 #include <utility>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+#include "client/OHOS/ohos_display.h"
+
 #include <freerdp/client/channels.h>
 #include <freerdp/channels/disp.h>
 #include <freerdp/channels/rdpgfx.h>
 #endif
 
 namespace rdp_bridge {
-namespace {
-uint32_t AlignDownToMultiple(uint32_t value, uint32_t alignment, uint32_t minimum)
-{
-    value -= value % alignment;
-    if (value >= minimum) {
-        return value;
-    }
-    return minimum + ((alignment - (minimum % alignment)) % alignment);
-}
-} // namespace
 
 void RdpSessionChannels::SetCallbacks(Callbacks callbacks)
 {
@@ -110,16 +103,8 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
     const std::string& reason, std::string& message)
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    constexpr uint32_t minDimension = 200;
-    constexpr uint32_t maxDimension = 8192;
-    width = std::clamp(width, minDimension, maxDimension);
-    height = std::clamp(height, minDimension, maxDimension);
-
     std::lock_guard<std::mutex> lock(activeMutex_);
-    if (dynamicResizeAlignment_ > 1U) {
-        width = AlignDownToMultiple(width, dynamicResizeAlignment_, minDimension);
-        height = AlignDownToMultiple(height, dynamicResizeAlignment_, minDimension);
-    }
+    freerdp_ohos_display_normalize_size(width, height, dynamicResizeAlignment_, &width, &height);
     if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
         message = "display-control channel is not ready";
         return false;
@@ -134,28 +119,25 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
         return true;
     }
 
-    DISPLAY_CONTROL_MONITOR_LAYOUT layout = {};
-    layout.Flags = DISPLAY_CONTROL_MONITOR_PRIMARY;
-    layout.Left = 0;
-    layout.Top = 0;
-    layout.Width = width;
-    layout.Height = height;
-    layout.PhysicalWidth = width;
-    layout.PhysicalHeight = height;
-    layout.Orientation = ORIENTATION_LANDSCAPE;
-    layout.DesktopScaleFactor = 100;
-    layout.DeviceScaleFactor = 100;
-
-    const UINT rc = activeDisp_->SendMonitorLayout(activeDisp_, 1, &layout);
-    if (rc != CHANNEL_RC_OK) {
-        message = "display-control resize failed: " + std::to_string(rc);
+    uint32_t sentWidth = 0;
+    uint32_t sentHeight = 0;
+    uint32_t channelStatus = 0;
+    std::array<char, 192> detail {};
+    if (freerdp_ohos_display_send_monitor_layout(activeDisp_, width, height, 1U, &sentWidth,
+        &sentHeight, &channelStatus, detail.data(), detail.size()) == 0) {
+        if (detail[0] != '\0') {
+            message = detail.data();
+        } else {
+            message = "display-control resize failed: " + std::to_string(channelStatus);
+        }
         return false;
     }
 
-    lastDynamicResizeWidth_ = width;
-    lastDynamicResizeHeight_ = height;
+    lastDynamicResizeWidth_ = sentWidth;
+    lastDynamicResizeHeight_ = sentHeight;
     message = "display-control resize requested after " + reason + ": " +
-        std::to_string(width) + "x" + std::to_string(height);
+        (detail[0] != '\0' ? detail.data() : (std::to_string(sentWidth) + "x" +
+            std::to_string(sentHeight)));
     return true;
 #else
     (void)width;

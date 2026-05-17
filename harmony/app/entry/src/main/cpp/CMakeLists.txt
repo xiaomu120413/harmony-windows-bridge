@@ -35,6 +35,7 @@ add_library(entry SHARED
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.c
     input/ohos_keyboard_adapter.cpp
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.c
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.c
