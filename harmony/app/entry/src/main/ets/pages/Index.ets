@@ -26,6 +26,7 @@ const AXIS_EVENT_DEDUP_MS: number = 12
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 250
+const TEXT_INPUT_DELETE_GUARD_MS: number = 500
 const HILOG_DOMAIN: number = 0xF3D1
 const HILOG_TAG: string = 'FreeRDPUi'
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
@@ -224,6 +225,10 @@ struct Index {
   private shortcutSyntheticModifiers: ShortcutSyntheticModifier[] = []
   private dispatchedRemoteKeyEvents: string[] = []
   private remotePressedScancodes: number[] = []
+  private suppressedTextInputChars: string[] = []
+  private suppressedTextInputDeleteCount: number = 0
+  private pendingTextInputDeleteScancode: number = 0
+  private pendingTextInputDeleteAtMs: number = 0
   private lastEnterDispatchDownAtMs: number = 0
   private suppressNextSubmitFallbackEnterUp: boolean = false
   private callbacksRegistered: boolean = false
@@ -881,6 +886,61 @@ struct Index {
     })
   }
 
+  private consumeSuppressedTextInputFragment(value: string): string {
+    if (!value.length || this.suppressedTextInputChars.length <= 0) {
+      return value
+    }
+
+    let remaining = ''
+    let suppressed = ''
+    for (let i = 0; i < value.length; i++) {
+      const char = value.charAt(i)
+      const index = this.suppressedTextInputChars.indexOf(char)
+      if (index >= 0) {
+        this.suppressedTextInputChars.splice(index, 1)
+        suppressed += char
+      } else {
+        remaining += char
+      }
+    }
+    if (suppressed.length > 0) {
+      this.logInputEvent('key.hardware',
+        `suppressed TextInput echo chars=${suppressed.length} remaining=${remaining.length}`, true)
+    }
+    return remaining
+  }
+
+  private consumeSuppressedTextInputDeleteCount(deleteCount: number): number {
+    if (deleteCount <= 0 || this.suppressedTextInputDeleteCount <= 0) {
+      return 0
+    }
+    const consumed = Math.min(deleteCount, this.suppressedTextInputDeleteCount)
+    this.suppressedTextInputDeleteCount -= consumed
+    this.logInputEvent('key.delete',
+      `suppressed TextInput delete echo count=${consumed} pending=${this.suppressedTextInputDeleteCount}`, true)
+    return consumed
+  }
+
+  private handleInputBridgeWillInsert(value: InsertValue): boolean {
+    const insertedText = value.insertValue
+    if (!insertedText.length) {
+      return true
+    }
+    const remaining = this.consumeSuppressedTextInputFragment(insertedText)
+    return remaining.length === insertedText.length
+  }
+
+  private handleInputBridgeWillDelete(value: DeleteValue): boolean {
+    const deleteCount = Math.max(1, value.deleteValue.length)
+    const scancode = value.direction === TextDeleteDirection.FORWARD ? RDP_SCANCODE_DELETE : RDP_SCANCODE_BACKSPACE
+    this.pendingTextInputDeleteScancode = scancode
+    this.pendingTextInputDeleteAtMs = Date.now()
+    this.suppressedTextInputDeleteCount += deleteCount
+    this.logInputEvent('key.delete',
+      `TextInput delete direction=${value.direction} count=${deleteCount} scancode=0x${scancode.toString(16)}`, true)
+    return true
+  }
+
   private handleRemoteTextInputChange(value: string): void {
     const oldValue = this.remoteTextBridgeValue
     if (value === oldValue) {
@@ -902,11 +962,13 @@ struct Index {
 
     const deleteCount = oldValue.length - prefixLength - suffixLength
     const insertedText = value.substring(prefixLength, value.length - suffixLength)
+    const remoteDeleteCount = deleteCount - this.consumeSuppressedTextInputDeleteCount(deleteCount)
+    const remoteInsertedText = this.consumeSuppressedTextInputFragment(insertedText)
 
-    for (let i = 0; i < deleteCount; i++) {
+    for (let i = 0; i < remoteDeleteCount; i++) {
       this.sendKeyStroke(RDP_SCANCODE_BACKSPACE)
     }
-    this.sendRemoteTextFragment(insertedText)
+    this.sendRemoteTextFragment(remoteInsertedText)
 
     this.remoteTextBridgeValue = value
     this.remoteTextInput = value
@@ -947,6 +1009,9 @@ struct Index {
   private clearRemoteInputBridge(): void {
     this.remoteTextBridgeValue = ''
     this.remoteTextInput = ''
+    this.suppressedTextInputChars = []
+    this.suppressedTextInputDeleteCount = 0
+    this.clearPendingTextInputDelete()
   }
 
   private clearModifierState(): void {
@@ -1115,6 +1180,53 @@ struct Index {
       keyCode === OH_KEYCODE_NUMPAD_SUBTRACT ||
       keyCode === OH_KEYCODE_NUMPAD_ADD ||
       keyCode === OH_KEYCODE_NUMPAD_DOT
+  }
+
+  private shouldSendPrintableAsHardwareKey(keyCode: number): boolean {
+    return (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) ||
+      (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) ||
+      keyCode === OH_KEYCODE_NUMPAD_DIVIDE ||
+      keyCode === OH_KEYCODE_NUMPAD_MULTIPLY ||
+      keyCode === OH_KEYCODE_NUMPAD_SUBTRACT ||
+      keyCode === OH_KEYCODE_NUMPAD_ADD ||
+      keyCode === OH_KEYCODE_NUMPAD_DOT
+  }
+
+  private getHardwarePrintableText(event: KeyEvent): string {
+    const unicode = this.getEventUnicode(event)
+    if (unicode > 0 && unicode <= 0xFFFF) {
+      return String.fromCharCode(unicode)
+    }
+    if (event.keyCode >= OH_KEYCODE_0 && event.keyCode <= OH_KEYCODE_9) {
+      return `${event.keyCode - OH_KEYCODE_0}`
+    }
+    if (event.keyCode >= OH_KEYCODE_NUMPAD_0 && event.keyCode <= OH_KEYCODE_NUMPAD_9) {
+      return `${event.keyCode - OH_KEYCODE_NUMPAD_0}`
+    }
+    const keyMap: Map<number, string> = new Map<number, string>([
+      [OH_KEYCODE_NUMPAD_DIVIDE, '/'],
+      [OH_KEYCODE_NUMPAD_MULTIPLY, '*'],
+      [OH_KEYCODE_NUMPAD_SUBTRACT, '-'],
+      [OH_KEYCODE_NUMPAD_ADD, '+'],
+      [OH_KEYCODE_NUMPAD_DOT, '.']
+    ])
+    return keyMap.get(event.keyCode) ?? ''
+  }
+
+  private rememberHardwareTextInputSuppression(event: KeyEvent): void {
+    if (event.type !== KeyType.Down) {
+      return
+    }
+    const value = this.getHardwarePrintableText(event)
+    if (!value.length) {
+      return
+    }
+    for (let i = 0; i < value.length; i++) {
+      this.suppressedTextInputChars.push(value.charAt(i))
+    }
+    while (this.suppressedTextInputChars.length > 16) {
+      this.suppressedTextInputChars.shift()
+    }
   }
 
   private isModifierPressed(event: KeyEvent, modifier: string): boolean {
@@ -1395,15 +1507,33 @@ struct Index {
     return this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event)) >= 0
   }
 
+  private hasPendingTextInputDelete(scancode: number): boolean {
+    if (scancode <= 0 || scancode !== this.pendingTextInputDeleteScancode) {
+      return false
+    }
+    if (Date.now() - this.pendingTextInputDeleteAtMs > TEXT_INPUT_DELETE_GUARD_MS) {
+      this.pendingTextInputDeleteScancode = 0
+      this.pendingTextInputDeleteAtMs = 0
+      return false
+    }
+    return true
+  }
+
+  private clearPendingTextInputDelete(): void {
+    this.pendingTextInputDeleteScancode = 0
+    this.pendingTextInputDeleteAtMs = 0
+  }
+
   private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
-    trackedShortcut: boolean, fromInputBridge: boolean, repeat: boolean): void {
-    if (!shortcut && !trackedShortcut && !this.isFunctionKey(event.keyCode) &&
+    trackedShortcut: boolean, hardwarePrintable: boolean, fromInputBridge: boolean, repeat: boolean): void {
+    if (!shortcut && !trackedShortcut && !hardwarePrintable && !this.isFunctionKey(event.keyCode) &&
       (scancode <= 0 || printable)) {
       return
     }
     this.logInputEvent('key',
       `code=${event.keyCode} type=${event.type} scancode=${scancode} printable=${printable} ` +
-      `shortcut=${shortcut} tracked=${trackedShortcut} repeat=${repeat} bridge=${fromInputBridge} ` +
+      `shortcut=${shortcut} tracked=${trackedShortcut} hardware=${hardwarePrintable} ` +
+      `repeat=${repeat} bridge=${fromInputBridge} ` +
       `ctrl=${this.isCtrlModifierPressed(event)} alt=${this.isAltModifierPressed(event)} ` +
       `win=${this.isWinModifierPressed(event)} shift=${this.isShiftModifierPressed(event)}`,
       true)
@@ -1462,8 +1592,9 @@ struct Index {
       return false
     }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
+    const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
     const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
-    return !printable || this.hasRemoteShortcutModifier(event) || trackedShortcut
+    return !printable || hardwarePrintable || this.hasRemoteShortcutModifier(event) || trackedShortcut
   }
 
   private handleRemoteKeyDispatch(event: KeyEvent, fromInputBridge: boolean): boolean {
@@ -1495,11 +1626,25 @@ struct Index {
     }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const shortcut = this.hasRemoteShortcutModifier(event)
-    if (printable && !shortcut) {
+    const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
+    if (printable && !shortcut && !hardwarePrintable) {
       this.rememberInputBridgePrintableKey(event)
       return false
     }
     return this.handleSurfaceKeyEvent(event, true)
+  }
+
+  private handleInputBridgePreImeKeyEvent(event: KeyEvent): boolean {
+    if (!this.shouldRouteRemoteKeyboard()) {
+      return false
+    }
+    const printable = this.isPrintableArkKeyCode(event.keyCode)
+    const systemShortcutModifier = this.isCtrlModifierPressed(event) || this.isAltModifierPressed(event) ||
+      this.isWinModifierPressed(event)
+    if (printable && !systemShortcutModifier) {
+      return false
+    }
+    return this.handleRemoteKeyDispatch(event, true)
   }
 
   private handleInputBridgeSubmit(): void {
@@ -1531,29 +1676,50 @@ struct Index {
       this.logInputEvent('key.submit', 'suppressed Enter up after submit fallback', true)
       return true
     }
+    const pendingTextDelete = this.hasPendingTextInputDelete(scancode)
+    if (down && pendingTextDelete) {
+      this.clearPendingTextInputDelete()
+    } else if (!down && pendingTextDelete && !this.isRemoteScancodePressed(scancode)) {
+      this.clearPendingTextInputDelete()
+      const sent = this.sendKeyStroke(scancode)
+      this.logInputEvent('key.delete',
+        `sent pending TextInput delete scancode=0x${scancode.toString(16)} sent=${sent}`, true)
+      return sent
+    } else if (!down && pendingTextDelete) {
+      this.clearPendingTextInputDelete()
+    }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
+    const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
     let shortcut = this.hasRemoteShortcutModifier(event)
     const trackedShortcut = printable && this.isTrackedRemoteShortcutPrintableKey(event.keyCode)
     if (!down && trackedShortcut) {
       shortcut = true
     }
     const repeat = down && scancode > 0 && this.isRemoteScancodePressed(scancode)
-    this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, fromInputBridge, repeat)
+    const surfacePrintableFallback = printable && !fromInputBridge
+    this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, hardwarePrintable,
+      fromInputBridge, repeat)
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
       return true
     }
 
     if (this.handleShortcutKeyEvent(event, scancode, printable, down, repeat, trackedShortcut)) {
+      if (hardwarePrintable) {
+        this.rememberHardwareTextInputSuppression(event)
+      }
       return true
     }
 
-    if (scancode > 0 && (!printable || shortcut)) {
+    if (scancode > 0 && (!printable || shortcut || hardwarePrintable || surfacePrintableFallback)) {
       const sent = this.sendMappedKeyEvent(scancode, down, repeat)
       if (sent && down && scancode === RDP_SCANCODE_ENTER) {
         this.lastEnterDispatchDownAtMs = Date.now()
       }
-      if (sent && printable) {
+      if (sent && printable && shortcut) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
+      }
+      if (sent && hardwarePrintable) {
+        this.rememberHardwareTextInputSuppression(event)
       }
       return sent
     }
@@ -2116,8 +2282,17 @@ struct Index {
           .caretColor('#00000000')
           .focusable(true)
           .copyOption(CopyOptions.None)
+          .onWillInsert((value: InsertValue): boolean => {
+            return this.handleInputBridgeWillInsert(value)
+          })
+          .onWillDelete((value: DeleteValue): boolean => {
+            return this.handleInputBridgeWillDelete(value)
+          })
           .onChange((value: string) => {
             this.handleRemoteTextInputChange(value)
+          })
+          .onKeyPreIme((event: KeyEvent): boolean => {
+            return this.handleInputBridgePreImeKeyEvent(event)
           })
           .onPaste((content: string, event: PasteEvent) => {
             event.preventDefault?.()
@@ -2166,6 +2341,13 @@ struct Index {
       })
     }
     .layoutWeight(1)
+    .focusable(true)
+    .onKeyEvent((event: KeyEvent): boolean => {
+      return this.handleSurfaceKeyEvent(event)
+    })
+    .onKeyEventDispatch((event: KeyEvent): boolean => {
+      return this.handleRemoteKeyDispatch(event, false)
+    })
   }
 
   @Builder
