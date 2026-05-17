@@ -30,8 +30,6 @@ const INPUT_EVENT_UI_LOG_ENABLED: boolean = false
 const INPUT_EVENT_VERBOSE_LOG_ENABLED: boolean = false
 // Real-device key callback echo was observed under 30ms; keep a wider window without masking fast typing.
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 120
-// TextInput delete and hardware key callbacks pair under 130ms in normal paths; keep a wider echo guard.
-const TEXT_INPUT_DELETE_GUARD_MS: number = 250
 const REMOTE_TEXT_BRIDGE_RESET_LENGTH: number = 32
 const REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS: number = 500
 const HILOG_DOMAIN: number = 0xF3D1
@@ -238,11 +236,6 @@ struct Index {
   private dispatchedRemoteKeyEvents: string[] = []
   private remotePressedScancodes: number[] = []
   private suppressedTextInputChars: string[] = []
-  private suppressedTextInputDeleteCount: number = 0
-  private pendingTextInputDeleteScancode: number = 0
-  private pendingTextInputDeleteAtMs: number = 0
-  private pendingTextInputDeleteCount: number = 0
-  private pendingTextInputDeleteToken: number = 0
   private remoteTextBridgeClearUntilMs: number = 0
   private callbacksRegistered: boolean = false
   private pasteboardPermissionRequested: boolean = false
@@ -966,17 +959,6 @@ struct Index {
     return remaining
   }
 
-  private consumeSuppressedTextInputDeleteCount(deleteCount: number): number {
-    if (deleteCount <= 0 || this.suppressedTextInputDeleteCount <= 0) {
-      return 0
-    }
-    const consumed = Math.min(deleteCount, this.suppressedTextInputDeleteCount)
-    this.suppressedTextInputDeleteCount -= consumed
-    this.logInputEvent('key.delete',
-      `suppressed TextInput delete echo count=${consumed} pending=${this.suppressedTextInputDeleteCount}`, true)
-    return consumed
-  }
-
   private handleInputBridgeWillInsert(value: InsertValue): boolean {
     const insertedText = value.insertValue
     if (!insertedText.length) {
@@ -987,36 +969,10 @@ struct Index {
   }
 
   private handleInputBridgeWillDelete(value: DeleteValue): boolean {
-    const deleteCount = Math.max(1, value.deleteValue.length)
-    const scancode = value.direction === TextDeleteDirection.FORWARD ? RDP_SCANCODE_DELETE : RDP_SCANCODE_BACKSPACE
-    this.recordTextInputDeleteEcho(scancode, deleteCount)
-    this.suppressedTextInputDeleteCount += deleteCount
-
-    let sent = this.isConnected()
-    if (sent) {
-      for (let i = 0; i < deleteCount; i++) {
-        sent = this.sendKeyStroke(scancode) && sent
-      }
-    }
     this.logInputEvent('key.delete',
-      `TextInput delete immediate direction=${value.direction} count=${deleteCount} ` +
-      `scancode=0x${scancode.toString(16)} sent=${sent}`,
+      `TextInput delete blocked direction=${value.direction} count=${Math.max(1, value.deleteValue.length)}`,
       true)
-    return true
-  }
-
-  private recordTextInputDeleteEcho(scancode: number, deleteCount: number): void {
-    const now = Date.now()
-    if (this.pendingTextInputDeleteScancode === scancode &&
-      now - this.pendingTextInputDeleteAtMs <= TEXT_INPUT_DELETE_GUARD_MS) {
-      this.pendingTextInputDeleteCount += deleteCount
-    } else {
-      this.pendingTextInputDeleteCount = deleteCount
-    }
-    this.pendingTextInputDeleteScancode = scancode
-    this.pendingTextInputDeleteAtMs = now
-    this.pendingTextInputDeleteToken++
-    this.schedulePendingTextInputDeleteCleanup(scancode, this.pendingTextInputDeleteToken)
+    return false
   }
 
   private handleRemoteTextInputChange(value: string): void {
@@ -1046,7 +1002,7 @@ struct Index {
 
     const deleteCount = oldValue.length - prefixLength - suffixLength
     const insertedText = value.substring(prefixLength, value.length - suffixLength)
-    const remoteDeleteCount = deleteCount - this.consumeSuppressedTextInputDeleteCount(deleteCount)
+    const remoteDeleteCount = deleteCount
     const remoteInsertedText = this.consumeSuppressedTextInputFragment(insertedText)
 
     for (let i = 0; i < remoteDeleteCount; i++) {
@@ -1104,8 +1060,6 @@ struct Index {
     this.remoteTextBridgeValue = ''
     this.remoteTextInput = ''
     this.suppressedTextInputChars = []
-    this.suppressedTextInputDeleteCount = 0
-    this.clearPendingTextInputDelete()
   }
 
   private clearModifierState(): void {
@@ -1657,43 +1611,12 @@ struct Index {
     return this.dispatchedRemoteKeyEvents.indexOf(this.keyEventId(event)) >= 0
   }
 
-  private hasPendingTextInputDelete(scancode: number): boolean {
-    if (scancode <= 0 || scancode !== this.pendingTextInputDeleteScancode) {
-      return false
-    }
-    if (Date.now() - this.pendingTextInputDeleteAtMs > TEXT_INPUT_DELETE_GUARD_MS) {
-      this.clearPendingTextInputDelete()
-      return false
-    }
-    return true
-  }
-
   private sendRepeatKeyDown(keyCode: number, scancode: number, event: KeyEvent): boolean {
     const sent = this.sendMappedKeyEvent(keyCode, scancode, true, true, event)
     this.logInputEvent('key.repeat',
       `down scancode=0x${scancode.toString(16)} sent=${sent}`,
       true)
     return sent
-  }
-
-  private clearPendingTextInputDelete(): void {
-    this.pendingTextInputDeleteScancode = 0
-    this.pendingTextInputDeleteAtMs = 0
-    this.pendingTextInputDeleteCount = 0
-    this.pendingTextInputDeleteToken++
-  }
-
-  private schedulePendingTextInputDeleteCleanup(scancode: number, token: number): void {
-    setTimeout((): void => {
-      if (token !== this.pendingTextInputDeleteToken ||
-        scancode !== this.pendingTextInputDeleteScancode) {
-        return
-      }
-      if (Date.now() - this.pendingTextInputDeleteAtMs < TEXT_INPUT_DELETE_GUARD_MS) {
-        return
-      }
-      this.clearPendingTextInputDelete()
-    }, TEXT_INPUT_DELETE_GUARD_MS)
   }
 
   private logKeyDiagnostic(event: KeyEvent, scancode: number, printable: boolean, shortcut: boolean,
@@ -1831,17 +1754,6 @@ struct Index {
     }
     const scancode = this.mapArkKeyCodeToRdpScancode(event.keyCode)
     const down = event.type === KeyType.Down
-    const pendingTextDelete = this.hasPendingTextInputDelete(scancode)
-    if (pendingTextDelete) {
-      if (down && this.pendingTextInputDeleteCount > 0) {
-        this.pendingTextInputDeleteCount--
-      }
-      this.logInputEvent('key.delete',
-        `suppressed hardware delete echo scancode=0x${scancode.toString(16)} ` +
-        `down=${down} pending=${this.pendingTextInputDeleteCount}`,
-        true)
-      return true
-    }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
     let shortcut = this.hasRemoteShortcutModifier(event)
