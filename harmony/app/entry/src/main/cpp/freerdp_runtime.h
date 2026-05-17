@@ -17,6 +17,10 @@
 #include <winpr/synch.h>
 #endif
 
+#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+#include <client/OHOS/ohos_clipboard.h>
+#endif
+
 namespace rdp_bridge {
 
 class FreerdpRuntimeApi;
@@ -73,6 +77,11 @@ public:
     using AudinOhosPermissionRequestFn = BOOL (*)(void*, UINT32);
     using AudinOhosSetPermissionCallbackFn = BOOL (*)(AudinOhosPermissionRequestFn, void*);
     using RdpsndClientGetDiagnosticsFn = const char* (*)();
+    using OhosClipboardNewFn = freerdpOhosClipboard* (*)();
+    using OhosClipboardRegisterFn = BOOL (*)(freerdpOhosClipboard*, rdpContext*,
+        const FREERDP_OHOS_CLIPBOARD_CONFIG*, char*, size_t);
+    using OhosClipboardFreeFn = void (*)(freerdpOhosClipboard*);
+    using OhosClipboardGetDiagnosticsFn = const char* (*)(freerdpOhosClipboard*);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecSetAvc444OutputSurfacesFn = BOOL (*)(void*, void*, UINT32, UINT32, BOOL);
     using OhosAvc444FrameCallbackFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, void*);
@@ -123,6 +132,10 @@ public:
     AudinOhosGetDiagnosticsFn audinOhosGetDiagnostics = nullptr;
     AudinOhosSetPermissionCallbackFn audinOhosSetPermissionCallback = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
+    OhosClipboardNewFn ohosClipboardNew = nullptr;
+    OhosClipboardRegisterFn ohosClipboardRegister = nullptr;
+    OhosClipboardFreeFn ohosClipboardFree = nullptr;
+    OhosClipboardGetDiagnosticsFn ohosClipboardGetDiagnostics = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;
     OhosAvcodecSetAvc444SurfaceRouteEnabledFn ohosAvcodecSetAvc444SurfaceRouteEnabled = nullptr;

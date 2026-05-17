@@ -122,6 +122,11 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("freerdp_audin_ohos_set_permission_callback",
             audinOhosSetPermissionCallback);
         LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);
+        LoadOptionalClientSymbol("freerdp_ohos_clipboard_new", ohosClipboardNew);
+        LoadOptionalClientSymbol("freerdp_ohos_clipboard_register", ohosClipboardRegister);
+        LoadOptionalClientSymbol("freerdp_ohos_clipboard_free", ohosClipboardFree);
+        LoadOptionalClientSymbol("freerdp_ohos_clipboard_get_diagnostics",
+            ohosClipboardGetDiagnostics);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",

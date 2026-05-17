@@ -26,15 +26,19 @@ public:
             error = "FreeRDP pubSub is unavailable for clipboard";
             return false;
         }
-        if (api.pubSubSubscribe == nullptr || api.pubSubUnsubscribe == nullptr) {
-            error = "WinPR PubSub symbols are not loaded for clipboard";
+        if (api.pubSubSubscribe == nullptr || api.pubSubUnsubscribe == nullptr ||
+            api.ohosClipboardNew == nullptr || api.ohosClipboardRegister == nullptr ||
+            api.ohosClipboardFree == nullptr || api.ohosClipboardGetDiagnostics == nullptr) {
+            error = "FreeRDP OHOS clipboard symbols are not loaded";
             return false;
         }
 
         log_ = log;
-        clipboard_ = freerdp_ohos_clipboard_new();
+        api_ = &api;
+        clipboard_ = api_->ohosClipboardNew();
         if (clipboard_ == nullptr) {
             error = "create FreeRDP OHOS clipboard backend failed";
+            api_ = nullptr;
             return false;
         }
 
@@ -45,12 +49,13 @@ public:
         config.logUserData = this;
 
         char errorBuffer[256] = {};
-        if (!freerdp_ohos_clipboard_register(
+        if (!api_->ohosClipboardRegister(
                 clipboard_, context, &config, errorBuffer, sizeof(errorBuffer))) {
             error = errorBuffer[0] == '\0' ? "register FreeRDP OHOS clipboard backend failed" :
                 errorBuffer;
-            freerdp_ohos_clipboard_free(clipboard_);
+            api_->ohosClipboardFree(clipboard_);
             clipboard_ = nullptr;
+            api_ = nullptr;
             return false;
         }
         return true;
@@ -59,13 +64,17 @@ public:
     void Uninitialize()
     {
         if (clipboard_ != nullptr) {
-            const char* diagnostics = freerdp_ohos_clipboard_get_diagnostics(clipboard_);
+            const char* diagnostics = api_ == nullptr ? nullptr :
+                api_->ohosClipboardGetDiagnostics(clipboard_);
             if (diagnostics != nullptr) {
                 Log(diagnostics);
             }
-            freerdp_ohos_clipboard_free(clipboard_);
+            if (api_ != nullptr) {
+                api_->ohosClipboardFree(clipboard_);
+            }
             clipboard_ = nullptr;
         }
+        api_ = nullptr;
         log_ = nullptr;
     }
 
@@ -89,6 +98,7 @@ private:
     }
 
     LogFn log_;
+    FreerdpRuntimeApi* api_ = nullptr;
     freerdpOhosClipboard* clipboard_ = nullptr;
 };
 
