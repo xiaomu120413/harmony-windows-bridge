@@ -26,6 +26,7 @@ const AXIS_EVENT_DEDUP_MS: number = 12
 const INPUT_PROBE_DELAY_MS: number = 200
 const INPUT_PROBE_INTERVAL_MS: number = 350
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 250
+const PASTE_SHORTCUT_DEDUP_MS: number = 800
 const HILOG_DOMAIN: number = 0xF3D1
 const HILOG_TAG: string = 'FreeRDPUi'
 const REMOTE_INPUT_BRIDGE_ID: string = 'rdpRemoteInputBridge'
@@ -36,6 +37,9 @@ const RDP_SCANCODE_TAB: number = 0x0F
 const RDP_SCANCODE_ENTER: number = 0x1C
 const RDP_SCANCODE_LCONTROL: number = 0x1D
 const RDP_SCANCODE_RCONTROL: number = 0x011D
+const RDP_SCANCODE_A: number = 0x1E
+const RDP_SCANCODE_C: number = 0x2E
+const RDP_SCANCODE_V: number = 0x2F
 const RDP_SCANCODE_LMENU: number = 0x38
 const RDP_SCANCODE_RMENU: number = 0x0138
 const RDP_SCANCODE_LWIN: number = 0x015B
@@ -175,7 +179,7 @@ interface NativeCommandResult {
 @Entry
 @Component
 struct Index {
-  @State private host: string = '172.20.10.2'
+  @State private host: string = '192.168.43.28'
   @State private port: string = '3389'
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
@@ -214,6 +218,7 @@ struct Index {
   private remoteTextBridgeValue: string = ''
   private bridgePrintableKeyCode: number = 0
   private bridgePrintableKeyAtMs: number = 0
+  private lastCtrlVPasteShortcutAtMs: number = 0
   private remoteShortcutPrintableKeysDown: number[] = []
   private dispatchedRemoteKeyEvents: string[] = []
   private remotePressedScancodes: number[] = []
@@ -277,7 +282,6 @@ struct Index {
   aboutToAppear(): void {
     this.registerNativeCallbacks()
     this.ensurePasteboardReadPermission('page appear')
-    this.probeNative()
   }
 
   aboutToDisappear(): void {
@@ -485,20 +489,6 @@ struct Index {
     } catch (error) {
       this.connectionState = 'Failed'
       this.appendLog(`Native connect failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private disconnectNative(): void {
-    try {
-      this.releasePointerButtons()
-      this.releaseActiveModifiers()
-      const result: NativeCommandResult = rdpNative.disconnect()
-      this.connectionState = this.toConnectionState(result.state)
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-    } catch (error) {
-      this.connectionState = 'Failed'
-      this.appendLog(`Native disconnect failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -1032,8 +1022,9 @@ struct Index {
   private mapArkKeyCodeToRdpScancode(keyCode: number): number {
     if (keyCode >= OH_KEYCODE_A && keyCode <= OH_KEYCODE_Z) {
       const letterScancodes: number[] = [
-        0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32,
-        0x31, 0x18, 0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C
+        RDP_SCANCODE_A, 0x30, RDP_SCANCODE_C, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25,
+        0x26, 0x32, 0x31, 0x18, 0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, RDP_SCANCODE_V, 0x11, 0x2D,
+        0x15, 0x2C
       ]
       return letterScancodes[keyCode - OH_KEYCODE_A]
     }
@@ -1230,7 +1221,62 @@ struct Index {
   }
 
   private isClipboardShortcutKey(keyCode: number): boolean {
-    return keyCode === OH_KEYCODE_C || keyCode === OH_KEYCODE_V
+    return keyCode === OH_KEYCODE_A || keyCode === OH_KEYCODE_C || keyCode === OH_KEYCODE_V
+  }
+
+  private mapCtrlShortcutScancode(keyCode: number): number {
+    if (keyCode === OH_KEYCODE_A) {
+      return RDP_SCANCODE_A
+    }
+    if (keyCode === OH_KEYCODE_C) {
+      return RDP_SCANCODE_C
+    }
+    if (keyCode === OH_KEYCODE_V) {
+      return RDP_SCANCODE_V
+    }
+    return 0
+  }
+
+  private sendCtrlShortcut(scancode: number, label: string): boolean {
+    if (!this.isConnected()) {
+      this.appendLog(`${label} skipped: no active FreeRDP session`)
+      return false
+    }
+
+    const ctrlAlreadyDown = this.ctrlModifierDown || this.rightCtrlModifierDown
+    let sent = true
+    if (!ctrlAlreadyDown) {
+      sent = this.sendMappedKeyEvent(RDP_SCANCODE_LCONTROL, true, false) && sent
+    }
+    sent = this.sendKeyEvent(scancode, true, false) && sent
+    sent = this.sendKeyEvent(scancode, false, false) && sent
+    if (!ctrlAlreadyDown) {
+      sent = this.sendMappedKeyEvent(RDP_SCANCODE_LCONTROL, false, false) && sent
+    }
+    if (scancode === RDP_SCANCODE_V) {
+      this.lastCtrlVPasteShortcutAtMs = Date.now()
+    }
+    this.logInputEvent('key.shortcut', `${label} scancode=0x${scancode.toString(16)} sent=${sent}`, true)
+    return sent
+  }
+
+  private handleCtrlShortcutEvent(event: KeyEvent, down: boolean, trackedShortcut: boolean): boolean {
+    const scancode = this.mapCtrlShortcutScancode(event.keyCode)
+    if (scancode <= 0) {
+      return false
+    }
+    if (!this.isCtrlModifierPressed(event) && !trackedShortcut) {
+      return false
+    }
+    if (!down) {
+      this.setRemoteShortcutPrintableKeyState(event.keyCode, false)
+      return true
+    }
+    const sent = this.sendCtrlShortcut(scancode, 'ctrl.shortcut')
+    if (sent) {
+      this.setRemoteShortcutPrintableKeyState(event.keyCode, true)
+    }
+    return true
   }
 
   private keyEventId(event: KeyEvent): string {
@@ -1388,6 +1434,10 @@ struct Index {
     const repeat = down && scancode > 0 && this.isRemoteScancodePressed(scancode)
     this.logKeyDiagnostic(event, scancode, printable, shortcut, trackedShortcut, fromInputBridge, repeat)
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
+      return true
+    }
+
+    if (this.handleCtrlShortcutEvent(event, down, trackedShortcut)) {
       return true
     }
 
@@ -1873,16 +1923,6 @@ struct Index {
         .width('100%')
         .margin({ bottom: 12 })
 
-        Button('Native Probe')
-          .height(40)
-          .width('100%')
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .margin({ bottom: 10 })
-          .onClick(() => {
-            this.probeNative()
-          })
-
         Button('Connect')
           .height(44)
           .width('100%')
@@ -1891,18 +1931,6 @@ struct Index {
           .onClick(() => {
             this.connectNative()
           })
-
-        Text(this.nativeProbeText)
-          .fontSize(13)
-          .fontColor('#475467')
-          .width('100%')
-          .margin({ top: 14 })
-
-        Text(`State: ${this.connectionState}`)
-          .fontSize(14)
-          .fontColor('#475467')
-          .width('100%')
-          .margin({ top: 16 })
       }
       .padding(20)
     }
@@ -1934,25 +1962,6 @@ struct Index {
   @Builder
   private buildSessionPage() {
     Column() {
-      Row() {
-        Text(this.connectionState)
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#101828')
-          .layoutWeight(1)
-        Button('Disconnect')
-          .height(36)
-          .backgroundColor('#D92D20')
-          .fontColor(Color.White)
-          .onClick(() => {
-            this.disconnectNative()
-          })
-      }
-      .width('100%')
-      .height(52)
-      .padding({ left: 16, right: 16 })
-      .backgroundColor('#FFFFFF')
-
       Stack() {
         XComponent({
           id: 'rdpSurface',
@@ -2001,6 +2010,10 @@ struct Index {
           })
           .onPaste((content: string, event: PasteEvent) => {
             event.preventDefault?.()
+            const recentlySent = Date.now() - this.lastCtrlVPasteShortcutAtMs <= PASTE_SHORTCUT_DEDUP_MS
+            if (!recentlySent) {
+              this.sendCtrlShortcut(RDP_SCANCODE_V, 'paste.shortcut')
+            }
             this.logInputEvent('paste', `hidden TextInput default paste suppressed len=${content.length}`, true)
           })
           .onSubmit((enterKey: EnterKeyType, event: SubmitEvent) => {
