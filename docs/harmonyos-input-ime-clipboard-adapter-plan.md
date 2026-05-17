@@ -244,6 +244,21 @@ harmony/third_party/FreeRDP/client/OHOS/ohos_cliprdr.h
 - `freerdp_input_send_unicode_keyboard_event()`
 - `CliprdrClientContext` callbacks
 
+### 其余适配点归属结论
+
+| 适配点 | 当前状态 | 正式归属 | 后续是否整理成 `client/OHOS` |
+| --- | --- | --- | --- |
+| Keyboard | `Index.ets` 仍有 RDP scancode map、组合键、repeat、delete guard | native `input/ohos_keyboard_adapter.*` | 是，稳定后可并入 app 内 `client/ohos/ohos_keyboard.*` |
+| IME | `Index.ets` 隐藏 TextInput 处理文本、删除和回显抑制 | ETS 只接 IME 提交文本，native `ohos_ime_adapter.*` 发 Unicode | 部分是。TextInput 入口留 ETS，Unicode/RDP 发送进入 OHOS client adapter |
+| Clipboard | ETS 权限，native `OH_Pasteboard`，native `cliprdr` bridge | 当前拆分方向正确 | 是，文本稳定后整理为 `client/ohos/ohos_clipboard_backend.*` |
+| Pointer/Touch | ArkTS 识别 tap、drag、wheel、right click 后直接 `sendPointer` | ArkTS 保留手势识别，native 可加 `ohos_pointer_adapter.*` 做坐标/按钮规范化 | 可选。鼠标问题优先级低于键盘和 IME |
+| Focus/Lifecycle | `aboutToDisappear()` 释放 modifier，native session 生命周期分散在 runner/core/input | native session owner 统一 release keys、stop repeat、clear queue、detach surface | 是，放在 app 内 `client/ohos/ohos_session_adapters.*` 或 session runner |
+| Display resize | XComponent layout 触发 native surface resize 和 `disp` channel | 保持 native display-control channel bridge | 不放输入方案主线，后续可单独整理为 `ohos_display_adapter.*` |
+| Audio | 已走 FreeRDP `rdpsnd sys:ohos` 方向 | FreeRDP rdpsnd OHOS backend + Harmony audio kit | 不属于本文档，单独音频方案跟进 |
+| Graphics/H.264 | rdpgfx/AVCodec surface 路线已有代码 | graphics/AVCodec OHOS backend | 不属于本文档，单独图形性能方案跟进 |
+
+本方案当前只执行 Keyboard、IME、Clipboard、Pointer/Lifecycle 中和输入稳定性直接相关的部分。Audio、Graphics/H.264、Display resize 保持现状，不混入本轮输入迁移提交。
+
 ## 4. 正式迁移方案
 
 ### 4.1 迁移目标
@@ -259,11 +274,13 @@ harmony/app/entry/src/main/cpp/
   input/
     ohos_keyboard_adapter.*
     ohos_ime_adapter.*
+    ohos_pointer_adapter.*        可选，第二轮整理
   client/ohos/
     ohos_clipboard_backend.*
     ohos_cliprdr.*
     ohos_pasteboard.*
     ohos_clipboard_format.*
+    ohos_session_lifecycle.*      可选，统一 release/stop/clear
   rdp_session_input.*
     只保留 worker 线程安全输入队列和 FreeRDP dispatch
   freerdp_session_runner.*
@@ -286,6 +303,8 @@ harmony/app/entry/src/main/cpp/
 | `harmony/app/entry/src/main/ets/pages/Index.ets` | UI、焦点、触摸、键盘映射、IME TextInput、部分兜底逻辑 | `Index.ets` + native adapter | 保留 UI/焦点/IME入口；删除 RDP scancode map 和远端快捷键语义 |
 | `Index.ets::mapArkKeyCodeToRdpScancode()` | ArkTS 手写 RDP scancode | `input/ohos_keyboard_adapter.cpp` | 改为 `OH_KEYCODE -> Windows VK -> WinPR scancode` |
 | `Index.ets` TextInput delete guard | 处理软键盘删除，同时影响硬件 Delete/Backspace | `input/ohos_ime_adapter.cpp` + `ohos_keyboard_adapter.cpp` | 软键盘删除走 IME adapter；硬件删除走 keyboard adapter |
+| `Index.ets::handleSurfaceMouse/Touch/Axis` | 手势识别和 pointer flags 组装 | `Index.ets` + 可选 `input/ohos_pointer_adapter.cpp` | ArkTS 保留手势识别；native 负责坐标边界、按钮状态、队列背压 |
+| `Index.ets::releaseActiveModifiers()` | ArkTS 用 scancode 释放 modifier | `input/ohos_keyboard_adapter.cpp` | 改为 native `releaseAllKeys()`，不再从 ArkTS 发 RDP scancode |
 | `harmony/app/entry/src/main/cpp/rdp_session_input.*` | 输入队列和 FreeRDP dispatch | 原地保留 | 保留线程安全队列，增加平台 key/unicode event 类型或统一 event payload |
 | `harmony/app/entry/src/main/cpp/freerdp_runtime.*` | FreeRDP symbol/runtime API | 原地保留 | 补齐 WinPR keyboard helper 或 FreeRDP remap 所需入口 |
 | `harmony/app/entry/src/main/cpp/channels/clipboard_*` | Pasteboard、格式转换、cliprdr 回调混在 channels 目录 | `client/ohos/ohos_clipboard_*` | 文本剪贴板稳定后做文件边界整理，不和键盘迁移混做 |
@@ -366,6 +385,14 @@ IME 迁移完成：
 - HarmonyOS 复制文本到 Windows 粘贴正常。
 - `freerdp_session_runner.cpp` 不再直接依赖具体 clipboard message/format 细节。
 - clipboard 日志前缀和生命周期清晰。
+
+Pointer/生命周期迁移完成：
+
+- 单指点击、拖动、长按右键、双指滚轮行为和迁移前一致。
+- 鼠标左/右/中键 down/up 成对发送。
+- pointer move 高频输入不会压垮 native queue。
+- 页面销毁、断开、后台时能停止 repeat、释放全部按键、清空 pending pointer 状态。
+- surface 销毁后不再继续写入窗口或发送依赖旧 surface 的更新。
 
 ## 5. 可执行迁移步骤
 
@@ -714,6 +741,61 @@ harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.cpp
 - 中。纯文件迁移容易引入 CMake 链接、include path、生命周期顺序问题。
 - 中。如果后续直接迁入 FreeRDP 子模块，需要处理 OHOS Pasteboard 头文件和 FreeRDP CMake 对 HarmonyOS SDK 的发现方式。
 
+### Phase 9：Pointer 和 lifecycle 输入收口
+
+修改范围：
+
+- 保留 ArkTS tap、drag、wheel、right click 手势识别。
+- native 增加可选 `ohos_pointer_adapter.*`，集中处理坐标 clamp、按钮状态、wheel flags 和日志。
+- ArkTS 的 `releaseActiveModifiers()` 改为调用 native `releaseAllKeys()`。
+- 页面销毁、disconnect、后台、surface destroyed 时统一调用：
+  - `releaseAllKeys()`
+  - `stopAllRepeat()`
+  - `clearPointerState()`
+  - `RdpSessionInput::Clear()`
+
+伪码：
+
+```ts
+aboutToDisappear(): void {
+  native.releaseAllKeys()
+  this.clearPointerState()
+  this.clearRemoteInputBridge()
+}
+```
+
+```cpp
+class OhosInputLifecycle {
+public:
+    void OnFocusLost();
+    void OnDisconnecting();
+    void OnSurfaceDestroyed();
+
+private:
+    OhosKeyboardAdapter* keyboard_;
+    RdpSessionInput* inputQueue_;
+};
+
+void OhosInputLifecycle::OnDisconnecting()
+{
+    keyboard_->ReleaseAll();
+    keyboard_->StopAllRepeat();
+    inputQueue_->Clear();
+}
+```
+
+验收：
+
+- 单指点击、拖动、右键、滚轮行为不退化。
+- 长按键时返回页面，远端没有 stuck key。
+- 鼠标拖动中断开连接，远端不会保持鼠标按下状态。
+- native 日志能看到 lifecycle release。
+
+风险：
+
+- 中。Pointer 行为当前相对可用，迁移时要避免为了整理结构引入触控回归。
+- 高。生命周期释放顺序如果不对，可能导致 native queue 清空过早或 key-up 没有发出。
+
 ## 6. 执行顺序
 
 推荐顺序：
@@ -726,6 +808,7 @@ harmony/app/entry/src/main/cpp/client/ohos/ohos_clipboard_format.cpp
 6. 清理 IME 边界，移除硬件删除兜底。
 7. 复测并补强文本剪贴板日志。
 8. 文本剪贴板稳定后，单独整理为 OHOS client clipboard backend。
+9. 收口 Pointer 和 lifecycle，统一释放按键、repeat 和 pending pointer 状态。
 
 每个阶段完成后单独提交，并报告完成度、验证结果、遗留风险。
 
