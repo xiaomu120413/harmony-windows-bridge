@@ -1,4 +1,5 @@
 #include "napi/native_api.h"
+#include "bridge_types.h"
 #include "bridge_log.h"
 #include "napi_utils.h"
 #include "net_utils.h"
@@ -80,91 +81,8 @@ using namespace rdp_bridge;
 #define GL_TEXTURE_EXTERNAL_OES 0x8D65
 #endif
 
-struct ConnectParams {
-    std::string host;
-    std::string port;
-    std::string username;
-    std::string password;
-    std::string resolution;
-    std::string certPolicy;
-    std::string graphicsMode;
-    std::string appFilesDir;
-};
-
 struct CallbackData {
     std::string value;
-};
-
-struct SurfacePaintResult {
-    bool ok = false;
-    bool partial = false;
-    std::string message;
-    std::vector<std::string> logs;
-};
-
-struct DirtyFrameStats {
-    bool valid = false;
-    uint32_t rectCount = 0;
-    uint32_t x = 0;
-    uint32_t y = 0;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t areaPermille = 0;
-};
-
-struct RgbaFrame {
-    const uint8_t* data = nullptr;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    int32_t strideBytes = 0;
-    std::string label;
-    DirtyFrameStats dirty;
-    uint64_t sequence = 0;
-    uint64_t dirtySequenceStart = 0;
-};
-
-struct RenderStatsSnapshot {
-    bool running = false;
-    uint64_t queued = 0;
-    uint64_t rendered = 0;
-    uint64_t failed = 0;
-    uint64_t replaced = 0;
-    uint64_t throttled = 0;
-    uint64_t fullRendered = 0;
-    uint64_t partialRendered = 0;
-    uint32_t pending = 0;
-    uint32_t lastWidth = 0;
-    uint32_t lastHeight = 0;
-    uint32_t lastCopyUs = 0;
-    uint32_t lastRenderUs = 0;
-    uint32_t avgCopyUs = 0;
-    uint32_t avgRenderUs = 0;
-    uint32_t fpsX100 = 0;
-    DirtyFrameStats lastDirty;
-    uint32_t targetFrameIntervalMs = 0;
-};
-
-struct GraphicsPipelineConfig {
-    bool enabled = false;
-    bool h264 = false;
-    std::string mode = "gdi";
-};
-
-struct DecoderSurfaceTarget {
-    OHNativeWindow* window = nullptr;
-    uint32_t width = 0;
-    uint32_t height = 0;
-};
-
-struct Avc444SurfaceTargets {
-    OHNativeWindow* lumaWindow = nullptr;
-    OHNativeWindow* chromaWindow = nullptr;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t lumaTexture = 0;
-    uint32_t chromaTexture = 0;
-    uint64_t lumaSurfaceId = 0;
-    uint64_t chromaSurfaceId = 0;
 };
 
 std::atomic_bool g_rdpgfxRuntimeRequested{false};
