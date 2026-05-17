@@ -30,7 +30,7 @@ const INPUT_EVENT_UI_LOG_ENABLED: boolean = false
 const INPUT_EVENT_VERBOSE_LOG_ENABLED: boolean = false
 // Real-device key callback echo was observed under 30ms; keep a wider window without masking fast typing.
 const BRIDGE_PRINTABLE_KEY_GUARD_MS: number = 120
-// TextInput delete and hardware key callbacks pair under 130ms in normal paths; the timer covers TextInput-only deletes.
+// TextInput delete and hardware key callbacks pair under 130ms in normal paths; keep a wider echo guard.
 const TEXT_INPUT_DELETE_GUARD_MS: number = 250
 const REMOTE_TEXT_BRIDGE_RESET_LENGTH: number = 32
 const REMOTE_TEXT_BRIDGE_CLEAR_GUARD_MS: number = 500
@@ -969,6 +969,23 @@ struct Index {
   private handleInputBridgeWillDelete(value: DeleteValue): boolean {
     const deleteCount = Math.max(1, value.deleteValue.length)
     const scancode = value.direction === TextDeleteDirection.FORWARD ? RDP_SCANCODE_DELETE : RDP_SCANCODE_BACKSPACE
+    this.recordTextInputDeleteEcho(scancode, deleteCount)
+    this.suppressedTextInputDeleteCount += deleteCount
+
+    let sent = this.isConnected()
+    if (sent) {
+      for (let i = 0; i < deleteCount; i++) {
+        sent = this.sendKeyStroke(scancode) && sent
+      }
+    }
+    this.logInputEvent('key.delete',
+      `TextInput delete immediate direction=${value.direction} count=${deleteCount} ` +
+      `scancode=0x${scancode.toString(16)} sent=${sent}`,
+      true)
+    return true
+  }
+
+  private recordTextInputDeleteEcho(scancode: number, deleteCount: number): void {
     const now = Date.now()
     if (this.pendingTextInputDeleteScancode === scancode &&
       now - this.pendingTextInputDeleteAtMs <= TEXT_INPUT_DELETE_GUARD_MS) {
@@ -979,11 +996,7 @@ struct Index {
     this.pendingTextInputDeleteScancode = scancode
     this.pendingTextInputDeleteAtMs = now
     this.pendingTextInputDeleteToken++
-    this.suppressedTextInputDeleteCount += deleteCount
-    this.logInputEvent('key.delete',
-      `TextInput delete direction=${value.direction} count=${deleteCount} scancode=0x${scancode.toString(16)}`, true)
-    this.schedulePendingTextInputDeleteFallback(scancode, this.pendingTextInputDeleteToken)
-    return true
+    this.schedulePendingTextInputDeleteCleanup(scancode, this.pendingTextInputDeleteToken)
   }
 
   private handleRemoteTextInputChange(value: string): void {
@@ -1274,20 +1287,53 @@ struct Index {
     return keyMap.get(event.keyCode) ?? ''
   }
 
-  private rememberHardwareTextInputSuppression(event: KeyEvent): void {
-    if (event.type !== KeyType.Down) {
-      return
+  private getPrintableTextByKeyCode(keyCode: number): string {
+    if (keyCode >= OH_KEYCODE_A && keyCode <= OH_KEYCODE_Z) {
+      return String.fromCharCode('a'.charCodeAt(0) + keyCode - OH_KEYCODE_A)
     }
-    const value = this.getHardwarePrintableText(event)
+    if (keyCode >= OH_KEYCODE_0 && keyCode <= OH_KEYCODE_9) {
+      return `${keyCode - OH_KEYCODE_0}`
+    }
+    if (keyCode >= OH_KEYCODE_NUMPAD_0 && keyCode <= OH_KEYCODE_NUMPAD_9) {
+      return `${keyCode - OH_KEYCODE_NUMPAD_0}`
+    }
+    const keyMap: Map<number, string> = new Map<number, string>([
+      [OH_KEYCODE_NUMPAD_DIVIDE, '/'],
+      [OH_KEYCODE_NUMPAD_MULTIPLY, '*'],
+      [OH_KEYCODE_NUMPAD_SUBTRACT, '-'],
+      [OH_KEYCODE_NUMPAD_ADD, '+'],
+      [OH_KEYCODE_NUMPAD_DOT, '.']
+    ])
+    return keyMap.get(keyCode) ?? ''
+  }
+
+  private addSuppressedTextInputText(value: string): void {
     if (!value.length) {
       return
     }
     for (let i = 0; i < value.length; i++) {
-      this.suppressedTextInputChars.push(value.charAt(i))
+      const char = value.charAt(i)
+      this.suppressedTextInputChars.push(char)
+      const lower = char.toLowerCase()
+      const upper = char.toUpperCase()
+      if (lower !== char) {
+        this.suppressedTextInputChars.push(lower)
+      }
+      if (upper !== char && upper !== lower) {
+        this.suppressedTextInputChars.push(upper)
+      }
     }
-    while (this.suppressedTextInputChars.length > 16) {
+    while (this.suppressedTextInputChars.length > 32) {
       this.suppressedTextInputChars.shift()
     }
+  }
+
+  private rememberHardwareTextInputSuppression(event: KeyEvent): void {
+    if (event.type !== KeyType.Down) {
+      return
+    }
+    this.addSuppressedTextInputText(this.getHardwarePrintableText(event))
+    this.addSuppressedTextInputText(this.getPrintableTextByKeyCode(event.keyCode))
   }
 
   private isModifierPressed(event: KeyEvent, modifier: string): boolean {
@@ -1312,12 +1358,12 @@ struct Index {
 
   private isCtrlModifierPressed(event: KeyEvent): boolean {
     return this.ctrlModifierDown || this.rightCtrlModifierDown ||
-      this.isAnyModifierPressed(event, ['ctrl'])
+      this.isAnyModifierPressed(event, ['Ctrl'])
   }
 
   private isAltModifierPressed(event: KeyEvent): boolean {
     return this.altModifierDown || this.rightAltModifierDown ||
-      this.isAnyModifierPressed(event, ['alt'])
+      this.isAnyModifierPressed(event, ['Alt'])
   }
 
   private isWinModifierPressed(event: KeyEvent): boolean {
@@ -1378,7 +1424,7 @@ struct Index {
 
   private isShiftModifierPressed(event: KeyEvent): boolean {
     return this.leftShiftModifierDown || this.rightShiftModifierDown ||
-      this.isAnyModifierPressed(event, ['shift'])
+      this.isAnyModifierPressed(event, ['Shift'])
   }
 
   private hasRemoteShortcutModifier(event: KeyEvent): boolean {
@@ -1412,6 +1458,10 @@ struct Index {
       scancode === RDP_SCANCODE_LMENU || scancode === RDP_SCANCODE_RMENU ||
       scancode === RDP_SCANCODE_LWIN || scancode === RDP_SCANCODE_RWIN ||
       scancode === RDP_SCANCODE_LSHIFT || scancode === RDP_SCANCODE_RSHIFT
+  }
+
+  private isDeleteScancode(scancode: number): boolean {
+    return scancode === RDP_SCANCODE_BACKSPACE || scancode === RDP_SCANCODE_DELETE
   }
 
   private addScancode(scancodes: number[], scancode: number): void {
@@ -1592,6 +1642,7 @@ struct Index {
       const keySent = this.sendMappedKeyEvent(scancode, true, repeat)
       if (keySent && printable) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, true)
+        this.rememberHardwareTextInputSuppression(event)
       }
       if (keySent) {
         this.rememberRemoteShortcutDispatch(event.keyCode)
@@ -1647,11 +1698,22 @@ struct Index {
       return false
     }
     if (Date.now() - this.pendingTextInputDeleteAtMs > TEXT_INPUT_DELETE_GUARD_MS) {
-      this.pendingTextInputDeleteScancode = 0
-      this.pendingTextInputDeleteAtMs = 0
+      this.clearPendingTextInputDelete()
       return false
     }
     return true
+  }
+
+  private sendDeleteRepeatKey(scancode: number): boolean {
+    let sent = true
+    if (this.isRemoteScancodePressed(scancode)) {
+      sent = this.sendKeyEvent(scancode, false, false) && sent
+    }
+    sent = this.sendMappedKeyEvent(scancode, true, false) && sent
+    this.logInputEvent('key.delete',
+      `repeat pulse scancode=0x${scancode.toString(16)} sent=${sent}`,
+      true)
+    return sent
   }
 
   private clearPendingTextInputDelete(): void {
@@ -1661,27 +1723,16 @@ struct Index {
     this.pendingTextInputDeleteToken++
   }
 
-  private schedulePendingTextInputDeleteFallback(scancode: number, token: number): void {
+  private schedulePendingTextInputDeleteCleanup(scancode: number, token: number): void {
     setTimeout((): void => {
       if (token !== this.pendingTextInputDeleteToken ||
-        scancode !== this.pendingTextInputDeleteScancode ||
-        this.pendingTextInputDeleteCount <= 0) {
+        scancode !== this.pendingTextInputDeleteScancode) {
         return
       }
       if (Date.now() - this.pendingTextInputDeleteAtMs < TEXT_INPUT_DELETE_GUARD_MS) {
         return
       }
-      const sendCount = this.pendingTextInputDeleteCount
       this.clearPendingTextInputDelete()
-      this.suppressedTextInputDeleteCount = Math.max(0, this.suppressedTextInputDeleteCount - sendCount)
-      let sent = this.isConnected()
-      if (sent) {
-        for (let i = 0; i < sendCount; i++) {
-          sent = this.sendKeyStroke(scancode) && sent
-        }
-      }
-      this.logInputEvent('key.delete',
-        `TextInput delete fallback scancode=0x${scancode.toString(16)} count=${sendCount} sent=${sent}`, true)
     }, TEXT_INPUT_DELETE_GUARD_MS)
   }
 
@@ -1838,16 +1889,15 @@ struct Index {
       return true
     }
     const pendingTextDelete = this.hasPendingTextInputDelete(scancode)
-    if (down && pendingTextDelete) {
-      this.clearPendingTextInputDelete()
-    } else if (!down && pendingTextDelete && !this.isRemoteScancodePressed(scancode)) {
-      this.clearPendingTextInputDelete()
-      const sent = this.sendKeyStroke(scancode)
+    if (pendingTextDelete) {
+      if (down && this.pendingTextInputDeleteCount > 0) {
+        this.pendingTextInputDeleteCount--
+      }
       this.logInputEvent('key.delete',
-        `sent pending TextInput delete scancode=0x${scancode.toString(16)} sent=${sent}`, true)
-      return sent
-    } else if (!down && pendingTextDelete) {
-      this.clearPendingTextInputDelete()
+        `suppressed hardware delete echo scancode=0x${scancode.toString(16)} ` +
+        `down=${down} pending=${this.pendingTextInputDeleteCount}`,
+        true)
+      return true
     }
     const printable = this.isPrintableArkKeyCode(event.keyCode)
     const hardwarePrintable = printable && this.shouldSendPrintableAsHardwareKey(event.keyCode)
@@ -1862,6 +1912,10 @@ struct Index {
       fromInputBridge, repeat)
     if (!fromInputBridge && this.shouldSkipBridgedPrintableKey(event, printable, shortcut)) {
       return true
+    }
+
+    if (down && repeat && this.isDeleteScancode(scancode)) {
+      return this.sendDeleteRepeatKey(scancode)
     }
 
     if (this.handleShortcutKeyEvent(event, scancode, printable, down, repeat, trackedShortcut)) {
@@ -1881,6 +1935,11 @@ struct Index {
       }
       if (sent && hardwarePrintable) {
         this.rememberHardwareTextInputSuppression(event)
+      }
+      if (sent && this.isDeleteScancode(scancode)) {
+        this.logInputEvent('key.delete',
+          `hardware scancode=0x${scancode.toString(16)} down=${down} repeat=${repeat} sent=${sent}`,
+          true)
       }
       return sent
     }
