@@ -211,6 +211,18 @@ M6.12 notes:
 - `WITH_FUSE=ON` still fails at configure time because `fuse3` is not available in the OHOS cross sysroot.
 - The detailed matrix and true-device checklist are in `docs/freerdp-ohos-feature-matrix.md`.
 
+M6.13 source-adaptation notes:
+
+- Keyboard, IME, clipboard, display-control, graphics policy, and standard
+  session settings/channel parameters now live in FreeRDP `client/OHOS` and are
+  consumed from `libfreerdp-client3.so`.
+- The HAP validation shell no longer compiles those `client/OHOS/*.c` helpers
+  into `libentry.so`; it keeps ArkUI/N-API, XComponent/NativeWindow handles,
+  permission relays, lifecycle callbacks and validation diagnostics.
+- After FreeRDP source changes, run the WSL build and sync runtime libraries
+  before building or installing the HAP, otherwise device testing may use stale
+  `.so` files.
+
 The signed HAP currently packages `libentry.so` for `arm64-v8a` and `x86_64`; FreeRDP runtime libraries are synced for `arm64-v8a`.
 
 Sync local FreeRDP runtime libraries before building the HAP with FreeRDP probe support:

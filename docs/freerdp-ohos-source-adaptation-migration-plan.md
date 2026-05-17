@@ -594,13 +594,14 @@ Risk and impact:
 | Priority | Item | Target source location | Validation |
 | --- | --- | --- | --- |
 | P0 | Verify keyboard backend on device | `client/OHOS/ohos_keyboard.*` | remote Ctrl combos, function keys, long-press digits/Delete |
-| P1 | Move IME helper to FreeRDP OHOS client | `client/OHOS/ohos_ime.*` | Chinese committed text and soft keyboard deletion |
-| P1 | Migrate clipboard backend | `channels/cliprdr/client/ohos/` or `client/OHOS/ohos_clipboard.*` | Windows to OHOS and OHOS to Windows text copy |
-| P1 | Stabilize playback | `channels/rdpsnd/client/ohos/` | no obvious stutter, underrun metrics stable |
-| P1 | Add microphone backend | `channels/audin/client/ohos/` | Windows receives local mic audio |
-| P2 | Move display-control helper | `client/OHOS/` or `channels/disp/client/ohos helpers` | remote resolution changes through `disp` |
-| P2 | Move RDPGFX/codec policy | `channels/rdpgfx/client/ohos helpers`, `libfreerdp/codec/` | logs show AVC420/AVC444/fallback route |
-| P2 | HAP cleanup | `harmony/app/entry` | HAP is validation shell only |
+| P1 | IME helper source migration | `client/OHOS/ohos_ime.*` | completed in source; still needs Chinese committed text and soft keyboard deletion validation |
+| P1 | Clipboard backend source migration | `client/OHOS/ohos_clipboard.*` | completed for text bridge; still needs bidirectional device validation |
+| P1 | Stabilize playback | `channels/rdpsnd/client/ohos/` | OHAudio backend is source-owned; stutter/underrun tuning remains |
+| P1 | Add microphone backend | `channels/audin/client/ohos/` | source backend and permission callback exist; Windows receive path still needs device validation |
+| P2 | Move display-control helper | `client/OHOS/ohos_display.*` | completed in source; remote resolution changes through `disp` need device validation |
+| P2 | Move RDPGFX/codec policy | `client/OHOS/ohos_graphics.*`, `libfreerdp/codec/` | completed for policy and AVCodec entry points; AVC420/AVC444 route needs device validation |
+| P2 | Move standard session settings/channels | `client/OHOS/ohos_session_config.*` | completed in source; HAP consumes exported helper |
+| P2 | HAP cleanup | `harmony/app/entry` | HAP is now thinner; rdpgfx diagnostic hooks and XComponent surface orchestration remain validation-shell code |
 | P3 | Lifecycle pressure test | FreeRDP OHOS backends plus HAP shell | disconnect/reconnect/background/network jitter |
 
 ## Commit Rule
@@ -616,21 +617,32 @@ Each phase is committed separately. Commit messages must include:
 
 | Issue | Current impact | Owner |
 | --- | --- | --- |
-| Microphone `audin` has no OHOS backend | Remote Windows cannot receive local mic audio | FreeRDP `channels/audin/client/ohos` |
+| Microphone receive path not device-proven after source migration | Remote Windows may still fail to receive local mic audio | FreeRDP `channels/audin/client/ohos` plus HAP permission relay |
 | Audio playback stutters | Remote sound is usable but not product quality | FreeRDP `channels/rdpsnd/client/ohos` |
 | Ctrl combos and long-press need final device proof | Remote keyboard reliability not fully closed | FreeRDP `client/OHOS` plus HAP thin relay |
-| Clipboard still not fully source-owned | Copy/paste behavior can diverge from FreeRDP channel model | FreeRDP clipboard backend |
-| RDPGFX/AVC policy too close to HAP config | Hard to validate real server codec route and fallback | FreeRDP OHOS gfx/codec backend |
+| Clipboard needs bidirectional device proof | Copy/paste behavior can still fail because runtime Pasteboard availability and focus rules are device-dependent | FreeRDP `client/OHOS/ohos_clipboard.*` |
+| RDPGFX/AVC route needs real server proof | Build can prove helpers exist, but not which caps Windows selects | FreeRDP OHOS gfx/codec backend |
 | AVC444 GPU composition unresolved | High-resolution desktop can remain CPU-heavy or fallback-only | FreeRDP OHOS codec/compositor |
 | WSL runtime sync required after source changes | Device may run stale libraries if sync is skipped | Build/release process |
 
 ## Current Phase Result
 
-P0/P1 source migration has moved keyboard mapping and state into
-`client/OHOS/ohos_keyboard.*`. The HAP validation shell now forwards OHOS key
-events directly and calls release-all cleanup for lifecycle events.
+2026-05-17 source migration status:
 
-This document refresh adds the missing microphone work item. The target is an
-OHOS `audin` backend in FreeRDP source, modeled after the existing ALSA, Pulse,
-OpenSLES, iOS and macOS `audin` backends. The HAP should only request microphone
-permission, pass the user toggle and display diagnostics.
+- FreeRDP `client/OHOS` now contains keyboard, IME, clipboard, display-control,
+  graphics policy and session settings/channel helpers.
+- FreeRDP channel backends now contain OHOS rdpsnd playback and audin capture
+  paths; HAP only relays microphone permission and displays diagnostics.
+- HAP no longer compiles `client/OHOS/*.c` helper implementations into
+  `libentry.so`; it consumes exported symbols from `libfreerdp-client3.so`.
+- WSL FreeRDP build, runtime sync and MCP clean HAP build passed after the
+  migration.
+
+Remaining device validation focus:
+
+- Ctrl combinations, function keys, long-press digits and Delete/Backspace.
+- Bidirectional text clipboard.
+- Audio stutter metrics and microphone receive path.
+- Display-control resize after XComponent size changes.
+- AVC420/AVC444 negotiation and whether the server actually drives the OHOS
+  AVCodec surface route.
