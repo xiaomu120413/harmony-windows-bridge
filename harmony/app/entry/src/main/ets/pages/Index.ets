@@ -858,8 +858,20 @@ struct Index {
     this.sendPointer(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`, true)
   }
 
-  private sendKeyEvent(scancode: number, down: boolean, logDisconnected: boolean = true,
-    repeat: boolean = false): boolean {
+  private sendKeyStroke(scancode: number): boolean {
+    const keyCode = this.mapRdpScancodeToPlatformKeyCode(scancode)
+    if (keyCode > 0) {
+      if (this.sendPlatformKeyEvent(keyCode, true)) {
+        return this.sendPlatformKeyEvent(keyCode, false)
+      }
+      return false
+    }
+    this.appendLog(`Key stroke skipped: no platform key mapping for scancode=0x${scancode.toString(16)}`)
+    return false
+  }
+
+  private sendPlatformKeyEvent(keyCode: number, down: boolean, logDisconnected: boolean = true,
+    repeat: boolean = false, event?: KeyEvent): boolean {
     if (!this.isConnected()) {
       if (logDisconnected) {
         this.appendLog('Key input skipped: no active FreeRDP session')
@@ -868,7 +880,15 @@ struct Index {
     }
 
     try {
-      const result: NativeCommandResult = rdpNative.sendKey({ scancode: scancode, down: down, repeat: repeat })
+      const result: NativeCommandResult = rdpNative.sendPlatformKey({
+        keyCode: keyCode,
+        down: down,
+        repeat: repeat,
+        ctrl: event ? this.isCtrlModifierPressed(event) : this.ctrlModifierDown || this.rightCtrlModifierDown,
+        shift: event ? this.isShiftModifierPressed(event) : this.leftShiftModifierDown || this.rightShiftModifierDown,
+        alt: event ? this.isAltModifierPressed(event) : this.altModifierDown || this.rightAltModifierDown,
+        meta: event ? this.isWinModifierPressed(event) : this.winModifierDown || this.rightWinModifierDown
+      })
       if (!result.ok) {
         this.appendLog(result.message)
       }
@@ -877,16 +897,9 @@ struct Index {
       }
       return result.ok
     } catch (error) {
-      this.appendLog(`Native key input failed: ${JSON.stringify(error)}`)
+      this.appendLog(`Native platform key input failed: ${JSON.stringify(error)}`)
       return false
     }
-  }
-
-  private sendKeyStroke(scancode: number): boolean {
-    if (this.sendKeyEvent(scancode, true)) {
-      return this.sendKeyEvent(scancode, false)
-    }
-    return false
   }
 
   private sendUnicodeEvent(code: number, down: boolean): boolean {
@@ -1141,28 +1154,28 @@ struct Index {
     }
 
     if (this.winModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_LWIN, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_META_LEFT, false, false)
     }
     if (this.rightWinModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_RWIN, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_META_RIGHT, false, false)
     }
     if (this.altModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_LMENU, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_ALT_LEFT, false, false)
     }
     if (this.rightAltModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_RMENU, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_ALT_RIGHT, false, false)
     }
     if (this.ctrlModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_LCONTROL, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_CTRL_LEFT, false, false)
     }
     if (this.rightCtrlModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_RCONTROL, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_CTRL_RIGHT, false, false)
     }
     if (this.leftShiftModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_LSHIFT, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_SHIFT_LEFT, false, false)
     }
     if (this.rightShiftModifierDown) {
-      this.sendKeyEvent(RDP_SCANCODE_RSHIFT, false, false)
+      this.sendPlatformKeyEvent(OH_KEYCODE_SHIFT_RIGHT, false, false)
     }
     this.clearModifierState()
   }
@@ -1236,6 +1249,22 @@ struct Index {
       [OH_KEYCODE_NUMPAD_ENTER, 0x011C]
     ])
     return keyMap.get(keyCode) ?? 0
+  }
+
+  private mapRdpScancodeToPlatformKeyCode(scancode: number): number {
+    const keyMap: Map<number, number> = new Map<number, number>([
+      [RDP_SCANCODE_BACKSPACE, OH_KEYCODE_DEL],
+      [RDP_SCANCODE_DELETE, OH_KEYCODE_FORWARD_DEL],
+      [RDP_SCANCODE_LCONTROL, OH_KEYCODE_CTRL_LEFT],
+      [RDP_SCANCODE_RCONTROL, OH_KEYCODE_CTRL_RIGHT],
+      [RDP_SCANCODE_LMENU, OH_KEYCODE_ALT_LEFT],
+      [RDP_SCANCODE_RMENU, OH_KEYCODE_ALT_RIGHT],
+      [RDP_SCANCODE_LWIN, OH_KEYCODE_META_LEFT],
+      [RDP_SCANCODE_RWIN, OH_KEYCODE_META_RIGHT],
+      [RDP_SCANCODE_LSHIFT, OH_KEYCODE_SHIFT_LEFT],
+      [RDP_SCANCODE_RSHIFT, OH_KEYCODE_SHIFT_RIGHT]
+    ])
+    return keyMap.get(scancode) ?? 0
   }
 
   private isPrintableArkKeyCode(keyCode: number): boolean {
@@ -1412,8 +1441,9 @@ struct Index {
     }
   }
 
-  private sendMappedKeyEvent(scancode: number, down: boolean, repeat: boolean = false): boolean {
-    const sent = this.sendKeyEvent(scancode, down, false, repeat)
+  private sendMappedKeyEvent(keyCode: number, scancode: number, down: boolean,
+    repeat: boolean = false, event?: KeyEvent): boolean {
+    const sent = this.sendPlatformKeyEvent(keyCode, down, false, repeat, event)
     if (sent) {
       this.updateModifierState(scancode, down)
       this.setRemoteScancodePressed(scancode, down)
@@ -1530,7 +1560,9 @@ struct Index {
       if (this.isRemoteScancodePressed(modifierScancode)) {
         continue
       }
-      sent = this.sendMappedKeyEvent(modifierScancode, true, false) && sent
+      const modifierKeyCode = this.mapRdpScancodeToPlatformKeyCode(modifierScancode)
+      sent = modifierKeyCode > 0 &&
+        this.sendMappedKeyEvent(modifierKeyCode, modifierScancode, true, false) && sent
       this.rememberShortcutSyntheticModifier(keyCode, modifierScancode)
     }
     return sent
@@ -1545,7 +1577,9 @@ struct Index {
       }
       this.shortcutSyntheticModifiers.splice(i, 1)
       if (this.isRemoteScancodePressed(item.scancode)) {
-        sent = this.sendMappedKeyEvent(item.scancode, false, false) && sent
+        const modifierKeyCode = this.mapRdpScancodeToPlatformKeyCode(item.scancode)
+        sent = modifierKeyCode > 0 &&
+          this.sendMappedKeyEvent(modifierKeyCode, item.scancode, false, false) && sent
       }
     }
     return sent
@@ -1572,7 +1606,7 @@ struct Index {
 
     if (down) {
       const modifiersSent = this.ensureShortcutModifiersPressed(event.keyCode, modifierScancodes)
-      const keySent = this.sendMappedKeyEvent(scancode, true, repeat)
+      const keySent = this.sendMappedKeyEvent(event.keyCode, scancode, true, repeat, event)
       if (keySent && printable) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, true)
         this.rememberHardwareTextInputSuppression(event)
@@ -1586,7 +1620,7 @@ struct Index {
 
     let keySent = true
     if (this.isRemoteScancodePressed(scancode)) {
-      keySent = this.sendMappedKeyEvent(scancode, false, false)
+      keySent = this.sendMappedKeyEvent(event.keyCode, scancode, false, false, event)
     }
     if (printable) {
       this.setRemoteShortcutPrintableKeyState(event.keyCode, false)
@@ -1634,8 +1668,8 @@ struct Index {
     return true
   }
 
-  private sendRepeatKeyDown(scancode: number): boolean {
-    const sent = this.sendMappedKeyEvent(scancode, true, true)
+  private sendRepeatKeyDown(keyCode: number, scancode: number, event: KeyEvent): boolean {
+    const sent = this.sendMappedKeyEvent(keyCode, scancode, true, true, event)
     this.logInputEvent('key.repeat',
       `down scancode=0x${scancode.toString(16)} sent=${sent}`,
       true)
@@ -1824,7 +1858,7 @@ struct Index {
     }
 
     if (down && repeat && !this.isModifierScancode(scancode)) {
-      return this.sendRepeatKeyDown(scancode)
+      return this.sendRepeatKeyDown(event.keyCode, scancode, event)
     }
 
     if (this.handleShortcutKeyEvent(event, scancode, printable, down, repeat, trackedShortcut)) {
@@ -1835,7 +1869,7 @@ struct Index {
     }
 
     if (scancode > 0 && (!printable || shortcut || hardwarePrintable || surfacePrintableKeyEvent)) {
-      const sent = this.sendMappedKeyEvent(scancode, down, repeat)
+      const sent = this.sendMappedKeyEvent(event.keyCode, scancode, down, repeat, event)
       if (sent && printable && shortcut) {
         this.setRemoteShortcutPrintableKeyState(event.keyCode, down)
       }
