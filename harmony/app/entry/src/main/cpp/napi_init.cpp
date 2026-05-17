@@ -6,6 +6,7 @@
 #include "freerdp_gdi_bridge.h"
 #include "freerdp_runtime.h"
 #include "graphics_config.h"
+#include "channels/audio_diagnostics.h"
 #include "channels/clipboard_bridge.h"
 #include "channels/rdpgfx_diagnostics.h"
 #include "surface/avc444_surface_pool.h"
@@ -39,7 +40,6 @@
 #include <netdb.h>
 #include <new>
 #include <poll.h>
-#include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -111,8 +111,6 @@ void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t he
     uint32_t op, uint32_t codecId, void*);
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 std::string BuildRenderStatsLog();
-std::string BuildOHAudioStatsLog();
-
 struct UserParts {
     std::string domain;
     std::string username;
@@ -1933,67 +1931,6 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
-}
-
-std::string BuildOHAudioStatsLog()
-{
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    std::string error;
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
-        return "OHAudio stats unavailable: " + error;
-    }
-    std::string rdpsndClientDiagnostics;
-    if (api.rdpsndClientGetDiagnostics != nullptr) {
-        const char* diagnostics = api.rdpsndClientGetDiagnostics();
-        if (diagnostics != nullptr && diagnostics[0] != '\0') {
-            rdpsndClientDiagnostics = " | ";
-            rdpsndClientDiagnostics += diagnostics;
-        }
-    }
-    if (api.rdpsndOhosGetDiagnostics != nullptr) {
-        const char* diagnostics = api.rdpsndOhosGetDiagnostics();
-        if (diagnostics != nullptr && diagnostics[0] != '\0') {
-            return std::string(diagnostics) + rdpsndClientDiagnostics;
-        }
-    }
-    if (api.rdpsndOhosGetStats == nullptr) {
-        return "OHAudio stats unavailable: backend symbol not exported" + rdpsndClientDiagnostics;
-    }
-
-    UINT64 registeredCount = 0;
-    UINT64 openCount = 0;
-    UINT64 closeCount = 0;
-    UINT64 playCount = 0;
-    UINT64 playBytes = 0;
-    UINT64 callbackCount = 0;
-    UINT64 renderedBytes = 0;
-    UINT64 underrunBytes = 0;
-    UINT32 lastRate = 0;
-    UINT16 lastChannels = 0;
-    UINT16 lastBits = 0;
-    UINT32 lastLatencyMs = 0;
-    if (!api.rdpsndOhosGetStats(&registeredCount, &openCount, &closeCount, &playCount,
-        &playBytes, &callbackCount, &renderedBytes, &underrunBytes, &lastRate, &lastChannels,
-        &lastBits, &lastLatencyMs)) {
-        return "OHAudio stats unavailable: backend query failed";
-    }
-
-    std::ostringstream out;
-    out << "OHAudio stats: registered=" << registeredCount
-        << " open=" << openCount
-        << " close=" << closeCount
-        << " playCalls=" << playCount
-        << " playBytes=" << playBytes
-        << " callbacks=" << callbackCount
-        << " renderedBytes=" << renderedBytes
-        << " underrunBytes=" << underrunBytes
-        << " lastFormat=" << lastRate << "Hz/" << lastChannels << "ch/" << lastBits
-        << "bit latency=" << lastLatencyMs << "ms";
-    return out.str() + rdpsndClientDiagnostics;
-#else
-    return "OHAudio stats unavailable: FreeRDP headers not found at build time";
-#endif
 }
 
 napi_value Probe(napi_env env, napi_callback_info info)
