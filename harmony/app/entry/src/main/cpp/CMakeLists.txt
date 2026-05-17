@@ -18,7 +18,9 @@ if(EXISTS ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/freerdp.h)
     add_compile_definitions(HARMONY_HAS_FREERDP_HEADERS=1)
 endif()
 
-add_library(entry SHARED napi_init.cpp)
+add_library(entry SHARED
+    napi_init.cpp
+    napi_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so
