@@ -67,6 +67,16 @@ export interface NativeKeyInput {
   repeat?: boolean;
 }
 
+export interface NativePlatformKeyInput {
+  keyCode: number;
+  down: boolean;
+  repeat?: boolean;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  meta?: boolean;
+}
+
 export interface NativeUnicodeInput {
   code: number;
   down: boolean;
@@ -83,6 +93,7 @@ declare const rdpNative: {
   disconnect(): NativeCommandResult;
   sendPointer(input: NativePointerInput): NativeCommandResult;
   sendKey(input: NativeKeyInput): NativeCommandResult;
+  sendPlatformKey(input: NativePlatformKeyInput): NativeCommandResult;
   sendUnicode(input: NativeUnicodeInput): NativeCommandResult;
   notifySurfaceLayout(input: NativeSurfaceLayoutInput): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;

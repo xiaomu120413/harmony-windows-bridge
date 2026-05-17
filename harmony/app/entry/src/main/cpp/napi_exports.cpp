@@ -6,6 +6,7 @@
 #include "freerdp_gdi_bridge.h"
 #include "channels/audio_diagnostics.h"
 #include "channels/rdpgfx_diagnostics.h"
+#include "input/ohos_keyboard_adapter.h"
 #include "napi_event_sink.h"
 #include "napi_utils.h"
 #include "probe_utils.h"
@@ -275,6 +276,46 @@ napi_value SendKey(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value SendPlatformKey(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native platform key input invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "platform key input requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    OhosKeyEvent event;
+    event.keyCode = GetUint32Property(env, arg, "keyCode");
+    event.down = GetBoolProperty(env, arg, "down");
+    event.repeat = GetBoolProperty(env, arg, "repeat");
+    event.ctrl = GetBoolProperty(env, arg, "ctrl");
+    event.shift = GetBoolProperty(env, arg, "shift");
+    event.alt = GetBoolProperty(env, arg, "alt");
+    event.meta = GetBoolProperty(env, arg, "meta");
+
+    std::string message;
+    const bool ok = OhosKeyboardAdapter().SendPlatformKey(event, message);
+    BridgeEvents().log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Ready" : "Failed");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
 napi_value SendUnicode(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
@@ -385,6 +426,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendPlatformKey", nullptr, SendPlatformKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"notifySurfaceLayout", nullptr, NotifySurfaceLayout, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
