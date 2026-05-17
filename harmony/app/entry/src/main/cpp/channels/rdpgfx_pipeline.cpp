@@ -316,7 +316,7 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     }
     log("OHOS AVCodec output surface configured: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=avc420-surface-preferred fallback=avc444-buffer");
+        " mode=avc420-surface-only avc444=not-advertised");
     return true;
 }
 

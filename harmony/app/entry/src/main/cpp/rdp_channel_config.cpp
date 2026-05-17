@@ -42,7 +42,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     const std::function<void(const std::string&)>& log, std::string& error)
 {
     const bool h264Requested = graphicsConfig.enabled && graphicsConfig.h264;
-    const bool avc444FallbackEnabled = h264Requested;
+    const bool avc444Requested = false;
     const uint32_t gfxCapsFilter = 0;
 
     if (!SetFreerdpBool(api, settings, FreeRDP_SupportDynamicChannels, true, "SupportDynamicChannels", error) ||
@@ -52,9 +52,9 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
             "SupportGraphicsPipeline", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_GfxH264, h264Requested,
             "GfxH264", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, avc444FallbackEnabled,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444, avc444Requested,
             "GfxAVC444", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, avc444FallbackEnabled,
+        !SetFreerdpBool(api, settings, FreeRDP_GfxAVC444v2, avc444Requested,
             "GfxAVC444v2", error) ||
         !SetFreerdpUint32(api, settings, FreeRDP_GfxCapsFilter, gfxCapsFilter, "GfxCapsFilter", error) ||
         !SetFreerdpBool(api, settings, FreeRDP_RedirectClipboard, true, "RedirectClipboard", error) ||
@@ -76,9 +76,9 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     if (graphicsConfig.enabled) {
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
             " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
-            " avc444=" + std::string(avc444FallbackEnabled ? "buffer-fallback" : "off") +
+            " avc444=" + std::string(avc444Requested ? "on" : "off") +
             " capsFilter=" + Hex32(gfxCapsFilter) +
-            " fallback=" + std::string(avc444FallbackEnabled ? "avc444-buffer" : "disabled"));
+            " requestedCodec=" + std::string(h264Requested ? "avc420-only" : "none"));
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     }
