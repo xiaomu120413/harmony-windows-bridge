@@ -23,6 +23,7 @@ add_library(entry SHARED
     certificate_policy.cpp
     channels/audio_diagnostics.cpp
     channels/clipboard_bridge.cpp
+    channels/clipboard_client_messages.cpp
     channels/clipboard_format.cpp
     channels/clipboard_pasteboard.cpp
     channels/rdpgfx_diagnostics.cpp

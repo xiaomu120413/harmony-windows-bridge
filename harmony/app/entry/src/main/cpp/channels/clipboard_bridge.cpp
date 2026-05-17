@@ -1,9 +1,9 @@
 #include "clipboard_bridge.h"
 
 #include "bridge_log.h"
+#include "clipboard_client_messages.h"
 #include "clipboard_format.h"
 #include "clipboard_pasteboard.h"
-#include "string_utils.h"
 
 #include <memory>
 #include <mutex>
@@ -281,82 +281,25 @@ private:
         Log("cliprdr disconnected from HarmonyOS Pasteboard text bridge");
     }
 
+    CliprdrClientContext* SnapshotCliprdr()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return cliprdr_;
+    }
+
     UINT SendClientCapabilities()
     {
-        CliprdrClientContext* cliprdr = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            cliprdr = cliprdr_;
-        }
-        if (cliprdr == nullptr || cliprdr->ClientCapabilities == nullptr) {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        CLIPRDR_CAPABILITIES capabilities = {};
-        CLIPRDR_GENERAL_CAPABILITY_SET generalCapabilitySet = {};
-        capabilities.cCapabilitiesSets = 1;
-        capabilities.capabilitySets = reinterpret_cast<CLIPRDR_CAPABILITY_SET*>(&generalCapabilitySet);
-        generalCapabilitySet.capabilitySetType = CB_CAPSTYPE_GENERAL;
-        generalCapabilitySet.capabilitySetLength = 12;
-        generalCapabilitySet.version = CB_CAPS_VERSION_2;
-        generalCapabilitySet.generalFlags = CB_USE_LONG_FORMAT_NAMES;
-        return cliprdr->ClientCapabilities(cliprdr, &capabilities);
+        return SendCliprdrClientCapabilities(SnapshotCliprdr());
     }
 
     UINT SendClientFormatListResponse(bool accepted)
     {
-        CliprdrClientContext* cliprdr = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            cliprdr = cliprdr_;
-        }
-        if (cliprdr == nullptr || cliprdr->ClientFormatListResponse == nullptr) {
-            return ERROR_INVALID_PARAMETER;
-        }
-
-        CLIPRDR_FORMAT_LIST_RESPONSE response = {};
-        response.common.msgType = CB_FORMAT_LIST_RESPONSE;
-        response.common.msgFlags = accepted ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
-        response.common.dataLen = 0;
-        const UINT rc = cliprdr->ClientFormatListResponse(cliprdr, &response);
-        if (rc == CHANNEL_RC_OK) {
-            Log(std::string("cliprdr server format list ") + (accepted ? "accepted" : "rejected"));
-        }
-        return rc;
+        return SendCliprdrFormatListResponse(SnapshotCliprdr(), accepted, log_);
     }
 
     UINT SendLocalFormatList(const char* reason)
     {
-        CliprdrClientContext* cliprdr = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            cliprdr = cliprdr_;
-        }
-        if (cliprdr == nullptr || cliprdr->ClientFormatList == nullptr) {
-            return CHANNEL_RC_OK;
-        }
-
-        std::string text;
-        std::string error;
-        const bool hasText = pasteboard_.ReadPlainText(text, error);
-        if (!hasText && !error.empty()) {
-            Log("HarmonyOS Pasteboard read warning: " + error);
-        }
-
-        CLIPRDR_FORMAT format = {};
-        format.formatId = CF_UNICODETEXT;
-        CLIPRDR_FORMAT_LIST formatList = {};
-        formatList.common.msgType = CB_FORMAT_LIST;
-        formatList.common.msgFlags = 0;
-        formatList.numFormats = hasText ? 1U : 0U;
-        formatList.formats = hasText ? &format : nullptr;
-
-        UINT rc = cliprdr->ClientFormatList(cliprdr, &formatList);
-        if (rc == CHANNEL_RC_OK) {
-            Log(std::string("cliprdr local format list sent: ") +
-                (hasText ? "CF_UNICODETEXT" : "empty") + " reason=" + SafeCString(reason));
-        }
-        return rc;
+        return SendCliprdrLocalFormatList(SnapshotCliprdr(), pasteboard_, reason, log_);
     }
 
     UINT HandleServerFormatList(const CLIPRDR_FORMAT_LIST& formatList)
@@ -389,11 +332,7 @@ private:
             return CHANNEL_RC_OK;
         }
 
-        CliprdrClientContext* cliprdr = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            cliprdr = cliprdr_;
-        }
+        CliprdrClientContext* cliprdr = SnapshotCliprdr();
         if (cliprdr == nullptr || cliprdr->ClientFormatDataRequest == nullptr) {
             return ERROR_INVALID_PARAMETER;
         }
@@ -407,11 +346,7 @@ private:
 
     UINT HandleServerFormatDataRequest(const CLIPRDR_FORMAT_DATA_REQUEST& request)
     {
-        CliprdrClientContext* cliprdr = nullptr;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            cliprdr = cliprdr_;
-        }
+        CliprdrClientContext* cliprdr = SnapshotCliprdr();
         if (cliprdr == nullptr || cliprdr->ClientFormatDataResponse == nullptr) {
             return ERROR_INVALID_PARAMETER;
         }
