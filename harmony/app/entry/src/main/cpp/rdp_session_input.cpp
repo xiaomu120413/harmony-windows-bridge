@@ -1,6 +1,27 @@
 #include "rdp_session_input.h"
 
 namespace rdp_bridge {
+namespace {
+
+constexpr uint32_t kWinprKeyboardTypeIbmEnhanced = 0x00000004U;
+constexpr uint32_t kWinprKeyboardExtendedFlag = 0x0100U;
+
+std::string HexInput(uint32_t value)
+{
+    constexpr char digits[] = "0123456789ABCDEF";
+    std::string result = "0x";
+    bool started = false;
+    for (int shift = 28; shift >= 0; shift -= 4) {
+        const uint32_t nibble = (value >> shift) & 0xFU;
+        if (nibble != 0 || started || shift == 0) {
+            result.push_back(digits[nibble]);
+            started = true;
+        }
+    }
+    return result;
+}
+
+} // namespace
 
 bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message,
     const std::function<void(const std::string&)>& log)
@@ -37,6 +58,34 @@ bool RdpSessionInput::EnqueueKey(uint32_t rdpScancode, bool down, bool repeat, s
     (void)rdpScancode;
     (void)down;
     (void)repeat;
+    (void)log;
+    message = "FreeRDP headers not found at build time";
+    return false;
+#endif
+}
+
+bool RdpSessionInput::EnqueuePlatformKey(const OhosKeyEvent& key, std::string& message,
+    const std::function<void(const std::string&)>& log)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    const uint32_t vk = MapOhosKeyCodeToWindowsVk(key.keyCode);
+    if (vk == 0) {
+        message = FormatOhosKeyEvent(key) + " not mapped";
+        LogInputFailure(message, log);
+        return false;
+    }
+
+    QueuedInputEvent event;
+    event.type = QueuedInputType::PlatformKey;
+    event.keyCode = key.keyCode;
+    event.vk = vk;
+    event.down = key.down;
+    event.repeat = key.repeat;
+    event.extended = OhosKeyCodeRequiresExtendedScancode(key.keyCode);
+    return EnqueueInput(event, key.down ? (key.repeat ? "platform key down queued repeat" :
+        "platform key down queued") : "platform key up queued", message, log);
+#else
+    (void)key;
     (void)log;
     message = "FreeRDP headers not found at build time";
     return false;
@@ -115,6 +164,9 @@ const char* RdpSessionInput::InputTypeName(const QueuedInputEvent& event) const
     }
     if (event.type == QueuedInputType::Key) {
         return "key";
+    }
+    if (event.type == QueuedInputType::PlatformKey) {
+        return "platform-key";
     }
     return "unicode";
 }
@@ -247,6 +299,23 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
                 ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
                     event.repeat ? TRUE : FALSE, event.scancode);
             }
+        } else if (event.type == QueuedInputType::PlatformKey) {
+            if (api->inputSendKeyboardEventEx != nullptr &&
+                api->getVirtualScanCodeFromVirtualKeyCode != nullptr) {
+                const uint32_t vkForScancode = event.vk |
+                    (event.extended ? kWinprKeyboardExtendedFlag : 0U);
+                const uint32_t scancode = api->getVirtualScanCodeFromVirtualKeyCode(
+                    vkForScancode, kWinprKeyboardTypeIbmEnhanced);
+                if (scancode == 0) {
+                    LogInputFailure("FreeRDP platform key scancode mapping failed: keyCode=" +
+                        std::to_string(event.keyCode) + " vk=" + HexInput(event.vk) +
+                        (event.extended ? " extended" : ""), log);
+                } else {
+                    ok = api->inputSendKeyboardEventEx(context->input, event.down ? TRUE : FALSE,
+                        event.repeat ? TRUE : FALSE, scancode);
+                    LogPlatformKeyDispatch(event, scancode, ok == TRUE, log);
+                }
+            }
         } else {
             if (api->inputSendUnicodeKeyboardEvent != nullptr) {
                 const UINT16 flags = event.down ? 0 : KBD_FLAGS_RELEASE;
@@ -293,6 +362,22 @@ void RdpSessionInput::LogKeyDispatch(const QueuedInputEvent& event, uint16_t fla
     log("FreeRDP key dispatch: scancode=" + std::to_string(event.scancode) +
         " code=" + std::to_string(static_cast<uint32_t>(RDP_SCANCODE_CODE(event.scancode))) +
         " flags=" + std::to_string(static_cast<uint32_t>(flags)) +
+        (event.down ? " down" : " up") +
+        (event.repeat ? " repeat" : "") +
+        (ok ? " ok" : " failed"));
+}
+
+void RdpSessionInput::LogPlatformKeyDispatch(const QueuedInputEvent& event, uint32_t scancode, bool ok,
+    const std::function<void(const std::string&)>& log)
+{
+    const uint32_t logIndex = inputKeyDispatchLogCount_.fetch_add(1);
+    if (log == nullptr || (logIndex >= 80 && logIndex % 200 != 0)) {
+        return;
+    }
+    log("FreeRDP platform key dispatch: keyCode=" + std::to_string(event.keyCode) +
+        " vk=" + HexInput(event.vk) +
+        " scancode=" + std::to_string(scancode) +
+        (event.extended ? " extended" : "") +
         (event.down ? " down" : " up") +
         (event.repeat ? " repeat" : "") +
         (ok ? " ok" : " failed"));

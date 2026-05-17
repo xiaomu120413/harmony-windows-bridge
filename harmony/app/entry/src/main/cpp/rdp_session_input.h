@@ -7,6 +7,8 @@
 #include <mutex>
 #include <string>
 
+#include "input/ohos_keyboard_adapter.h"
+
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include "freerdp_runtime.h"
 #endif
@@ -18,6 +20,8 @@ public:
     bool EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message,
         const std::function<void(const std::string&)>& log);
     bool EnqueueKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message,
+        const std::function<void(const std::string&)>& log);
+    bool EnqueuePlatformKey(const OhosKeyEvent& event, std::string& message,
         const std::function<void(const std::string&)>& log);
     bool EnqueueUnicode(uint32_t code, bool down, std::string& message,
         const std::function<void(const std::string&)>& log);
@@ -40,6 +44,7 @@ private:
     enum class QueuedInputType {
         Pointer,
         Key,
+        PlatformKey,
         Unicode,
     };
 
@@ -49,9 +54,12 @@ private:
         uint16_t x = 0;
         uint16_t y = 0;
         uint32_t scancode = 0;
+        uint32_t keyCode = 0;
+        uint32_t vk = 0;
         uint32_t code = 0;
         bool down = false;
         bool repeat = false;
+        bool extended = false;
     };
 
     const char* InputTypeName(const QueuedInputEvent& event) const;
@@ -65,6 +73,8 @@ private:
     void LogInputFailure(const std::string& message, const std::function<void(const std::string&)>& log);
     void LogInputBackpressure(const std::string& message, const std::function<void(const std::string&)>& log);
     void LogKeyDispatch(const QueuedInputEvent& event, uint16_t flags, bool ok,
+        const std::function<void(const std::string&)>& log);
+    void LogPlatformKeyDispatch(const QueuedInputEvent& event, uint32_t scancode, bool ok,
         const std::function<void(const std::string&)>& log);
 
     std::mutex inputMutex_;

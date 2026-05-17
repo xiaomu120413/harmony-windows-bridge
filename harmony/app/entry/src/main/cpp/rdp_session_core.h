@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bridge_types.h"
+#include "input/ohos_keyboard_adapter.h"
 #include "surface/surface_bridge.h"
 
 #include <cstdint>
@@ -38,6 +39,7 @@ public:
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message);
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message);
+    bool SendPlatformKey(const OhosKeyEvent& event, std::string& message);
     bool SendUnicode(uint32_t code, bool down, std::string& message);
 
     uint32_t InputQueueDepth() const;

@@ -305,11 +305,11 @@ napi_value SendPlatformKey(napi_env env, napi_callback_info info)
     event.meta = GetBoolProperty(env, arg, "meta");
 
     std::string message;
-    const bool ok = OhosKeyboardAdapter().SendPlatformKey(event, message);
+    const bool ok = BridgeSession().SendPlatformKey(event, message);
     BridgeEvents().log.Emit(message);
 
     SetBool(env, result, "ok", ok);
-    SetString(env, result, "state", ok ? "Ready" : "Failed");
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
     SetString(env, result, "message", message);
     logs.push_back(message);
     SetNamed(env, result, "logs", MakeStringArray(env, logs));

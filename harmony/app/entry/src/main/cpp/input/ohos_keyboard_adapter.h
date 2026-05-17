@@ -21,6 +21,7 @@ public:
 };
 
 uint32_t MapOhosKeyCodeToWindowsVk(uint32_t keyCode);
+bool OhosKeyCodeRequiresExtendedScancode(uint32_t keyCode);
 std::string FormatOhosKeyEvent(const OhosKeyEvent& event);
 
 } // namespace rdp_bridge

@@ -213,6 +213,31 @@ uint32_t MapOhosKeyCodeToWindowsVk(uint32_t keyCode)
     }
 }
 
+bool OhosKeyCodeRequiresExtendedScancode(uint32_t keyCode)
+{
+    switch (keyCode) {
+        case OH_KEYCODE_DPAD_UP:
+        case OH_KEYCODE_DPAD_DOWN:
+        case OH_KEYCODE_DPAD_LEFT:
+        case OH_KEYCODE_DPAD_RIGHT:
+        case OH_KEYCODE_ALT_RIGHT:
+        case OH_KEYCODE_PAGE_UP:
+        case OH_KEYCODE_PAGE_DOWN:
+        case OH_KEYCODE_FORWARD_DEL:
+        case OH_KEYCODE_CTRL_RIGHT:
+        case OH_KEYCODE_META_LEFT:
+        case OH_KEYCODE_META_RIGHT:
+        case OH_KEYCODE_MOVE_HOME:
+        case OH_KEYCODE_MOVE_END:
+        case OH_KEYCODE_INSERT:
+        case OH_KEYCODE_NUMPAD_DIVIDE:
+        case OH_KEYCODE_NUMPAD_ENTER:
+            return true;
+        default:
+            return false;
+    }
+}
+
 std::string FormatOhosKeyEvent(const OhosKeyEvent& event)
 {
     const uint32_t vk = MapOhosKeyCodeToWindowsVk(event.keyCode);
@@ -220,6 +245,7 @@ std::string FormatOhosKeyEvent(const OhosKeyEvent& event)
     line << "ohos.key keyCode=" << event.keyCode
          << " vk=" << Hex32(vk)
          << " mapped=" << BoolText(vk != 0)
+         << " extended=" << BoolText(OhosKeyCodeRequiresExtendedScancode(event.keyCode))
          << " down=" << BoolText(event.down)
          << " repeat=" << BoolText(event.repeat)
          << " ctrl=" << BoolText(event.ctrl)
