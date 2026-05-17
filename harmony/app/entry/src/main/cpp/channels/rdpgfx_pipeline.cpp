@@ -208,7 +208,7 @@ UINT HarmonyRdpgfxCapsConfirm(RdpgfxClientContext* context, const RDPGFX_CAPS_CO
             original = iter->second.capsConfirm;
         }
     }
-    return original == nullptr ? ERROR_INTERNAL_ERROR : original(context, capsConfirm);
+    return original == nullptr ? CHANNEL_RC_OK : original(context, capsConfirm);
 }
 
 UINT HarmonyRdpgfxSurfaceCommand(RdpgfxClientContext* context, const RDPGFX_SURFACE_COMMAND* command)
@@ -426,9 +426,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     if (state.surfaceCommand != nullptr) {
         gfx->SurfaceCommand = HarmonyRdpgfxSurfaceCommand;
     }
-    if (state.capsConfirm != nullptr) {
-        gfx->CapsConfirm = HarmonyRdpgfxCapsConfirm;
-    }
+    gfx->CapsConfirm = HarmonyRdpgfxCapsConfirm;
     RecordRdpgfxConnectionCapsSnapshot(gfx);
 }
 
