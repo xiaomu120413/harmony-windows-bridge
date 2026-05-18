@@ -106,6 +106,28 @@ uint32_t GetUint32Property(napi_env env, napi_value object, const char* name, ui
     return result;
 }
 
+int32_t GetInt32Property(napi_env env, napi_value object, const char* name, int32_t fallback)
+{
+    bool hasProperty = false;
+    napi_has_named_property(env, object, name, &hasProperty);
+    if (!hasProperty) {
+        return fallback;
+    }
+
+    napi_value value = nullptr;
+    napi_get_named_property(env, object, name, &value);
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, value, &type);
+    if (type != napi_number) {
+        return fallback;
+    }
+
+    int32_t out = fallback;
+    napi_get_value_int32(env, value, &out);
+    return out;
+}
+
 bool GetBoolProperty(napi_env env, napi_value object, const char* name, bool fallback)
 {
     bool hasProperty = false;

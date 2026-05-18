@@ -15,23 +15,6 @@ export interface NativeProbeResult {
   logs: string[]
 }
 
-export interface PointerMapping {
-  ok: boolean
-  x: number
-  y: number
-  surfaceX: number
-  surfaceY: number
-  scaleX: number
-  scaleY: number
-  viewportX: number
-  viewportY: number
-  viewportWidth: number
-  viewportHeight: number
-  desktopWidth: number
-  desktopHeight: number
-  reason: string
-}
-
 export interface NativeCommandResult {
   ok: boolean
   state: string

@@ -21,6 +21,7 @@ void SetUint32(napi_env env, napi_value object, const char* name, uint32_t value
 
 std::string GetStringProperty(napi_env env, napi_value object, const char* name);
 uint32_t GetUint32Property(napi_env env, napi_value object, const char* name, uint32_t fallback = 0);
+int32_t GetInt32Property(napi_env env, napi_value object, const char* name, int32_t fallback = 0);
 bool GetBoolProperty(napi_env env, napi_value object, const char* name, bool fallback = false);
 napi_value GetFirstArgument(napi_env env, napi_callback_info info);
 

@@ -55,10 +55,14 @@ export interface NativeCommandResult {
   logs: string[];
 }
 
-export interface NativePointerInput {
-  flags: number;
+export interface NativePointerEventInput {
+  action: string;
+  button?: string;
+  buttons?: number;
   x: number;
   y: number;
+  delta?: number;
+  allowClamp?: boolean;
 }
 
 export interface NativeKeyInput {
@@ -95,7 +99,7 @@ declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: Object): NativeCommandResult;
   disconnect(): NativeCommandResult;
-  sendPointer(input: Object): NativeCommandResult;
+  sendPointerEvent(input: Object): NativeCommandResult;
   sendKey(input: Object): NativeCommandResult;
   sendPlatformKey(input: Object): NativeCommandResult;
   sendUnicode(input: Object): NativeCommandResult;

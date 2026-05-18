@@ -3,34 +3,34 @@ import {
   DOUBLE_TAP_DISTANCE,
   DOUBLE_TAP_TIMEOUT_MS,
   LONG_PRESS_TIMEOUT_MS,
-  PTR_FLAGS_BUTTON1,
-  PTR_FLAGS_BUTTON2,
-  PTR_FLAGS_BUTTON3,
-  PTR_FLAGS_DOWN,
-  PTR_FLAGS_HWHEEL,
-  PTR_FLAGS_MOVE,
-  PTR_FLAGS_WHEEL,
-  PTR_FLAGS_WHEEL_NEGATIVE,
-  RDP_WHEEL_DELTA,
-  RDP_WHEEL_DELTA_NEGATIVE,
   SYNTHETIC_MOUSE_SUPPRESS_MS,
   TOUCH_DRAG_THRESHOLD,
   TOUCH_WHEEL_THRESHOLD
 } from './RdpConstants'
-import { PointerMapper, PointerViewport } from './PointerMapper'
-import { PointerMapping } from './RdpTypes'
+
+export interface RemotePointerEvent {
+  action: string
+  button?: string
+  buttons?: number
+  x: number
+  y: number
+  delta?: number
+  allowClamp?: boolean
+  traceLabel?: string
+}
+
+const REMOTE_BUTTON_NONE: number = 0
+const REMOTE_BUTTON_LEFT: number = 1
+const REMOTE_BUTTON_RIGHT: number = 2
+const REMOTE_BUTTON_MIDDLE: number = 4
 
 export class RemotePointerInput {
   private isConnectedCallback: () => boolean
   private focusRemoteInputCallback: () => void
-  private getViewportCallback: () => PointerViewport
   private refreshViewportStateCallback: (force?: boolean) => void
-  private sendPointerCallback: (flags: number, x: number, y: number, allowClamp?: boolean,
-    traceLabel?: string) => boolean
+  private sendPointerCallback: (event: RemotePointerEvent) => boolean
   private appendLogCallback: (line: string) => void
   private logInputEventCallback: (label: string, detail: string, force?: boolean) => void
-  private logPointerDiagnosticCallback: (label: string, flags: number, x: number, y: number,
-    mapped: PointerMapping) => void
   private pointerDown: boolean = false
   private pendingTouchActive: boolean = false
   private longPressTriggered: boolean = false
@@ -57,20 +57,16 @@ export class RemotePointerInput {
 
   constructor(isConnected: () => boolean,
     focusRemoteInput: () => void,
-    getViewport: () => PointerViewport,
     refreshViewportState: (force?: boolean) => void,
-    sendPointer: (flags: number, x: number, y: number, allowClamp?: boolean, traceLabel?: string) => boolean,
+    sendPointer: (event: RemotePointerEvent) => boolean,
     appendLog: (line: string) => void,
-    logInputEvent: (label: string, detail: string, force?: boolean) => void,
-    logPointerDiagnostic: (label: string, flags: number, x: number, y: number, mapped: PointerMapping) => void) {
+    logInputEvent: (label: string, detail: string, force?: boolean) => void) {
     this.isConnectedCallback = isConnected
     this.focusRemoteInputCallback = focusRemoteInput
-    this.getViewportCallback = getViewport
     this.refreshViewportStateCallback = refreshViewportState
     this.sendPointerCallback = sendPointer
     this.appendLogCallback = appendLog
     this.logInputEventCallback = logInputEvent
-    this.logPointerDiagnosticCallback = logPointerDiagnostic
   }
 
   clearState(): void {
@@ -93,19 +89,19 @@ export class RemotePointerInput {
       this.sendLeftButtonUp(this.lastTouchX, this.lastTouchY, 'touch.releaseOnExit')
     }
     if (this.mouseButtonFlags !== 0) {
-      this.sendPointerCallback(PTR_FLAGS_MOVE | this.mouseButtonFlags, this.lastTouchX, this.lastTouchY, true)
+      this.releaseMouseButtons(this.mouseButtonFlags, this.lastTouchX, this.lastTouchY, 'mouse.releaseOnExit')
     }
     this.clearState()
   }
 
   handleMouse(event: MouseEvent): void {
-    const rawButtonFlag = this.mouseButtonToPointerFlag(event.button)
-    const pressedFlags = this.getPressedMouseButtonFlags(event)
-    const pressedButtonFlag = this.getPrimaryPressedMouseButtonFlag(pressedFlags)
-    const buttonFlag = rawButtonFlag !== 0 ? rawButtonFlag : pressedButtonFlag
+    const rawButtonMask = this.mouseButtonToPointerMask(event.button)
+    const pressedMask = this.getPressedMouseButtonMask(event)
+    const pressedButtonMask = this.getPrimaryPressedMouseButtonMask(pressedMask)
+    const buttonMask = rawButtonMask !== 0 ? rawButtonMask : pressedButtonMask
     this.logInputEventCallback('mouse',
-      `action=${event.action} button=${event.button} rawFlag=${RemotePointerInput.formatPointerFlags(rawButtonFlag)} ` +
-        `pressed=${RemotePointerInput.formatPointerFlags(pressedFlags)} x=${RemotePointerInput.formatNumber(event.x)} ` +
+      `action=${event.action} button=${event.button} raw=${RemotePointerInput.formatButtonMask(rawButtonMask)} ` +
+        `pressed=${RemotePointerInput.formatButtonMask(pressedMask)} x=${RemotePointerInput.formatNumber(event.x)} ` +
         `y=${RemotePointerInput.formatNumber(event.y)}`)
 
     if (!this.isConnectedCallback()) {
@@ -124,40 +120,36 @@ export class RemotePointerInput {
     this.lastTouchY = event.y
     if (event.action === MouseAction.Press) {
       this.focusRemoteInputCallback()
-      this.logPointerDiagnosticCallback('mouse.press', PTR_FLAGS_MOVE | buttonFlag | PTR_FLAGS_DOWN, event.x, event.y,
-        PointerMapper.mapToDesktop(this.getViewportCallback(), event.x, event.y, false))
-      if (buttonFlag === 0 ||
-        !PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), event.x, event.y)) {
-        this.appendLogCallback(`Mouse press skipped: button=${buttonFlag} inside=${PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), event.x, event.y)}`)
+      if (buttonMask === 0) {
+        this.appendLogCallback('Mouse press skipped: no mapped button')
         return
       }
-      this.mouseButtonFlags |= buttonFlag
-      this.sendPointerCallback(PTR_FLAGS_MOVE, event.x, event.y, false, 'mouse.press.move')
-      this.sendPointerCallback(buttonFlag | PTR_FLAGS_DOWN, event.x, event.y, false, 'mouse.press.down')
+      this.sendMove(event.x, event.y, REMOTE_BUTTON_NONE, false, 'mouse.press.move')
+      if (this.sendButton(buttonMask, true, event.x, event.y, false, 'mouse.press.down')) {
+        this.mouseButtonFlags |= buttonMask
+      }
       return
     }
     if (event.action === MouseAction.Release) {
-      const releaseFlag = buttonFlag !== 0 ? buttonFlag : this.mouseButtonFlags
-      if (releaseFlag !== 0) {
-        this.sendPointerCallback(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.release.move')
-        this.sendPointerCallback(releaseFlag, event.x, event.y, true, 'mouse.release.up')
-        this.mouseButtonFlags &= ~releaseFlag
+      const releaseMask = buttonMask !== 0 ? buttonMask : this.mouseButtonFlags
+      if (releaseMask !== 0) {
+        this.sendMove(event.x, event.y, REMOTE_BUTTON_NONE, true, 'mouse.release.move')
+        this.releaseMouseButtons(releaseMask, event.x, event.y, 'mouse.release')
       }
       return
     }
     if (event.action === MouseAction.Move || event.action === MouseAction.Hover) {
-      if (pressedFlags !== 0) {
-        this.sendPointerCallback(PTR_FLAGS_MOVE | pressedFlags | PTR_FLAGS_DOWN, event.x, event.y, true,
-          'mouse.drag.move')
+      if (pressedMask !== 0) {
+        this.sendMove(event.x, event.y, pressedMask, true, 'mouse.drag.move')
       } else {
-        this.sendPointerCallback(PTR_FLAGS_MOVE, event.x, event.y)
+        this.sendMove(event.x, event.y, REMOTE_BUTTON_NONE, false, 'mouse.move')
       }
       return
     }
     if (event.action === MouseAction.CANCEL) {
       if (this.mouseButtonFlags !== 0) {
-        this.sendPointerCallback(PTR_FLAGS_MOVE, event.x, event.y, true, 'mouse.cancel.move')
-        this.sendPointerCallback(this.mouseButtonFlags, event.x, event.y, true, 'mouse.cancel.release')
+        this.sendMove(event.x, event.y, REMOTE_BUTTON_NONE, true, 'mouse.cancel.move')
+        this.releaseMouseButtons(this.mouseButtonFlags, event.x, event.y, 'mouse.cancel')
       }
       this.mouseButtonFlags = 0
     }
@@ -170,14 +162,11 @@ export class RemotePointerInput {
       return
     }
     this.refreshViewportStateCallback(true)
-    const axisX = PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), event.x, event.y) ?
-      event.x : this.lastTouchX
-    const axisY = PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), event.x, event.y) ?
-      event.y : this.lastTouchY
+    const axisX = event.x
+    const axisY = event.y
     this.logInputEventCallback('axis',
       `action=${event.action} dx=${RemotePointerInput.formatNumber(deltaX)} dy=${RemotePointerInput.formatNumber(deltaY)} ` +
-        `x=${RemotePointerInput.formatNumber(event.x)} y=${RemotePointerInput.formatNumber(event.y)} ` +
-        `target=${RemotePointerInput.formatNumber(axisX)},${RemotePointerInput.formatNumber(axisY)}`)
+        `x=${RemotePointerInput.formatNumber(axisX)} y=${RemotePointerInput.formatNumber(axisY)}`)
 
     if (!this.isConnectedCallback() || event.action !== AxisAction.UPDATE) {
       return
@@ -249,10 +238,9 @@ export class RemotePointerInput {
       }
 
       if (this.pointerDown) {
-        this.sendPointerCallback(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true,
-          'touch.drag.move')
+        this.sendMove(x, y, REMOTE_BUTTON_LEFT, true, 'touch.drag.move')
       } else {
-        this.sendPointerCallback(PTR_FLAGS_MOVE, x, y)
+        this.sendMove(x, y, REMOTE_BUTTON_NONE, false, 'touch.move')
       }
       return
     }
@@ -262,90 +250,138 @@ export class RemotePointerInput {
     }
   }
 
-  private mouseButtonToPointerFlag(button: MouseButton): number {
+  private mouseButtonToPointerMask(button: MouseButton): number {
     if (button === MouseButton.Left) {
-      return PTR_FLAGS_BUTTON1
+      return REMOTE_BUTTON_LEFT
     }
     if (button === MouseButton.Right) {
-      return PTR_FLAGS_BUTTON2
+      return REMOTE_BUTTON_RIGHT
     }
     if (button === MouseButton.Middle) {
-      return PTR_FLAGS_BUTTON3
+      return REMOTE_BUTTON_MIDDLE
     }
-    return 0
+    return REMOTE_BUTTON_NONE
   }
 
-  private getPressedMouseButtonFlags(event: MouseEvent): number {
-    let flags = this.mouseButtonFlags
+  private getPressedMouseButtonMask(event: MouseEvent): number {
+    let mask = this.mouseButtonFlags
     if (event.pressedButtons) {
-      flags = 0
+      mask = REMOTE_BUTTON_NONE
       for (let i = 0; i < event.pressedButtons.length; i++) {
-        flags |= this.mouseButtonToPointerFlag(event.pressedButtons[i])
+        mask |= this.mouseButtonToPointerMask(event.pressedButtons[i])
       }
     }
-    return flags
+    return mask
   }
 
-  private getPrimaryPressedMouseButtonFlag(flags: number): number {
-    if ((flags & PTR_FLAGS_BUTTON1) !== 0) {
-      return PTR_FLAGS_BUTTON1
+  private getPrimaryPressedMouseButtonMask(mask: number): number {
+    if ((mask & REMOTE_BUTTON_LEFT) !== 0) {
+      return REMOTE_BUTTON_LEFT
     }
-    if ((flags & PTR_FLAGS_BUTTON2) !== 0) {
-      return PTR_FLAGS_BUTTON2
+    if ((mask & REMOTE_BUTTON_RIGHT) !== 0) {
+      return REMOTE_BUTTON_RIGHT
     }
-    if ((flags & PTR_FLAGS_BUTTON3) !== 0) {
-      return PTR_FLAGS_BUTTON3
+    if ((mask & REMOTE_BUTTON_MIDDLE) !== 0) {
+      return REMOTE_BUTTON_MIDDLE
     }
-    return 0
+    return REMOTE_BUTTON_NONE
   }
 
   private isSyntheticMouseAfterTouch(): boolean {
     return Date.now() - this.lastTouchEventAtMs < SYNTHETIC_MOUSE_SUPPRESS_MS
   }
 
+  private sendMove(x: number, y: number, buttons: number = REMOTE_BUTTON_NONE,
+    allowClamp: boolean = false, label: string = 'pointer.move'): boolean {
+    return this.sendPointerCallback({
+      action: 'move',
+      buttons: buttons,
+      x: x,
+      y: y,
+      allowClamp: allowClamp,
+      traceLabel: label
+    })
+  }
+
+  private sendButton(buttonMask: number, down: boolean, x: number, y: number,
+    allowClamp: boolean, label: string): boolean {
+    let sent = false
+    sent = this.sendSingleButton(REMOTE_BUTTON_LEFT, buttonMask, down, x, y, allowClamp, label) || sent
+    sent = this.sendSingleButton(REMOTE_BUTTON_RIGHT, buttonMask, down, x, y, allowClamp, label) || sent
+    sent = this.sendSingleButton(REMOTE_BUTTON_MIDDLE, buttonMask, down, x, y, allowClamp, label) || sent
+    return sent
+  }
+
+  private sendSingleButton(button: number, buttonMask: number, down: boolean, x: number, y: number,
+    allowClamp: boolean, label: string): boolean {
+    if ((buttonMask & button) === 0) {
+      return false
+    }
+    return this.sendPointerCallback({
+      action: down ? 'buttonDown' : 'buttonUp',
+      button: RemotePointerInput.buttonName(button),
+      buttons: button,
+      x: x,
+      y: y,
+      allowClamp: allowClamp,
+      traceLabel: label
+    })
+  }
+
+  private releaseMouseButtons(buttonMask: number, x: number, y: number, label: string): void {
+    if (this.sendButton(buttonMask, false, x, y, true, `${label}.up`)) {
+      this.mouseButtonFlags &= ~buttonMask
+    }
+  }
+
   private sendWheel(deltaY: number, x: number, y: number): void {
-    const flags = deltaY > 0 ?
-      PTR_FLAGS_WHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
-      PTR_FLAGS_WHEEL | RDP_WHEEL_DELTA
-    this.sendPointerCallback(flags, x, y, false, 'wheel.vertical')
+    this.sendPointerCallback({
+      action: 'wheelVertical',
+      x: x,
+      y: y,
+      delta: deltaY,
+      traceLabel: 'wheel.vertical'
+    })
   }
 
   private sendHorizontalWheel(deltaX: number, x: number, y: number): void {
-    const flags = deltaX > 0 ?
-      PTR_FLAGS_HWHEEL | PTR_FLAGS_WHEEL_NEGATIVE | RDP_WHEEL_DELTA_NEGATIVE :
-      PTR_FLAGS_HWHEEL | RDP_WHEEL_DELTA
-    this.sendPointerCallback(flags, x, y, false, 'wheel.horizontal')
+    this.sendPointerCallback({
+      action: 'wheelHorizontal',
+      x: x,
+      y: y,
+      delta: deltaX,
+      traceLabel: 'wheel.horizontal'
+    })
   }
 
   private sendLeftButtonDown(x: number, y: number, label: string): void {
-    this.sendPointerCallback(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
-    this.sendPointerCallback(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
+    this.sendMove(x, y, REMOTE_BUTTON_NONE, false, `${label}.move`)
+    if (this.sendButton(REMOTE_BUTTON_LEFT, true, x, y, false, `${label}.down`)) {
+      this.pointerDown = true
+    }
   }
 
   private sendLeftButtonUp(x: number, y: number, label: string): void {
-    this.sendPointerCallback(PTR_FLAGS_MOVE, x, y, true, `${label}.move`)
-    this.sendPointerCallback(PTR_FLAGS_BUTTON1, x, y, true, `${label}.up`)
+    this.sendMove(x, y, REMOTE_BUTTON_NONE, true, `${label}.move`)
+    this.sendButton(REMOTE_BUTTON_LEFT, false, x, y, true, `${label}.up`)
   }
 
   private sendLeftClick(x: number, y: number, label: string = 'tap.left'): void {
-    this.sendPointerCallback(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
-    this.sendPointerCallback(PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
-    this.sendPointerCallback(PTR_FLAGS_BUTTON1, x, y, false, `${label}.up`)
+    this.sendMove(x, y, REMOTE_BUTTON_NONE, false, `${label}.move`)
+    this.sendButton(REMOTE_BUTTON_LEFT, true, x, y, false, `${label}.down`)
+    this.sendButton(REMOTE_BUTTON_LEFT, false, x, y, false, `${label}.up`)
   }
 
   private sendRightClick(x: number, y: number, label: string = 'longPress.right'): void {
-    this.sendPointerCallback(PTR_FLAGS_MOVE, x, y, false, `${label}.move`)
-    this.sendPointerCallback(PTR_FLAGS_BUTTON2 | PTR_FLAGS_DOWN, x, y, false, `${label}.down`)
-    this.sendPointerCallback(PTR_FLAGS_BUTTON2, x, y, false, `${label}.up`)
+    this.sendMove(x, y, REMOTE_BUTTON_NONE, false, `${label}.move`)
+    this.sendButton(REMOTE_BUTTON_RIGHT, true, x, y, false, `${label}.down`)
+    this.sendButton(REMOTE_BUTTON_RIGHT, false, x, y, false, `${label}.up`)
   }
 
   private startPendingTouch(x: number, y: number): void {
-    this.logPointerDiagnosticCallback('touch.down', PTR_FLAGS_MOVE, x, y,
-      PointerMapper.mapToDesktop(this.getViewportCallback(), x, y, false))
-    if (!PointerMapper.isPointInRemoteViewport(this.getViewportCallback(), x, y)) {
-      this.cancelPendingTouch()
-      return
-    }
+    this.logInputEventCallback('touch.down',
+      `x=${RemotePointerInput.formatNumber(x)} y=${RemotePointerInput.formatNumber(y)}`,
+      true)
     this.cancelLongPressTimer()
     this.pendingTouchActive = true
     this.longPressTriggered = false
@@ -380,15 +416,13 @@ export class RemotePointerInput {
   private beginLeftDrag(x: number, y: number): void {
     this.cancelLongPressTimer()
     this.pendingTouchActive = false
-    this.pointerDown = true
     this.logInputEventCallback('touch.drag',
       `start ${RemotePointerInput.formatNumber(this.pendingTouchStartX)},` +
         `${RemotePointerInput.formatNumber(this.pendingTouchStartY)} -> ${RemotePointerInput.formatNumber(x)},` +
         `${RemotePointerInput.formatNumber(y)}`,
       true)
     this.sendLeftButtonDown(this.pendingTouchStartX, this.pendingTouchStartY, 'touch.drag.start')
-    this.sendPointerCallback(PTR_FLAGS_MOVE | PTR_FLAGS_BUTTON1 | PTR_FLAGS_DOWN, x, y, true,
-      'touch.drag.move')
+    this.sendMove(x, y, REMOTE_BUTTON_LEFT, true, 'touch.drag.move')
   }
 
   private isDoubleTap(x: number, y: number): boolean {
@@ -513,11 +547,24 @@ export class RemotePointerInput {
     return duplicate
   }
 
+  private static buttonName(button: number): string {
+    if (button === REMOTE_BUTTON_LEFT) {
+      return 'left'
+    }
+    if (button === REMOTE_BUTTON_RIGHT) {
+      return 'right'
+    }
+    if (button === REMOTE_BUTTON_MIDDLE) {
+      return 'middle'
+    }
+    return ''
+  }
+
   private static formatNumber(value: number): string {
     return `${Math.round(value * 10) / 10}`
   }
 
-  private static formatPointerFlags(flags: number): string {
-    return `0x${flags.toString(16).toUpperCase()}`
+  private static formatButtonMask(mask: number): string {
+    return `0x${mask.toString(16).toUpperCase()}`
   }
 }

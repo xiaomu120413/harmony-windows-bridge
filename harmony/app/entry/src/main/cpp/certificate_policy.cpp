@@ -3,6 +3,7 @@
 #include "bridge_log.h"
 #include "string_utils.h"
 
+#include <array>
 #include <cstdlib>
 #include <mutex>
 #include <unordered_map>
@@ -59,6 +60,32 @@ void EmitCertificatePolicyLog(const std::string& line)
     }
 }
 
+uint32_t ToOhosCertificatePolicy(CertificatePolicy policy)
+{
+    switch (policy) {
+        case CertificatePolicy::Strict:
+            return FREERDP_OHOS_CERTIFICATE_POLICY_STRICT;
+        case CertificatePolicy::Ignore:
+            return FREERDP_OHOS_CERTIFICATE_POLICY_IGNORE;
+        case CertificatePolicy::Tofu:
+        default:
+            return FREERDP_OHOS_CERTIFICATE_POLICY_TOFU;
+    }
+}
+
+CertificatePolicy FromOhosCertificatePolicy(uint32_t policy)
+{
+    switch (policy) {
+        case FREERDP_OHOS_CERTIFICATE_POLICY_STRICT:
+            return CertificatePolicy::Strict;
+        case FREERDP_OHOS_CERTIFICATE_POLICY_IGNORE:
+            return CertificatePolicy::Ignore;
+        case FREERDP_OHOS_CERTIFICATE_POLICY_TOFU:
+        default:
+            return CertificatePolicy::Tofu;
+    }
+}
+
 bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
     const ConnectParams& params, const CertificatePolicyLogFn& log, std::string& error)
 {
@@ -87,6 +114,13 @@ bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
 
 CertificatePolicy ParseCertificatePolicy(const std::string& value)
 {
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    std::string loadError;
+    if (EnsureFreerdpRuntimeLoaded(api, loadError) &&
+        api.ohosCertificatePolicyFromString != nullptr) {
+        return FromOhosCertificatePolicy(api.ohosCertificatePolicyFromString(value.c_str()));
+    }
+
     const std::string normalized = ToLowerAscii(TrimAscii(value));
     if (normalized == "strict" || normalized == "verify" || normalized == "valid-ca") {
         return CertificatePolicy::Strict;
@@ -130,6 +164,24 @@ DWORD HarmonyVerifyCertificateEx(freerdp* instance, const char* host, UINT16 por
     DWORD)
 {
     CertificatePolicy policy = LookupCertificatePolicy(instance);
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosCertificateVerify != nullptr) {
+        FREERDP_OHOS_CERTIFICATE_VERIFY_INFO info = {};
+        info.host = host;
+        info.port = port;
+        info.commonName = commonName;
+        info.subject = subject;
+        info.issuer = issuer;
+        info.fingerprint = fingerprint;
+        std::array<char, 512> message {};
+        const DWORD rc = api.ohosCertificateVerify(
+            ToOhosCertificatePolicy(policy), &info, message.data(), message.size());
+        if (message[0] != '\0') {
+            EmitCertificatePolicyLog(message.data());
+        }
+        return rc;
+    }
+
     const std::string target = SafeCString(host) + ":" + std::to_string(port);
     if (policy == CertificatePolicy::Ignore) {
         EmitCertificatePolicyLog("Certificate accepted for current session by ignore policy: " + target);
@@ -154,6 +206,28 @@ DWORD HarmonyVerifyChangedCertificateEx(freerdp* instance, const char* host, UIN
     const char* oldSubject, const char* oldIssuer, const char* oldFingerprint, DWORD)
 {
     CertificatePolicy policy = LookupCertificatePolicy(instance);
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosCertificateVerify != nullptr) {
+        FREERDP_OHOS_CERTIFICATE_VERIFY_INFO info = {};
+        info.host = host;
+        info.port = port;
+        info.commonName = commonName;
+        info.subject = subject;
+        info.issuer = issuer;
+        info.fingerprint = fingerprint;
+        info.oldSubject = oldSubject;
+        info.oldIssuer = oldIssuer;
+        info.oldFingerprint = oldFingerprint;
+        info.changed = TRUE;
+        std::array<char, 512> message {};
+        const DWORD rc = api.ohosCertificateVerify(
+            ToOhosCertificatePolicy(policy), &info, message.data(), message.size());
+        if (message[0] != '\0') {
+            EmitCertificatePolicyLog(message.data());
+        }
+        return rc;
+    }
+
     const std::string target = SafeCString(host) + ":" + std::to_string(port);
     if (policy == CertificatePolicy::Ignore) {
         EmitCertificatePolicyLog("Changed certificate accepted for current session by ignore policy: " + target);

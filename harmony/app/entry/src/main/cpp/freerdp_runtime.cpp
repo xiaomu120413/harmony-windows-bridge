@@ -146,6 +146,13 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosImeBuildCommittedTextPackets);
         LoadOptionalClientSymbol("freerdp_ohos_ime_format_committed_text_result",
             ohosImeFormatCommittedTextResult);
+        LoadOptionalClientSymbol("freerdp_ohos_pointer_build_event", ohosPointerBuildEvent);
+        LoadOptionalClientSymbol("freerdp_ohos_certificate_policy_from_string",
+            ohosCertificatePolicyFromString);
+        LoadOptionalClientSymbol("freerdp_ohos_certificate_policy_name",
+            ohosCertificatePolicyName);
+        LoadOptionalClientSymbol("freerdp_ohos_certificate_verify",
+            ohosCertificateVerify);
         LoadOptionalClientSymbol("freerdp_ohos_display_normalize_size",
             ohosDisplayNormalizeSize);
         LoadOptionalClientSymbol("freerdp_ohos_display_send_monitor_layout",
@@ -180,6 +187,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionConfigDefault);
         LoadOptionalClientSymbol("freerdp_ohos_session_apply_settings",
             ohosSessionApplySettings);
+        LoadOptionalClientSymbol("freerdp_ohos_session_apply_connection_settings",
+            ohosSessionApplyConnectionSettings);
         LoadOptionalClientSymbol("freerdp_ohos_session_add_standard_channels",
             ohosSessionAddStandardChannels);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",

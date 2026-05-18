@@ -74,6 +74,30 @@ struct GraphicsPipelineConfig {
     std::string mode = "gdi";
 };
 
+enum class LocalPointerAction {
+    Move,
+    ButtonDown,
+    ButtonUp,
+    WheelVertical,
+    WheelHorizontal,
+};
+
+enum LocalPointerButton : uint32_t {
+    LocalPointerButtonNone = 0,
+    LocalPointerButtonLeft = 1U << 0U,
+    LocalPointerButtonRight = 1U << 1U,
+    LocalPointerButtonMiddle = 1U << 2U,
+};
+
+struct LocalPointerEvent {
+    LocalPointerAction action = LocalPointerAction::Move;
+    uint32_t buttons = LocalPointerButtonNone;
+    uint32_t x = 0;
+    uint32_t y = 0;
+    int32_t delta = 0;
+    bool allowClamp = false;
+};
+
 struct DecoderSurfaceTarget {
     OHNativeWindow* window = nullptr;
     uint32_t width = 0;

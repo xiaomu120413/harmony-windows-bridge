@@ -18,11 +18,13 @@
 #endif
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+#include <client/OHOS/ohos_certificate.h>
 #include <client/OHOS/ohos_clipboard.h>
 #include <client/OHOS/ohos_display.h>
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
 #include <client/OHOS/ohos_keyboard.h>
+#include <client/OHOS/ohos_pointer.h>
 #include <client/OHOS/ohos_rdpgfx.h>
 #include <client/OHOS/ohos_session_config.h>
 #endif
@@ -104,6 +106,12 @@ public:
     using OhosImeBuildCommittedTextPacketsFn = int (*)(const uint16_t*, size_t,
         FREERDP_OHOS_IME_PACKET*, size_t, size_t*, size_t*);
     using OhosImeFormatCommittedTextResultFn = int (*)(size_t, size_t, size_t, char*, size_t);
+    using OhosPointerBuildEventFn = BOOL (*)(const FREERDP_OHOS_POINTER_VIEWPORT*,
+        const FREERDP_OHOS_POINTER_EVENT*, FREERDP_OHOS_POINTER_PACKET*, char*, size_t);
+    using OhosCertificatePolicyFromStringFn = UINT32 (*)(const char*);
+    using OhosCertificatePolicyNameFn = const char* (*)(UINT32);
+    using OhosCertificateVerifyFn = DWORD (*)(
+        UINT32, const FREERDP_OHOS_CERTIFICATE_VERIFY_INFO*, char*, size_t);
     using OhosDisplayNormalizeSizeFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t*,
         uint32_t*);
     using OhosDisplaySendMonitorLayoutFn = int (*)(DispClientContext*, uint32_t, uint32_t,
@@ -127,6 +135,8 @@ public:
     using OhosSessionConfigDefaultFn = FREERDP_OHOS_SESSION_CONFIG (*)();
     using OhosSessionApplySettingsFn = BOOL (*)(rdpSettings*,
         const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
+    using OhosSessionApplyConnectionSettingsFn = BOOL (*)(
+        rdpSettings*, const FREERDP_OHOS_CONNECTION_CONFIG*, char*, size_t);
     using OhosSessionAddStandardChannelsFn = BOOL (*)(rdpSettings*,
         const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
@@ -196,6 +206,10 @@ public:
     OhosKeyboardStateReleaseAllFn ohosKeyboardStateReleaseAll = nullptr;
     OhosImeBuildCommittedTextPacketsFn ohosImeBuildCommittedTextPackets = nullptr;
     OhosImeFormatCommittedTextResultFn ohosImeFormatCommittedTextResult = nullptr;
+    OhosPointerBuildEventFn ohosPointerBuildEvent = nullptr;
+    OhosCertificatePolicyFromStringFn ohosCertificatePolicyFromString = nullptr;
+    OhosCertificatePolicyNameFn ohosCertificatePolicyName = nullptr;
+    OhosCertificateVerifyFn ohosCertificateVerify = nullptr;
     OhosDisplayNormalizeSizeFn ohosDisplayNormalizeSize = nullptr;
     OhosDisplaySendMonitorLayoutFn ohosDisplaySendMonitorLayout = nullptr;
     OhosGraphicsConfigFromModeFn ohosGraphicsConfigFromMode = nullptr;
@@ -213,6 +227,7 @@ public:
     OhosRdpgfxBridgeGetDiagnosticsFn ohosRdpgfxBridgeGetDiagnostics = nullptr;
     OhosSessionConfigDefaultFn ohosSessionConfigDefault = nullptr;
     OhosSessionApplySettingsFn ohosSessionApplySettings = nullptr;
+    OhosSessionApplyConnectionSettingsFn ohosSessionApplyConnectionSettings = nullptr;
     OhosSessionAddStandardChannelsFn ohosSessionAddStandardChannels = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetAvc444OutputSurfacesFn ohosAvcodecSetAvc444OutputSurfaces = nullptr;

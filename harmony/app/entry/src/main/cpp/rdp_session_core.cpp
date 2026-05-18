@@ -125,6 +125,24 @@ struct RdpSession::Impl {
 #endif
     }
 
+    bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message)
+    {
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+        if (!connected.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+        return input.EnqueueLocalPointer(pointer, SurfaceSnapshotValue(), RdpDesktopWidth(),
+            RdpDesktopHeight(), message, [this](const std::string& line) {
+                EmitLog(line);
+            });
+#else
+        (void)pointer;
+        message = "FreeRDP headers not found at build time";
+        return false;
+#endif
+    }
+
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message)
     {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -550,6 +568,11 @@ bool RdpSession::IsConnected() const
 bool RdpSession::SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
 {
     return impl_->SendPointer(flags, x, y, message);
+}
+
+bool RdpSession::SendLocalPointer(const LocalPointerEvent& pointer, std::string& message)
+{
+    return impl_->SendLocalPointer(pointer, message);
 }
 
 bool RdpSession::SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message)

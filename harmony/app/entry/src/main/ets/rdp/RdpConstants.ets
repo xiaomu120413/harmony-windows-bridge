@@ -1,16 +1,5 @@
 import { Permissions } from '@kit.AbilityKit'
 
-export const PTR_FLAGS_MOVE: number = 0x0800
-export const PTR_FLAGS_HWHEEL: number = 0x0400
-export const PTR_FLAGS_WHEEL: number = 0x0200
-export const PTR_FLAGS_WHEEL_NEGATIVE: number = 0x0100
-export const PTR_FLAGS_DOWN: number = 0x8000
-export const PTR_FLAGS_BUTTON1: number = 0x1000
-export const PTR_FLAGS_BUTTON2: number = 0x2000
-export const PTR_FLAGS_BUTTON3: number = 0x4000
-export const RDP_WHEEL_DELTA: number = 0x0078
-export const RDP_WHEEL_DELTA_NEGATIVE: number = 0x0088
-
 export const TOUCH_DRAG_THRESHOLD: number = 8
 export const TOUCH_WHEEL_THRESHOLD: number = 24
 export const LONG_PRESS_TIMEOUT_MS: number = 550

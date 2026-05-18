@@ -11,14 +11,13 @@
 #include "rdp_channel_config.h"
 #include "string_utils.h"
 
+#include <array>
 #include <chrono>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/client.h>
-#include <freerdp/constants.h>
 #include <freerdp/error.h>
 #include <freerdp/settings.h>
-#include <freerdp/settings_keys.h>
 #include <winpr/synch.h>
 #endif
 
@@ -207,29 +206,37 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);
     const bool ignoreCertificate = certificatePolicy == CertificatePolicy::Ignore;
 
-    if (!SetFreerdpString(api, settings, FreeRDP_ServerHostname, params.host, "ServerHostname", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_ServerPort, port, "ServerPort", error) ||
-        !SetFreerdpString(api, settings, FreeRDP_Username, user.username, "Username", error) ||
-        !SetFreerdpString(api, settings, FreeRDP_Password, params.password, "Password", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_DesktopWidth, width, "DesktopWidth", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_DesktopHeight, height, "DesktopHeight", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_ColorDepth, 32, "ColorDepth", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_TcpConnectTimeout, 5000, "TcpConnectTimeout", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_OsMajorType, OSMAJORTYPE_UNIX, "OsMajorType", error) ||
-        !SetFreerdpUint32(api, settings, FreeRDP_OsMinorType, OSMINORTYPE_NATIVE_WAYLAND, "OsMinorType", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AuthenticationOnly, false, "AuthenticationOnly", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_Authentication, true, "Authentication", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_SoftwareGdi, true, "SoftwareGdi", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_NegotiateSecurityLayer, true, "NegotiateSecurityLayer", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_CertificateCallbackPreferPEM, true, "CertificateCallbackPreferPEM", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_IgnoreCertificate, ignoreCertificate, "IgnoreCertificate", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AutoAcceptCertificate, false, "AutoAcceptCertificate", error) ||
-        !SetFreerdpBool(api, settings, FreeRDP_AutoDenyCertificate, false, "AutoDenyCertificate", error)) {
-        result.message = error;
+    if (api.ohosSessionApplyConnectionSettings == nullptr) {
+        result.message = "FreeRDP OHOS connection settings helper is not loaded";
         result.failed = true;
         cleanup();
         return result;
     }
+    FREERDP_OHOS_CONNECTION_CONFIG connectionConfig = {};
+    connectionConfig.serverHostname = params.host.c_str();
+    connectionConfig.serverPort = port;
+    connectionConfig.username = user.username.c_str();
+    connectionConfig.password = params.password.c_str();
+    connectionConfig.domain = user.domain.empty() ? nullptr : user.domain.c_str();
+    connectionConfig.desktopWidth = width;
+    connectionConfig.desktopHeight = height;
+    connectionConfig.colorDepth = 32;
+    connectionConfig.tcpConnectTimeoutMs = 5000;
+    connectionConfig.ignoreCertificate = ignoreCertificate ? TRUE : FALSE;
+
+    std::array<char, 256> connectionDetail {};
+    if (!api.ohosSessionApplyConnectionSettings(
+            settings, &connectionConfig, connectionDetail.data(), connectionDetail.size())) {
+        result.message = connectionDetail[0] == '\0'
+            ? "FreeRDP OHOS connection settings helper failed"
+            : connectionDetail.data();
+        result.failed = true;
+        cleanup();
+        return result;
+    }
+    log(connectionDetail[0] == '\0'
+            ? "OHOS FreeRDP connection settings applied"
+            : connectionDetail.data());
 
     if (!ConfigureFreerdpStoragePaths(api, settings, params, log, error) ||
         !ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, log, error) ||
@@ -243,14 +250,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     if (!clipboardBridge.Initialize(instance->context, api, log, error)) {
-        result.message = error;
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-
-    if (!user.domain.empty() &&
-        !SetFreerdpString(api, settings, FreeRDP_Domain, user.domain, "Domain", error)) {
         result.message = error;
         result.failed = true;
         cleanup();

@@ -8,22 +8,21 @@ import {
   POINTER_STATE_REFRESH_INTERVAL_MS,
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
-import { PointerMapper, PointerViewport } from '../rdp/PointerMapper'
-import { RemotePointerInput } from '../rdp/RemotePointerInput'
+import { RemotePointerEvent, RemotePointerInput } from '../rdp/RemotePointerInput'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import { ConnectionState, PointerMapping } from '../rdp/RdpTypes'
+import { ConnectionState } from '../rdp/RdpTypes'
 import rdpNative, { NativeCommandResult, NativeProbeResult } from 'libentry.so'
 
 @Entry
 @Component
 struct Index {
-  @State private host: string = '192.168.43.28'
+  @State private host: string = ''
   @State private port: string = '3389'
-  @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
-  @State private password: string = 'aaaa'
+  @State private username: string = ''
+  @State private password: string = ''
   @State private resolution: string = 'auto'
-  @State private certPolicy: string = 'ignore'
-  @State private graphicsMode: string = 'rdpgfx-h264'
+  @State private certPolicy: string = 'tofu'
+  @State private graphicsMode: string = 'gdi'
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
@@ -91,15 +90,11 @@ struct Index {
       this.pointerInput = new RemotePointerInput(
         (): boolean => this.isConnected(),
         (): void => this.focusRemoteSurface(),
-        (): PointerViewport => this.getPointerViewport(),
         (force?: boolean): void => this.refreshPointerState(!!force),
-        (flags: number, x: number, y: number, allowClamp?: boolean, traceLabel?: string): boolean =>
-          this.sendPointer(flags, x, y, !!allowClamp, traceLabel ?? ''),
+        (event: RemotePointerEvent): boolean => this.sendPointerEvent(event),
         (line: string): void => this.appendLog(line),
         (label: string, detail: string, force?: boolean): void =>
-          this.logInputEvent(label, detail, !!force),
-        (label: string, flags: number, x: number, y: number, mapped: PointerMapping): void =>
-          this.logPointerDiagnostic(label, flags, x, y, mapped)
+          this.logInputEvent(label, detail, !!force)
       )
     }
     return this.pointerInput
@@ -210,11 +205,10 @@ struct Index {
 
   private normalizeCertPolicy(value: string): string {
     const normalized = value.trim().toLowerCase()
-    if (normalized === 'strict' || normalized === 'verify' || normalized === 'valid-ca' ||
-      normalized === 'deny' || normalized === 'reject') {
+    if (normalized === 'strict') {
       return 'strict'
     }
-    if (normalized === 'ignore' || normalized === 'accept' || normalized === 'insecure') {
+    if (normalized === 'ignore') {
       return 'ignore'
     }
     return 'tofu'
@@ -271,13 +265,21 @@ struct Index {
     return `${Math.round(value * 10) / 10}`
   }
 
-  private formatPointerFlags(flags: number): string {
-    return `0x${flags.toString(16).toUpperCase()}`
+  private areaLengthToNumber(value: Length): number {
+    if (typeof value === 'number') {
+      return value
+    }
+
+    const text = `${value}`
+    const unitIndex = text.search(/[a-zA-Z%]/)
+    const numericText = unitIndex >= 0 ? text.substring(0, unitIndex) : text
+    const numeric = Number(numericText)
+    return numeric > 0 ? numeric : 0
   }
 
   private updateSurfaceLayout(width: Length, height: Length): void {
-    const nextWidth = PointerMapper.areaLengthToNumber(width)
-    const nextHeight = PointerMapper.areaLengthToNumber(height)
+    const nextWidth = this.areaLengthToNumber(width)
+    const nextHeight = this.areaLengthToNumber(height)
     if (nextWidth <= 0 || nextHeight <= 0) {
       return
     }
@@ -292,24 +294,7 @@ struct Index {
     this.refreshNativeState()
   }
 
-  private getPointerViewport(): PointerViewport {
-    this.refreshPointerState()
-    return {
-      resolution: this.resolution,
-      surfacePixelWidth: this.surfacePixelWidth,
-      surfacePixelHeight: this.surfacePixelHeight,
-      surfaceLayoutWidth: this.surfaceLayoutWidth,
-      surfaceLayoutHeight: this.surfaceLayoutHeight,
-      surfaceViewportX: this.surfaceViewportX,
-      surfaceViewportY: this.surfaceViewportY,
-      surfaceViewportWidth: this.surfaceViewportWidth,
-      surfaceViewportHeight: this.surfaceViewportHeight,
-      desktopPixelWidth: this.desktopPixelWidth,
-      desktopPixelHeight: this.desktopPixelHeight
-    }
-  }
-
-  private pointerMappingFailureShouldLog(traceLabel: string): boolean {
+  private pointerInputFailureShouldLog(traceLabel: string): boolean {
     if (traceLabel.length > 0) {
       return true
     }
@@ -320,24 +305,6 @@ struct Index {
       return true
     }
     return false
-  }
-
-  private describePointerMapping(flags: number, eventX: number, eventY: number, mapped: PointerMapping): string {
-    const inputText = `event=${this.formatNumber(eventX)},${this.formatNumber(eventY)}`
-    const surfaceText = `surface=${this.formatNumber(mapped.surfaceX)},${this.formatNumber(mapped.surfaceY)}`
-    const scaleText = `scale=${this.formatNumber(mapped.scaleX)}x${this.formatNumber(mapped.scaleY)}`
-    const viewportText = `viewport=${mapped.viewportX},${mapped.viewportY} ${mapped.viewportWidth}x${mapped.viewportHeight}`
-    const desktopText = `desktop=${mapped.desktopWidth}x${mapped.desktopHeight}`
-    const remoteText = mapped.ok ? ` remote=${mapped.x},${mapped.y}` : ''
-    return `flags=${this.formatPointerFlags(flags)} ${inputText} ${surfaceText} ${scaleText} ${viewportText} ${desktopText}${remoteText}`
-  }
-
-  private logPointerDiagnostic(label: string, flags: number, x: number, y: number, mapped: PointerMapping): void {
-    const status = mapped.ok ? 'mapped' : `blocked: ${mapped.reason}`
-    const line = `Pointer ${label} ${status}: ${this.describePointerMapping(flags, x, y, mapped)}`
-    this.appendLog(line)
-    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
-    console.info(line)
   }
 
   private logInputEvent(label: string, detail: string, force: boolean = false): void {
@@ -359,30 +326,36 @@ struct Index {
     }
   }
 
-  private sendPointer(flags: number, x: number, y: number, allowClamp: boolean = false,
-    traceLabel: string = ''): boolean {
+  private sendPointerEvent(event: RemotePointerEvent): boolean {
+    const traceLabel = event.traceLabel ?? ''
     if (!this.isConnected()) {
-      if (this.pointerMappingFailureShouldLog(traceLabel)) {
+      if (this.pointerInputFailureShouldLog(traceLabel)) {
         this.appendLog(`Pointer ${traceLabel || 'input'} skipped: no active FreeRDP session`)
       }
       return false
     }
 
     try {
-      const mapped = PointerMapper.mapToDesktop(this.getPointerViewport(), x, y, allowClamp)
-      if (!mapped.ok) {
-        if (this.pointerMappingFailureShouldLog(traceLabel)) {
-          this.logPointerDiagnostic(traceLabel || 'input', flags, x, y, mapped)
-        }
-        return false
-      }
-      const result: NativeCommandResult = rdpNative.sendPointer({
-        flags: flags,
-        x: mapped.x,
-        y: mapped.y
+      this.refreshPointerState()
+      const scaleX = this.surfacePixelScaleX > 0 ? this.surfacePixelScaleX : 1
+      const scaleY = this.surfacePixelScaleY > 0 ? this.surfacePixelScaleY : 1
+      const surfaceX = Math.max(0, Math.round(event.x * scaleX))
+      const surfaceY = Math.max(0, Math.round(event.y * scaleY))
+      const result: NativeCommandResult = rdpNative.sendPointerEvent({
+        action: event.action,
+        button: event.button ?? '',
+        buttons: event.buttons ?? 0,
+        x: surfaceX,
+        y: surfaceY,
+        delta: event.delta ?? 0,
+        allowClamp: !!event.allowClamp
       })
       if (!result.ok) {
-        this.appendLog(`Pointer ${traceLabel || 'input'} failed: ${result.message}; ${this.describePointerMapping(flags, x, y, mapped)}`)
+        if (this.pointerInputFailureShouldLog(traceLabel)) {
+          this.appendLog(`Pointer ${traceLabel || event.action} failed: ${result.message}; ` +
+            `event=${this.formatNumber(event.x)},${this.formatNumber(event.y)} ` +
+            `surface=${surfaceX},${surfaceY}`)
+        }
         return false
       }
       return result.ok

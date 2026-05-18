@@ -38,6 +38,7 @@ public:
     bool IsConnected() const;
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message);
+    bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message);
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message);
     bool SendPlatformKey(const OhosKeyEvent& event, std::string& message);
     bool SendUnicode(uint32_t code, bool down, std::string& message);

@@ -41,6 +41,59 @@ RdpSessionInput::~RdpSessionInput()
 #endif
 }
 
+namespace {
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+uint32_t ToOhosPointerAction(LocalPointerAction action)
+{
+    switch (action) {
+        case LocalPointerAction::ButtonDown:
+            return FREERDP_OHOS_POINTER_ACTION_BUTTON_DOWN;
+        case LocalPointerAction::ButtonUp:
+            return FREERDP_OHOS_POINTER_ACTION_BUTTON_UP;
+        case LocalPointerAction::WheelVertical:
+            return FREERDP_OHOS_POINTER_ACTION_WHEEL_VERTICAL;
+        case LocalPointerAction::WheelHorizontal:
+            return FREERDP_OHOS_POINTER_ACTION_WHEEL_HORIZONTAL;
+        case LocalPointerAction::Move:
+        default:
+            return FREERDP_OHOS_POINTER_ACTION_MOVE;
+    }
+}
+
+uint32_t ToOhosPointerButtons(uint32_t buttons)
+{
+    uint32_t result = FREERDP_OHOS_POINTER_BUTTON_NONE;
+    if ((buttons & LocalPointerButtonLeft) != 0) {
+        result |= FREERDP_OHOS_POINTER_BUTTON_LEFT;
+    }
+    if ((buttons & LocalPointerButtonRight) != 0) {
+        result |= FREERDP_OHOS_POINTER_BUTTON_RIGHT;
+    }
+    if ((buttons & LocalPointerButtonMiddle) != 0) {
+        result |= FREERDP_OHOS_POINTER_BUTTON_MIDDLE;
+    }
+    return result;
+}
+
+FREERDP_OHOS_POINTER_VIEWPORT BuildOhosPointerViewport(
+    const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight)
+{
+    FREERDP_OHOS_POINTER_VIEWPORT viewport = {};
+    viewport.surfaceWidth = surface.width;
+    viewport.surfaceHeight = surface.height;
+    viewport.viewportX = surface.viewportX;
+    viewport.viewportY = surface.viewportY;
+    viewport.viewportWidth = surface.viewportWidth;
+    viewport.viewportHeight = surface.viewportHeight;
+    viewport.desktopWidth = desktopWidth;
+    viewport.desktopHeight = desktopHeight;
+    return viewport;
+}
+#endif
+
+} // namespace
+
 bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message,
     const std::function<void(const std::string&)>& log)
 {
@@ -55,6 +108,56 @@ bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std
     (void)flags;
     (void)x;
     (void)y;
+    (void)log;
+    message = "FreeRDP headers not found at build time";
+    return false;
+#endif
+}
+
+bool RdpSessionInput::EnqueueLocalPointer(const LocalPointerEvent& pointer,
+    const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight,
+    std::string& message, const std::function<void(const std::string&)>& log)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    auto& api = SharedFreerdpRuntimeApi();
+    std::string runtimeError;
+    if (!EnsureFreerdpRuntimeLoaded(api, runtimeError) || api.ohosPointerBuildEvent == nullptr) {
+        message = runtimeError.empty() ? "FreeRDP OHOS pointer backend unavailable" : runtimeError;
+        LogInputFailure(message, log);
+        return false;
+    }
+
+    FREERDP_OHOS_POINTER_VIEWPORT viewport =
+        BuildOhosPointerViewport(surface, desktopWidth, desktopHeight);
+    FREERDP_OHOS_POINTER_EVENT nativeEvent = {};
+    nativeEvent.action = ToOhosPointerAction(pointer.action);
+    nativeEvent.buttons = ToOhosPointerButtons(pointer.buttons);
+    nativeEvent.x = pointer.x;
+    nativeEvent.y = pointer.y;
+    nativeEvent.delta = pointer.delta;
+    nativeEvent.allowClamp = pointer.allowClamp ? TRUE : FALSE;
+
+    FREERDP_OHOS_POINTER_PACKET packet = {};
+    std::array<char, 256> detail {};
+    if (!api.ohosPointerBuildEvent(&viewport, &nativeEvent, &packet, detail.data(), detail.size()) ||
+        !packet.ok) {
+        message = detail[0] == '\0' ? "OHOS pointer event mapping failed" : detail.data();
+        LogInputFailure(message, log);
+        return false;
+    }
+
+    QueuedInputEvent event;
+    event.type = QueuedInputType::Pointer;
+    event.flags = packet.flags;
+    event.x = packet.x;
+    event.y = packet.y;
+    return EnqueueInput(event, detail[0] == '\0' ? "pointer event queued" : detail.data(),
+        message, log);
+#else
+    (void)pointer;
+    (void)surface;
+    (void)desktopWidth;
+    (void)desktopHeight;
     (void)log;
     message = "FreeRDP headers not found at build time";
     return false;

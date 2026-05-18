@@ -11,6 +11,7 @@
 #include "napi_event_sink.h"
 #include "napi_utils.h"
 #include "probe_utils.h"
+#include "string_utils.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -74,6 +75,56 @@ std::u16string GetUtf16StringProperty(napi_env env, napi_value object, const cha
     return std::u16string(buffer.data(), copied);
 }
 
+LocalPointerAction ParsePointerAction(const std::string& value)
+{
+    const std::string action = ToLowerAscii(value);
+    if (action == "buttondown" || action == "down") {
+        return LocalPointerAction::ButtonDown;
+    }
+    if (action == "buttonup" || action == "up") {
+        return LocalPointerAction::ButtonUp;
+    }
+    if (action == "wheelvertical" || action == "wheel") {
+        return LocalPointerAction::WheelVertical;
+    }
+    if (action == "wheelhorizontal" || action == "hwheel") {
+        return LocalPointerAction::WheelHorizontal;
+    }
+    return LocalPointerAction::Move;
+}
+
+uint32_t ParsePointerButtonMask(const std::string& value)
+{
+    const std::string button = ToLowerAscii(value);
+    if (button == "left") {
+        return LocalPointerButtonLeft;
+    }
+    if (button == "right") {
+        return LocalPointerButtonRight;
+    }
+    if (button == "middle") {
+        return LocalPointerButtonMiddle;
+    }
+    return LocalPointerButtonNone;
+}
+
+std::string PointerActionName(LocalPointerAction action)
+{
+    switch (action) {
+        case LocalPointerAction::ButtonDown:
+            return "buttonDown";
+        case LocalPointerAction::ButtonUp:
+            return "buttonUp";
+        case LocalPointerAction::WheelVertical:
+            return "wheelVertical";
+        case LocalPointerAction::WheelHorizontal:
+            return "wheelHorizontal";
+        case LocalPointerAction::Move:
+        default:
+            return "move";
+    }
+}
+
 napi_value Probe(napi_env env, napi_callback_info info)
 {
     FreerdpProbeResult freerdp = LoadFreerdpProbe();
@@ -129,7 +180,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
 
     std::vector<std::string> logs = {
         "N-API bridge loaded",
-        "Native calls are available: probe, connect, disconnect, sendPointer, sendKey, sendUnicode, sendText",
+        "Native calls are available: probe, connect, disconnect, sendPointerEvent, sendKey, sendUnicode, sendText",
         "FreeRDP input dispatch: worker-thread queue",
         "FreeRDP channel dispatch: libfreerdp-client static addin provider",
         "FreeRDP build features: " + featureSummary,
@@ -256,6 +307,52 @@ napi_value SendPointer(napi_env env, napi_callback_info info)
     std::string message;
     const bool ok = BridgeSession().SendPointer(static_cast<uint16_t>(flags & 0xFFFFU),
         static_cast<uint16_t>(std::min(x, 0xFFFFU)), static_cast<uint16_t>(std::min(y, 0xFFFFU)), message);
+    BridgeEvents().log.Emit(message);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
+    SetString(env, result, "message", message);
+    logs.push_back(message);
+    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    return result;
+}
+
+napi_value SendPointerEvent(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    std::vector<std::string> logs = {"native semantic pointer input invoked"};
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Disconnected");
+        SetString(env, result, "message", "pointer event input requires an object argument");
+        logs.push_back("parameter validation failed");
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
+
+    LocalPointerEvent event;
+    event.action = ParsePointerAction(GetStringProperty(env, arg, "action"));
+    event.buttons = GetUint32Property(env, arg, "buttons") |
+        ParsePointerButtonMask(GetStringProperty(env, arg, "button"));
+    event.x = GetUint32Property(env, arg, "x");
+    event.y = GetUint32Property(env, arg, "y");
+    event.delta = static_cast<int32_t>(GetInt32Property(env, arg, "delta"));
+    event.allowClamp = GetBoolProperty(env, arg, "allowClamp");
+
+    logs.push_back("action=" + PointerActionName(event.action) +
+        " buttons=" + std::to_string(event.buttons) +
+        " x=" + std::to_string(event.x) +
+        " y=" + std::to_string(event.y) +
+        " delta=" + std::to_string(event.delta));
+
+    std::string message;
+    const bool ok = BridgeSession().SendLocalPointer(event, message);
     BridgeEvents().log.Emit(message);
 
     SetBool(env, result, "ok", ok);
@@ -541,6 +638,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"sendPointerEvent", nullptr, SendPointerEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPlatformKey", nullptr, SendPlatformKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendUnicode", nullptr, SendUnicode, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -10,6 +10,8 @@
 #include "input/ohos_keyboard_adapter.h"
 #include "client/OHOS/ohos_ime.h"
 #include "client/OHOS/ohos_keyboard.h"
+#include "client/OHOS/ohos_pointer.h"
+#include "surface/surface_bridge.h"
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include "freerdp_runtime.h"
@@ -23,6 +25,9 @@ public:
     ~RdpSessionInput();
 
     bool EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message,
+        const std::function<void(const std::string&)>& log);
+    bool EnqueueLocalPointer(const LocalPointerEvent& pointer, const SurfaceSnapshot& surface,
+        uint32_t desktopWidth, uint32_t desktopHeight, std::string& message,
         const std::function<void(const std::string&)>& log);
     bool EnqueueKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message,
         const std::function<void(const std::string&)>& log);
