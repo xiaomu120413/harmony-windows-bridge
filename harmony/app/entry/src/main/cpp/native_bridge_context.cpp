@@ -19,6 +19,7 @@ namespace rdp_bridge {
 namespace {
 
 std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
+std::atomic_bool g_remoteFrameReady{false};
 SessionEventHub g_events;
 SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
@@ -132,7 +133,15 @@ ResizeCoordinator g_resizeCoordinator;
 
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
-    return g_surface.RenderRgbaFrame(frame);
+    SurfacePaintResult result = g_surface.RenderRgbaFrame(frame);
+    if (result.ok && (frame.label == "freerdp gdi" || frame.label == "freerdp gdi queued") &&
+        !g_remoteFrameReady.exchange(true)) {
+        const std::string message = "remote frame painted: " + std::to_string(frame.width) + "x" +
+            std::to_string(frame.height);
+        g_events.frame.Emit(message);
+        EmitNativeLog(message);
+    }
+    return result;
 }
 
 bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender)
@@ -360,6 +369,9 @@ void ConfigureRdpSessionCallbacks()
 {
     g_session.SetCallbacks({
         [](const std::string& state) {
+            if (state == "Resolving" || state == "Disconnected" || state == "Failed" || state == "Idle") {
+                g_remoteFrameReady.store(false);
+            }
             g_events.state.Emit(state);
         },
         [](const std::string& line) {

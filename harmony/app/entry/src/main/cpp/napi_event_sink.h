@@ -27,6 +27,7 @@ struct SessionEventHub {
     EventSink state;
     EventSink log;
     EventSink error;
+    EventSink frame;
 };
 
 } // namespace rdp_bridge
