@@ -164,21 +164,36 @@ struct Index {
       return
     }
 
+    const policy = this.normalizeCertPolicy(this.certPolicy)
+    const host = this.host
+    const port = this.port
+    const username = this.username
+    const password = this.password
+    const resolution = this.resolution
+    const graphicsMode = this.graphicsMode
+    const appFilesDir = this.getAppFilesDir()
+    this.certPolicy = policy
+    this.connectionState = 'Resolving'
+    this.setSessionVisible(true)
+    this.appendLog(`Opening session surface for ${host}:${port}`)
+    setTimeout((): void => {
+      this.startNativeConnect(host, port, username, password, resolution, policy, graphicsMode, appFilesDir)
+    }, 0)
+  }
+
+  private startNativeConnect(host: string, port: string, username: string, password: string,
+    resolution: string, policy: string, graphicsMode: string, appFilesDir: string): void {
     try {
-      const policy = this.normalizeCertPolicy(this.certPolicy)
-      this.certPolicy = policy
-      this.connectionState = 'Resolving'
-      this.setSessionVisible(true)
-      this.appendLog(`Calling native connect for ${this.host}:${this.port}`)
+      this.appendLog(`Calling native connect for ${host}:${port}`)
       const result: NativeCommandResult = rdpNative.connect({
-        host: this.host,
-        port: this.port,
-        username: this.username,
-        password: this.password,
-        resolution: this.resolution,
+        host: host,
+        port: port,
+        username: username,
+        password: password,
+        resolution: resolution,
         certPolicy: policy,
-        graphicsMode: this.graphicsMode,
-        appFilesDir: this.getAppFilesDir()
+        graphicsMode: graphicsMode,
+        appFilesDir: appFilesDir
       })
       this.connectionState = this.toConnectionState(result.state)
       this.appendLog(result.message)
