@@ -105,17 +105,6 @@ struct DecoderSurfaceTarget {
     uint32_t height = 0;
 };
 
-struct Avc444SurfaceTargets {
-    OHNativeWindow* lumaWindow = nullptr;
-    OHNativeWindow* chromaWindow = nullptr;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t lumaTexture = 0;
-    uint32_t chromaTexture = 0;
-    uint64_t lumaSurfaceId = 0;
-    uint64_t chromaSurfaceId = 0;
-};
-
 struct RdpSessionRunResult {
     bool available = false;
     bool connected = false;

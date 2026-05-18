@@ -6,6 +6,7 @@
 #include "string_utils.h"
 #include "surface/latest_frame_renderer.h"
 
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -22,10 +23,19 @@ namespace {
 
 std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
 std::atomic_uint32_t g_nativeMouseButtons{0};
+std::mutex g_nativeTouchpadMutex;
+bool g_nativeTouchpadScrollActive = false;
+float g_nativeTouchpadLastX = 0.0f;
+float g_nativeTouchpadLastY = 0.0f;
 SessionEventHub g_events;
 SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
 RdpSession g_session;
+
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+std::mutex g_avcSurfacePoolMutex;
+freerdpOhosAvcSurfacePool* g_avcSurfacePool = nullptr;
+#endif
 
 void EmitNativeLog(const std::string& line)
 {
@@ -170,12 +180,6 @@ DecoderSurfaceTarget SnapshotDecoderSurfaceTarget()
     return g_surface.DecoderSurface();
 }
 
-bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets,
-    std::string& error)
-{
-    return g_surface.EnsureAvc444SurfaceTargets(width, height, targets, error);
-}
-
 void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t height,
     uint32_t op, uint32_t codecId, void*)
 {
@@ -190,6 +194,51 @@ void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t he
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+freerdpOhosAvcSurfacePool* EnsureAvcSurfacePool(FreerdpRuntimeApi& api, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(g_avcSurfacePoolMutex);
+    if (g_avcSurfacePool != nullptr) {
+        return g_avcSurfacePool;
+    }
+    if (api.ohosAvcSurfacePoolNew == nullptr) {
+        error = "FreeRDP OHOS AVC surface pool symbol unavailable";
+        return nullptr;
+    }
+    g_avcSurfacePool = api.ohosAvcSurfacePoolNew();
+    if (g_avcSurfacePool == nullptr) {
+        error = "FreeRDP OHOS AVC surface pool allocation failed";
+        return nullptr;
+    }
+    return g_avcSurfacePool;
+}
+
+void DestroyAvcSurfacePool(FreerdpRuntimeApi& api, const std::string& reason)
+{
+    std::lock_guard<std::mutex> lock(g_avcSurfacePoolMutex);
+    if (g_avcSurfacePool == nullptr) {
+        return;
+    }
+    if (api.ohosAvcSurfacePoolDestroy != nullptr) {
+        api.ohosAvcSurfacePoolDestroy(g_avcSurfacePool);
+        EmitNativeLog("OHOS AVC NativeImage decode surfaces destroyed after " + reason);
+    }
+}
+
+void ResetAvc444DecodeSurfaces(const std::string& reason)
+{
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
+        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+    }
+    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
+        api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
+    }
+    DestroyAvcSurfacePool(api, reason);
+}
+
 bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32_t height,
     const FreerdpLogFn& log)
 {
@@ -197,10 +246,22 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
         log("OHOS AVC444 NativeImage surface registration skipped: FreeRDP symbol unavailable");
         return false;
     }
+    if (api.ohosAvcSurfacePoolEnsureAvc444 == nullptr) {
+        log("OHOS AVC444 NativeImage surface registration skipped: OHOS client surface pool symbol unavailable");
+        return false;
+    }
 
-    Avc444SurfaceTargets targets;
     std::string error;
-    if (!EnsureAvc444SurfaceTargets(width, height, targets, error)) {
+    freerdpOhosAvcSurfacePool* pool = EnsureAvcSurfacePool(api, error);
+    if (pool == nullptr) {
+        log("OHOS AVC444 NativeImage surface registration failed: " + error);
+        return false;
+    }
+
+    FREERDP_OHOS_AVC444_SURFACE_TARGETS targets {};
+    std::array<char, 256> message {};
+    if (!api.ohosAvcSurfacePoolEnsureAvc444(pool, width, height, &targets, message.data(),
+            message.size())) {
         api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
         if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
             api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
@@ -208,7 +269,8 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
         if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
             api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
         }
-        log("OHOS AVC444 NativeImage surface registration failed: " + error);
+        log("OHOS AVC444 NativeImage surface registration failed: " +
+            std::string(message[0] == '\0' ? "unknown error" : message.data()));
         return false;
     }
 
@@ -226,7 +288,7 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
         " chromaTex=" + std::to_string(targets.chromaTexture) +
         " lumaSurface=" + std::to_string(targets.lumaSurfaceId) +
         " chromaSurface=" + std::to_string(targets.chromaSurfaceId) +
-        " route=disabled-until-compositor");
+        " route=disabled-until-compositor owner=FreeRDP-client-OHOS");
     return true;
 }
 #endif
@@ -318,6 +380,9 @@ void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceChanged(component, window);
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    ResetAvc444DecodeSurfaces("surface changed");
+#endif
     UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
     g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface changed");
@@ -329,12 +394,10 @@ void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceDestroyed(component, window);
     g_resizeCoordinator.Reset("surface destroyed");
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    ResetAvc444DecodeSurfaces("surface destroyed");
+#endif
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");
-}
-
-void OnXComponentTouchEvent(OH_NativeXComponent*, void*)
-{
-    g_surface.OnTouchEvent();
 }
 
 uint32_t RoundSurfaceCoordinate(float value)
@@ -347,6 +410,170 @@ uint32_t RoundSurfaceCoordinate(float value)
         return std::numeric_limits<uint32_t>::max();
     }
     return static_cast<uint32_t>(std::lround(value));
+}
+
+const char* NativeTouchTypeName(OH_NativeXComponent_TouchEventType type)
+{
+    switch (type) {
+        case OH_NATIVEXCOMPONENT_DOWN:
+            return "down";
+        case OH_NATIVEXCOMPONENT_UP:
+            return "up";
+        case OH_NATIVEXCOMPONENT_MOVE:
+            return "move";
+        case OH_NATIVEXCOMPONENT_CANCEL:
+            return "cancel";
+        default:
+            return "unknown";
+    }
+}
+
+const char* NativeTouchSourceName(OH_NativeXComponent_EventSourceType source)
+{
+    switch (source) {
+        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_MOUSE:
+            return "mouse";
+        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHSCREEN:
+            return "touchscreen";
+        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHPAD:
+            return "touchpad";
+        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_JOYSTICK:
+            return "joystick";
+        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_KEYBOARD:
+            return "keyboard";
+        default:
+            return "unknown";
+    }
+}
+
+OH_NativeXComponent_EventSourceType ResolveNativeTouchSource(
+    OH_NativeXComponent* component, const OH_NativeXComponent_TouchEvent& touchEvent)
+{
+    OH_NativeXComponent_EventSourceType source = OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
+    if (component == nullptr) {
+        return source;
+    }
+
+    if (OH_NativeXComponent_GetTouchEventSourceType(component, touchEvent.id, &source) ==
+            OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
+        source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN) {
+        return source;
+    }
+
+    for (uint32_t i = 0; i < touchEvent.numPoints; ++i) {
+        if (OH_NativeXComponent_GetTouchEventSourceType(
+                component, touchEvent.touchPoints[i].id, &source) ==
+                OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
+            source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN) {
+            return source;
+        }
+    }
+    return OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
+}
+
+void ResetNativeTouchpadScroll()
+{
+    std::lock_guard<std::mutex> lock(g_nativeTouchpadMutex);
+    g_nativeTouchpadScrollActive = false;
+}
+
+bool NativeTouchpadCenter(const OH_NativeXComponent_TouchEvent& touchEvent, float& x, float& y)
+{
+    if (touchEvent.numPoints < 2) {
+        return false;
+    }
+
+    x = (touchEvent.touchPoints[0].x + touchEvent.touchPoints[1].x) / 2.0f;
+    y = (touchEvent.touchPoints[0].y + touchEvent.touchPoints[1].y) / 2.0f;
+    return true;
+}
+
+void DispatchNativeTouchpadWheel(const OH_NativeXComponent_TouchEvent& touchEvent,
+    OH_NativeXComponent_EventSourceType source)
+{
+    constexpr float kWheelThreshold = 24.0f;
+
+    float centerX = 0.0f;
+    float centerY = 0.0f;
+    if (source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHPAD ||
+        touchEvent.type == OH_NATIVEXCOMPONENT_UP ||
+        touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL ||
+        !NativeTouchpadCenter(touchEvent, centerX, centerY)) {
+        ResetNativeTouchpadScroll();
+        return;
+    }
+
+    float deltaX = 0.0f;
+    float deltaY = 0.0f;
+    {
+        std::lock_guard<std::mutex> lock(g_nativeTouchpadMutex);
+        if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN || !g_nativeTouchpadScrollActive) {
+            g_nativeTouchpadScrollActive = true;
+            g_nativeTouchpadLastX = centerX;
+            g_nativeTouchpadLastY = centerY;
+            EmitNativeLog("XComponent native touchpad scroll start: points=" +
+                std::to_string(touchEvent.numPoints) +
+                " center=" + std::to_string(RoundSurfaceCoordinate(centerX)) + "," +
+                std::to_string(RoundSurfaceCoordinate(centerY)));
+            return;
+        }
+
+        if (touchEvent.type != OH_NATIVEXCOMPONENT_MOVE) {
+            return;
+        }
+
+        deltaX = centerX - g_nativeTouchpadLastX;
+        deltaY = centerY - g_nativeTouchpadLastY;
+        if (std::fabs(deltaY) < kWheelThreshold && std::fabs(deltaX) < kWheelThreshold) {
+            return;
+        }
+
+        g_nativeTouchpadLastX = centerX;
+        g_nativeTouchpadLastY = centerY;
+    }
+
+    LocalPointerEvent event;
+    event.action = std::fabs(deltaY) >= std::fabs(deltaX) ?
+        LocalPointerAction::WheelVertical : LocalPointerAction::WheelHorizontal;
+    event.x = RoundSurfaceCoordinate(centerX);
+    event.y = RoundSurfaceCoordinate(centerY);
+    event.delta = static_cast<int32_t>(
+        std::lround(event.action == LocalPointerAction::WheelVertical ? deltaY : deltaX));
+    event.allowClamp = true;
+
+    std::string message;
+    const bool ok = g_session.SendLocalPointer(event, message);
+    static std::atomic_uint32_t touchpadLogCount{0};
+    const uint32_t logIndex = touchpadLogCount.fetch_add(1);
+    if (!ok || logIndex < 40 || (logIndex % 120) == 0) {
+        EmitNativeLog("XComponent native touchpad wheel: source=" +
+            std::string(NativeTouchSourceName(source)) +
+            " type=" + NativeTouchTypeName(touchEvent.type) +
+            " points=" + std::to_string(touchEvent.numPoints) +
+            " delta=" + std::to_string(event.delta) +
+            " x=" + std::to_string(event.x) +
+            " y=" + std::to_string(event.y) +
+            " result=" + (ok ? "ok " : "failed ") + message);
+    }
+}
+
+void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window)
+{
+    if (component == nullptr) {
+        return;
+    }
+
+    OH_NativeXComponent_TouchEvent touchEvent{};
+    const int32_t rc = OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent);
+    if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
+        EmitNativeLog("XComponent native touch skipped: get touch event failed rc=" +
+            std::to_string(rc));
+        return;
+    }
+
+    const OH_NativeXComponent_EventSourceType source =
+        ResolveNativeTouchSource(component, touchEvent);
+    DispatchNativeTouchpadWheel(touchEvent, source);
 }
 
 uint32_t NativeMouseButtonMask(OH_NativeXComponent_MouseEventButton button)

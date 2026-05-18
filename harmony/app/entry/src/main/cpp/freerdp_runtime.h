@@ -18,6 +18,7 @@
 #endif
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+#include <client/OHOS/ohos_avc_surface.h>
 #include <client/OHOS/ohos_certificate.h>
 #include <client/OHOS/ohos_clipboard.h>
 #include <client/OHOS/ohos_display.h>
@@ -148,6 +149,12 @@ public:
     using OhosAvcodecSetAvc444FrameCallbackFn = BOOL (*)(OhosAvc444FrameCallbackFn, void*);
     using OhosAvcodecSetFallbackCallbackFn = BOOL (*)(OhosAvcodecFallbackCallbackFn, void*);
     using OhosAvcodecGetDiagnosticsFn = const char* (*)();
+    using OhosAvcSurfacePoolNewFn = freerdpOhosAvcSurfacePool* (*)();
+    using OhosAvcSurfacePoolFreeFn = void (*)(freerdpOhosAvcSurfacePool*);
+    using OhosAvcSurfacePoolDestroyFn = void (*)(freerdpOhosAvcSurfacePool*);
+    using OhosAvcSurfacePoolEnsureAvc444Fn = BOOL (*)(
+        freerdpOhosAvcSurfacePool*, UINT32, UINT32, FREERDP_OHOS_AVC444_SURFACE_TARGETS*,
+        char*, size_t);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -237,6 +244,10 @@ public:
     OhosAvcodecSetAvc444FrameCallbackFn ohosAvcodecSetAvc444FrameCallback = nullptr;
     OhosAvcodecSetFallbackCallbackFn ohosAvcodecSetFallbackCallback = nullptr;
     OhosAvcodecGetDiagnosticsFn ohosAvcodecGetDiagnostics = nullptr;
+    OhosAvcSurfacePoolNewFn ohosAvcSurfacePoolNew = nullptr;
+    OhosAvcSurfacePoolFreeFn ohosAvcSurfacePoolFree = nullptr;
+    OhosAvcSurfacePoolDestroyFn ohosAvcSurfacePoolDestroy = nullptr;
+    OhosAvcSurfacePoolEnsureAvc444Fn ohosAvcSurfacePoolEnsureAvc444 = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:

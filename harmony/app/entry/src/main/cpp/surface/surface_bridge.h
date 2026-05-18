@@ -23,7 +23,6 @@ struct SurfaceSnapshot {
     uint32_t createdCount = 0;
     uint32_t changedCount = 0;
     uint32_t destroyedCount = 0;
-    uint32_t touchCount = 0;
     uint32_t paintCount = 0;
     std::string lastPaintMessage;
 };
@@ -41,12 +40,9 @@ public:
     void OnSurfaceChanged(OH_NativeXComponent* component, void* window);
     bool OnSurfaceLayout(uint32_t width, uint32_t height, std::string& message);
     void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window);
-    void OnTouchEvent();
     SurfacePaintResult RenderRgbaFrame(const RgbaFrame& frame);
     SurfaceSnapshot Snapshot();
     DecoderSurfaceTarget DecoderSurface();
-    bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets,
-        std::string& error);
 
 private:
     struct Impl;

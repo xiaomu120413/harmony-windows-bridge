@@ -27,21 +27,15 @@ struct Index {
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
   @State private surfacePixelWidth: number = 0
-  @State private surfacePixelHeight: number = 0
   @State private surfaceLayoutWidth: number = 0
   @State private surfaceLayoutHeight: number = 0
-  @State private surfaceViewportX: number = 0
-  @State private surfaceViewportY: number = 0
-  @State private surfaceViewportWidth: number = 0
-  @State private surfaceViewportHeight: number = 0
   @State private desktopPixelWidth: number = 0
-  @State private desktopPixelHeight: number = 0
   private callbacksRegistered: boolean = false
   private lastPointerFailureLogAtMs: number = 0
   private lastPointerStateRefreshAtMs: number = 0
   private lastInputEventLogAtMs: number = 0
-  private surfacePixelScaleX: number = 0
-  private surfacePixelScaleY: number = 0
+  @State private surfacePixelScaleX: number = 0
+  @State private surfacePixelScaleY: number = 0
   private surfaceController: XComponentController = new XComponentController()
   private pointerInput: RemotePointerInput | null = null
   private permissionManager: RdpPermissionManager | null = null
@@ -172,19 +166,17 @@ struct Index {
     try {
       const result: NativeProbeResult = rdpNative.probe()
       this.surfacePixelWidth = result.surfaceWidth
-      this.surfacePixelHeight = result.surfaceHeight
       if (this.surfaceLayoutWidth > 0 && result.surfaceWidth > 0) {
         this.surfacePixelScaleX = result.surfaceWidth / this.surfaceLayoutWidth
+      } else {
+        this.surfacePixelScaleX = 0
       }
       if (this.surfaceLayoutHeight > 0 && result.surfaceHeight > 0) {
         this.surfacePixelScaleY = result.surfaceHeight / this.surfaceLayoutHeight
+      } else {
+        this.surfacePixelScaleY = 0
       }
-      this.surfaceViewportX = result.surfaceViewportX
-      this.surfaceViewportY = result.surfaceViewportY
-      this.surfaceViewportWidth = result.surfaceViewportWidth
-      this.surfaceViewportHeight = result.surfaceViewportHeight
       this.desktopPixelWidth = result.desktopWidth
-      this.desktopPixelHeight = result.desktopHeight
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }

@@ -168,7 +168,6 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetUint32(env, result, "surfaceCreatedCount", surface.createdCount);
     SetUint32(env, result, "surfaceChangedCount", surface.changedCount);
     SetUint32(env, result, "surfaceDestroyedCount", surface.destroyedCount);
-    SetUint32(env, result, "surfaceTouchCount", surface.touchCount);
     SetUint32(env, result, "surfacePaintCount", surface.paintCount);
     SetString(env, result, "surfaceLastPaintMessage", surface.lastPaintMessage);
     SetBool(env, result, "sessionConnected", BridgeSession().IsConnected());

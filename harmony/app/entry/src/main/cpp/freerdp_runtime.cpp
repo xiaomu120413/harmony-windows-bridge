@@ -204,6 +204,14 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosAvcodecSetFallbackCallback);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_get_diagnostics",
             ohosAvcodecGetDiagnostics);
+        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_new",
+            ohosAvcSurfacePoolNew);
+        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_free",
+            ohosAvcSurfacePoolFree);
+        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_destroy",
+            ohosAvcSurfacePoolDestroy);
+        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_ensure_avc444",
+            ohosAvcSurfacePoolEnsureAvc444);
     }
     return loaded_;
 }

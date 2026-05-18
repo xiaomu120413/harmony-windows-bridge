@@ -22,7 +22,6 @@ export interface NativeProbeResult {
   surfaceCreatedCount: number;
   surfaceChangedCount: number;
   surfaceDestroyedCount: number;
-  surfaceTouchCount: number;
   surfacePaintCount: number;
   surfaceLastPaintMessage: string;
   sessionConnected: boolean;

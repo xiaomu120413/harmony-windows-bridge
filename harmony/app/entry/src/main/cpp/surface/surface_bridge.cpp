@@ -1,7 +1,6 @@
 #include "surface/surface_bridge.h"
 
 #include "bridge_log.h"
-#include "surface/avc444_surface_pool.h"
 #include "surface/gpu_rgba_renderer.h"
 #include "surface/native_window_rgba_painter.h"
 
@@ -152,12 +151,6 @@ public:
         Log("XComponent surface destroyed: " + snapshot.id);
     }
 
-    void OnTouchEvent()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        ++touchCount_;
-    }
-
     SurfacePaintResult RenderRgbaFrame(const RgbaFrame& frame)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -177,17 +170,6 @@ public:
             return {};
         }
         return {static_cast<OHNativeWindow*>(window_), width_, height_};
-    }
-
-    bool EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height, Avc444SurfaceTargets& targets,
-        std::string& error)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!ready_ || window_ == nullptr) {
-            error = "XComponent surface is not ready";
-            return false;
-        }
-        return avc444Surfaces_.Ensure(width, height, targets, error);
     }
 
 private:
@@ -276,7 +258,6 @@ private:
     void ClearNativeWindowConfigLocked()
     {
         gpuRenderer_.Destroy();
-        avc444Surfaces_.Destroy();
         nativePainter_.Destroy();
         gpuFallbackLogged_ = false;
     }
@@ -342,7 +323,6 @@ private:
             createdCount_,
             changedCount_,
             destroyedCount_,
-            touchCount_,
             paintCount_,
             lastPaintMessage_,
         };
@@ -378,11 +358,9 @@ private:
     uint32_t createdCount_ = 0;
     uint32_t changedCount_ = 0;
     uint32_t destroyedCount_ = 0;
-    uint32_t touchCount_ = 0;
     uint32_t paintCount_ = 0;
     GpuRgbaRenderer gpuRenderer_;
     NativeWindowRgbaPainter nativePainter_;
-    GpuAvc444SurfacePool avc444Surfaces_;
     bool gpuFallbackLogged_ = false;
     std::string lastPaintMessage_;
 };
@@ -420,11 +398,6 @@ void SurfaceBridge::OnSurfaceDestroyed(OH_NativeXComponent* component, void* win
     impl_->OnSurfaceDestroyed(component, window);
 }
 
-void SurfaceBridge::OnTouchEvent()
-{
-    impl_->OnTouchEvent();
-}
-
 SurfacePaintResult SurfaceBridge::RenderRgbaFrame(const RgbaFrame& frame)
 {
     return impl_->RenderRgbaFrame(frame);
@@ -438,12 +411,6 @@ SurfaceSnapshot SurfaceBridge::Snapshot()
 DecoderSurfaceTarget SurfaceBridge::DecoderSurface()
 {
     return impl_->DecoderSurface();
-}
-
-bool SurfaceBridge::EnsureAvc444SurfaceTargets(uint32_t width, uint32_t height,
-    Avc444SurfaceTargets& targets, std::string& error)
-{
-    return impl_->EnsureAvc444SurfaceTargets(width, height, targets, error);
 }
 
 } // namespace rdp_bridge
