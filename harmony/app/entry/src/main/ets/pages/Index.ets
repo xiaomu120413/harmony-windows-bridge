@@ -556,6 +556,9 @@ struct Index {
           .focusable(true)
           .focusOnTouch(true)
           .defaultFocus(true)
+          .onAxisEvent((event: AxisEvent) => {
+            this.getPointerInput().handleAxis(event)
+          })
 
         if (!this.isConnected()) {
           Text('Remote desktop surface')
