@@ -288,7 +288,7 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
         api.ohosAvcodecSetAvc444FrameCallback(OnAvc444SurfaceFrameDecoded, nullptr);
     }
     if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
-        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(TRUE);
+        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
     }
     log("OHOS AVC444 NativeImage decode surfaces registered: " +
         std::to_string(targets.width) + "x" + std::to_string(targets.height) +
@@ -296,7 +296,7 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
         " chromaTex=" + std::to_string(targets.chromaTexture) +
         " lumaSurface=" + std::to_string(targets.lumaSurfaceId) +
         " chromaSurface=" + std::to_string(targets.chromaSurfaceId) +
-        " route=enabled-gpu-compositor owner=FreeRDP-client-OHOS");
+        " route=disabled-until-avc444-negotiated owner=FreeRDP-client-OHOS");
     return true;
 }
 #endif
