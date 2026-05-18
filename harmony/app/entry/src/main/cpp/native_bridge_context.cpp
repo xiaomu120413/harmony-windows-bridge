@@ -175,6 +175,11 @@ void StopRenderPipeline()
     g_frameRenderer.Stop();
 }
 
+void ReleaseSurfaceRenderTarget(const std::string& reason)
+{
+    g_surface.ReleaseRenderTarget(reason);
+}
+
 DecoderSurfaceTarget SnapshotDecoderSurfaceTarget()
 {
     return g_surface.DecoderSurface();
@@ -343,6 +348,7 @@ void ConfigureRdpgfxPipelineCallbacks()
 #endif
         StartRenderPipeline,
         StopRenderPipeline,
+        ReleaseSurfaceRenderTarget,
         EmitNativeLog,
     });
 }

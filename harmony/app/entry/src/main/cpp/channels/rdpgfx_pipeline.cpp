@@ -106,16 +106,23 @@ bool BindAvcSurfaceOutput(
     }
     UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
 
+    if (callbacks.stopRenderPipeline != nullptr) {
+        callbacks.stopRenderPipeline();
+    }
+    if (callbacks.releaseRenderTarget != nullptr) {
+        callbacks.releaseRenderTarget("before AVCodec surface bind after " + reason);
+    }
+
     if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
         LogThroughCallbacks("AVC surface output activation failed after " + reason +
             ": OHOS AVCodec surface setup failed");
+        if (callbacks.startRenderPipeline != nullptr) {
+            callbacks.startRenderPipeline();
+        }
         return false;
     }
 
     if (!g_avc420SurfaceOutputActive.exchange(true)) {
-        if (callbacks.stopRenderPipeline != nullptr) {
-            callbacks.stopRenderPipeline();
-        }
         std::string commandText;
         if (command != nullptr) {
             commandText = " surface=" + std::to_string(command->surfaceId) +
@@ -235,6 +242,12 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
     }
 
     UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
+    if (callbacks.stopRenderPipeline != nullptr) {
+        callbacks.stopRenderPipeline();
+    }
+    if (callbacks.releaseRenderTarget != nullptr) {
+        callbacks.releaseRenderTarget("before AVCodec surface update after " + reason);
+    }
     api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
     LogThroughCallbacks("AVC surface output updated after " + reason + ": " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +

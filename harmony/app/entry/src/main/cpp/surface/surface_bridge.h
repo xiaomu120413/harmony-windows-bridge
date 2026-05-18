@@ -41,6 +41,7 @@ public:
     bool OnSurfaceLayout(uint32_t width, uint32_t height, std::string& message);
     void OnSurfaceDestroyed(OH_NativeXComponent* component, void* window);
     SurfacePaintResult RenderRgbaFrame(const RgbaFrame& frame);
+    void ReleaseRenderTarget(const std::string& reason);
     SurfaceSnapshot Snapshot();
     DecoderSurfaceTarget DecoderSurface();
 

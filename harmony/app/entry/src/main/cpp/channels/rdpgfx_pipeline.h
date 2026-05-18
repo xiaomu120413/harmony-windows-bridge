@@ -24,6 +24,7 @@ struct RdpgfxPipelineCallbacks {
 #endif
     std::function<void()> startRenderPipeline;
     std::function<void()> stopRenderPipeline;
+    std::function<void(const std::string&)> releaseRenderTarget;
     std::function<void(const std::string&)> log;
 };
 

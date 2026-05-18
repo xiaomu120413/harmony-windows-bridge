@@ -157,6 +157,13 @@ public:
         return RenderRgbaFrameLocked(frame);
     }
 
+    void ReleaseRenderTarget(const std::string& reason)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ClearNativeWindowConfigLocked();
+        Log("XComponent render target released: " + reason);
+    }
+
     SurfaceSnapshot Snapshot()
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -401,6 +408,11 @@ void SurfaceBridge::OnSurfaceDestroyed(OH_NativeXComponent* component, void* win
 SurfacePaintResult SurfaceBridge::RenderRgbaFrame(const RgbaFrame& frame)
 {
     return impl_->RenderRgbaFrame(frame);
+}
+
+void SurfaceBridge::ReleaseRenderTarget(const std::string& reason)
+{
+    impl_->ReleaseRenderTarget(reason);
 }
 
 SurfaceSnapshot SurfaceBridge::Snapshot()
