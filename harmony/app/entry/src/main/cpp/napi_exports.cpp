@@ -170,6 +170,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SetUint32(env, result, "surfaceDestroyedCount", surface.destroyedCount);
     SetUint32(env, result, "surfacePaintCount", surface.paintCount);
     SetString(env, result, "surfaceLastPaintMessage", surface.lastPaintMessage);
+    SetBool(env, result, "remoteFrameReady", BridgeRemoteFrameReady());
     SetBool(env, result, "sessionConnected", BridgeSession().IsConnected());
     SetUint32(env, result, "desktopWidth", RdpDesktopWidth());
     SetUint32(env, result, "desktopHeight", RdpDesktopHeight());

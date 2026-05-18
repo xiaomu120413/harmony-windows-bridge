@@ -12,6 +12,7 @@ namespace rdp_bridge {
 SessionEventHub& BridgeEvents();
 RdpSession& BridgeSession();
 SurfaceSnapshot BridgeSurfaceSnapshot();
+bool BridgeRemoteFrameReady();
 std::string BridgeRenderStatsLog();
 
 void InitializeNativeBridgeContext();

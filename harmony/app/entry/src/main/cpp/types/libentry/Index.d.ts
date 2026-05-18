@@ -24,6 +24,7 @@ export interface NativeProbeResult {
   surfaceDestroyedCount: number;
   surfacePaintCount: number;
   surfaceLastPaintMessage: string;
+  remoteFrameReady: boolean;
   sessionConnected: boolean;
   desktopWidth: number;
   desktopHeight: number;

@@ -138,6 +138,11 @@ struct Index {
   private refreshNativeState(appendLogs: boolean = false): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
+      if (this.showSession && result.remoteFrameReady && !this.remoteFrameReady) {
+        this.remoteFrameReady = true
+        this.appendLog('Remote frame ready from native state')
+        this.focusRemoteSurface()
+      }
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }

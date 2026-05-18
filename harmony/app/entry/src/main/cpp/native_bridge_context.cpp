@@ -439,6 +439,11 @@ SurfaceSnapshot BridgeSurfaceSnapshot()
     return g_surface.Snapshot();
 }
 
+bool BridgeRemoteFrameReady()
+{
+    return g_remoteFrameReady.load();
+}
+
 std::string BridgeRenderStatsLog()
 {
     return g_frameRenderer.BuildStatsLog();
