@@ -340,6 +340,10 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
             uint32_t errorCode = api.getLastError(instance->context);
             if (errorCode == FREERDP_ERROR_SUCCESS) {
                 result.message = "FreeRDP event loop stopped without error";
+            } else if (graphicsConfig.h264 && errorCode == ERROR_NOT_SUPPORTED) {
+                result.failed = true;
+                result.message =
+                    "FreeRDP graphics negotiation failed: server did not confirm required RDPGFX AVC420 surface mode";
             } else {
                 result.failed = true;
                 result.message = "FreeRDP event loop failed: " + LastErrorMessage(api, errorCode);
