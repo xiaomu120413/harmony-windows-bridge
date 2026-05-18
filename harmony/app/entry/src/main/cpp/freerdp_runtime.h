@@ -21,6 +21,7 @@
 #include <client/OHOS/ohos_avc_surface.h>
 #include <client/OHOS/ohos_certificate.h>
 #include <client/OHOS/ohos_clipboard.h>
+#include <client/OHOS/ohos_compositor.h>
 #include <client/OHOS/ohos_display.h>
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
@@ -155,6 +156,21 @@ public:
     using OhosAvcSurfacePoolEnsureAvc444Fn = BOOL (*)(
         freerdpOhosAvcSurfacePool*, UINT32, UINT32, FREERDP_OHOS_AVC444_SURFACE_TARGETS*,
         char*, size_t);
+    using OhosCompositorNewFn = freerdpOhosCompositor* (*)();
+    using OhosCompositorFreeFn = void (*)(freerdpOhosCompositor*);
+    using OhosCompositorConfigureFn = BOOL (*)(
+        freerdpOhosCompositor*, const FREERDP_OHOS_COMPOSITOR_CONFIG*, char*, size_t);
+    using OhosCompositorResetFn = void (*)(freerdpOhosCompositor*);
+    using OhosCompositorSetOutputTargetFn = BOOL (*)(
+        freerdpOhosCompositor*, const FREERDP_OHOS_COMPOSITOR_OUTPUT_TARGET*, char*, size_t);
+    using OhosCompositorClearOutputTargetFn = BOOL (*)(freerdpOhosCompositor*, char*, size_t);
+    using OhosCompositorBeginAvc420SurfaceFn = BOOL (*)(freerdpOhosCompositor*, char*, size_t);
+    using OhosCompositorEndAvc420SurfaceFn = void (*)(freerdpOhosCompositor*);
+    using OhosCompositorSetAvc444DecodeSurfacesFn = BOOL (*)(
+        freerdpOhosCompositor*, const FREERDP_OHOS_AVC444_SURFACE_TARGETS*, BOOL, char*, size_t);
+    using OhosCompositorNotifyAvc444FrameFn = void (*)(
+        freerdpOhosCompositor*, UINT32, UINT32, UINT32, UINT32, UINT32);
+    using OhosCompositorGetDiagnosticsFn = const char* (*)(freerdpOhosCompositor*);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -248,6 +264,17 @@ public:
     OhosAvcSurfacePoolFreeFn ohosAvcSurfacePoolFree = nullptr;
     OhosAvcSurfacePoolDestroyFn ohosAvcSurfacePoolDestroy = nullptr;
     OhosAvcSurfacePoolEnsureAvc444Fn ohosAvcSurfacePoolEnsureAvc444 = nullptr;
+    OhosCompositorNewFn ohosCompositorNew = nullptr;
+    OhosCompositorFreeFn ohosCompositorFree = nullptr;
+    OhosCompositorConfigureFn ohosCompositorConfigure = nullptr;
+    OhosCompositorResetFn ohosCompositorReset = nullptr;
+    OhosCompositorSetOutputTargetFn ohosCompositorSetOutputTarget = nullptr;
+    OhosCompositorClearOutputTargetFn ohosCompositorClearOutputTarget = nullptr;
+    OhosCompositorBeginAvc420SurfaceFn ohosCompositorBeginAvc420Surface = nullptr;
+    OhosCompositorEndAvc420SurfaceFn ohosCompositorEndAvc420Surface = nullptr;
+    OhosCompositorSetAvc444DecodeSurfacesFn ohosCompositorSetAvc444DecodeSurfaces = nullptr;
+    OhosCompositorNotifyAvc444FrameFn ohosCompositorNotifyAvc444Frame = nullptr;
+    OhosCompositorGetDiagnosticsFn ohosCompositorGetDiagnostics = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:

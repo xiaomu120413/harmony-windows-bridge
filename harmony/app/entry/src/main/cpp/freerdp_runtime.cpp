@@ -212,6 +212,28 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosAvcSurfacePoolDestroy);
         LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_ensure_avc444",
             ohosAvcSurfacePoolEnsureAvc444);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_new",
+            ohosCompositorNew);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_free",
+            ohosCompositorFree);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_configure",
+            ohosCompositorConfigure);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_reset",
+            ohosCompositorReset);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_set_output_target",
+            ohosCompositorSetOutputTarget);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_clear_output_target",
+            ohosCompositorClearOutputTarget);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_begin_avc420_surface",
+            ohosCompositorBeginAvc420Surface);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_end_avc420_surface",
+            ohosCompositorEndAvc420Surface);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_set_avc444_decode_surfaces",
+            ohosCompositorSetAvc444DecodeSurfaces);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_notify_avc444_frame",
+            ohosCompositorNotifyAvc444Frame);
+        LoadOptionalClientSymbol("freerdp_ohos_compositor_get_diagnostics",
+            ohosCompositorGetDiagnostics);
     }
     return loaded_;
 }

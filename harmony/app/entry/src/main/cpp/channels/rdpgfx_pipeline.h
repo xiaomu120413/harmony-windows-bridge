@@ -39,6 +39,11 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
 bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* settings,
     const GraphicsPipelineConfig& graphicsConfig, const FreerdpLogFn& log, std::string& error);
 std::string OhosRdpgfxBridgeDiagnostics(FreerdpRuntimeApi& api);
+std::string OhosCompositorDiagnostics(FreerdpRuntimeApi& api);
+bool RegisterOhosCompositorAvc444DecodeSurfaces(FreerdpRuntimeApi& api,
+    const FREERDP_OHOS_AVC444_SURFACE_TARGETS& targets, const FreerdpLogFn& log);
+void NotifyOhosCompositorAvc444Frame(FreerdpRuntimeApi& api, uint32_t surfaceId,
+    uint32_t width, uint32_t height, uint32_t op, uint32_t codecId);
 void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx);
 void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx);
 #endif

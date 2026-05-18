@@ -21,6 +21,8 @@ RdpgfxPipelineCallbacks g_callbacks;
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 std::mutex g_ohosRdpgfxBridgeMutex;
 freerdpOhosRdpgfxBridge* g_ohosRdpgfxBridge = nullptr;
+std::mutex g_ohosCompositorMutex;
+freerdpOhosCompositor* g_ohosCompositor = nullptr;
 #endif
 
 RdpgfxPipelineCallbacks SnapshotCallbacks()
@@ -77,6 +79,97 @@ void OhosRdpgfxLogCallback(const char* message, void*)
     }
 }
 
+void OhosCompositorLogCallback(const char* message, void*)
+{
+    if (message != nullptr && message[0] != '\0') {
+        LogThroughCallbacks(message);
+    }
+}
+
+freerdpOhosCompositor* EnsureOhosCompositor(FreerdpRuntimeApi& api, std::string& error)
+{
+    std::lock_guard<std::mutex> lock(g_ohosCompositorMutex);
+    if (g_ohosCompositor != nullptr) {
+        return g_ohosCompositor;
+    }
+    if (api.ohosCompositorNew == nullptr) {
+        error = "FreeRDP OHOS compositor symbols are not loaded";
+        return nullptr;
+    }
+    g_ohosCompositor = api.ohosCompositorNew();
+    if (g_ohosCompositor == nullptr) {
+        error = "create FreeRDP OHOS compositor failed";
+        return nullptr;
+    }
+    if (api.ohosCompositorConfigure != nullptr) {
+        FREERDP_OHOS_COMPOSITOR_CONFIG config {};
+        config.log = OhosCompositorLogCallback;
+        std::array<char, 256> message {};
+        if (!api.ohosCompositorConfigure(
+                g_ohosCompositor, &config, message.data(), message.size())) {
+            error = message[0] == '\0' ? "configure FreeRDP OHOS compositor failed" : message.data();
+            api.ohosCompositorFree(g_ohosCompositor);
+            g_ohosCompositor = nullptr;
+            return nullptr;
+        }
+    }
+    return g_ohosCompositor;
+}
+
+freerdpOhosCompositor* CurrentOhosCompositor()
+{
+    std::lock_guard<std::mutex> lock(g_ohosCompositorMutex);
+    return g_ohosCompositor;
+}
+
+bool UpdateOhosCompositorOutputTarget(
+    FreerdpRuntimeApi& api, const DecoderSurfaceTarget& target, const std::string& reason)
+{
+    if (api.ohosCompositorSetOutputTarget == nullptr) {
+        return true;
+    }
+    std::string error;
+    freerdpOhosCompositor* compositor = EnsureOhosCompositor(api, error);
+    if (compositor == nullptr) {
+        LogThroughCallbacks("OHOS compositor target update skipped after " + reason + ": " + error);
+        return true;
+    }
+    FREERDP_OHOS_COMPOSITOR_OUTPUT_TARGET output {};
+    output.window = target.window;
+    output.width = target.width;
+    output.height = target.height;
+    std::array<char, 256> message {};
+    if (!api.ohosCompositorSetOutputTarget(
+            compositor, &output, message.data(), message.size())) {
+        LogThroughCallbacks("OHOS compositor target update failed after " + reason + ": " +
+            std::string(message[0] == '\0' ? "unknown error" : message.data()));
+        return false;
+    }
+    LogThroughCallbacks(message.data());
+    return true;
+}
+
+bool BeginOhosCompositorAvc420Route(FreerdpRuntimeApi& api, const std::string& reason)
+{
+    if (api.ohosCompositorBeginAvc420Surface == nullptr) {
+        return true;
+    }
+    std::string error;
+    freerdpOhosCompositor* compositor = EnsureOhosCompositor(api, error);
+    if (compositor == nullptr) {
+        LogThroughCallbacks("OHOS compositor AVC420 route skipped after " + reason + ": " + error);
+        return true;
+    }
+    std::array<char, 256> message {};
+    if (!api.ohosCompositorBeginAvc420Surface(compositor, message.data(), message.size())) {
+        LogThroughCallbacks("OHOS compositor AVC420 route rejected after " + reason + ": " +
+            std::string(message[0] == '\0' ? "unknown error" : message.data()));
+        return false;
+    }
+    LogThroughCallbacks(message.data());
+    return true;
+}
+
 bool BindAvcSurfaceOutput(
     const std::string& reason, const FREERDP_OHOS_RDPGFX_SURFACE_COMMAND_INFO* command)
 {
@@ -102,6 +195,12 @@ bool BindAvcSurfaceOutput(
     if (target.window == nullptr || target.width == 0 || target.height == 0) {
         LogThroughCallbacks("AVC surface output activation skipped after " + reason +
             ": XComponent surface unavailable");
+        return false;
+    }
+    if (!UpdateOhosCompositorOutputTarget(api, target, reason)) {
+        return false;
+    }
+    if (!BeginOhosCompositorAvc420Route(api, reason)) {
         return false;
     }
     UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
@@ -149,6 +248,10 @@ void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    }
+    freerdpOhosCompositor* compositor = CurrentOhosCompositor();
+    if (compositor != nullptr && api.ohosCompositorEndAvc420Surface != nullptr) {
+        api.ohosCompositorEndAvc420Surface(compositor);
     }
     if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
         api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
@@ -242,6 +345,12 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
     }
 
     UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
+    if (!UpdateOhosCompositorOutputTarget(api, target, reason)) {
+        return;
+    }
+    if (!BeginOhosCompositorAvc420Route(api, reason)) {
+        return;
+    }
     if (callbacks.stopRenderPipeline != nullptr) {
         callbacks.stopRenderPipeline();
     }
@@ -264,6 +373,14 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
     g_avc420SurfaceOutputActive.store(false);
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    }
+    freerdpOhosCompositor* compositor = CurrentOhosCompositor();
+    if (compositor != nullptr && api.ohosCompositorEndAvc420Surface != nullptr) {
+        api.ohosCompositorEndAvc420Surface(compositor);
+    }
+    if (compositor != nullptr && api.ohosCompositorClearOutputTarget != nullptr) {
+        std::array<char, 128> message {};
+        api.ohosCompositorClearOutputTarget(compositor, message.data(), message.size());
     }
     if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
         api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
@@ -305,6 +422,10 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     }
 
     api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
+    if (!UpdateOhosCompositorOutputTarget(api, target, "configure avc420 output")) {
+        error = "OHOS compositor output target setup failed";
+        return false;
+    }
     UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
     if (api.ohosAvcodecSetFallbackCallback != nullptr) {
         api.ohosAvcodecSetFallbackCallback(OnOhosAvcodecFallback, nullptr);
@@ -369,6 +490,47 @@ std::string OhosRdpgfxBridgeDiagnostics(FreerdpRuntimeApi& api)
         return "";
     }
     return SafeCString(api.ohosRdpgfxBridgeGetDiagnostics(bridge));
+}
+
+std::string OhosCompositorDiagnostics(FreerdpRuntimeApi& api)
+{
+    freerdpOhosCompositor* compositor = CurrentOhosCompositor();
+    if (compositor == nullptr || api.ohosCompositorGetDiagnostics == nullptr) {
+        return "";
+    }
+    return SafeCString(api.ohosCompositorGetDiagnostics(compositor));
+}
+
+bool RegisterOhosCompositorAvc444DecodeSurfaces(FreerdpRuntimeApi& api,
+    const FREERDP_OHOS_AVC444_SURFACE_TARGETS& targets, const FreerdpLogFn& log)
+{
+    if (api.ohosCompositorSetAvc444DecodeSurfaces == nullptr) {
+        return true;
+    }
+    std::string error;
+    freerdpOhosCompositor* compositor = EnsureOhosCompositor(api, error);
+    if (compositor == nullptr) {
+        log("OHOS compositor AVC444 surface registration skipped: " + error);
+        return true;
+    }
+    std::array<char, 256> message {};
+    if (!api.ohosCompositorSetAvc444DecodeSurfaces(
+            compositor, &targets, TRUE, message.data(), message.size())) {
+        log("OHOS compositor AVC444 surface registration failed: " +
+            std::string(message[0] == '\0' ? "unknown error" : message.data()));
+        return false;
+    }
+    log(message.data());
+    return true;
+}
+
+void NotifyOhosCompositorAvc444Frame(FreerdpRuntimeApi& api, uint32_t surfaceId,
+    uint32_t width, uint32_t height, uint32_t op, uint32_t codecId)
+{
+    freerdpOhosCompositor* compositor = CurrentOhosCompositor();
+    if (compositor != nullptr && api.ohosCompositorNotifyAvc444Frame != nullptr) {
+        api.ohosCompositorNotifyAvc444Frame(compositor, surfaceId, width, height, op, codecId);
+    }
 }
 
 void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)

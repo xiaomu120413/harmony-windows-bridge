@@ -188,6 +188,10 @@ void OnAvc444SurfaceFrameDecoded(uint32_t surfaceId, uint32_t width, uint32_t he
             " op=" + std::to_string(op) +
             " codec=" + Hex32(codecId));
     }
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    NotifyOhosCompositorAvc444Frame(
+        SharedFreerdpRuntimeApi(), surfaceId, width, height, op, codecId);
+#endif
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -273,6 +277,13 @@ bool RegisterAvc444DecodeSurfaces(FreerdpRuntimeApi& api, uint32_t width, uint32
 
     api.ohosAvcodecSetAvc444OutputSurfaces(
         targets.lumaWindow, targets.chromaWindow, targets.width, targets.height, TRUE);
+    if (!RegisterOhosCompositorAvc444DecodeSurfaces(api, targets, log)) {
+        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
+        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
+            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
+        }
+        return false;
+    }
     if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
         api.ohosAvcodecSetAvc444FrameCallback(OnAvc444SurfaceFrameDecoded, nullptr);
     }
