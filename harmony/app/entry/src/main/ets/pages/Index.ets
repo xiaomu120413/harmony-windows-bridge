@@ -16,13 +16,13 @@ import rdpNative, { NativeCommandResult, NativeProbeResult } from 'libentry.so'
 @Entry
 @Component
 struct Index {
-  @State private host: string = ''
+  @State private host: string = '192.168.43.28'
   @State private port: string = '3389'
-  @State private username: string = ''
-  @State private password: string = ''
+  @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
+  @State private password: string = 'aaaa'
   @State private resolution: string = 'auto'
-  @State private certPolicy: string = 'tofu'
-  @State private graphicsMode: string = 'gdi'
+  @State private certPolicy: string = 'ignore'
+  @State private graphicsMode: string = 'rdpgfx-h264'
   @State private currentTab: string = 'connect'
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'

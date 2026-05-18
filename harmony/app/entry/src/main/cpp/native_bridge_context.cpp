@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 
 #include <arkui/ui_input_event.h>
@@ -28,6 +29,102 @@ void EmitNativeLog(const std::string& line)
     g_events.log.Emit(line);
 }
 
+class ResizeCoordinator {
+public:
+    void Reset(const std::string& reason)
+    {
+        bool cleared = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (pending_) {
+                pending_ = false;
+                skippedFrameCount_ = 0;
+                cleared = true;
+            }
+        }
+        if (cleared) {
+            EmitNativeLog("resize target cleared after " + reason);
+        }
+    }
+
+    void Begin(uint32_t width, uint32_t height, const std::string& reason)
+    {
+        if (width == 0 || height == 0) {
+            return;
+        }
+
+        uint64_t generation = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            pending_ = true;
+            targetWidth_ = width;
+            targetHeight_ = height;
+            skippedFrameCount_ = 0;
+            generation = ++generation_;
+        }
+        EmitNativeLog("resize target pending after " + reason + ": target=" +
+            std::to_string(width) + "x" + std::to_string(height) +
+            " generation=" + std::to_string(generation));
+    }
+
+    bool ShouldQueueFrame(const RgbaFrame& frame, std::string& message)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!pending_) {
+            return true;
+        }
+
+        if (FrameMatchesTarget(frame.width, frame.height)) {
+            pending_ = false;
+            skippedFrameCount_ = 0;
+            message = "resize target accepted by frame: target=" +
+                std::to_string(targetWidth_) + "x" + std::to_string(targetHeight_) +
+                " frame=" + std::to_string(frame.width) + "x" +
+                std::to_string(frame.height) + " label=" + FrameLabel(frame);
+            return true;
+        }
+
+        ++skippedFrameCount_;
+        message = "resize pending target=" + std::to_string(targetWidth_) + "x" +
+            std::to_string(targetHeight_) + " skipped frame=" +
+            std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+            " label=" + FrameLabel(frame) + " skipped=" +
+            std::to_string(skippedFrameCount_);
+        return false;
+    }
+
+private:
+    static constexpr uint32_t kFrameAlignmentTolerance = 16;
+
+    static std::string FrameLabel(const RgbaFrame& frame)
+    {
+        return frame.label.empty() ? "frame" : frame.label;
+    }
+
+    bool FrameMatchesTarget(uint32_t width, uint32_t height) const
+    {
+        if (width == 0 || height == 0) {
+            return false;
+        }
+        if (width == targetWidth_ && height == targetHeight_) {
+            return true;
+        }
+
+        const uint32_t widthDelta = width > targetWidth_ ? width - targetWidth_ : targetWidth_ - width;
+        const uint32_t heightDelta = height > targetHeight_ ? height - targetHeight_ : targetHeight_ - height;
+        return widthDelta < kFrameAlignmentTolerance && heightDelta < kFrameAlignmentTolerance;
+    }
+
+    std::mutex mutex_;
+    bool pending_ = false;
+    uint32_t targetWidth_ = 0;
+    uint32_t targetHeight_ = 0;
+    uint64_t generation_ = 0;
+    uint32_t skippedFrameCount_ = 0;
+};
+
+ResizeCoordinator g_resizeCoordinator;
+
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
     return g_surface.RenderRgbaFrame(frame);
@@ -35,7 +132,23 @@ SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 
 bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender)
 {
+    std::string resizeMessage;
+    if (!g_resizeCoordinator.ShouldQueueFrame(frame, resizeMessage)) {
+        message = resizeMessage;
+        return false;
+    }
+    if (!resizeMessage.empty()) {
+        EmitNativeLog(resizeMessage);
+    }
     return g_frameRenderer.Enqueue(frame, message, forceRender);
+}
+
+void DropPendingRenderFrame(const std::string& reason)
+{
+    std::string message;
+    if (g_frameRenderer.DropPending(reason, message)) {
+        EmitNativeLog(message);
+    }
 }
 
 void StartRenderPipeline()
@@ -194,6 +307,7 @@ void ConfigureRdpSessionCallbacks()
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceCreated(component, window);
+    g_resizeCoordinator.Reset("surface created");
     UpdateAvc420SurfaceOutputIfActive("surface created");
     RequestSurfaceRepaint("surface created");
 }
@@ -203,13 +317,15 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
     g_surface.OnSurfaceChanged(component, window);
     UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
+    g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface changed");
+    DropPendingRenderFrame("surface changed");
     RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface changed");
-    RequestSurfaceRepaint("surface changed");
 }
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceDestroyed(component, window);
+    g_resizeCoordinator.Reset("surface destroyed");
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");
 }
 
@@ -370,8 +486,9 @@ bool NotifyBridgeSurfaceLayout(uint32_t width, uint32_t height, std::string& mes
         EmitNativeLog(message);
         UpdateAvc420SurfaceOutputIfActive("surface layout changed");
         const SurfaceSnapshot snapshot = g_surface.Snapshot();
+        g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface layout changed");
+        DropPendingRenderFrame("surface layout changed");
         RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface layout changed");
-        RequestSurfaceRepaint("surface layout changed");
     }
     return changed;
 }

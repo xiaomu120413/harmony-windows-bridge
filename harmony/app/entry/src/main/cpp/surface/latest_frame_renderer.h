@@ -19,6 +19,7 @@ public:
     void SetCallbacks(RenderFrameFn renderFrame, LogFn log);
     void Start();
     void Stop();
+    bool DropPending(const std::string& reason, std::string& message);
     bool Enqueue(const RgbaFrame& frame, std::string& message, bool forceRender);
     RenderStatsSnapshot Snapshot();
     std::string BuildStatsLog();

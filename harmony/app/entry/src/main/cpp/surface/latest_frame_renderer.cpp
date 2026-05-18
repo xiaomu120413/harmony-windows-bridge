@@ -53,6 +53,20 @@ struct LatestFrameRenderer::Impl {
         }
     }
 
+    bool DropPending(const std::string& reason, std::string& message)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!hasPending_) {
+            message = "no pending render frame";
+            return false;
+        }
+
+        hasPending_ = false;
+        ++replacedCount_;
+        message = "pending render frame dropped after " + reason;
+        return true;
+    }
+
     bool Enqueue(const RgbaFrame& frame, std::string& message, bool forceRender)
     {
         const int32_t sourceStride = frame.strideBytes > 0 ? frame.strideBytes :
@@ -384,6 +398,11 @@ void LatestFrameRenderer::Start()
 void LatestFrameRenderer::Stop()
 {
     impl_->Stop();
+}
+
+bool LatestFrameRenderer::DropPending(const std::string& reason, std::string& message)
+{
+    return impl_->DropPending(reason, message);
 }
 
 bool LatestFrameRenderer::Enqueue(const RgbaFrame& frame, std::string& message, bool forceRender)
