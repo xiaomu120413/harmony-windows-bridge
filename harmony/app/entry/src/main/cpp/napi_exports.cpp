@@ -602,11 +602,6 @@ napi_value OnError(napi_env env, napi_callback_info info)
     return RegisterCallback(env, info, BridgeEvents().error, "rdpErrorCallback", true);
 }
 
-napi_value OnFrame(napi_env env, napi_callback_info info)
-{
-    return RegisterCallback(env, info, BridgeEvents().frame, "rdpFrameCallback");
-}
-
 napi_value OnMicrophonePermissionRequest(napi_env env, napi_callback_info info)
 {
     return RegisterCallback(env, info, MicrophonePermissionRequestSink(),
@@ -664,7 +659,6 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"onFrame", nullptr, OnFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
         {"completeMicrophonePermissionRequest", nullptr, CompleteMicrophonePermissionRequest, nullptr, nullptr,

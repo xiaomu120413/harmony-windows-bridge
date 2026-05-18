@@ -471,20 +471,12 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     if (api.ohosAvcodecSetFallbackCallback != nullptr) {
         api.ohosAvcodecSetFallbackCallback(OnOhosAvcodecFallback, nullptr);
     }
-    if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
-        const bool avc444SurfacesReady =
-            callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, log);
-        log(std::string("OHOS AVC444 NativeImage surface route preparation: ") +
-            (avc444SurfacesReady ? "ready" : "not-ready") +
-            " route=disabled-until-avc444-negotiated");
-    }
-
     g_avc420SurfaceOutputConfigured.store(true);
     g_avc420SurfaceOutputActive.store(false);
     g_avc444GpuSurfaceOutputActive.store(false);
     log("OHOS AVCodec output surface armed: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=deferred-until-avc-surface-command avc444=disabled-until-negotiated gdi=active-before-h264");
+        " mode=deferred-until-avc-surface-command avc444=not-precreated gdi=active-before-h264");
     return true;
 }
 

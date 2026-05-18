@@ -17,7 +17,6 @@ struct Index {
   @State private certPolicy: string = 'ignore'
   @State private graphicsMode: string = 'rdpgfx-h264'
   @State private showSession: boolean = false
-  @State private remoteFrameReady: boolean = false
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
   private callbacksRegistered: boolean = false
@@ -107,13 +106,6 @@ struct Index {
           this.appendLog(`Native error: ${message}`)
         })
       })
-      rdpNative.onFrame((message: string) => {
-        this.deferUiUpdate(() => {
-          this.remoteFrameReady = true
-          this.appendLog(message)
-          this.focusRemoteSurface()
-        })
-      })
       rdpNative.onMicrophonePermissionRequest((requestIdText: string) => {
         this.deferUiUpdate(() => {
           const requestId = Number(requestIdText)
@@ -176,7 +168,6 @@ struct Index {
       const policy = this.normalizeCertPolicy(this.certPolicy)
       this.certPolicy = policy
       this.connectionState = 'Resolving'
-      this.remoteFrameReady = false
       this.setSessionVisible(true)
       this.appendLog(`Calling native connect for ${this.host}:${this.port}`)
       const result: NativeCommandResult = rdpNative.connect({
@@ -207,9 +198,6 @@ struct Index {
   private setSessionVisible(visible: boolean): void {
     if (!visible && this.showSession && this.isConnected()) {
       this.releaseActiveModifiers()
-    }
-    if (!visible) {
-      this.remoteFrameReady = false
     }
     this.showSession = visible
   }
@@ -348,7 +336,7 @@ struct Index {
 
   @Builder
   private buildSessionPage() {
-    Stack() {
+    Column() {
         XComponent({
           id: 'rdpSurface',
           type: XComponentType.SURFACE,
@@ -378,19 +366,13 @@ struct Index {
           .focusable(true)
           .focusOnTouch(true)
           .defaultFocus(true)
-          .opacity(this.remoteFrameReady ? 1 : 0)
 
-        if (!this.remoteFrameReady) {
-          Column() {
-          }
-            .width('100%')
-            .height('100%')
-            .backgroundColor(Color.Black)
+        if (!this.isConnected()) {
+          Text('Remote desktop surface')
+            .fontSize(20)
+            .fontColor('#667085')
         }
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(Color.Black)
   }
 
   build() {
