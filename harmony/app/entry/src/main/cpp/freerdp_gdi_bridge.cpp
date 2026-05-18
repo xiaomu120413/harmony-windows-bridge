@@ -83,6 +83,7 @@ std::atomic_uint32_t g_freerdpRenderedFrameCount{0};
 std::atomic_uint32_t g_freerdpRenderSkipCount{0};
 std::atomic_uint32_t g_rdpDesktopWidth{0};
 std::atomic_uint32_t g_rdpDesktopHeight{0};
+std::atomic_bool g_rdpPrimaryFrameReady{false};
 
 void SetRdpDesktopSize(uint32_t width, uint32_t height)
 {
@@ -93,6 +94,7 @@ void SetRdpDesktopSize(uint32_t width, uint32_t height)
 void ClearRdpDesktopSize()
 {
     SetRdpDesktopSize(0, 0);
+    g_rdpPrimaryFrameReady.store(false);
 }
 
 uint32_t RdpDesktopWidth()
@@ -103,6 +105,11 @@ uint32_t RdpDesktopWidth()
 uint32_t RdpDesktopHeight()
 {
     return g_rdpDesktopHeight.load();
+}
+
+bool RdpPrimaryFrameReady()
+{
+    return g_rdpPrimaryFrameReady.load();
 }
 
 DirtyFrameStats CaptureGdiDirtyStats(const rdpGdi* gdi)
@@ -219,6 +226,7 @@ BOOL HarmonyEndPaint(rdpContext* context)
         "freerdp gdi",
         CaptureGdiDirtyStats(gdi),
     };
+    g_rdpPrimaryFrameReady.store(true);
     const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
     std::string queueMessage;
     if (!QueueGdiFrame(frame, queueMessage)) {
@@ -253,6 +261,7 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     const uint32_t width = api.settingsGetUint32(context->settings, FreeRDP_DesktopWidth);
     const uint32_t height = api.settingsGetUint32(context->settings, FreeRDP_DesktopHeight);
+    const bool sizeChanged = RdpDesktopWidth() != width || RdpDesktopHeight() != height;
     StopGdiRenderPipeline();
     if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
         if (!IsAvc420SurfaceOutputEnabled()) {
@@ -263,6 +272,9 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     }
 
     SetRdpDesktopSize(width, height);
+    if (sizeChanged) {
+        g_rdpPrimaryFrameReady.store(false);
+    }
     if (!IsAvc420SurfaceOutputEnabled()) {
         StartGdiRenderPipeline();
     }
@@ -293,6 +305,7 @@ BOOL HarmonyPostConnect(freerdp* instance)
     }
     g_freerdpRenderedFrameCount.store(0);
     g_freerdpRenderSkipCount.store(0);
+    g_rdpPrimaryFrameReady.store(false);
     if (instance->context->settings != nullptr) {
         const uint32_t width = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopWidth);
         const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);

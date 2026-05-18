@@ -71,6 +71,10 @@ bool RdpSessionChannels::RequestCurrentFrameRender(const std::string& reason, st
         message = "FreeRDP GDI primary buffer is not ready";
         return false;
     }
+    if (!RdpPrimaryFrameReady()) {
+        message.clear();
+        return false;
+    }
 
     RgbaFrame frame = {
         gdi->primary_buffer,

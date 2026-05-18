@@ -315,6 +315,9 @@ void RequestSurfaceRepaint(const std::string& reason)
         return;
     }
 
+    if (message.empty()) {
+        return;
+    }
     const uint32_t skipCount = ++repaintSkipLogCount;
     if (skipCount <= 3 || skipCount % 30 == 0) {
         EmitNativeLog("Surface repaint skipped after " + reason + ": " + message +

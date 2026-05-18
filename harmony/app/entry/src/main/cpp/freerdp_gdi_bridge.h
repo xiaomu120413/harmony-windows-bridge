@@ -26,6 +26,7 @@ void SetRdpDesktopSize(uint32_t width, uint32_t height);
 void ClearRdpDesktopSize();
 uint32_t RdpDesktopWidth();
 uint32_t RdpDesktopHeight();
+bool RdpPrimaryFrameReady();
 
 BOOL HarmonyBeginPaint(rdpContext* context);
 BOOL HarmonyEndPaint(rdpContext* context);
