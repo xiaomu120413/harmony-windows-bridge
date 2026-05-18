@@ -57,6 +57,7 @@ public:
     using CheckEventHandlesFn = BOOL (*)(rdpContext*);
     using GetLastErrorFn = UINT32 (*)(const rdpContext*);
     using GetLastErrorTextFn = const char* (*)(UINT32);
+    using SettingsGetBoolFn = BOOL (*)(const rdpSettings*, FreeRDP_Settings_Keys_Bool);
     using SettingsGetUint32Fn = UINT32 (*)(const rdpSettings*, FreeRDP_Settings_Keys_UInt32);
     using SettingsSetStringFn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_String, const char*);
     using SettingsSetUint32Fn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_UInt32, UINT32);
@@ -163,6 +164,7 @@ public:
     GetLastErrorFn getLastError = nullptr;
     GetLastErrorTextFn getLastErrorName = nullptr;
     GetLastErrorTextFn getLastErrorString = nullptr;
+    SettingsGetBoolFn settingsGetBool = nullptr;
     SettingsGetUint32Fn settingsGetUint32 = nullptr;
     SettingsSetStringFn settingsSetString = nullptr;
     SettingsSetUint32Fn settingsSetUint32 = nullptr;

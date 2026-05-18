@@ -4,6 +4,7 @@
 #include "native_bridge_context.h"
 #include "bridge_types.h"
 #include "freerdp_gdi_bridge.h"
+#include "graphics_config.h"
 #include "channels/audio_diagnostics.h"
 #include "channels/rdpgfx_diagnostics.h"
 #include "input/ohos_keyboard_adapter.h"
@@ -237,11 +238,22 @@ napi_value Connect(napi_env env, napi_callback_info info)
         SetNamed(env, result, "logs", MakeStringArray(env, logs));
         return result;
     }
+    const std::string graphicsModeError = GraphicsModeValidationError(params.graphicsMode);
+    if (!graphicsModeError.empty()) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", graphicsModeError);
+        logs.push_back("graphics mode validation failed");
+        logs.push_back(graphicsModeError);
+        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        return result;
+    }
 
     logs.push_back("target=" + params.host + ":" + params.port);
     logs.push_back("username=" + params.username);
     logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
+    logs.push_back("graphicsMode=" + params.graphicsMode);
     logs.push_back("appFilesDir=" + params.appFilesDir);
     logs.push_back("starting native worker");
 

@@ -7,7 +7,9 @@
 #include "surface/latest_frame_renderer.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <string>
 
@@ -19,6 +21,7 @@ namespace rdp_bridge {
 namespace {
 
 std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
+std::atomic_uint32_t g_nativeMouseButtons{0};
 SessionEventHub g_events;
 SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
@@ -334,6 +337,119 @@ void OnXComponentTouchEvent(OH_NativeXComponent*, void*)
     g_surface.OnTouchEvent();
 }
 
+uint32_t RoundSurfaceCoordinate(float value)
+{
+    if (value <= 0.0f) {
+        return 0;
+    }
+    const float maxValue = static_cast<float>(std::numeric_limits<uint32_t>::max());
+    if (value >= maxValue) {
+        return std::numeric_limits<uint32_t>::max();
+    }
+    return static_cast<uint32_t>(std::lround(value));
+}
+
+uint32_t NativeMouseButtonMask(OH_NativeXComponent_MouseEventButton button)
+{
+    switch (button) {
+        case OH_NATIVEXCOMPONENT_LEFT_BUTTON:
+            return LocalPointerButtonLeft;
+        case OH_NATIVEXCOMPONENT_RIGHT_BUTTON:
+            return LocalPointerButtonRight;
+        case OH_NATIVEXCOMPONENT_MIDDLE_BUTTON:
+            return LocalPointerButtonMiddle;
+        default:
+            return LocalPointerButtonNone;
+    }
+}
+
+const char* NativeMouseActionName(OH_NativeXComponent_MouseEventAction action)
+{
+    switch (action) {
+        case OH_NATIVEXCOMPONENT_MOUSE_PRESS:
+            return "press";
+        case OH_NATIVEXCOMPONENT_MOUSE_RELEASE:
+            return "release";
+        case OH_NATIVEXCOMPONENT_MOUSE_MOVE:
+            return "move";
+        default:
+            return "none";
+    }
+}
+
+void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent)
+{
+    LocalPointerEvent event;
+    const uint32_t buttonMask = NativeMouseButtonMask(mouseEvent.button);
+    const uint32_t currentButtons = g_nativeMouseButtons.load();
+
+    event.x = RoundSurfaceCoordinate(mouseEvent.x);
+    event.y = RoundSurfaceCoordinate(mouseEvent.y);
+    event.allowClamp = true;
+
+    switch (mouseEvent.action) {
+        case OH_NATIVEXCOMPONENT_MOUSE_PRESS:
+            if (buttonMask == LocalPointerButtonNone) {
+                return;
+            }
+            event.action = LocalPointerAction::ButtonDown;
+            event.buttons = buttonMask;
+            g_nativeMouseButtons.fetch_or(buttonMask);
+            break;
+        case OH_NATIVEXCOMPONENT_MOUSE_RELEASE:
+            event.action = LocalPointerAction::ButtonUp;
+            event.buttons = buttonMask != LocalPointerButtonNone ? buttonMask : currentButtons;
+            if (event.buttons == LocalPointerButtonNone) {
+                return;
+            }
+            g_nativeMouseButtons.fetch_and(~event.buttons);
+            break;
+        case OH_NATIVEXCOMPONENT_MOUSE_MOVE:
+            event.action = LocalPointerAction::Move;
+            event.buttons = currentButtons;
+            break;
+        default:
+            return;
+    }
+
+    std::string message;
+    const bool ok = g_session.SendLocalPointer(event, message);
+    static std::atomic_uint32_t mouseLogCount{0};
+    const uint32_t logIndex = mouseLogCount.fetch_add(1);
+    if (!ok || logIndex < 60 || (logIndex % 200) == 0 ||
+        mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_PRESS ||
+        mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_RELEASE) {
+        EmitNativeLog("XComponent native mouse: action=" +
+            std::string(NativeMouseActionName(mouseEvent.action)) +
+            " button=" + std::to_string(static_cast<int32_t>(mouseEvent.button)) +
+            " buttons=" + std::to_string(event.buttons) +
+            " x=" + std::to_string(event.x) +
+            " y=" + std::to_string(event.y) +
+            " result=" + (ok ? "ok " : "failed ") + message);
+    }
+}
+
+void OnXComponentMouseEvent(OH_NativeXComponent* component, void* window)
+{
+    if (component == nullptr) {
+        return;
+    }
+
+    OH_NativeXComponent_MouseEvent mouseEvent{};
+    const int32_t rc = OH_NativeXComponent_GetMouseEvent(component, window, &mouseEvent);
+    if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
+        EmitNativeLog("XComponent native mouse skipped: get mouse event failed rc=" +
+            std::to_string(rc));
+        return;
+    }
+
+    DispatchNativeMousePointer(mouseEvent);
+}
+
+void OnXComponentHoverEvent(OH_NativeXComponent*, bool)
+{
+}
+
 void OnXComponentFocusEvent(OH_NativeXComponent*, void*)
 {
     EmitNativeLog("XComponent focused for native input");
@@ -461,9 +577,14 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
         OnXComponentSurfaceDestroyed,
         OnXComponentTouchEvent,
     };
+    static OH_NativeXComponent_MouseEvent_Callback mouseCallback = {
+        OnXComponentMouseEvent,
+        OnXComponentHoverEvent,
+    };
 
     int32_t rc = OH_NativeXComponent_RegisterCallback(component, &callback);
     const bool ok = rc == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
+    const int32_t mouseRc = OH_NativeXComponent_RegisterMouseEventCallback(component, &mouseCallback);
     const int32_t focusRc = OH_NativeXComponent_RegisterFocusEventCallback(component, OnXComponentFocusEvent);
     const int32_t blurRc = OH_NativeXComponent_RegisterBlurEventCallback(component, OnXComponentBlurEvent);
     const int32_t keyRc = OH_NativeXComponent_RegisterKeyEventCallbackWithResult(component, OnXComponentKeyEvent);
@@ -471,6 +592,7 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
     g_surface.Register(component, ok);
     if (ok) {
         g_events.log.Emit("XComponent callback registered: " + g_surface.Snapshot().id +
+            " mouseRc=" + std::to_string(mouseRc) +
             " focusRc=" + std::to_string(focusRc) +
             " blurRc=" + std::to_string(blurRc) +
             " keyRc=" + std::to_string(keyRc) +

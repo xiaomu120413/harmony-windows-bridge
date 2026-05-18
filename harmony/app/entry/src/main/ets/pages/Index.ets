@@ -23,7 +23,7 @@ struct Index {
   @State private resolution: string = 'auto'
   @State private certPolicy: string = 'ignore'
   @State private graphicsMode: string = 'rdpgfx-h264'
-  @State private currentTab: string = 'connect'
+  @State private showSession: boolean = false
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
   @State private surfacePixelWidth: number = 0
@@ -121,9 +121,13 @@ struct Index {
         this.deferUiUpdate(() => {
           const nextState = this.toConnectionState(state)
           const wasConnected = this.isConnected()
+          if (nextState !== 'Connected' &&
+            (nextState === 'Disconnected' || nextState === 'Failed' || nextState === 'Idle')) {
+            this.setSessionVisible(false)
+          }
           this.connectionState = nextState
           if (nextState === 'Connected' && !wasConnected) {
-            this.currentTab = 'session'
+            this.setSessionVisible(true)
             this.refreshNativeState()
             this.focusRemoteSurface()
           } else if (nextState !== 'Connected') {
@@ -138,6 +142,7 @@ struct Index {
       })
       rdpNative.onError((message: string) => {
         this.deferUiUpdate(() => {
+          this.setSessionVisible(false)
           this.connectionState = 'Failed'
           this.appendLog(`Native error: ${message}`)
         })
@@ -233,7 +238,7 @@ struct Index {
       const policy = this.normalizeCertPolicy(this.certPolicy)
       this.certPolicy = policy
       this.connectionState = 'Resolving'
-      this.currentTab = 'session'
+      this.setSessionVisible(true)
       this.appendLog(`Calling native connect for ${this.host}:${this.port}`)
       const result: NativeCommandResult = rdpNative.connect({
         host: this.host,
@@ -249,12 +254,22 @@ struct Index {
       this.appendLog(result.message)
       this.appendNativeLogs(result.logs)
       if (result.ok) {
-        this.currentTab = 'session'
+        this.setSessionVisible(true)
+      } else {
+        this.setSessionVisible(false)
       }
     } catch (error) {
+      this.setSessionVisible(false)
       this.connectionState = 'Failed'
       this.appendLog(`Native connect failed: ${JSON.stringify(error)}`)
     }
+  }
+
+  private setSessionVisible(visible: boolean): void {
+    if (!visible && this.showSession && this.isConnected()) {
+      this.releaseActiveModifiers()
+    }
+    this.showSession = visible
   }
 
   private isConnected(): boolean {
@@ -421,35 +436,6 @@ struct Index {
   }
 
   @Builder
-  private buildTabs() {
-    Row() {
-      this.tabButton('connect', 'Connect')
-      this.tabButton('session', 'Session')
-    }
-    .height(48)
-    .width('100%')
-    .backgroundColor('#FFFFFF')
-    .padding({ left: 16, right: 16 })
-  }
-
-  @Builder
-  private tabButton(id: string, label: string) {
-    Button(label)
-      .height(36)
-      .layoutWeight(1)
-      .margin({ right: 8 })
-      .backgroundColor(this.currentTab === id ? '#0A84FF' : '#E8EEF7')
-      .fontColor(this.currentTab === id ? Color.White : '#1D2433')
-      .onClick(() => {
-        const leavingSession = this.currentTab === 'session' && id !== 'session'
-        this.currentTab = id
-        if (leavingSession) {
-          this.releaseActiveModifiers()
-        }
-      })
-  }
-
-  @Builder
   private buildConnectPage() {
     Scroll() {
       Column() {
@@ -525,7 +511,6 @@ struct Index {
   @Builder
   private buildSessionPage() {
     Column() {
-      Stack() {
         XComponent({
           id: 'rdpSurface',
           type: XComponentType.SURFACE,
@@ -559,37 +544,28 @@ struct Index {
           .onAxisEvent((event: AxisEvent) => {
             this.getPointerInput().handleAxis(event)
           })
+          .onTouch((event: TouchEvent) => {
+            this.getPointerInput().handleTouch(event)
+            this.focusRemoteSurface()
+          })
+          .onMouse((event: MouseEvent) => {
+            this.getPointerInput().handleMouse(event)
+          })
 
         if (!this.isConnected()) {
           Text('Remote desktop surface')
             .fontSize(20)
             .fontColor('#667085')
         }
-      }
-      .layoutWeight(1)
-      .width('100%')
-      .backgroundColor('#101828')
-      .onTouch((event: TouchEvent) => {
-        this.getPointerInput().handleTouch(event)
-        this.focusRemoteSurface()
-      })
-      .onMouse((event: MouseEvent) => {
-        this.getPointerInput().handleMouse(event)
-      })
-      .onAxisEvent((event: AxisEvent) => {
-        this.getPointerInput().handleAxis(event)
-      })
     }
-    .layoutWeight(1)
   }
 
   build() {
     Column() {
-      this.buildTabs()
-      if (this.currentTab === 'connect') {
-        this.buildConnectPage()
-      } else {
+      if (this.showSession) {
         this.buildSessionPage()
+      } else {
+        this.buildConnectPage()
       }
     }
     .width('100%')

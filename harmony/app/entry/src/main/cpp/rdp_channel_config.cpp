@@ -24,6 +24,60 @@ bool BuildOhosSessionConfig(FreerdpRuntimeApi& api, const GraphicsPipelineConfig
     return true;
 }
 
+std::string OnOff(bool value)
+{
+    return value ? "on" : "off";
+}
+
+std::string GraphicsCapabilityDiagnostics(FreerdpRuntimeApi& api, rdpSettings* settings)
+{
+    if (api.settingsGetBool == nullptr || api.settingsGetUint32 == nullptr) {
+        return "FreeRDP graphics capability settings verified; diagnostics unavailable";
+    }
+
+    const bool gfx = api.settingsGetBool(settings, FreeRDP_SupportGraphicsPipeline) ? true : false;
+    const bool h264 = api.settingsGetBool(settings, FreeRDP_GfxH264) ? true : false;
+    const bool avc444 = api.settingsGetBool(settings, FreeRDP_GfxAVC444) ? true : false;
+    const bool avc444v2 = api.settingsGetBool(settings, FreeRDP_GfxAVC444v2) ? true : false;
+    const bool smallCache = api.settingsGetBool(settings, FreeRDP_GfxSmallCache) ? true : false;
+    const uint32_t capsFilter = api.settingsGetUint32(settings, FreeRDP_GfxCapsFilter);
+
+    return "FreeRDP graphics capability settings verified: SupportGraphicsPipeline=" +
+        OnOff(gfx) + " GfxH264=" + OnOff(h264) + " GfxAVC444=" + OnOff(avc444) +
+        " GfxAVC444v2=" + OnOff(avc444v2) + " GfxSmallCache=" + OnOff(smallCache) +
+        " GfxCapsFilter=" + Hex32(capsFilter) +
+        " expectedAvc420Flag=0x00000010";
+}
+
+bool ValidateGraphicsCapabilitySettings(FreerdpRuntimeApi& api, rdpSettings* settings,
+    const GraphicsPipelineConfig& graphicsConfig, std::string& error)
+{
+    if (api.settingsGetBool == nullptr || api.settingsGetUint32 == nullptr) {
+        error = "FreeRDP settings diagnostics symbols are not loaded";
+        return false;
+    }
+
+    const bool gfx = api.settingsGetBool(settings, FreeRDP_SupportGraphicsPipeline) ? true : false;
+    const bool h264 = api.settingsGetBool(settings, FreeRDP_GfxH264) ? true : false;
+    const bool avc444 = api.settingsGetBool(settings, FreeRDP_GfxAVC444) ? true : false;
+    const bool avc444v2 = api.settingsGetBool(settings, FreeRDP_GfxAVC444v2) ? true : false;
+    const uint32_t capsFilter = api.settingsGetUint32(settings, FreeRDP_GfxCapsFilter);
+
+    if (gfx != graphicsConfig.enabled) {
+        error = "FreeRDP graphics pipeline setting mismatch after OHOS helper";
+        return false;
+    }
+    if (graphicsConfig.h264 && !h264) {
+        error = "rdpgfx-h264 requested but FreeRDP_GfxH264 is off after OHOS helper";
+        return false;
+    }
+    if (graphicsConfig.h264 && capsFilter != 0) {
+        error = "rdpgfx-h264 requested but GfxCapsFilter is filtering capabilities";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
@@ -69,15 +123,19 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         error = detail[0] == '\0' ? "FreeRDP OHOS session settings helper failed" : detail.data();
         return false;
     }
+    if (!ValidateGraphicsCapabilitySettings(api, settings, graphicsConfig, error)) {
+        return false;
+    }
 
     log(detail[0] == '\0' ? "OHOS FreeRDP settings applied" : detail.data());
+    log(GraphicsCapabilityDiagnostics(api, settings));
     if (graphicsConfig.enabled) {
         const bool h264Requested = graphicsConfig.enabled && graphicsConfig.h264;
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
             " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
-            " avc444=off" +
+            " avc444=" + std::string(h264Requested ? "advertise-10x" : "off") +
             " capsFilter=" + Hex32(0) +
-            " requestedCodec=" + std::string(h264Requested ? "avc420-only" : "none") +
+            " requestedCodec=" + std::string(h264Requested ? "avc420-with-10x-capsets" : "none") +
             " rfx=off nscodec=" + std::string(h264Requested ? "on" : "off") +
             " smallCache=on progressive=off fastPath=on frameMarker=on frameAck=2");
     } else {

@@ -69,6 +69,7 @@ struct RenderStatsSnapshot {
 };
 
 struct GraphicsPipelineConfig {
+    bool valid = true;
     bool enabled = false;
     bool h264 = false;
     std::string mode = "gdi";

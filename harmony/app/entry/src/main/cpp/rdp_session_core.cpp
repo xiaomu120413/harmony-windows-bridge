@@ -73,6 +73,12 @@ struct RdpSession::Impl {
             EmitError(message);
             return false;
         }
+        const std::string graphicsModeError = GraphicsModeValidationError(params.graphicsMode);
+        if (!graphicsModeError.empty()) {
+            message = graphicsModeError;
+            EmitError(message);
+            return false;
+        }
 
         Disconnect();
 

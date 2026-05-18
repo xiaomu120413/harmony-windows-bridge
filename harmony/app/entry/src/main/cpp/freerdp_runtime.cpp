@@ -93,6 +93,7 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadFreerdpSymbol("freerdp_get_last_error", getLastError, error) &&
         LoadFreerdpSymbol("freerdp_get_last_error_name", getLastErrorName, error) &&
         LoadFreerdpSymbol("freerdp_get_last_error_string", getLastErrorString, error) &&
+        LoadFreerdpSymbol("freerdp_settings_get_bool", settingsGetBool, error) &&
         LoadFreerdpSymbol("freerdp_settings_get_uint32", settingsGetUint32, error) &&
         LoadFreerdpSymbol("freerdp_settings_set_string", settingsSetString, error) &&
         LoadFreerdpSymbol("freerdp_settings_set_uint32", settingsSetUint32, error) &&
