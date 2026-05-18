@@ -33,6 +33,7 @@ add_library(entry SHARED
     channels/rdpgfx_pipeline.cpp
     frame_utils.cpp
     input/ohos_keyboard_adapter.cpp
+    input/xcomponent_input_bridge.cpp
     freerdp_session_runner.cpp
     freerdp_gdi_bridge.cpp
     freerdp_runtime.cpp

@@ -1,16 +1,9 @@
 import { common } from '@kit.AbilityKit'
-import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
-  HILOG_DOMAIN,
-  HILOG_TAG,
-  INPUT_EVENT_LOG_INTERVAL_MS,
-  POINTER_FAILURE_LOG_INTERVAL_MS,
-  POINTER_STATE_REFRESH_INTERVAL_MS,
-  REMOTE_SURFACE_FOCUS_ID
+  REMOTE_SURFACE_FOCUS_ID,
+  ConnectionState
 } from '../rdp/RdpConstants'
-import { RemotePointerEvent, RemotePointerInput } from '../rdp/RemotePointerInput'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import { ConnectionState } from '../rdp/RdpTypes'
 import rdpNative, { NativeCommandResult, NativeProbeResult } from 'libentry.so'
 
 @Entry
@@ -26,18 +19,8 @@ struct Index {
   @State private showSession: boolean = false
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
-  @State private surfacePixelWidth: number = 0
-  @State private surfaceLayoutWidth: number = 0
-  @State private surfaceLayoutHeight: number = 0
-  @State private desktopPixelWidth: number = 0
   private callbacksRegistered: boolean = false
-  private lastPointerFailureLogAtMs: number = 0
-  private lastPointerStateRefreshAtMs: number = 0
-  private lastInputEventLogAtMs: number = 0
-  @State private surfacePixelScaleX: number = 0
-  @State private surfacePixelScaleY: number = 0
   private surfaceController: XComponentController = new XComponentController()
-  private pointerInput: RemotePointerInput | null = null
   private permissionManager: RdpPermissionManager | null = null
 
   private deferUiUpdate(task: () => void): void {
@@ -62,7 +45,6 @@ struct Index {
   }
 
   aboutToDisappear(): void {
-    this.getPointerInput().releaseButtons()
     this.releaseActiveModifiers()
   }
 
@@ -77,21 +59,6 @@ struct Index {
       this.appendLog(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
       return null
     }
-  }
-
-  private getPointerInput(): RemotePointerInput {
-    if (this.pointerInput === null) {
-      this.pointerInput = new RemotePointerInput(
-        (): boolean => this.isConnected(),
-        (): void => this.focusRemoteSurface(),
-        (force?: boolean): void => this.refreshPointerState(!!force),
-        (event: RemotePointerEvent): boolean => this.sendPointerEvent(event),
-        (line: string): void => this.appendLog(line),
-        (label: string, detail: string, force?: boolean): void =>
-          this.logInputEvent(label, detail, !!force)
-      )
-    }
-    return this.pointerInput
   }
 
   private getPermissionManager(): RdpPermissionManager {
@@ -124,8 +91,6 @@ struct Index {
             this.setSessionVisible(true)
             this.refreshNativeState()
             this.focusRemoteSurface()
-          } else if (nextState !== 'Connected') {
-            this.getPointerInput().clearState()
           }
         })
       })
@@ -165,39 +130,12 @@ struct Index {
   private refreshNativeState(appendLogs: boolean = false): void {
     try {
       const result: NativeProbeResult = rdpNative.probe()
-      this.surfacePixelWidth = result.surfaceWidth
-      if (this.surfaceLayoutWidth > 0 && result.surfaceWidth > 0) {
-        this.surfacePixelScaleX = result.surfaceWidth / this.surfaceLayoutWidth
-      } else {
-        this.surfacePixelScaleX = 0
-      }
-      if (this.surfaceLayoutHeight > 0 && result.surfaceHeight > 0) {
-        this.surfacePixelScaleY = result.surfaceHeight / this.surfaceLayoutHeight
-      } else {
-        this.surfacePixelScaleY = 0
-      }
-      this.desktopPixelWidth = result.desktopWidth
       if (appendLogs) {
         this.appendNativeLogs(result.logs)
       }
     } catch (error) {
       this.appendLog(`Native state refresh failed: ${JSON.stringify(error)}`)
     }
-  }
-
-  private refreshPointerState(force: boolean = false): void {
-    if (!this.isConnected()) {
-      return
-    }
-
-    const now = Date.now()
-    if (!force && this.surfacePixelWidth > 0 && this.desktopPixelWidth > 0 &&
-      now - this.lastPointerStateRefreshAtMs < POINTER_STATE_REFRESH_INTERVAL_MS) {
-      return
-    }
-
-    this.lastPointerStateRefreshAtMs = now
-    this.refreshNativeState()
   }
 
   private normalizeCertPolicy(value: string): string {
@@ -266,110 +204,6 @@ struct Index {
 
   private isConnected(): boolean {
     return this.connectionState === 'Connected'
-  }
-
-  private formatNumber(value: number): string {
-    return `${Math.round(value * 10) / 10}`
-  }
-
-  private areaLengthToNumber(value: Length): number {
-    if (typeof value === 'number') {
-      return value
-    }
-
-    const text = `${value}`
-    const unitIndex = text.search(/[a-zA-Z%]/)
-    const numericText = unitIndex >= 0 ? text.substring(0, unitIndex) : text
-    const numeric = Number(numericText)
-    return numeric > 0 ? numeric : 0
-  }
-
-  private updateSurfaceLayout(width: Length, height: Length): void {
-    const nextWidth = this.areaLengthToNumber(width)
-    const nextHeight = this.areaLengthToNumber(height)
-    if (nextWidth <= 0 || nextHeight <= 0) {
-      return
-    }
-
-    if (this.surfaceLayoutWidth === nextWidth && this.surfaceLayoutHeight === nextHeight) {
-      return
-    }
-
-    this.surfaceLayoutWidth = nextWidth
-    this.surfaceLayoutHeight = nextHeight
-    this.lastPointerStateRefreshAtMs = 0
-    this.refreshNativeState()
-  }
-
-  private pointerInputFailureShouldLog(traceLabel: string): boolean {
-    if (traceLabel.length > 0) {
-      return true
-    }
-
-    const now = Date.now()
-    if (now - this.lastPointerFailureLogAtMs >= POINTER_FAILURE_LOG_INTERVAL_MS) {
-      this.lastPointerFailureLogAtMs = now
-      return true
-    }
-    return false
-  }
-
-  private logInputEvent(label: string, detail: string, force: boolean = false): void {
-    const now = Date.now()
-    if (!force && now - this.lastInputEventLogAtMs < INPUT_EVENT_LOG_INTERVAL_MS) {
-      return
-    }
-    this.lastInputEventLogAtMs = now
-    const line = `Input ${label}: ${detail}`
-    const shouldLogHilog = force ||
-      label === 'paste' ||
-      label === 'copy' ||
-      label === 'cut' ||
-      label === 'key.delete' ||
-      label === 'key.repeat'
-    if (shouldLogHilog) {
-      hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
-      console.info(line)
-    }
-  }
-
-  private sendPointerEvent(event: RemotePointerEvent): boolean {
-    const traceLabel = event.traceLabel ?? ''
-    if (!this.isConnected()) {
-      if (this.pointerInputFailureShouldLog(traceLabel)) {
-        this.appendLog(`Pointer ${traceLabel || 'input'} skipped: no active FreeRDP session`)
-      }
-      return false
-    }
-
-    try {
-      this.refreshPointerState()
-      const scaleX = this.surfacePixelScaleX > 0 ? this.surfacePixelScaleX : 1
-      const scaleY = this.surfacePixelScaleY > 0 ? this.surfacePixelScaleY : 1
-      const surfaceX = Math.max(0, Math.round(event.x * scaleX))
-      const surfaceY = Math.max(0, Math.round(event.y * scaleY))
-      const result: NativeCommandResult = rdpNative.sendPointerEvent({
-        action: event.action,
-        button: event.button ?? '',
-        buttons: event.buttons ?? 0,
-        x: surfaceX,
-        y: surfaceY,
-        delta: event.delta ?? 0,
-        allowClamp: !!event.allowClamp
-      })
-      if (!result.ok) {
-        if (this.pointerInputFailureShouldLog(traceLabel)) {
-          this.appendLog(`Pointer ${traceLabel || event.action} failed: ${result.message}; ` +
-            `event=${this.formatNumber(event.x)},${this.formatNumber(event.y)} ` +
-            `surface=${surfaceX},${surfaceY}`)
-        }
-        return false
-      }
-      return result.ok
-    } catch (error) {
-      this.appendLog(`Native pointer input failed (${traceLabel || 'input'}): ${JSON.stringify(error)}`)
-      return false
-    }
   }
 
   private focusRemoteSurface(): void {
@@ -523,8 +357,7 @@ struct Index {
               this.appendLog('XComponent destroyed')
             })
           })
-          .onAreaChange((oldArea: Area, newArea: Area) => {
-            this.updateSurfaceLayout(newArea.width, newArea.height)
+          .onAreaChange(() => {
             this.deferUiUpdate(() => {
               this.refreshNativeState()
             })
@@ -533,16 +366,6 @@ struct Index {
           .focusable(true)
           .focusOnTouch(true)
           .defaultFocus(true)
-          .onAxisEvent((event: AxisEvent) => {
-            this.getPointerInput().handleAxis(event)
-          })
-          .onTouch((event: TouchEvent) => {
-            this.getPointerInput().handleTouch(event)
-            this.focusRemoteSurface()
-          })
-          .onMouse((event: MouseEvent) => {
-            this.getPointerInput().handleMouse(event)
-          })
 
         if (!this.isConnected()) {
           Text('Remote desktop surface')

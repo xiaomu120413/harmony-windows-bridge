@@ -3,30 +3,22 @@
 #include "bridge_log.h"
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp_runtime.h"
+#include "input/xcomponent_input_bridge.h"
 #include "string_utils.h"
 #include "surface/latest_frame_renderer.h"
 
 #include <array>
 #include <atomic>
-#include <cmath>
 #include <cstdint>
-#include <limits>
 #include <mutex>
 #include <string>
 
-#include <arkui/ui_input_event.h>
 #include <ace/xcomponent/native_interface_xcomponent.h>
-#include <ace/xcomponent/native_xcomponent_key_event.h>
 
 namespace rdp_bridge {
 namespace {
 
 std::atomic_uint64_t g_avc444SurfaceFrameCallbackCount{0};
-std::atomic_uint32_t g_nativeMouseButtons{0};
-std::mutex g_nativeTouchpadMutex;
-bool g_nativeTouchpadScrollActive = false;
-float g_nativeTouchpadLastX = 0.0f;
-float g_nativeTouchpadLastY = 0.0f;
 SessionEventHub g_events;
 SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
@@ -406,359 +398,6 @@ void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");
 }
 
-uint32_t RoundSurfaceCoordinate(float value)
-{
-    if (value <= 0.0f) {
-        return 0;
-    }
-    const float maxValue = static_cast<float>(std::numeric_limits<uint32_t>::max());
-    if (value >= maxValue) {
-        return std::numeric_limits<uint32_t>::max();
-    }
-    return static_cast<uint32_t>(std::lround(value));
-}
-
-const char* NativeTouchTypeName(OH_NativeXComponent_TouchEventType type)
-{
-    switch (type) {
-        case OH_NATIVEXCOMPONENT_DOWN:
-            return "down";
-        case OH_NATIVEXCOMPONENT_UP:
-            return "up";
-        case OH_NATIVEXCOMPONENT_MOVE:
-            return "move";
-        case OH_NATIVEXCOMPONENT_CANCEL:
-            return "cancel";
-        default:
-            return "unknown";
-    }
-}
-
-const char* NativeTouchSourceName(OH_NativeXComponent_EventSourceType source)
-{
-    switch (source) {
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_MOUSE:
-            return "mouse";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHSCREEN:
-            return "touchscreen";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHPAD:
-            return "touchpad";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_JOYSTICK:
-            return "joystick";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_KEYBOARD:
-            return "keyboard";
-        default:
-            return "unknown";
-    }
-}
-
-OH_NativeXComponent_EventSourceType ResolveNativeTouchSource(
-    OH_NativeXComponent* component, const OH_NativeXComponent_TouchEvent& touchEvent)
-{
-    OH_NativeXComponent_EventSourceType source = OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
-    if (component == nullptr) {
-        return source;
-    }
-
-    if (OH_NativeXComponent_GetTouchEventSourceType(component, touchEvent.id, &source) ==
-            OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
-        source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN) {
-        return source;
-    }
-
-    for (uint32_t i = 0; i < touchEvent.numPoints; ++i) {
-        if (OH_NativeXComponent_GetTouchEventSourceType(
-                component, touchEvent.touchPoints[i].id, &source) ==
-                OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
-            source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN) {
-            return source;
-        }
-    }
-    return OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
-}
-
-void ResetNativeTouchpadScroll()
-{
-    std::lock_guard<std::mutex> lock(g_nativeTouchpadMutex);
-    g_nativeTouchpadScrollActive = false;
-}
-
-bool NativeTouchpadCenter(const OH_NativeXComponent_TouchEvent& touchEvent, float& x, float& y)
-{
-    if (touchEvent.numPoints < 2) {
-        return false;
-    }
-
-    x = (touchEvent.touchPoints[0].x + touchEvent.touchPoints[1].x) / 2.0f;
-    y = (touchEvent.touchPoints[0].y + touchEvent.touchPoints[1].y) / 2.0f;
-    return true;
-}
-
-void DispatchNativeTouchpadWheel(const OH_NativeXComponent_TouchEvent& touchEvent,
-    OH_NativeXComponent_EventSourceType source)
-{
-    constexpr float kWheelThreshold = 24.0f;
-
-    float centerX = 0.0f;
-    float centerY = 0.0f;
-    if (source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHPAD ||
-        touchEvent.type == OH_NATIVEXCOMPONENT_UP ||
-        touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL ||
-        !NativeTouchpadCenter(touchEvent, centerX, centerY)) {
-        ResetNativeTouchpadScroll();
-        return;
-    }
-
-    float deltaX = 0.0f;
-    float deltaY = 0.0f;
-    {
-        std::lock_guard<std::mutex> lock(g_nativeTouchpadMutex);
-        if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN || !g_nativeTouchpadScrollActive) {
-            g_nativeTouchpadScrollActive = true;
-            g_nativeTouchpadLastX = centerX;
-            g_nativeTouchpadLastY = centerY;
-            EmitNativeLog("XComponent native touchpad scroll start: points=" +
-                std::to_string(touchEvent.numPoints) +
-                " center=" + std::to_string(RoundSurfaceCoordinate(centerX)) + "," +
-                std::to_string(RoundSurfaceCoordinate(centerY)));
-            return;
-        }
-
-        if (touchEvent.type != OH_NATIVEXCOMPONENT_MOVE) {
-            return;
-        }
-
-        deltaX = centerX - g_nativeTouchpadLastX;
-        deltaY = centerY - g_nativeTouchpadLastY;
-        if (std::fabs(deltaY) < kWheelThreshold && std::fabs(deltaX) < kWheelThreshold) {
-            return;
-        }
-
-        g_nativeTouchpadLastX = centerX;
-        g_nativeTouchpadLastY = centerY;
-    }
-
-    LocalPointerEvent event;
-    event.action = std::fabs(deltaY) >= std::fabs(deltaX) ?
-        LocalPointerAction::WheelVertical : LocalPointerAction::WheelHorizontal;
-    event.x = RoundSurfaceCoordinate(centerX);
-    event.y = RoundSurfaceCoordinate(centerY);
-    event.delta = static_cast<int32_t>(
-        std::lround(event.action == LocalPointerAction::WheelVertical ? deltaY : deltaX));
-    event.allowClamp = true;
-
-    std::string message;
-    const bool ok = g_session.SendLocalPointer(event, message);
-    static std::atomic_uint32_t touchpadLogCount{0};
-    const uint32_t logIndex = touchpadLogCount.fetch_add(1);
-    if (!ok || logIndex < 40 || (logIndex % 120) == 0) {
-        EmitNativeLog("XComponent native touchpad wheel: source=" +
-            std::string(NativeTouchSourceName(source)) +
-            " type=" + NativeTouchTypeName(touchEvent.type) +
-            " points=" + std::to_string(touchEvent.numPoints) +
-            " delta=" + std::to_string(event.delta) +
-            " x=" + std::to_string(event.x) +
-            " y=" + std::to_string(event.y) +
-            " result=" + (ok ? "ok " : "failed ") + message);
-    }
-}
-
-void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window)
-{
-    if (component == nullptr) {
-        return;
-    }
-
-    OH_NativeXComponent_TouchEvent touchEvent{};
-    const int32_t rc = OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent);
-    if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
-        EmitNativeLog("XComponent native touch skipped: get touch event failed rc=" +
-            std::to_string(rc));
-        return;
-    }
-
-    const OH_NativeXComponent_EventSourceType source =
-        ResolveNativeTouchSource(component, touchEvent);
-    DispatchNativeTouchpadWheel(touchEvent, source);
-}
-
-uint32_t NativeMouseButtonMask(OH_NativeXComponent_MouseEventButton button)
-{
-    switch (button) {
-        case OH_NATIVEXCOMPONENT_LEFT_BUTTON:
-            return LocalPointerButtonLeft;
-        case OH_NATIVEXCOMPONENT_RIGHT_BUTTON:
-            return LocalPointerButtonRight;
-        case OH_NATIVEXCOMPONENT_MIDDLE_BUTTON:
-            return LocalPointerButtonMiddle;
-        default:
-            return LocalPointerButtonNone;
-    }
-}
-
-const char* NativeMouseActionName(OH_NativeXComponent_MouseEventAction action)
-{
-    switch (action) {
-        case OH_NATIVEXCOMPONENT_MOUSE_PRESS:
-            return "press";
-        case OH_NATIVEXCOMPONENT_MOUSE_RELEASE:
-            return "release";
-        case OH_NATIVEXCOMPONENT_MOUSE_MOVE:
-            return "move";
-        default:
-            return "none";
-    }
-}
-
-void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent)
-{
-    LocalPointerEvent event;
-    const uint32_t buttonMask = NativeMouseButtonMask(mouseEvent.button);
-    const uint32_t currentButtons = g_nativeMouseButtons.load();
-
-    event.x = RoundSurfaceCoordinate(mouseEvent.x);
-    event.y = RoundSurfaceCoordinate(mouseEvent.y);
-    event.allowClamp = true;
-
-    switch (mouseEvent.action) {
-        case OH_NATIVEXCOMPONENT_MOUSE_PRESS:
-            if (buttonMask == LocalPointerButtonNone) {
-                return;
-            }
-            event.action = LocalPointerAction::ButtonDown;
-            event.buttons = buttonMask;
-            g_nativeMouseButtons.fetch_or(buttonMask);
-            break;
-        case OH_NATIVEXCOMPONENT_MOUSE_RELEASE:
-            event.action = LocalPointerAction::ButtonUp;
-            event.buttons = buttonMask != LocalPointerButtonNone ? buttonMask : currentButtons;
-            if (event.buttons == LocalPointerButtonNone) {
-                return;
-            }
-            g_nativeMouseButtons.fetch_and(~event.buttons);
-            break;
-        case OH_NATIVEXCOMPONENT_MOUSE_MOVE:
-            event.action = LocalPointerAction::Move;
-            event.buttons = currentButtons;
-            break;
-        default:
-            return;
-    }
-
-    std::string message;
-    const bool ok = g_session.SendLocalPointer(event, message);
-    static std::atomic_uint32_t mouseLogCount{0};
-    const uint32_t logIndex = mouseLogCount.fetch_add(1);
-    if (!ok || logIndex < 60 || (logIndex % 200) == 0 ||
-        mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_PRESS ||
-        mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_RELEASE) {
-        EmitNativeLog("XComponent native mouse: action=" +
-            std::string(NativeMouseActionName(mouseEvent.action)) +
-            " button=" + std::to_string(static_cast<int32_t>(mouseEvent.button)) +
-            " buttons=" + std::to_string(event.buttons) +
-            " x=" + std::to_string(event.x) +
-            " y=" + std::to_string(event.y) +
-            " result=" + (ok ? "ok " : "failed ") + message);
-    }
-}
-
-void OnXComponentMouseEvent(OH_NativeXComponent* component, void* window)
-{
-    if (component == nullptr) {
-        return;
-    }
-
-    OH_NativeXComponent_MouseEvent mouseEvent{};
-    const int32_t rc = OH_NativeXComponent_GetMouseEvent(component, window, &mouseEvent);
-    if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
-        EmitNativeLog("XComponent native mouse skipped: get mouse event failed rc=" +
-            std::to_string(rc));
-        return;
-    }
-
-    DispatchNativeMousePointer(mouseEvent);
-}
-
-void OnXComponentHoverEvent(OH_NativeXComponent*, bool)
-{
-}
-
-void OnXComponentFocusEvent(OH_NativeXComponent*, void*)
-{
-    EmitNativeLog("XComponent focused for native input");
-}
-
-void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
-{
-    std::string message;
-    if (g_session.ReleaseAllKeys(message)) {
-        EmitNativeLog("XComponent blurred; " + message);
-    } else {
-        EmitNativeLog("XComponent blurred; release keys skipped: " + message);
-    }
-}
-
-bool IsModifierPressed(uint64_t modifiers, ArkUI_ModifierKeyName modifier)
-{
-    return (modifiers & static_cast<uint64_t>(modifier)) != 0;
-}
-
-bool OnXComponentKeyEvent(OH_NativeXComponent* component, void*)
-{
-    if (component == nullptr) {
-        return false;
-    }
-
-    OH_NativeXComponent_KeyEvent* keyEvent = nullptr;
-    if (OH_NativeXComponent_GetKeyEvent(component, &keyEvent) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS ||
-        keyEvent == nullptr) {
-        EmitNativeLog("XComponent native key skipped: key event unavailable");
-        return false;
-    }
-
-    OH_NativeXComponent_KeyAction action = OH_NATIVEXCOMPONENT_KEY_ACTION_UNKNOWN;
-    OH_NativeXComponent_KeyCode keyCode = KEY_UNKNOWN;
-    if (OH_NativeXComponent_GetKeyEventAction(keyEvent, &action) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS ||
-        OH_NativeXComponent_GetKeyEventCode(keyEvent, &keyCode) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
-        EmitNativeLog("XComponent native key skipped: action/code unavailable");
-        return false;
-    }
-
-    if (action != OH_NATIVEXCOMPONENT_KEY_ACTION_DOWN &&
-        action != OH_NATIVEXCOMPONENT_KEY_ACTION_UP) {
-        return false;
-    }
-
-    uint64_t modifiers = 0;
-    OH_NativeXComponent_GetKeyEventModifierKeyStates(keyEvent, &modifiers);
-    const OhosKeyEvent event {
-        static_cast<uint32_t>(keyCode),
-        action == OH_NATIVEXCOMPONENT_KEY_ACTION_DOWN,
-        false,
-        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_CTRL),
-        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_SHIFT),
-        IsModifierPressed(modifiers, ARKUI_MODIFIER_KEY_ALT),
-        false,
-    };
-
-    std::string message;
-    const bool ok = g_session.SendPlatformKey(event, message);
-    static std::atomic_uint32_t keyLogCount{0};
-    const uint32_t logIndex = keyLogCount.fetch_add(1);
-    const bool importantKey = event.keyCode == KEY_ENTER || event.keyCode == KEY_NUMPAD_ENTER ||
-        event.keyCode == KEY_DEL || event.keyCode == KEY_FORWARD_DEL || event.ctrl ||
-        event.keyCode == KEY_CTRL_LEFT || event.keyCode == KEY_CTRL_RIGHT;
-    if (importantKey || logIndex < 40 || (logIndex % 200) == 0 || !ok) {
-        EmitNativeLog("XComponent native key: keyCode=" + std::to_string(event.keyCode) +
-            (event.down ? " down " : " up ") +
-            "mods=" + std::to_string(modifiers) +
-            " ctrl=" + std::to_string(event.ctrl ? 1 : 0) +
-            " shift=" + std::to_string(event.shift ? 1 : 0) +
-            " alt=" + std::to_string(event.alt ? 1 : 0) +
-            " result=" + (ok ? "ok " : "failed ") + message);
-    }
-    return ok;
-}
 
 } // namespace
 
@@ -786,6 +425,7 @@ void InitializeNativeBridgeContext()
 {
     ConfigureRdpgfxPipelineCallbacks();
     ConfigureRdpSessionCallbacks();
+    ConfigureXComponentInputBridge(&g_session, EmitNativeLog);
 }
 
 bool RegisterNativeXComponent(napi_env env, napi_value exports)
@@ -810,26 +450,19 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
         OnXComponentSurfaceDestroyed,
         OnXComponentTouchEvent,
     };
-    static OH_NativeXComponent_MouseEvent_Callback mouseCallback = {
-        OnXComponentMouseEvent,
-        OnXComponentHoverEvent,
-    };
 
     int32_t rc = OH_NativeXComponent_RegisterCallback(component, &callback);
     const bool ok = rc == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
-    const int32_t mouseRc = OH_NativeXComponent_RegisterMouseEventCallback(component, &mouseCallback);
-    const int32_t focusRc = OH_NativeXComponent_RegisterFocusEventCallback(component, OnXComponentFocusEvent);
-    const int32_t blurRc = OH_NativeXComponent_RegisterBlurEventCallback(component, OnXComponentBlurEvent);
-    const int32_t keyRc = OH_NativeXComponent_RegisterKeyEventCallbackWithResult(component, OnXComponentKeyEvent);
-    const int32_t softKeyboardRc = OH_NativeXComponent_SetNeedSoftKeyboard(component, true);
+    const XComponentInputRegisterResult inputRc = RegisterXComponentInputCallbacks(component);
     g_surface.Register(component, ok);
     if (ok) {
         g_events.log.Emit("XComponent callback registered: " + g_surface.Snapshot().id +
-            " mouseRc=" + std::to_string(mouseRc) +
-            " focusRc=" + std::to_string(focusRc) +
-            " blurRc=" + std::to_string(blurRc) +
-            " keyRc=" + std::to_string(keyRc) +
-            " softKeyboardRc=" + std::to_string(softKeyboardRc));
+            " mouseRc=" + std::to_string(inputRc.mouseRc) +
+            " focusRc=" + std::to_string(inputRc.focusRc) +
+            " blurRc=" + std::to_string(inputRc.blurRc) +
+            " keyRc=" + std::to_string(inputRc.keyRc) +
+            " softKeyboardRc=" + std::to_string(inputRc.softKeyboardRc) +
+            " axisRc=" + std::to_string(inputRc.axisRc));
     }
     return ok;
 }
