@@ -498,7 +498,8 @@ struct RdpSession::Impl {
                 attempt, graphicsModes.size())) {
                 connected.store(false);
                 EmitLog("graphics mode " + attemptParams.graphicsMode +
-                    " failed before connection: " + session.message);
+                    (attemptConnected ? " failed after connection: " : " failed before connection: ") +
+                    session.message);
                 EmitLog("graphics fallback retry: " + attemptParams.graphicsMode + " -> " +
                     graphicsModes[attempt + 1]);
                 EmitState("Negotiating");

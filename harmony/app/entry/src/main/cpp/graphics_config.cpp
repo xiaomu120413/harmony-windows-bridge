@@ -117,7 +117,7 @@ std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
     }
 
     if (strictConfig.mode == "rdpgfx-h264") {
-        return {"rdpgfx-h264"};
+        return {"rdpgfx-h264", "gdi"};
     }
     if (strictConfig.mode == "rdpgfx") {
         return {"rdpgfx", "gdi"};
@@ -146,8 +146,9 @@ bool ShouldRetryGraphicsFallback(const RdpSessionRunResult& session, bool attemp
             failedMode.c_str(), attemptIndex, attemptCount, session.message.c_str());
     }
 
-    if (!session.failed || attemptConnected || attemptIndex + 1 >= attemptCount ||
-        failedMode == "gdi") {
+    (void)attemptConnected;
+
+    if (!session.failed || attemptIndex + 1 >= attemptCount || failedMode == "gdi") {
         return false;
     }
 

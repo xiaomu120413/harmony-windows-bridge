@@ -36,11 +36,14 @@ ENABLE_CUPS="${ENABLE_CUPS:-0}"
 ENABLE_PCSC="${ENABLE_PCSC:-0}"
 ENABLE_SMARTCARD_PCSC="${ENABLE_SMARTCARD_PCSC:-1}"
 ENABLE_FUSE="${ENABLE_FUSE:-0}"
+ENABLE_CCACHE="${ENABLE_CCACHE:-auto}"
+CCACHE_PROGRAM="${CCACHE_PROGRAM:-ccache}"
 
 WITH_OHAUDIO=OFF
 WITH_OHOS_AVCODEC=OFF
 WITH_OHOS_PASTEBOARD=OFF
 WITH_OPENSLES=OFF
+CCACHE_LAUNCHER=""
 FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-v1"
 
 log() {
@@ -71,6 +74,32 @@ cmake_bool() {
   else
     printf 'OFF'
   fi
+}
+
+configure_ccache() {
+  CCACHE_LAUNCHER=""
+
+  if ! is_enabled "$ENABLE_CCACHE" && ! is_auto "$ENABLE_CCACHE"; then
+    log "ccache disabled"
+    return 0
+  fi
+
+  if command -v "$CCACHE_PROGRAM" >/dev/null 2>&1; then
+    CCACHE_LAUNCHER="$(command -v "$CCACHE_PROGRAM")"
+    export CCACHE_DIR="${CCACHE_DIR:-$WORK_DIR/ccache}"
+    export CCACHE_BASEDIR="${CCACHE_BASEDIR:-$WORK_DIR}"
+    export CCACHE_NOHASHDIR="${CCACHE_NOHASHDIR:-true}"
+    mkdir -p "$CCACHE_DIR"
+    log "ccache enabled: $CCACHE_LAUNCHER"
+    return 0
+  fi
+
+  if is_enabled "$ENABLE_CCACHE"; then
+    printf 'ENABLE_CCACHE requested but ccache was not found: %s\n' "$CCACHE_PROGRAM" >&2
+    exit 1
+  fi
+
+  log "ccache unavailable; compiler cache disabled"
 }
 
 safe_rm_rf() {
@@ -310,6 +339,8 @@ prepare_cmake_args() {
   cmake_common_args=(
     "-G" "Ninja"
     "-DCMAKE_TOOLCHAIN_FILE=$OHOS_NDK_HOME/build/cmake/ohos.toolchain.cmake"
+    "-DCMAKE_C_COMPILER=$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang"
+    "-DCMAKE_CXX_COMPILER=$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang++"
     "-DOHOS_ARCH=$OHOS_ARCH"
     "-DCMAKE_BUILD_TYPE=Release"
     "-DCMAKE_INSTALL_PREFIX=$PREFIX"
@@ -318,6 +349,13 @@ prepare_cmake_args() {
     "-DCMAKE_FIND_ROOT_PATH=$PREFIX;$OHOS_NDK_HOME"
     "-DPKG_CONFIG_EXECUTABLE=$(command -v pkg-config)"
   )
+
+  if [[ -n "$CCACHE_LAUNCHER" ]]; then
+    cmake_common_args+=(
+      "-DCMAKE_C_COMPILER_LAUNCHER=$CCACHE_LAUNCHER"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=$CCACHE_LAUNCHER"
+    )
+  fi
 }
 
 prepare_freerdp_build_source() {
@@ -435,8 +473,22 @@ build_openh264() {
     return 0
   fi
 
+  ensure_openh264_cmake_config() {
+    local cmake_dir="$PREFIX/lib/cmake/OpenH264"
+    mkdir -p "$cmake_dir"
+    {
+      printf 'set(OpenH264_FOUND TRUE)\n'
+      printf 'set(OPENH264_FOUND TRUE)\n'
+      printf 'set(OPENH264_INCLUDE_DIR "%s/include")\n' "$PREFIX"
+      printf 'set(OPENH264_INCLUDE_DIRS "%s/include")\n' "$PREFIX"
+      printf 'set(OPENH264_LIBRARY "%s/lib/libopenh264.so")\n' "$PREFIX"
+      printf 'set(OPENH264_LIBRARIES "%s/lib/libopenh264.so")\n' "$PREFIX"
+    } >"$cmake_dir/OpenH264Config.cmake"
+  }
+
   if [[ "$FORCE_REBUILD" != "1" && -f "$PREFIX/lib/libopenh264.so" && -f "$PREFIX/include/wels/codec_api.h" ]]; then
     log "OpenH264 already installed"
+    ensure_openh264_cmake_config
     return 0
   fi
 
@@ -466,6 +518,7 @@ build_openh264() {
       PREFIX="$PREFIX" \
       2>&1 | tee "$LOG_DIR/openh264-install.log"
   )
+  ensure_openh264_cmake_config
 }
 
 build_ffmpeg() {
@@ -856,6 +909,9 @@ write_manifest() {
     printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
     printf 'with_smartcard_pcsc=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD_PCSC")"
     printf 'with_fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"
+    printf 'enable_ccache=%s\n' "$ENABLE_CCACHE"
+    printf 'ccache_launcher=%s\n' "${CCACHE_LAUNCHER:-none}"
+    printf 'ccache_dir=%s\n' "${CCACHE_DIR:-}"
     printf '\n[libs]\n'
     find "$PREFIX/lib" "$PROBE_DIR" -maxdepth 2 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
     printf '\n[runtime-libs]\n'
@@ -903,6 +959,7 @@ main() {
   require_tool curl
   require_tool pkg-config
 
+  configure_ccache
   prepare_sources
   prepare_cmake_args
   detect_optional_backends
