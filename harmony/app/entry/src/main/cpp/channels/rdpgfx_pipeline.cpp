@@ -17,6 +17,7 @@ namespace {
 std::atomic_bool g_avc420SurfaceOutputConfigured{false};
 std::atomic_bool g_avc420SurfaceOutputActive{false};
 std::atomic_bool g_avc444GpuExperimentalConfigured{false};
+std::atomic<uint64_t> g_avc444EndFrameCallbackCount{0};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
 
@@ -287,6 +288,29 @@ BOOL OhosRdpgfxAvc444SurfaceCommandCallback(
     return SharedAvc444GpuCompositor().OnSurfaceCommand(command) ? TRUE : FALSE;
 }
 
+BOOL OhosRdpgfxAvc444EndFrameCallback(
+    const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame, void*)
+{
+    const uint64_t count = ++g_avc444EndFrameCallbackCount;
+    const bool shouldLog = count <= 20U || (count % 60U) == 0U;
+    if (shouldLog) {
+        LogThroughCallbacks("AVC444 GPU bridge EndFrame callback enter: frame=" +
+            std::to_string(frame == nullptr ? 0U : frame->frameId) +
+            " active=" + std::to_string(frame == nullptr ? 0U : frame->activeFrameId) +
+            " matched=" + std::string((frame != nullptr && frame->matchedFrame) ? "yes" : "no") +
+            " count=" + std::to_string(count));
+    }
+    const bool handled = SharedAvc444GpuCompositor().OnEndFrame(frame);
+    if (shouldLog || !handled) {
+        LogThroughCallbacks("AVC444 GPU bridge EndFrame callback leave: frame=" +
+            std::to_string(frame == nullptr ? 0U : frame->frameId) +
+            " handled=" + std::string(handled ? "yes" : "no") +
+            " count=" + std::to_string(count) +
+            " diagnostics=" + SharedAvc444GpuCompositor().Diagnostics());
+    }
+    return handled ? TRUE : FALSE;
+}
+
 #endif
 
 } // namespace
@@ -517,6 +541,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     config.log = OhosRdpgfxLogCallback;
     config.avc420SurfaceCommand = OhosRdpgfxAvc420SurfaceCommandCallback;
     config.avc444SurfaceCommand = OhosRdpgfxAvc444SurfaceCommandCallback;
+    config.avc444EndFrame = OhosRdpgfxAvc444EndFrameCallback;
 
     std::array<char, 256> message {};
     if (api.ohosRdpgfxBridgeAttach == nullptr ||

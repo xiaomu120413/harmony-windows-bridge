@@ -35,6 +35,9 @@ public:
         bool avcodecHardwareReady = false;
         bool nativeBufferFormatsKnown = false;
         bool rawBufferCandidate = false;
+        bool zeroCopyNativeBufferReady = false;
+        bool avc444v2LayoutReady = false;
+        bool avc444v2ShaderReady = false;
         std::string diagnostics;
     };
 
@@ -45,6 +48,7 @@ public:
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     bool OnSurfaceCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command);
+    bool OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame);
 #endif
 
 private:
