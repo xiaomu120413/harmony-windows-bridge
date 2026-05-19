@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <limits>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -23,6 +24,16 @@ std::string ReadXComponentId(OH_NativeXComponent* component)
         return "unknown";
     }
     return std::string(id);
+}
+
+std::string PointerText(const void* pointer)
+{
+    if (pointer == nullptr) {
+        return "null";
+    }
+    std::ostringstream out;
+    out << pointer;
+    return out.str();
 }
 
 class SurfaceBridge::Impl {
@@ -45,7 +56,7 @@ public:
     {
         uint64_t width = 0;
         uint64_t height = 0;
-        OH_NativeXComponent_GetXComponentSize(component, window, &width, &height);
+        const int32_t sizeRc = OH_NativeXComponent_GetXComponentSize(component, window, &width, &height);
 
         SurfaceSnapshot snapshot;
         {
@@ -63,15 +74,18 @@ public:
             snapshot = SnapshotLocked();
         }
 
-        Log("XComponent surface created: " + snapshot.id + " " +
-            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height));
+        Log("XComponent surface created: " + snapshot.id +
+            " native=" + std::to_string(snapshot.width) + "x" +
+            std::to_string(snapshot.height) +
+            " getSizeRc=" + std::to_string(sizeRc) +
+            " window=" + PointerText(window));
     }
 
     void OnSurfaceChanged(OH_NativeXComponent* component, void* window)
     {
         uint64_t width = 0;
         uint64_t height = 0;
-        OH_NativeXComponent_GetXComponentSize(component, window, &width, &height);
+        const int32_t sizeRc = OH_NativeXComponent_GetXComponentSize(component, window, &width, &height);
 
         SurfaceSnapshot snapshot;
         {
@@ -88,8 +102,11 @@ public:
             snapshot = SnapshotLocked();
         }
 
-        Log("XComponent surface changed: " + snapshot.id + " " +
-            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height));
+        Log("XComponent surface changed: " + snapshot.id +
+            " native=" + std::to_string(snapshot.width) + "x" +
+            std::to_string(snapshot.height) +
+            " getSizeRc=" + std::to_string(sizeRc) +
+            " window=" + PointerText(window));
     }
 
     bool OnSurfaceLayout(uint32_t width, uint32_t height, std::string& message)

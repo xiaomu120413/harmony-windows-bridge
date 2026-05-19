@@ -31,11 +31,9 @@ public:
 
     struct SelfTestResult {
         bool eglReady = false;
-        bool nativeImageReady = false;
         bool avcodecHardwareReady = false;
         bool nativeBufferFormatsKnown = false;
         bool rawBufferCandidate = false;
-        bool zeroCopyNativeBufferReady = false;
         bool avc444v2LayoutReady = false;
         bool avc444v2ShaderReady = false;
         std::string diagnostics;

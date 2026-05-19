@@ -344,8 +344,8 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
 bool NotifyBridgeSurfaceLayout(uint32_t width, uint32_t height, std::string& message)
 {
     const bool changed = g_surface.OnSurfaceLayout(width, height, message);
+    EmitNativeLog(message);
     if (changed) {
-        EmitNativeLog(message);
         UpdateAvc420SurfaceOutputIfActive("surface layout changed");
         const SurfaceSnapshot snapshot = g_surface.Snapshot();
         g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface layout changed");

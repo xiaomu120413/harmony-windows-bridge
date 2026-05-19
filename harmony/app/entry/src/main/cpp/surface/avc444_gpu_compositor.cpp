@@ -13,8 +13,6 @@
 
 #include <dlfcn.h>
 #include <EGL/egl.h>
-#include <EGL/eglext.h>
-#include <GLES2/gl2ext.h>
 #include <GLES3/gl3.h>
 #include <multimedia/player_framework/native_avbuffer.h>
 #include <multimedia/player_framework/native_avcapability.h>
@@ -23,11 +21,6 @@
 #include <multimedia/player_framework/native_avformat.h>
 #include <native_buffer/buffer_common.h>
 #include <native_buffer/native_buffer.h>
-#include <native_image/native_image.h>
-
-#ifndef GL_TEXTURE_EXTERNAL_OES
-#define GL_TEXTURE_EXTERNAL_OES 0x8D65
-#endif
 
 namespace rdp_bridge {
 namespace {
@@ -38,7 +31,6 @@ constexpr int64_t kOutputTimeoutUs = 12000;
 constexpr int64_t kFollowupOutputTimeoutUs = 6000;
 constexpr int64_t kOutputSyncDeadlineUs = 120000;
 constexpr uint32_t kOutputSyncMaxAttempts = 32;
-bool gZeroCopyNativeBufferDisabledBySelfTest = false;
 
 bool ShouldLogFrequent(uint64_t count)
 {
@@ -191,11 +183,6 @@ PreparedH264Packet PrepareH264Packet(const uint8_t* data, uint32_t size, bool de
         }
     }
     return packet;
-}
-
-bool ContainsText(const char* text, const char* needle)
-{
-    return text != nullptr && needle != nullptr && std::strstr(text, needle) != nullptr;
 }
 
 uint32_t AlignUp(uint32_t value, uint32_t align)
@@ -411,25 +398,17 @@ std::vector<std::string> ProbeAvcCapability(uint32_t width, uint32_t height,
     return logs;
 }
 
-std::vector<std::string> ProbeEglNativeImage(Avc444GpuCompositor::SelfTestResult& result)
+std::vector<std::string> ProbeEglContext(Avc444GpuCompositor::SelfTestResult& result)
 {
     std::vector<std::string> logs;
     EGLDisplay display = EGL_NO_DISPLAY;
     EGLConfig config = nullptr;
     EGLSurface surface = EGL_NO_SURFACE;
     EGLContext context = EGL_NO_CONTEXT;
-    GLuint texture = 0;
-    OH_NativeImage* image = nullptr;
 
     auto cleanup = [&]() {
         if (display != EGL_NO_DISPLAY && context != EGL_NO_CONTEXT && surface != EGL_NO_SURFACE) {
             eglMakeCurrent(display, surface, surface, context);
-        }
-        if (image != nullptr) {
-            OH_NativeImage_Destroy(&image);
-        }
-        if (texture != 0) {
-            glDeleteTextures(1, &texture);
         }
         if (display != EGL_NO_DISPLAY) {
             eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -507,57 +486,8 @@ std::vector<std::string> ProbeEglNativeImage(Avc444GpuCompositor::SelfTestResult
     }
 
     result.eglReady = true;
-    const char* eglExtensions = eglQueryString(display, EGL_EXTENSIONS);
-    const char* glExtensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
-    const bool externalTextureReady =
-        ContainsText(glExtensions, "GL_OES_EGL_image_external") ||
-        ContainsText(glExtensions, "GL_OES_EGL_image_external_essl3");
-    const bool externalTextureEssl3Ready =
-        ContainsText(glExtensions, "GL_OES_EGL_image_external_essl3");
-    const bool yuvTargetReady = ContainsText(glExtensions, "GL_EXT_YUV_target");
-    const bool eglNativeBufferReady = ContainsText(eglExtensions, "EGL_OHOS_image_native_buffer");
-    const bool eglImageProcReady =
-        eglGetProcAddress("eglCreateImageKHR") != nullptr &&
-        eglGetProcAddress("eglDestroyImageKHR") != nullptr &&
-        eglGetProcAddress("glEGLImageTargetTexture2DOES") != nullptr;
-    result.zeroCopyNativeBufferReady =
-        externalTextureEssl3Ready && yuvTargetReady && eglNativeBufferReady && eglImageProcReady;
-
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
-    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    const GLenum textureError = glGetError();
-    if (texture == 0 || textureError != GL_NO_ERROR) {
-        logs.push_back("AVC444 GPU compositor EGL probe: external texture setup failed glError=" +
-            Hex32(static_cast<uint32_t>(textureError)));
-        cleanup();
-        return logs;
-    }
-
-    image = OH_NativeImage_Create(texture, GL_TEXTURE_EXTERNAL_OES);
-    OHNativeWindow* imageWindow = image == nullptr ? nullptr : OH_NativeImage_AcquireNativeWindow(image);
-    uint64_t surfaceId = 0;
-    const int32_t surfaceIdStatus =
-        image == nullptr ? -1 : OH_NativeImage_GetSurfaceId(image, &surfaceId);
-    result.nativeImageReady = image != nullptr && imageWindow != nullptr;
-
-    logs.push_back("AVC444 GPU compositor EGL probe: egl=ready es3=yes externalTextureExt=" +
-        std::string(externalTextureReady ? "yes" : "no") +
-        " externalTextureEssl3=" + std::string(externalTextureEssl3Ready ? "yes" : "no") +
-        " yuvTarget=" + std::string(yuvTargetReady ? "yes" : "no") +
-        " nativeImage=" + std::string(image != nullptr ? "yes" : "no") +
-        " imageWindow=" + std::string(imageWindow != nullptr ? "yes" : "no") +
-        " imageSurfaceIdStatus=" + std::to_string(surfaceIdStatus) +
-        " imageSurfaceId=" + std::to_string(surfaceId) +
-        " eglNativeBufferExt=" +
-        std::string(eglNativeBufferReady ? "yes" : "unknown") +
-        " eglImageProc=" + std::string(eglImageProcReady ? "yes" : "no") +
-        " zeroCopyNativeBuffer=" +
-        std::string(result.zeroCopyNativeBufferReady ? "yes" : "no"));
+    logs.push_back("AVC444 GPU compositor EGL probe: egl=ready es3=yes "
+        "mapped-plane compositor only");
 
     cleanup();
     return logs;
@@ -827,6 +757,45 @@ std::string RectText(const RECTANGLE_16* rect)
         std::to_string(rect->right) + "," + std::to_string(rect->bottom);
 }
 
+std::string RectsText(const RECTANGLE_16* rects, uint32_t count)
+{
+    if (rects == nullptr || count == 0) {
+        return "rects:0,first:none,last:none,bounds:none,area:0";
+    }
+
+    uint32_t left = rects[0].left;
+    uint32_t top = rects[0].top;
+    uint32_t right = rects[0].right;
+    uint32_t bottom = rects[0].bottom;
+    uint64_t area = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        const RECTANGLE_16& rect = rects[i];
+        left = std::min<uint32_t>(left, rect.left);
+        top = std::min<uint32_t>(top, rect.top);
+        right = std::max<uint32_t>(right, rect.right);
+        bottom = std::max<uint32_t>(bottom, rect.bottom);
+        area += static_cast<uint64_t>(rect.right - rect.left) * (rect.bottom - rect.top);
+    }
+
+    const RECTANGLE_16 bounds {
+        static_cast<UINT16>(left),
+        static_cast<UINT16>(top),
+        static_cast<UINT16>(right),
+        static_cast<UINT16>(bottom),
+    };
+    return "rects:" + std::to_string(count) +
+        ",first:" + RectText(rects) +
+        ",last:" + RectText(rects + count - 1U) +
+        ",bounds:" + RectText(&bounds) +
+        ",area:" + std::to_string(area);
+}
+
+std::string StreamText(const FREERDP_OHOS_RDPGFX_AVC444_STREAM_INFO& stream)
+{
+    return "bytes:" + std::to_string(stream.length) + "," +
+        RectsText(stream.regionRects, stream.numRegionRects);
+}
+
 struct PlaneView {
     const uint8_t* data = nullptr;
     uint32_t rowStride = 0;
@@ -889,11 +858,6 @@ struct DecodedFrame {
     {
         return y.data != nullptr && uv.data != nullptr && width > 0 && height > 0 &&
             y.rowStride > 0 && uv.rowStride > 0 && uv.columnStride == 2;
-    }
-
-    bool NativeBufferValid() const
-    {
-        return nativeBuffer != nullptr && width > 0 && height > 0;
     }
 
     void Release()
@@ -968,6 +932,30 @@ private:
         other.nativeStride = 0;
     }
 };
+
+std::string FramePlaneText(const DecodedFrame& frame)
+{
+    return "pts=" + std::to_string(frame.pts) +
+        " logical=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+        " aligned=" + std::to_string(frame.alignedWidth) + "x" +
+            std::to_string(frame.alignedHeight) +
+        " native=" + std::to_string(frame.nativeWidth) + "x" +
+            std::to_string(frame.nativeHeight) +
+        " nativeStride=" + std::to_string(frame.nativeStride) +
+        " nativeFormat=" +
+            NativeBufferFormatName(static_cast<OH_NativeBuffer_Format>(frame.nativeFormat)) +
+        " yStride=" + std::to_string(frame.y.rowStride) +
+        " yColumn=" + std::to_string(frame.y.columnStride) +
+        " uvStride=" + std::to_string(frame.uv.rowStride) +
+        " uvColumn=" + std::to_string(frame.uv.columnStride) +
+        " yUpload=" + std::to_string(frame.yUploadWidth) + "x" +
+            std::to_string(frame.height) +
+        " uvUpload=" + std::to_string(frame.uvUploadWidth) + "x" +
+            std::to_string(frame.uvUploadHeight) +
+        " order=" + std::string(frame.nv21 ? "NV21" : "NV12") +
+        " mapped=" + std::string(frame.mapped ? "yes" : "no") +
+        " nativeBuffer=" + std::string(frame.nativeBuffer != nullptr ? "yes" : "no");
+}
 
 enum class DecodeResult {
     Decoded,
@@ -1202,139 +1190,6 @@ public:
         return DecodeResult::NoOutput;
     }
 
-    DecodeResult DecodeNativeBuffer(const uint8_t* data, uint32_t size, int64_t pts,
-        DecodedFrame& frame, std::vector<std::string>& logs)
-    {
-        if (decoder_ == nullptr || !started_ || data == nullptr || size == 0) {
-            logs.push_back("AVC444 GPU " + role_ + " zero-copy decode skipped: invalid input");
-            return DecodeResult::Failed;
-        }
-
-        uint32_t inputIndex = 0;
-        OH_AVErrCode rc = OH_VideoDecoder_QueryInputBuffer(decoder_, &inputIndex, kInputTimeoutUs);
-        if (rc != AV_ERR_OK) {
-            logs.push_back("AVC444 GPU " + role_ + " zero-copy input unavailable rc=" +
-                std::to_string(static_cast<int32_t>(rc)) + " size=" + std::to_string(size));
-            return DecodeResult::Failed;
-        }
-
-        OH_AVBuffer* input = OH_VideoDecoder_GetInputBuffer(decoder_, inputIndex);
-        uint8_t* dst = input == nullptr ? nullptr : OH_AVBuffer_GetAddr(input);
-        const int32_t capacity = input == nullptr ? -1 : OH_AVBuffer_GetCapacity(input);
-        if (dst == nullptr || capacity < 0 || static_cast<uint32_t>(capacity) < size) {
-            logs.push_back("AVC444 GPU " + role_ +
-                " zero-copy input buffer invalid capacity=" + std::to_string(capacity) +
-                " size=" + std::to_string(size));
-            PushEmptyInput(input, inputIndex);
-            return DecodeResult::Failed;
-        }
-
-        std::memcpy(dst, data, size);
-        OH_AVCodecBufferAttr attr {};
-        attr.pts = pts;
-        attr.size = static_cast<int32_t>(size);
-        attr.offset = 0;
-        attr.flags = AVCODEC_BUFFER_FLAGS_NONE;
-        rc = OH_AVBuffer_SetBufferAttr(input, &attr);
-        if (rc != AV_ERR_OK) {
-            logs.push_back("AVC444 GPU " + role_ + " zero-copy set input attr failed rc=" +
-                std::to_string(static_cast<int32_t>(rc)));
-            PushEmptyInput(input, inputIndex);
-            return DecodeResult::Failed;
-        }
-
-        rc = OH_VideoDecoder_PushInputBuffer(decoder_, inputIndex);
-        if (rc != AV_ERR_OK) {
-            logs.push_back("AVC444 GPU " + role_ + " zero-copy push input failed rc=" +
-                std::to_string(static_cast<int32_t>(rc)));
-            return DecodeResult::Failed;
-        }
-        ++pushed_;
-
-        int64_t waitedUs = 0;
-        for (uint32_t attempt = 0;
-             attempt < kOutputSyncMaxAttempts && waitedUs < kOutputSyncDeadlineUs; ++attempt) {
-            uint32_t outputIndex = 0;
-            const int64_t remainingUs = kOutputSyncDeadlineUs - waitedUs;
-            const int64_t timeout = std::min(
-                attempt == 0 ? kOutputTimeoutUs : kFollowupOutputTimeoutUs, remainingUs);
-            rc = OH_VideoDecoder_QueryOutputBuffer(decoder_, &outputIndex, timeout);
-            if (rc == AV_ERR_STREAM_CHANGED) {
-                UpdateOutputDescription(logs, "zero-copy-stream-changed");
-                continue;
-            }
-            if (rc == AV_ERR_TRY_AGAIN_LATER) {
-                waitedUs += timeout;
-                continue;
-            }
-            if (rc != AV_ERR_OK) {
-                logs.push_back("AVC444 GPU " + role_ + " zero-copy query output failed rc=" +
-                    std::to_string(static_cast<int32_t>(rc)));
-                return DecodeResult::Failed;
-            }
-
-            OH_AVBuffer* output = OH_VideoDecoder_GetOutputBuffer(decoder_, outputIndex);
-            OH_AVCodecBufferAttr outputAttr {};
-            if (output == nullptr ||
-                OH_AVBuffer_GetBufferAttr(output, &outputAttr) != AV_ERR_OK) {
-                OH_VideoDecoder_FreeOutputBuffer(decoder_, outputIndex);
-                logs.push_back("AVC444 GPU " + role_ + " zero-copy output buffer invalid");
-                return DecodeResult::Failed;
-            }
-            if (outputAttr.pts != pts) {
-                OH_VideoDecoder_FreeOutputBuffer(decoder_, outputIndex);
-                logs.push_back("AVC444 GPU " + role_ + " zero-copy discarded stale output pts=" +
-                    std::to_string(outputAttr.pts) + " expected=" + std::to_string(pts));
-                continue;
-            }
-
-            frame.Release();
-            frame.codec = decoder_;
-            frame.buffer = output;
-            frame.outputIndex = outputIndex;
-            frame.hasOutputIndex = true;
-            frame.width = width_;
-            frame.height = height_;
-            frame.alignedWidth = AlignUp(width_, 32);
-            frame.alignedHeight = AlignUp(height_, 16);
-            frame.pts = pts;
-            frame.nativeBuffer = OH_AVBuffer_GetNativeBuffer(frame.buffer);
-            if (frame.nativeBuffer == nullptr) {
-                frame.Release();
-                logs.push_back("AVC444 GPU " + role_ +
-                    " zero-copy output has no native buffer");
-                return DecodeResult::Failed;
-            }
-            OH_NativeBuffer_Config config {};
-            OH_NativeBuffer_GetConfig(frame.nativeBuffer, &config);
-            frame.nativeFormat = config.format;
-            frame.nativeWidth = static_cast<uint32_t>(std::max(0, config.width));
-            frame.nativeHeight = static_cast<uint32_t>(std::max(0, config.height));
-            frame.nativeStride = static_cast<uint32_t>(std::max(0, config.stride));
-
-            ++outputs_;
-            if (outputs_ <= 8 || (outputs_ % 120) == 0) {
-                logs.push_back("AVC444 GPU " + role_ + " zero-copy decoded native buffer: pts=" +
-                    std::to_string(pts) + " nativeFormat=" +
-                    NativeBufferFormatName(static_cast<OH_NativeBuffer_Format>(frame.nativeFormat)) +
-                    " size=" + std::to_string(config.width) + "x" +
-                    std::to_string(config.height) + " stride=" + std::to_string(config.stride));
-            }
-            return DecodeResult::Decoded;
-        }
-
-        ++noOutput_;
-        if (noOutput_ <= 8 || (noOutput_ % 120) == 0) {
-            logs.push_back("AVC444 GPU " + role_ +
-                " zero-copy synchronous output wait timed out: pts=" + std::to_string(pts) +
-                " waitedUs=" + std::to_string(waitedUs) +
-                " budgetUs=" + std::to_string(kOutputSyncDeadlineUs) +
-                " attempts=" + std::to_string(kOutputSyncMaxAttempts) +
-                " noOutput=" + std::to_string(noOutput_));
-        }
-        return DecodeResult::NoOutput;
-    }
-
     bool MapDecodedFrame(DecodedFrame& frame, std::vector<std::string>& logs)
     {
         if (frame.Valid()) {
@@ -1454,14 +1309,16 @@ private:
                 const bool ySwapped = looksSwapped(frame.y.rowStride, frame.y.columnStride, yMinRow);
                 const bool uvSwapped = looksSwapped(frame.uv.rowStride, frame.uv.columnStride, uvMinRow);
                 if (ySwapped || uvSwapped) {
-                    logs.push_back("AVC444 GPU " + role_ +
-                        " normalized native plane strides ySwap=" +
-                        std::string(ySwapped ? "yes" : "no") +
-                        " uvSwap=" + std::string(uvSwapped ? "yes" : "no") +
-                        " before: yRow=" + std::to_string(frame.y.rowStride) +
-                        " yColumn=" + std::to_string(frame.y.columnStride) +
-                        " uvRow=" + std::to_string(frame.uv.rowStride) +
-                        " uvColumn=" + std::to_string(frame.uv.columnStride));
+                    if (ShouldLogFrequent(outputs_ + 1U)) {
+                        logs.push_back("AVC444 GPU " + role_ +
+                            " normalized native plane strides ySwap=" +
+                            std::string(ySwapped ? "yes" : "no") +
+                            " uvSwap=" + std::string(uvSwapped ? "yes" : "no") +
+                            " before: yRow=" + std::to_string(frame.y.rowStride) +
+                            " yColumn=" + std::to_string(frame.y.columnStride) +
+                            " uvRow=" + std::to_string(frame.uv.rowStride) +
+                            " uvColumn=" + std::to_string(frame.uv.columnStride));
+                    }
                     if (ySwapped) {
                         std::swap(frame.y.rowStride, frame.y.columnStride);
                     }
@@ -1649,15 +1506,6 @@ public:
             if (chromaV2Program_ != 0) {
                 glDeleteProgram(chromaV2Program_);
             }
-            if (copyYExternalProgram_ != 0) {
-                glDeleteProgram(copyYExternalProgram_);
-            }
-            if (lumaUvExternalProgram_ != 0) {
-                glDeleteProgram(lumaUvExternalProgram_);
-            }
-            if (chromaV2ExternalProgram_ != 0) {
-                glDeleteProgram(chromaV2ExternalProgram_);
-            }
             if (presentProgram_ != 0) {
                 glDeleteProgram(presentProgram_);
             }
@@ -1683,14 +1531,7 @@ public:
         copyYProgram_ = 0;
         lumaUvProgram_ = 0;
         chromaV2Program_ = 0;
-        copyYExternalProgram_ = 0;
-        lumaUvExternalProgram_ = 0;
-        chromaV2ExternalProgram_ = 0;
         presentProgram_ = 0;
-        zeroCopyNativeBufferReady_ = false;
-        eglCreateImageKHRFn_ = nullptr;
-        eglDestroyImageKHRFn_ = nullptr;
-        glEGLImageTargetTexture2DOESFn_ = nullptr;
         hasLuma_ = false;
         hasChroma_ = false;
     }
@@ -1815,7 +1656,6 @@ public:
             return false;
         }
 
-        DetectZeroCopyNativeBufferSupport(logs);
         if (!CreatePrograms(logs) || !CreateTextures(surfaceWidth, surfaceHeight, logs)) {
             eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             Destroy();
@@ -1836,16 +1676,8 @@ public:
             " surface=" + std::to_string(surfaceWidth_) + "x" +
             std::to_string(surfaceHeight_) +
             (window == nullptr ? " offscreen-pbuffer" : " window") +
-            " GLES3 " +
-            std::string(zeroCopyNativeBufferReady_ ?
-                "native-buffer zero-copy preferred, mapped-plane fallback" :
-                "mapped-plane shader path"));
+            " GLES3 mapped-plane shader path present=direct-yuv444-rgb");
         return true;
-    }
-
-    bool ZeroCopyNativeBufferReady() const
-    {
-        return zeroCopyNativeBufferReady_;
     }
 
     bool ReadyToPresent() const
@@ -1863,7 +1695,7 @@ public:
             << ",surface:" << surfaceWidth_ << "x" << surfaceHeight_
             << ",luma:" << (hasLuma_ ? "yes" : "no")
             << ",chroma:" << (hasChroma_ ? "yes" : "no")
-            << ",zeroCopy:" << (zeroCopyNativeBufferReady_ ? "yes" : "no");
+            << ",source:mapped-plane";
         return out.str();
     }
 
@@ -1954,107 +1786,7 @@ public:
         return true;
     }
 
-    bool ApplyLumaNativeBuffer(const DecodedFrame& frame, const RECTANGLE_16* rects,
-        uint32_t rectCount, std::vector<std::string>& logs)
-    {
-        if (!MakeCurrent(logs)) {
-            return false;
-        }
-
-        EGLImageKHR image = EGL_NO_IMAGE_KHR;
-        if (!BindNativeBufferExternal(frame, image, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-
-        glUseProgram(copyYExternalProgram_);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, srcExternalTexture_);
-        glUniform1i(glGetUniformLocation(copyYExternalProgram_, "uSrcYuv"), 0);
-        glUniform1i(glGetUniformLocation(copyYExternalProgram_, "uNativeWidth"),
-            static_cast<GLint>(frame.nativeWidth));
-        glUniform1i(glGetUniformLocation(copyYExternalProgram_, "uNativeHeight"),
-            static_cast<GLint>(frame.nativeHeight));
-        glUniform1i(glGetUniformLocation(copyYExternalProgram_, "uSurfaceHeight"),
-            static_cast<GLint>(surfaceHeight_));
-        DrawRectsToTexture(yTexture_, rects, rectCount);
-
-        glUseProgram(lumaUvExternalProgram_);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, srcExternalTexture_);
-        glUniform1i(glGetUniformLocation(lumaUvExternalProgram_, "uSrcYuv"), 0);
-        glUniform1i(glGetUniformLocation(lumaUvExternalProgram_, "uTargetPlane"), 0);
-        glUniform1i(glGetUniformLocation(lumaUvExternalProgram_, "uNativeWidth"),
-            static_cast<GLint>(frame.nativeWidth));
-        glUniform1i(glGetUniformLocation(lumaUvExternalProgram_, "uNativeHeight"),
-            static_cast<GLint>(frame.nativeHeight));
-        glUniform1i(glGetUniformLocation(lumaUvExternalProgram_, "uSurfaceHeight"),
-            static_cast<GLint>(surfaceHeight_));
-        const GLint lumaRectLeft = glGetUniformLocation(lumaUvExternalProgram_, "uRectLeft");
-        const GLint lumaRectTop = glGetUniformLocation(lumaUvExternalProgram_, "uRectTop");
-        DrawRectsToTexture(uTexture_, rects, rectCount, lumaRectLeft, lumaRectTop);
-
-        glUniform1i(glGetUniformLocation(lumaUvExternalProgram_, "uTargetPlane"), 1);
-        DrawRectsToTexture(vTexture_, rects, rectCount, lumaRectLeft, lumaRectTop);
-
-        glFinish();
-        const GLenum error = glGetError();
-        DestroyEglImage(image);
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (error != GL_NO_ERROR) {
-            logs.push_back("AVC444 GPU zero-copy luma shader failed glError=" +
-                Hex32(static_cast<uint32_t>(error)));
-            return false;
-        }
-        hasLuma_ = true;
-        return true;
-    }
-
-    bool ApplyChromaV2NativeBuffer(const DecodedFrame& frame, const RECTANGLE_16* rects,
-        uint32_t rectCount, std::vector<std::string>& logs)
-    {
-        if (!MakeCurrent(logs)) {
-            return false;
-        }
-
-        EGLImageKHR image = EGL_NO_IMAGE_KHR;
-        if (!BindNativeBufferExternal(frame, image, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-
-        glUseProgram(chromaV2ExternalProgram_);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, srcExternalTexture_);
-        glUniform1i(glGetUniformLocation(chromaV2ExternalProgram_, "uSrcYuv"), 0);
-        glUniform1i(glGetUniformLocation(chromaV2ExternalProgram_, "uSurfaceWidth"),
-            static_cast<GLint>(surfaceWidth_));
-        glUniform1i(glGetUniformLocation(chromaV2ExternalProgram_, "uSurfaceHeight"),
-            static_cast<GLint>(surfaceHeight_));
-        glUniform1i(glGetUniformLocation(chromaV2ExternalProgram_, "uAlignedWidth"),
-            static_cast<GLint>(frame.alignedWidth));
-        glUniform1i(glGetUniformLocation(chromaV2ExternalProgram_, "uNativeWidth"),
-            static_cast<GLint>(frame.nativeWidth));
-        glUniform1i(glGetUniformLocation(chromaV2ExternalProgram_, "uNativeHeight"),
-            static_cast<GLint>(frame.nativeHeight));
-
-        PingPongChromaPlane(true, rects, rectCount, chromaV2ExternalProgram_);
-        PingPongChromaPlane(false, rects, rectCount, chromaV2ExternalProgram_);
-
-        glFinish();
-        const GLenum error = glGetError();
-        DestroyEglImage(image);
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (error != GL_NO_ERROR) {
-            logs.push_back("AVC444 GPU zero-copy chroma-v2 shader failed glError=" +
-                Hex32(static_cast<uint32_t>(error)));
-            return false;
-        }
-        hasChroma_ = true;
-        return true;
-    }
-
-    bool Present(std::vector<std::string>& logs)
+    bool Present(std::vector<std::string>& logs, bool logSuccess)
     {
         if (!hasLuma_ || !hasChroma_) {
             logs.push_back("AVC444 GPU present skipped: luma=" +
@@ -2124,10 +1856,21 @@ public:
             return false;
         }
         eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        logs.push_back("AVC444 GPU compositor presented: surface=" +
-            std::to_string(surfaceWidth_) + "x" + std::to_string(surfaceHeight_) +
-            " viewport=" + std::to_string(viewport.x) + "," + std::to_string(viewport.y) +
-            " " + std::to_string(viewport.width) + "x" + std::to_string(viewport.height));
+        const uint32_t leftBar = viewport.x;
+        const uint32_t topBar = viewport.y;
+        const uint32_t rightBar = targetWidth_ - viewport.x - viewport.width;
+        const uint32_t bottomBar = targetHeight_ - viewport.y - viewport.height;
+        if (logSuccess) {
+            logs.push_back("AVC444 GPU compositor presented: target=" +
+                std::to_string(targetWidth_) + "x" + std::to_string(targetHeight_) +
+                " surface=" +
+                std::to_string(surfaceWidth_) + "x" + std::to_string(surfaceHeight_) +
+                " viewport=" + std::to_string(viewport.x) + "," + std::to_string(viewport.y) +
+                " " + std::to_string(viewport.width) + "x" + std::to_string(viewport.height) +
+                " letterboxLTRB=" + std::to_string(leftBar) + "," +
+                std::to_string(topBar) + "," + std::to_string(rightBar) + "," +
+                std::to_string(bottomBar));
+        }
         return true;
     }
 
@@ -2229,14 +1972,6 @@ public:
 
         logs.push_back("AVC444 GPU compositor AVC444v2 mapped shader readback self-test passed "
             "bit-exact against FreeRDP general_ChromaV2ToYUV444 model");
-        if (zeroCopyNativeBufferReady_ &&
-            !RunNativeBufferExternalChromaV2ReadbackSelfTest(srcY, srcU, srcV, refU, refV,
-                rects.data(), static_cast<uint32_t>(rects.size()), logs)) {
-            zeroCopyNativeBufferReady_ = false;
-            gZeroCopyNativeBufferDisabledBySelfTest = true;
-            logs.push_back("AVC444 GPU compositor disabled native-buffer zero-copy path after "
-                "self-test failure; mapped-plane GPU path remains available");
-        }
         return true;
     }
 
@@ -2256,225 +1991,10 @@ private:
         return true;
     }
 
-    void DetectZeroCopyNativeBufferSupport(std::vector<std::string>& logs)
-    {
-        const char* glExtensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
-        const char* eglExtensions = eglQueryString(display_, EGL_EXTENSIONS);
-        const bool externalEssl3Ready =
-            ContainsText(glExtensions, "GL_OES_EGL_image_external_essl3");
-        const bool yuvTargetReady = ContainsText(glExtensions, "GL_EXT_YUV_target");
-        const bool eglNativeBufferReady =
-            ContainsText(eglExtensions, "EGL_OHOS_image_native_buffer");
-
-        eglCreateImageKHRFn_ =
-            reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
-        eglDestroyImageKHRFn_ =
-            reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
-        glEGLImageTargetTexture2DOESFn_ =
-            reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
-                eglGetProcAddress("glEGLImageTargetTexture2DOES"));
-
-        zeroCopyNativeBufferReady_ = !gZeroCopyNativeBufferDisabledBySelfTest &&
-            externalEssl3Ready && yuvTargetReady &&
-            eglNativeBufferReady && eglCreateImageKHRFn_ != nullptr &&
-            eglDestroyImageKHRFn_ != nullptr && glEGLImageTargetTexture2DOESFn_ != nullptr;
-        logs.push_back("AVC444 GPU renderer zero-copy capability: externalEssl3=" +
-            std::string(externalEssl3Ready ? "yes" : "no") +
-            " yuvTarget=" + std::string(yuvTargetReady ? "yes" : "no") +
-            " eglNativeBuffer=" + std::string(eglNativeBufferReady ? "yes" : "no") +
-            " eglImageFns=" +
-            std::string((eglCreateImageKHRFn_ != nullptr && eglDestroyImageKHRFn_ != nullptr &&
-                glEGLImageTargetTexture2DOESFn_ != nullptr) ? "yes" : "no") +
-            " disabledBySelfTest=" +
-            std::string(gZeroCopyNativeBufferDisabledBySelfTest ? "yes" : "no") +
-            " zeroCopy=" + std::string(zeroCopyNativeBufferReady_ ? "ready" : "disabled"));
-    }
-
-    bool NativeBufferExternalSamplingValid(const DecodedFrame& frame,
-        std::vector<std::string>& logs) const
-    {
-        if (!zeroCopyNativeBufferReady_) {
-            logs.push_back("AVC444 GPU zero-copy native buffer rejected: capability disabled");
-            return false;
-        }
-        if (!frame.NativeBufferValid()) {
-            logs.push_back("AVC444 GPU zero-copy native buffer rejected: invalid decoded frame");
-            return false;
-        }
-        if (frame.nativeWidth < frame.alignedWidth || frame.nativeHeight < frame.height ||
-            frame.nativeWidth == 0 || frame.nativeHeight == 0) {
-            logs.push_back("AVC444 GPU zero-copy native buffer rejected: texture extent " +
-                std::to_string(frame.nativeWidth) + "x" + std::to_string(frame.nativeHeight) +
-                " is smaller than AVC444 aligned source " +
-                std::to_string(frame.alignedWidth) + "x" + std::to_string(frame.height) +
-                "; mapped-plane fallback will preserve FreeRDP AVC444v2 layout semantics");
-            return false;
-        }
-        return true;
-    }
-
-    bool BindNativeBufferExternal(const DecodedFrame& frame, EGLImageKHR& image,
-        std::vector<std::string>& logs)
-    {
-        image = EGL_NO_IMAGE_KHR;
-        if (!NativeBufferExternalSamplingValid(frame, logs)) {
-            return false;
-        }
-
-        const EGLint preservedAttribs[] = { EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE };
-        image = eglCreateImageKHRFn_(display_, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_OHOS,
-            reinterpret_cast<EGLClientBuffer>(frame.nativeBuffer), preservedAttribs);
-        if (image == EGL_NO_IMAGE_KHR) {
-            const EGLint errorWithPreserve = eglGetError();
-            const EGLint emptyAttribs[] = { EGL_NONE };
-            image = eglCreateImageKHRFn_(display_, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_OHOS,
-                reinterpret_cast<EGLClientBuffer>(frame.nativeBuffer), emptyAttribs);
-            if (image == EGL_NO_IMAGE_KHR) {
-                logs.push_back("AVC444 GPU zero-copy eglCreateImageKHR failed preserveError=" +
-                    Hex32(static_cast<uint32_t>(errorWithPreserve)) +
-                    " retryError=" + Hex32(static_cast<uint32_t>(eglGetError())));
-                return false;
-            }
-        }
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, srcExternalTexture_);
-        ConfigureTexture(GL_TEXTURE_EXTERNAL_OES);
-        glEGLImageTargetTexture2DOESFn_(GL_TEXTURE_EXTERNAL_OES,
-            static_cast<GLeglImageOES>(image));
-        const GLenum error = glGetError();
-        if (error != GL_NO_ERROR) {
-            logs.push_back("AVC444 GPU zero-copy glEGLImageTargetTexture2DOES failed glError=" +
-                Hex32(static_cast<uint32_t>(error)));
-            DestroyEglImage(image);
-            image = EGL_NO_IMAGE_KHR;
-            return false;
-        }
-        return true;
-    }
-
-    void DestroyEglImage(EGLImageKHR& image)
-    {
-        if (image != EGL_NO_IMAGE_KHR && eglDestroyImageKHRFn_ != nullptr) {
-            eglDestroyImageKHRFn_(display_, image);
-        }
-        image = EGL_NO_IMAGE_KHR;
-    }
-
-    bool RunNativeBufferExternalChromaV2ReadbackSelfTest(const std::vector<uint8_t>& srcY,
-        const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV,
-        const std::vector<uint8_t>& refU, const std::vector<uint8_t>& refV,
-        const RECTANGLE_16* rects, uint32_t rectCount, std::vector<std::string>& logs)
-    {
-        constexpr uint32_t width = 64;
-        constexpr uint32_t height = 32;
-        OH_NativeBuffer_Config request {};
-        request.width = static_cast<int32_t>(width);
-        request.height = static_cast<int32_t>(height);
-        request.format = NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP;
-        request.usage = static_cast<int32_t>(NATIVEBUFFER_USAGE_CPU_READ |
-            NATIVEBUFFER_USAGE_CPU_WRITE | NATIVEBUFFER_USAGE_HW_TEXTURE);
-        request.stride = static_cast<int32_t>(width);
-
-        DecodedFrame frame;
-        frame.nativeBuffer = OH_NativeBuffer_Alloc(&request);
-        if (frame.nativeBuffer == nullptr) {
-            logs.push_back("AVC444 GPU compositor native-buffer zero-copy self-test skipped: "
-                "OH_NativeBuffer_Alloc returned null");
-            return false;
-        }
-        frame.width = width;
-        frame.height = height;
-        frame.alignedWidth = width;
-        frame.alignedHeight = height;
-
-        OH_NativeBuffer_Config actual {};
-        OH_NativeBuffer_GetConfig(frame.nativeBuffer, &actual);
-        frame.nativeFormat = actual.format;
-        frame.nativeWidth = static_cast<uint32_t>(std::max(0, actual.width));
-        frame.nativeHeight = static_cast<uint32_t>(std::max(0, actual.height));
-        frame.nativeStride = static_cast<uint32_t>(std::max(0, actual.stride));
-
-        void* address = nullptr;
-        OH_NativeBuffer_Planes planes {};
-        const int32_t mapRc = OH_NativeBuffer_MapPlanes(frame.nativeBuffer, &address, &planes);
-        if (mapRc != 0 || address == nullptr || planes.planeCount < 2 ||
-            planes.planes[0].rowStride < width || planes.planes[1].rowStride < width ||
-            planes.planes[1].columnStride < 2) {
-            logs.push_back("AVC444 GPU compositor native-buffer zero-copy self-test failed to map "
-                "NV12 planes: rc=" + std::to_string(mapRc) +
-                " planeCount=" + std::to_string(planes.planeCount) +
-                " yStride=" + std::to_string(planes.planes[0].rowStride) +
-                " uvStride=" + std::to_string(planes.planes[1].rowStride) +
-                " uvColumn=" + std::to_string(planes.planes[1].columnStride));
-            return false;
-        }
-
-        uint8_t* base = static_cast<uint8_t*>(address);
-        for (uint32_t y = 0; y < height; ++y) {
-            std::memcpy(base + planes.planes[0].offset +
-                    static_cast<size_t>(y) * planes.planes[0].rowStride,
-                srcY.data() + static_cast<size_t>(y) * width, width);
-        }
-        for (uint32_t y = 0; y < height / 2U; ++y) {
-            for (uint32_t x = 0; x < width / 2U; ++x) {
-                uint8_t* pixel = base + planes.planes[1].offset +
-                    static_cast<size_t>(y) * planes.planes[1].rowStride +
-                    static_cast<size_t>(x) * planes.planes[1].columnStride;
-                pixel[0] = srcU[y * (width / 2U) + x];
-                pixel[1] = srcV[y * (width / 2U) + x];
-            }
-        }
-        OH_NativeBuffer_Unmap(frame.nativeBuffer);
-
-        std::vector<uint8_t> baselineU(width * height, 0x80);
-        std::vector<uint8_t> baselineV(width * height, 0x81);
-        if (!MakeCurrent(logs) ||
-            !UploadPlaneTexture(uTexture_, baselineU, logs) ||
-            !UploadPlaneTexture(vTexture_, baselineV, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-        if (!ApplyChromaV2NativeBuffer(frame, rects, rectCount, logs)) {
-            logs.push_back("AVC444 GPU compositor native-buffer zero-copy self-test failed: "
-                "external YUV shader update did not complete");
-            return false;
-        }
-
-        std::vector<uint8_t> gotU;
-        std::vector<uint8_t> gotV;
-        if (!MakeCurrent(logs) || !ReadPlaneTexture(uTexture_, gotU, logs) ||
-            !ReadPlaneTexture(vTexture_, gotV, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint32_t offset = y * width + x;
-                if (gotU[offset] != refU[offset] || gotV[offset] != refV[offset]) {
-                    logs.push_back("AVC444 GPU compositor native-buffer zero-copy self-test failed: "
-                        "at=" + std::to_string(x) + "," + std::to_string(y) +
-                        " ref=" + std::to_string(refU[offset]) + "/" +
-                        std::to_string(refV[offset]) + " gpu=" +
-                        std::to_string(gotU[offset]) + "/" + std::to_string(gotV[offset]));
-                    return false;
-                }
-            }
-        }
-
-        logs.push_back("AVC444 GPU compositor native-buffer zero-copy AVC444v2 shader self-test "
-            "passed bit-exact against FreeRDP general_ChromaV2ToYUV444 model");
-        return true;
-    }
-
     void DeleteTextures()
     {
-        std::array<GLuint*, 9> textures {
-            &srcYTexture_, &srcUVTexture_, &srcExternalTexture_, &yTexture_, &uTexture_,
+        std::array<GLuint*, 8> textures {
+            &srcYTexture_, &srcUVTexture_, &yTexture_, &uTexture_,
             &vTexture_, &uScratchTexture_, &vScratchTexture_, &framebuffer_
         };
         for (GLuint* value : textures) {
@@ -2585,103 +2105,6 @@ private:
             "  }\n"
             "  fragColor = vec4(value, 0.0, 0.0, 1.0);\n"
             "}\n";
-        static constexpr const char* copyYExternalFragment =
-            "#version 300 es\n"
-            "#extension GL_OES_EGL_image_external_essl3 : require\n"
-            "#extension GL_EXT_YUV_target : require\n"
-            "precision mediump float;\n"
-            "uniform __samplerExternal2DY2YEXT uSrcYuv;\n"
-            "uniform int uNativeWidth;\n"
-            "uniform int uNativeHeight;\n"
-            "uniform int uSurfaceHeight;\n"
-            "out vec4 fragColor;\n"
-            "vec3 sampleYuv(int x, int y) {\n"
-            "  x = clamp(x, 0, uNativeWidth - 1);\n"
-            "  y = clamp(y, 0, uNativeHeight - 1);\n"
-            "  vec2 coord = (vec2(float(x) + 0.5, float(y) + 0.5) /\n"
-            "      vec2(float(uNativeWidth), float(uNativeHeight)));\n"
-            "  return texture(uSrcYuv, coord).xyz;\n"
-            "}\n"
-            "void main() {\n"
-            "  int x = int(floor(gl_FragCoord.x));\n"
-            "  int y = int(floor(float(uSurfaceHeight) - gl_FragCoord.y));\n"
-            "  fragColor = vec4(sampleYuv(x, y).x, 0.0, 0.0, 1.0);\n"
-            "}\n";
-        static constexpr const char* lumaUvExternalFragment =
-            "#version 300 es\n"
-            "#extension GL_OES_EGL_image_external_essl3 : require\n"
-            "#extension GL_EXT_YUV_target : require\n"
-            "precision mediump float;\n"
-            "uniform __samplerExternal2DY2YEXT uSrcYuv;\n"
-            "uniform int uTargetPlane;\n"
-            "uniform int uNativeWidth;\n"
-            "uniform int uNativeHeight;\n"
-            "uniform int uSurfaceHeight;\n"
-            "uniform int uRectLeft;\n"
-            "uniform int uRectTop;\n"
-            "out vec4 fragColor;\n"
-            "vec3 sampleYuv(int x, int y) {\n"
-            "  x = clamp(x, 0, uNativeWidth - 1);\n"
-            "  y = clamp(y, 0, uNativeHeight - 1);\n"
-            "  vec2 coord = (vec2(float(x) + 0.5, float(y) + 0.5) /\n"
-            "      vec2(float(uNativeWidth), float(uNativeHeight)));\n"
-            "  return texture(uSrcYuv, coord).xyz;\n"
-            "}\n"
-            "void main() {\n"
-            "  int x = int(floor(gl_FragCoord.x));\n"
-            "  int y = int(floor(float(uSurfaceHeight) - gl_FragCoord.y));\n"
-            "  int relX = x - uRectLeft;\n"
-            "  int relY = y - uRectTop;\n"
-            "  int srcX = (uRectLeft / 2 + relX / 2) * 2;\n"
-            "  int srcY = (uRectTop / 2 + relY / 2) * 2;\n"
-            "  vec3 yuv = sampleYuv(srcX, srcY);\n"
-            "  float value = (uTargetPlane == 0) ? yuv.y : yuv.z;\n"
-            "  fragColor = vec4(value, 0.0, 0.0, 1.0);\n"
-            "}\n";
-        static constexpr const char* chromaV2ExternalFragment =
-            "#version 300 es\n"
-            "#extension GL_OES_EGL_image_external_essl3 : require\n"
-            "#extension GL_EXT_YUV_target : require\n"
-            "precision mediump float;\n"
-            "uniform highp sampler2D uPrev;\n"
-            "uniform __samplerExternal2DY2YEXT uSrcYuv;\n"
-            "uniform int uTargetPlane;\n"
-            "uniform int uSurfaceWidth;\n"
-            "uniform int uSurfaceHeight;\n"
-            "uniform int uAlignedWidth;\n"
-            "uniform int uNativeWidth;\n"
-            "uniform int uNativeHeight;\n"
-            "uniform int uRectLeft;\n"
-            "uniform int uRectTop;\n"
-            "out vec4 fragColor;\n"
-            "vec3 sampleYuv(int x, int y) {\n"
-            "  x = clamp(x, 0, uNativeWidth - 1);\n"
-            "  y = clamp(y, 0, uNativeHeight - 1);\n"
-            "  vec2 coord = (vec2(float(x) + 0.5, float(y) + 0.5) /\n"
-            "      vec2(float(uNativeWidth), float(uNativeHeight)));\n"
-            "  return texture(uSrcYuv, coord).xyz;\n"
-            "}\n"
-            "void main() {\n"
-            "  int x = int(floor(gl_FragCoord.x));\n"
-            "  int y = int(floor(float(uSurfaceHeight) - gl_FragCoord.y));\n"
-            "  int relX = x - uRectLeft;\n"
-            "  int relY = y - uRectTop;\n"
-            "  int stateY = uSurfaceHeight - 1 - y;\n"
-            "  float value = texelFetch(uPrev, ivec2(x, stateY), 0).r;\n"
-            "  if ((relX & 1) == 1) {\n"
-            "    int srcX = uRectLeft / 2 + relX / 2 + ((uTargetPlane == 1) ? (uAlignedWidth / 2) : 0);\n"
-            "    value = sampleYuv(srcX, y).x;\n"
-            "  } else if ((relY & 1) == 1 && (relX & 3) == 0) {\n"
-            "    int srcX = uRectLeft / 4 + relX / 4 + ((uTargetPlane == 1) ? (uAlignedWidth / 4) : 0);\n"
-            "    int srcY = uRectTop / 2 + relY / 2;\n"
-            "    value = sampleYuv(srcX * 2, srcY * 2).y;\n"
-            "  } else if ((relY & 1) == 1 && (relX & 3) == 2) {\n"
-            "    int srcX = uRectLeft / 4 + relX / 4 + ((uTargetPlane == 1) ? (uAlignedWidth / 4) : 0);\n"
-            "    int srcY = uRectTop / 2 + relY / 2;\n"
-            "    value = sampleYuv(srcX * 2, srcY * 2).z;\n"
-            "  }\n"
-            "  fragColor = vec4(value, 0.0, 0.0, 1.0);\n"
-            "}\n";
         static constexpr const char* presentFragment =
             "#version 300 es\n"
             "precision mediump float;\n"
@@ -2697,22 +2120,12 @@ private:
             "  y = clamp(y, 0, uSurfaceHeight - 1);\n"
             "  return texelFetch(tex, ivec2(x, uSurfaceHeight - 1 - y), 0).r;\n"
             "}\n"
-            "float conditionalClip(float candidate, float original) {\n"
-            "  float clipped = clamp(candidate, 0.0, 1.0);\n"
-            "  return (abs(clipped - original) < (30.0 / 255.0)) ? original : clipped;\n"
-            "}\n"
             "void main() {\n"
             "  int x = clamp(int(floor(vTexCoord.x * float(uSurfaceWidth))), 0, uSurfaceWidth - 1);\n"
             "  int y = clamp(int(floor(vTexCoord.y * float(uSurfaceHeight))), 0, uSurfaceHeight - 1);\n"
             "  float yy = fetchPlane(uY, x, y);\n"
             "  float uu = fetchPlane(uU, x, y);\n"
             "  float vv = fetchPlane(uV, x, y);\n"
-            "  if ((x & 1) == 0 && (y & 1) == 0 && x + 1 < uSurfaceWidth && y + 1 < uSurfaceHeight) {\n"
-            "    float candU = 4.0 * uu - fetchPlane(uU, x + 1, y) - fetchPlane(uU, x, y + 1) - fetchPlane(uU, x + 1, y + 1);\n"
-            "    float candV = 4.0 * vv - fetchPlane(uV, x + 1, y) - fetchPlane(uV, x, y + 1) - fetchPlane(uV, x + 1, y + 1);\n"
-            "    uu = conditionalClip(candU, uu);\n"
-            "    vv = conditionalClip(candV, vv);\n"
-            "  }\n"
             "  float d = uu - (128.0 / 255.0);\n"
             "  float e = vv - (128.0 / 255.0);\n"
             "  vec3 rgb = vec3(yy + 1.57421875 * e,\n"
@@ -2728,32 +2141,6 @@ private:
         if (copyYProgram_ == 0 || lumaUvProgram_ == 0 ||
             chromaV2Program_ == 0 || presentProgram_ == 0) {
             return false;
-        }
-
-        if (zeroCopyNativeBufferReady_) {
-            copyYExternalProgram_ = LinkProgram(updateVertex, copyYExternalFragment, logs);
-            lumaUvExternalProgram_ = LinkProgram(updateVertex, lumaUvExternalFragment, logs);
-            chromaV2ExternalProgram_ =
-                LinkProgram(updateVertex, chromaV2ExternalFragment, logs);
-            if (copyYExternalProgram_ == 0 || lumaUvExternalProgram_ == 0 ||
-                chromaV2ExternalProgram_ == 0) {
-                logs.push_back(
-                    "AVC444 GPU renderer zero-copy shader compile/link failed; falling back to "
-                    "mapped-plane source upload path");
-                if (copyYExternalProgram_ != 0) {
-                    glDeleteProgram(copyYExternalProgram_);
-                    copyYExternalProgram_ = 0;
-                }
-                if (lumaUvExternalProgram_ != 0) {
-                    glDeleteProgram(lumaUvExternalProgram_);
-                    lumaUvExternalProgram_ = 0;
-                }
-                if (chromaV2ExternalProgram_ != 0) {
-                    glDeleteProgram(chromaV2ExternalProgram_);
-                    chromaV2ExternalProgram_ = 0;
-                }
-                zeroCopyNativeBufferReady_ = false;
-            }
         }
         return true;
     }
@@ -2772,9 +2159,6 @@ private:
         glGenFramebuffers(1, &framebuffer_);
         glGenTextures(1, &srcYTexture_);
         glGenTextures(1, &srcUVTexture_);
-        if (zeroCopyNativeBufferReady_) {
-            glGenTextures(1, &srcExternalTexture_);
-        }
         glGenTextures(1, &yTexture_);
         glGenTextures(1, &uTexture_);
         glGenTextures(1, &vTexture_);
@@ -2794,10 +2178,6 @@ private:
         ConfigureTexture(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, srcUVTexture_);
         ConfigureTexture(GL_TEXTURE_2D);
-        if (zeroCopyNativeBufferReady_) {
-            glBindTexture(GL_TEXTURE_EXTERNAL_OES, srcExternalTexture_);
-            ConfigureTexture(GL_TEXTURE_EXTERNAL_OES);
-        }
         const GLenum error = glGetError();
         if (error != GL_NO_ERROR || framebuffer_ == 0 || srcYTexture_ == 0 || srcUVTexture_ == 0 ||
             yTexture_ == 0 || uTexture_ == 0 || vTexture_ == 0 || uScratchTexture_ == 0 ||
@@ -2805,11 +2185,6 @@ private:
             logs.push_back("AVC444 GPU texture allocation failed glError=" +
                 Hex32(static_cast<uint32_t>(error)));
             return false;
-        }
-        if (zeroCopyNativeBufferReady_ && srcExternalTexture_ == 0) {
-            zeroCopyNativeBufferReady_ = false;
-            logs.push_back(
-                "AVC444 GPU external source texture allocation failed; mapped-plane fallback enabled");
         }
         return true;
     }
@@ -2993,7 +2368,6 @@ private:
     GLuint framebuffer_ = 0;
     GLuint srcYTexture_ = 0;
     GLuint srcUVTexture_ = 0;
-    GLuint srcExternalTexture_ = 0;
     GLuint yTexture_ = 0;
     GLuint uTexture_ = 0;
     GLuint vTexture_ = 0;
@@ -3007,14 +2381,7 @@ private:
     GLuint copyYProgram_ = 0;
     GLuint lumaUvProgram_ = 0;
     GLuint chromaV2Program_ = 0;
-    GLuint copyYExternalProgram_ = 0;
-    GLuint lumaUvExternalProgram_ = 0;
-    GLuint chromaV2ExternalProgram_ = 0;
     GLuint presentProgram_ = 0;
-    bool zeroCopyNativeBufferReady_ = false;
-    PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHRFn_ = nullptr;
-    PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHRFn_ = nullptr;
-    PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOESFn_ = nullptr;
     bool hasLuma_ = false;
     bool hasChroma_ = false;
 };
@@ -3058,7 +2425,7 @@ struct Avc444GpuCompositor::Impl {
     uint64_t endFrameMismatches = 0;
     uint64_t endFramePresentAttempts = 0;
     uint64_t pendingPresentOverwrites = 0;
-    bool requireFullRefresh = true;
+    bool requireFullRefresh = false;
     bool pendingPresent = false;
     bool resetDecodersBeforeNextDecode = false;
     uint32_t pendingFrameId = 0;
@@ -3082,7 +2449,7 @@ struct Avc444GpuCompositor::Impl {
         endFrameMismatches = 0;
         endFramePresentAttempts = 0;
         pendingPresentOverwrites = 0;
-        requireFullRefresh = true;
+        requireFullRefresh = false;
         pendingPresent = false;
         resetDecodersBeforeNextDecode = false;
         pendingFrameId = 0;
@@ -3180,8 +2547,6 @@ struct Avc444GpuCompositor::Impl {
         DecodedFrame chromaFrame;
         bool lumaUpdated = false;
         bool chromaUpdated = false;
-        bool usedZeroCopy = false;
-        bool usedMappedPlanes = false;
 
         if (resetDecodersBeforeNextDecode) {
             lumaDecoder.Close();
@@ -3201,12 +2566,6 @@ struct Avc444GpuCompositor::Impl {
             rendererStateTouched = true;
             return fail("offscreen renderer init");
         }
-        const bool zeroCopyCandidate = renderer.ZeroCopyNativeBufferReady();
-        if (zeroCopyCandidate) {
-            logs.push_back("AVC444 GPU compositor will try zero-copy native-buffer source sampling for frame=" +
-                std::to_string(command->frameId));
-        }
-
         if (needsLuma) {
             PreparedH264Packet packet = PrepareH264Packet(command->stream1.data,
                 command->stream1.length, lumaDecoder.Started(), lumaParameterSets,
@@ -3224,8 +2583,7 @@ struct Avc444GpuCompositor::Impl {
                 return fail("luma decoder init");
             }
             const int64_t pts = static_cast<int64_t>(++streamPts);
-            const DecodeResult decode = zeroCopyCandidate ?
-                lumaDecoder.DecodeNativeBuffer(packet.data, packet.size, pts, lumaFrame, logs) :
+            const DecodeResult decode =
                 lumaDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
             if (decode != DecodeResult::Decoded) {
                 if (!active) {
@@ -3261,8 +2619,7 @@ struct Avc444GpuCompositor::Impl {
                 return fail("chroma decoder init");
             }
             const int64_t pts = static_cast<int64_t>(++streamPts);
-            const DecodeResult decode = zeroCopyCandidate ?
-                chromaDecoder.DecodeNativeBuffer(packet.data, packet.size, pts, chromaFrame, logs) :
+            const DecodeResult decode =
                 chromaDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
             if (decode != DecodeResult::Decoded) {
                 if (!active) {
@@ -3302,37 +2659,24 @@ struct Avc444GpuCompositor::Impl {
         }
 
         if (needsLuma) {
-            bool applied = false;
-            if (zeroCopyCandidate &&
-                renderer.ApplyLumaNativeBuffer(lumaFrame, command->stream1.regionRects,
-                    command->stream1.numRegionRects, logs)) {
-                applied = true;
-                usedZeroCopy = true;
-            } else if (zeroCopyCandidate) {
-                logs.push_back("AVC444 GPU compositor zero-copy luma update unavailable; "
-                    "trying mapped-plane fallback for the same decoded output");
+            if (!lumaFrame.PlanesValid() && !lumaDecoder.MapDecodedFrame(lumaFrame, logs)) {
+                rendererStateTouched = true;
+                if (!active) {
+                    logs.push_back("AVC444 GPU compositor luma mapped-plane output failed; keeping GDI");
+                    renderer.Destroy();
+                    return false;
+                }
+                return fail("luma mapped-plane output");
             }
-            if (!applied) {
-                if (!lumaFrame.PlanesValid() && !lumaDecoder.MapDecodedFrame(lumaFrame, logs)) {
-                    rendererStateTouched = true;
-                    if (!active) {
-                        logs.push_back("AVC444 GPU compositor luma mapped fallback failed; keeping GDI");
-                        renderer.Destroy();
-                        return false;
-                    }
-                    return fail("luma mapped fallback");
+            if (!renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
+                    command->stream1.numRegionRects, logs)) {
+                rendererStateTouched = true;
+                if (!active) {
+                    logs.push_back("AVC444 GPU compositor luma offscreen update failed; keeping GDI");
+                    renderer.Destroy();
+                    return false;
                 }
-                if (!renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
-                        command->stream1.numRegionRects, logs)) {
-                    rendererStateTouched = true;
-                    if (!active) {
-                        logs.push_back("AVC444 GPU compositor luma offscreen update failed; keeping GDI");
-                        renderer.Destroy();
-                        return false;
-                    }
-                    return fail("luma shader update");
-                }
-                usedMappedPlanes = true;
+                return fail("luma shader update");
             }
             rendererStateTouched = true;
         }
@@ -3340,37 +2684,24 @@ struct Avc444GpuCompositor::Impl {
         if (needsChroma) {
             const FREERDP_OHOS_RDPGFX_AVC444_STREAM_INFO* chromaStream =
                 command->LC == 0 ? &command->stream2 : &command->stream1;
-            bool applied = false;
-            if (zeroCopyCandidate &&
-                renderer.ApplyChromaV2NativeBuffer(chromaFrame, chromaStream->regionRects,
-                    chromaStream->numRegionRects, logs)) {
-                applied = true;
-                usedZeroCopy = true;
-            } else if (zeroCopyCandidate) {
-                logs.push_back("AVC444 GPU compositor zero-copy chroma-v2 update unavailable; "
-                    "trying mapped-plane fallback for the same decoded output");
+            if (!chromaFrame.PlanesValid() && !chromaDecoder.MapDecodedFrame(chromaFrame, logs)) {
+                rendererStateTouched = true;
+                if (!active) {
+                    logs.push_back("AVC444 GPU compositor chroma mapped-plane output failed; keeping GDI");
+                    renderer.Destroy();
+                    return false;
+                }
+                return fail("chroma mapped-plane output");
             }
-            if (!applied) {
-                if (!chromaFrame.PlanesValid() && !chromaDecoder.MapDecodedFrame(chromaFrame, logs)) {
-                    rendererStateTouched = true;
-                    if (!active) {
-                        logs.push_back("AVC444 GPU compositor chroma mapped fallback failed; keeping GDI");
-                        renderer.Destroy();
-                        return false;
-                    }
-                    return fail("chroma mapped fallback");
+            if (!renderer.ApplyChromaV2(chromaFrame, chromaStream->regionRects,
+                    chromaStream->numRegionRects, logs)) {
+                rendererStateTouched = true;
+                if (!active) {
+                    logs.push_back("AVC444 GPU compositor chroma offscreen update failed; keeping GDI");
+                    renderer.Destroy();
+                    return false;
                 }
-                if (!renderer.ApplyChromaV2(chromaFrame, chromaStream->regionRects,
-                        chromaStream->numRegionRects, logs)) {
-                    rendererStateTouched = true;
-                    if (!active) {
-                        logs.push_back("AVC444 GPU compositor chroma offscreen update failed; keeping GDI");
-                        renderer.Destroy();
-                        return false;
-                    }
-                    return fail("chroma-v2 shader update");
-                }
-                usedMappedPlanes = true;
+                return fail("chroma-v2 shader update");
             }
             rendererStateTouched = true;
         }
@@ -3435,17 +2766,43 @@ struct Avc444GpuCompositor::Impl {
                     " presented=" + std::to_string(presented));
             }
         }
+        const std::string route = "hardware-decode+mapped-plane-gpu-combine";
+        if (ShouldLogFrequent(queuedPresents + 1U)) {
+            logs.push_back("AVC444 GPU compositor update detail: frame=" +
+                std::to_string(command->frameId) +
+                " LC=" + std::to_string(command->LC) +
+                " lumaUpdated=" + std::string(lumaUpdated ? "yes" : "no") +
+                " chromaUpdated=" + std::string(chromaUpdated ? "yes" : "no") +
+                " target=" + std::to_string(target.width) + "x" +
+                    std::to_string(target.height) +
+                " remoteSurface=" + std::to_string(command->width) + "x" +
+                    std::to_string(command->height) +
+                " targetMinusSurface=" +
+                    std::to_string(static_cast<int64_t>(target.width) -
+                        static_cast<int64_t>(command->width)) + "x" +
+                    std::to_string(static_cast<int64_t>(target.height) -
+                        static_cast<int64_t>(command->height)) +
+                " route=" + route +
+                " stream1=" + StreamText(command->stream1) +
+                " stream2=" + StreamText(command->stream2));
+            if (lumaUpdated) {
+                logs.push_back("AVC444 GPU compositor luma frame layout: " +
+                    FramePlaneText(lumaFrame));
+            }
+            if (chromaUpdated) {
+                logs.push_back("AVC444 GPU compositor chroma frame layout: " +
+                    FramePlaneText(chromaFrame));
+            }
+        }
         pendingPresent = true;
         pendingFrameId = command->frameId;
         ++queuedPresents;
-        const std::string route = usedZeroCopy && !usedMappedPlanes ?
-            "hardware-decode+native-buffer-yuv-target-gpu-combine" :
-            (usedZeroCopy ? "hardware-decode+mixed-native-buffer/mapped-plane-gpu-combine" :
-                "hardware-decode+mapped-plane-gpu-combine");
-        logs.push_back("AVC444 GPU compositor queued EndFrame present: frame=" +
-            std::to_string(command->frameId) + " LC=" + std::to_string(command->LC) +
-            " queued=" + std::to_string(queuedPresents) +
-            " route=" + route);
+        if (ShouldLogFrequent(queuedPresents)) {
+            logs.push_back("AVC444 GPU compositor queued EndFrame present: frame=" +
+                std::to_string(command->frameId) + " LC=" + std::to_string(command->LC) +
+                " queued=" + std::to_string(queuedPresents) +
+                " route=" + route);
+        }
         return true;
     }
 
@@ -3505,7 +2862,8 @@ struct Avc444GpuCompositor::Impl {
         }
 
         ++endFramePresentAttempts;
-        if (ShouldLogFrequent(endFramePresentAttempts)) {
+        const bool logPresentSummary = ShouldLogFrequent(endFramePresentAttempts);
+        if (logPresentSummary) {
             logs.push_back("AVC444 GPU compositor EndFrame present attempt: "
                 "endFrame=" + std::to_string(frameId) +
                 " pendingFrame=" + std::to_string(pendingFrameId) +
@@ -3516,7 +2874,7 @@ struct Avc444GpuCompositor::Impl {
                 " " + renderer.DebugState());
         }
 
-        if (!renderer.Present(logs)) {
+        if (!renderer.Present(logs, logPresentSummary)) {
             ++failures;
             ++ignoredUpdates;
             requireFullRefresh = true;
@@ -3534,11 +2892,13 @@ struct Avc444GpuCompositor::Impl {
         pendingPresent = false;
         pendingFrameId = 0;
         ++presented;
-        logs.push_back("AVC444 GPU compositor presented at EndFrame: frame=" +
-            std::to_string(frameId) + " presented=" + std::to_string(presented) +
-            " attempts=" + std::to_string(endFramePresentAttempts) +
-            " callbacks=" + std::to_string(endFrameCallbacks) +
-            " queued=" + std::to_string(queuedPresents));
+        if (ShouldLogFrequent(presented)) {
+            logs.push_back("AVC444 GPU compositor presented at EndFrame: frame=" +
+                std::to_string(frameId) + " presented=" + std::to_string(presented) +
+                " attempts=" + std::to_string(endFramePresentAttempts) +
+                " callbacks=" + std::to_string(endFrameCallbacks) +
+                " queued=" + std::to_string(queuedPresents));
+        }
         return true;
     }
 #else
@@ -3575,7 +2935,7 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     lastTargetWidth_ = 0;
     lastTargetHeight_ = 0;
     diagnostics_ = enabled ?
-        "avc444 gpu compositor: configured experimental zero-copy compositor with mapped-plane fallback, gdi preserved until first successful present" :
+        "avc444 gpu compositor: configured experimental mapped-plane compositor, gdi preserved until first successful present" :
         "avc444 gpu compositor: off";
 }
 
@@ -3761,24 +3121,21 @@ Avc444GpuCompositor::SelfTestResult Avc444GpuCompositor::RunSelfTest(
     uint32_t width, uint32_t height)
 {
     SelfTestResult result;
-    std::vector<std::string> logs = ProbeEglNativeImage(result);
+    std::vector<std::string> logs = ProbeEglContext(result);
     std::vector<std::string> avcodecLogs = ProbeAvcCapability(width, height, result);
     logs.insert(logs.end(), avcodecLogs.begin(), avcodecLogs.end());
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     result.avc444v2LayoutReady = RunAvc444V2LayoutSelfTest(logs);
     result.avc444v2ShaderReady =
         result.avc444v2LayoutReady && RunAvc444V2GpuShaderSelfTest(logs);
-    result.zeroCopyNativeBufferReady =
-        result.zeroCopyNativeBufferReady && !gZeroCopyNativeBufferDisabledBySelfTest;
 #endif
 
     result.diagnostics =
         "avc444 gpu compositor: egl=" + std::string(result.eglReady ? "yes" : "no") +
-        " nativeImage=" + std::string(result.nativeImageReady ? "yes" : "no") +
         " avcodecHardware=" + std::string(result.avcodecHardwareReady ? "yes" : "no") +
         " nativeBufferFormats=" + std::string(result.nativeBufferFormatsKnown ? "known" : "unknown") +
         " rawYuvCandidate=" + std::string(result.rawBufferCandidate ? "yes" : "no") +
-        " zeroCopyNativeBuffer=" + std::string(result.zeroCopyNativeBufferReady ? "yes" : "no") +
+        " source=mapped-plane" +
         " avc444v2Layout=" + std::string(result.avc444v2LayoutReady ? "yes" : "no") +
         " avc444v2Shader=" + std::string(result.avc444v2ShaderReady ? "yes" : "no") +
         " readyForSuppressGdi=" +

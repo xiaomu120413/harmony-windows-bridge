@@ -111,18 +111,25 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
         message = "FreeRDP OHOS display-control helper symbols are not loaded";
         return false;
     }
+    const uint32_t requestedWidth = width;
+    const uint32_t requestedHeight = height;
     activeApi_->ohosDisplayNormalizeSize(width, height, dynamicResizeAlignment_, &width, &height);
+    const std::string normalizeText =
+        " requested=" + std::to_string(requestedWidth) + "x" +
+        std::to_string(requestedHeight) +
+        " normalized=" + std::to_string(width) + "x" + std::to_string(height) +
+        " alignment=" + std::to_string(dynamicResizeAlignment_);
     if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
-        message = "display-control channel is not ready";
+        message = "display-control channel is not ready;" + normalizeText;
         return false;
     }
     if (!displayControlCapsReady_) {
-        message = "display-control caps are not ready";
+        message = "display-control caps are not ready;" + normalizeText;
         return false;
     }
     if (lastDynamicResizeWidth_ == width && lastDynamicResizeHeight_ == height) {
         message = "display-control resize unchanged: " + std::to_string(width) + "x" +
-            std::to_string(height);
+            std::to_string(height) + ";" + normalizeText;
         return true;
     }
 
@@ -144,7 +151,7 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
     lastDynamicResizeHeight_ = sentHeight;
     message = "display-control resize requested after " + reason + ": " +
         (detail[0] != '\0' ? detail.data() : (std::to_string(sentWidth) + "x" +
-            std::to_string(sentHeight)));
+            std::to_string(sentHeight))) + ";" + normalizeText;
     return true;
 #else
     (void)width;
