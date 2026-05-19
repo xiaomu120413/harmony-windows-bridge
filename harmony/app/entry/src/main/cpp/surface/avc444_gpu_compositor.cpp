@@ -1444,20 +1444,45 @@ private:
                     1 : planes.planes[0].columnStride;
                 frame.uv.data = static_cast<const uint8_t*>(address) + planes.planes[1].offset;
                 frame.uv.rowStride = planes.planes[1].rowStride;
-                frame.uv.columnStride = planes.planes[1].columnStride;
-                if (frame.y.rowStride < frame.width && frame.y.columnStride >= frame.width &&
-                    frame.uv.rowStride < frame.alignedWidth &&
-                    frame.uv.columnStride >= frame.alignedWidth) {
+                frame.uv.columnStride = planes.planes[1].columnStride == 0 ?
+                    2 : planes.planes[1].columnStride;
+                const uint32_t yMinRow = frame.width;
+                const uint32_t uvMinRow = frame.alignedWidth;
+                const auto looksSwapped = [](uint32_t row, uint32_t col, uint32_t minRow) {
+                    return col >= minRow && row < minRow;
+                };
+                const bool ySwapped = looksSwapped(frame.y.rowStride, frame.y.columnStride, yMinRow);
+                const bool uvSwapped = looksSwapped(frame.uv.rowStride, frame.uv.columnStride, uvMinRow);
+                if (ySwapped || uvSwapped) {
                     logs.push_back("AVC444 GPU " + role_ +
-                        " normalized swapped native plane strides: yRow=" +
-                        std::to_string(frame.y.rowStride) + " yColumn=" +
-                        std::to_string(frame.y.columnStride) + " uvRow=" +
-                        std::to_string(frame.uv.rowStride) + " uvColumn=" +
-                        std::to_string(frame.uv.columnStride));
-                    std::swap(frame.y.rowStride, frame.y.columnStride);
-                    std::swap(frame.uv.rowStride, frame.uv.columnStride);
+                        " normalized native plane strides ySwap=" +
+                        std::string(ySwapped ? "yes" : "no") +
+                        " uvSwap=" + std::string(uvSwapped ? "yes" : "no") +
+                        " before: yRow=" + std::to_string(frame.y.rowStride) +
+                        " yColumn=" + std::to_string(frame.y.columnStride) +
+                        " uvRow=" + std::to_string(frame.uv.rowStride) +
+                        " uvColumn=" + std::to_string(frame.uv.columnStride));
+                    if (ySwapped) {
+                        std::swap(frame.y.rowStride, frame.y.columnStride);
+                    }
+                    if (uvSwapped) {
+                        std::swap(frame.uv.rowStride, frame.uv.columnStride);
+                    }
                 }
-                return FinishPlaneLayout(frame, logs, "native-buffer");
+                if (frame.y.columnStride != 1 || frame.uv.columnStride != 2) {
+                    logs.push_back("AVC444 GPU " + role_ +
+                        " unexpected native plane columnStride yColumn=" +
+                        std::to_string(frame.y.columnStride) +
+                        " uvColumn=" + std::to_string(frame.uv.columnStride) +
+                        " (NV12 expects 1/2); falling back to avbuffer-memory layout");
+                    OH_NativeBuffer_Unmap(frame.nativeBuffer);
+                    frame.mapped = false;
+                    frame.mappedAddress = nullptr;
+                    OH_NativeBuffer_Unreference(frame.nativeBuffer);
+                    frame.nativeBuffer = nullptr;
+                } else {
+                    return FinishPlaneLayout(frame, logs, "native-buffer");
+                }
             }
 
             logs.push_back("AVC444 GPU " + role_ + " native buffer map failed rc=" +
@@ -3033,7 +3058,7 @@ struct Avc444GpuCompositor::Impl {
     uint64_t endFrameMismatches = 0;
     uint64_t endFramePresentAttempts = 0;
     uint64_t pendingPresentOverwrites = 0;
-    bool requireFullRefresh = false;
+    bool requireFullRefresh = true;
     bool pendingPresent = false;
     bool resetDecodersBeforeNextDecode = false;
     uint32_t pendingFrameId = 0;
@@ -3057,7 +3082,7 @@ struct Avc444GpuCompositor::Impl {
         endFrameMismatches = 0;
         endFramePresentAttempts = 0;
         pendingPresentOverwrites = 0;
-        requireFullRefresh = false;
+        requireFullRefresh = true;
         pendingPresent = false;
         resetDecodersBeforeNextDecode = false;
         pendingFrameId = 0;
