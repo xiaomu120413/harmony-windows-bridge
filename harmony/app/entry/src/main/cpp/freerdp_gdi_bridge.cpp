@@ -17,6 +17,10 @@
 #endif
 
 namespace rdp_bridge {
+void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
+} // namespace rdp_bridge
+
+namespace rdp_bridge {
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 namespace {
@@ -275,7 +279,10 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     if (sizeChanged) {
         g_rdpPrimaryFrameReady.store(false);
     }
-    if (!IsAvc420SurfaceOutputEnabled()) {
+    if (IsAvc420SurfaceOutputEnabled()) {
+        UpdateAvc420SurfaceOutputIfActive("desktop resize " + std::to_string(width) + "x" +
+            std::to_string(height));
+    } else {
         StartGdiRenderPipeline();
     }
     EmitGdiLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
