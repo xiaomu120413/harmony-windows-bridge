@@ -319,7 +319,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
             break;
         }
 
-        DWORD waitStatus = api.waitForMultipleObjects(count, handles, FALSE, 25);
+        DWORD waitStatus = api.waitForMultipleObjects(count, handles, FALSE, 5);
         if (!running.load()) {
             result.cancelled = true;
             result.message = "FreeRDP session cancelled";
@@ -343,7 +343,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
             } else if (graphicsConfig.h264 && errorCode == ERROR_NOT_SUPPORTED) {
                 result.failed = true;
                 result.message =
-                    "FreeRDP graphics negotiation failed: server did not confirm required RDPGFX AVC420 surface mode";
+                    "FreeRDP graphics negotiation failed: server did not confirm requested RDPGFX AVC420 mode while AVC444 is disabled";
             } else {
                 result.failed = true;
                 result.message = "FreeRDP event loop failed: " + LastErrorMessage(api, errorCode);

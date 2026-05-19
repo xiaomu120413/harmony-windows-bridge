@@ -15,7 +15,6 @@ namespace {
 
 std::atomic_bool g_avc420SurfaceOutputConfigured{false};
 std::atomic_bool g_avc420SurfaceOutputActive{false};
-std::atomic_bool g_avc444GpuSurfaceOutputActive{false};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
 
@@ -222,7 +221,6 @@ bool BindAvcSurfaceOutput(
         return false;
     }
 
-    g_avc444GpuSurfaceOutputActive.store(false);
     if (!g_avc420SurfaceOutputActive.exchange(true)) {
         std::string commandText;
         if (command != nullptr) {
@@ -246,7 +244,6 @@ void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
         return;
     }
     g_avc420SurfaceOutputActive.store(false);
-    g_avc444GpuSurfaceOutputActive.store(false);
 
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
@@ -255,15 +252,6 @@ void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
     freerdpOhosCompositor* compositor = CurrentOhosCompositor();
     if (compositor != nullptr && api.ohosCompositorEndAvc420Surface != nullptr) {
         api.ohosCompositorEndAvc420Surface(compositor);
-    }
-    if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
-        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
-    }
-    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
-        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
-    }
-    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
-        api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
     }
     if (api.ohosAvcodecSetFallbackCallback != nullptr) {
         api.ohosAvcodecSetFallbackCallback(nullptr, nullptr);
@@ -291,30 +279,6 @@ BOOL OhosRdpgfxH264SurfaceCommandCallback(
     return FALSE;
 }
 
-void ActivateAvc444GpuCompositorOutput(FreerdpRuntimeApi& api)
-{
-    if (g_avc444GpuSurfaceOutputActive.exchange(true)) {
-        return;
-    }
-
-    g_avc420SurfaceOutputActive.store(false);
-    if (api.ohosAvcodecSetOutputSurface != nullptr) {
-        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
-    }
-    freerdpOhosCompositor* compositor = CurrentOhosCompositor();
-    if (compositor != nullptr && api.ohosCompositorEndAvc420Surface != nullptr) {
-        api.ohosCompositorEndAvc420Surface(compositor);
-    }
-
-    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-    if (callbacks.stopRenderPipeline != nullptr) {
-        callbacks.stopRenderPipeline();
-    }
-    if (callbacks.releaseRenderTarget != nullptr) {
-        callbacks.releaseRenderTarget("before AVC444 GPU compositor output");
-    }
-    LogThroughCallbacks("AVC444 GPU compositor output activated; GDI renderer suppressed");
-}
 #endif
 
 } // namespace
@@ -327,15 +291,14 @@ void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks)
 
 bool IsAvc420SurfaceOutputEnabled()
 {
-    return g_avc420SurfaceOutputActive.load() || g_avc444GpuSurfaceOutputActive.load();
+    return g_avc420SurfaceOutputActive.load();
 }
 
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     const bool avc420Active = g_avc420SurfaceOutputActive.load();
-    const bool avc444Active = g_avc444GpuSurfaceOutputActive.load();
-    if (!g_avc420SurfaceOutputConfigured.load() || (!avc420Active && !avc444Active)) {
+    if (!g_avc420SurfaceOutputConfigured.load() || !avc420Active) {
         return;
     }
 
@@ -356,17 +319,7 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
     const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
     if (target.window == nullptr || target.width == 0 || target.height == 0) {
         g_avc420SurfaceOutputActive.store(false);
-        g_avc444GpuSurfaceOutputActive.store(false);
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
-        if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
-            api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
-        }
-        if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
-            api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
-        }
-        if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
-            api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
-        }
         if (callbacks.startRenderPipeline != nullptr) {
             callbacks.startRenderPipeline();
         }
@@ -385,22 +338,12 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
     if (callbacks.releaseRenderTarget != nullptr) {
         callbacks.releaseRenderTarget("before AVCodec surface update after " + reason);
     }
-    if (avc444Active) {
-        api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
-        if (callbacks.registerAvc444DecodeSurfaces != nullptr) {
-            callbacks.registerAvc444DecodeSurfaces(api, target.width, target.height, LogThroughCallbacks);
-        }
-        LogThroughCallbacks("AVC444 GPU compositor output updated after " + reason + ": " +
-            std::to_string(target.width) + "x" + std::to_string(target.height));
-        return;
-    }
     if (!BeginOhosCompositorAvc420Route(api, reason)) {
         return;
     }
     api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE);
     LogThroughCallbacks("AVC420 surface output updated after " + reason + ": " +
-        std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " avc444=gpu-compositor-prepared");
+        std::to_string(target.width) + "x" + std::to_string(target.height));
 #else
     (void)reason;
 #endif
@@ -411,7 +354,6 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
 {
     g_avc420SurfaceOutputConfigured.store(false);
     g_avc420SurfaceOutputActive.store(false);
-    g_avc444GpuSurfaceOutputActive.store(false);
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     }
@@ -422,15 +364,6 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
     if (compositor != nullptr && api.ohosCompositorClearOutputTarget != nullptr) {
         std::array<char, 128> message {};
         api.ohosCompositorClearOutputTarget(compositor, message.data(), message.size());
-    }
-    if (api.ohosAvcodecSetAvc444OutputSurfaces != nullptr) {
-        api.ohosAvcodecSetAvc444OutputSurfaces(nullptr, nullptr, 0, 0, FALSE);
-    }
-    if (api.ohosAvcodecSetAvc444SurfaceRouteEnabled != nullptr) {
-        api.ohosAvcodecSetAvc444SurfaceRouteEnabled(FALSE);
-    }
-    if (api.ohosAvcodecSetAvc444FrameCallback != nullptr) {
-        api.ohosAvcodecSetAvc444FrameCallback(nullptr, nullptr);
     }
     if (api.ohosAvcodecSetFallbackCallback != nullptr) {
         api.ohosAvcodecSetFallbackCallback(nullptr, nullptr);
@@ -473,10 +406,9 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     }
     g_avc420SurfaceOutputConfigured.store(true);
     g_avc420SurfaceOutputActive.store(false);
-    g_avc444GpuSurfaceOutputActive.store(false);
     log("OHOS AVCodec output surface armed: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=deferred-until-avc-surface-command avc444=not-precreated gdi=active-before-h264");
+        " mode=deferred-until-avc420-surface-command avc444=freerdp-native-gdi gdi=active");
     return true;
 }
 
@@ -533,39 +465,6 @@ std::string OhosCompositorDiagnostics(FreerdpRuntimeApi& api)
         return "";
     }
     return SafeCString(api.ohosCompositorGetDiagnostics(compositor));
-}
-
-bool RegisterOhosCompositorAvc444DecodeSurfaces(FreerdpRuntimeApi& api,
-    const FREERDP_OHOS_AVC444_SURFACE_TARGETS& targets, const FreerdpLogFn& log)
-{
-    if (api.ohosCompositorSetAvc444DecodeSurfaces == nullptr) {
-        return true;
-    }
-    std::string error;
-    freerdpOhosCompositor* compositor = EnsureOhosCompositor(api, error);
-    if (compositor == nullptr) {
-        log("OHOS compositor AVC444 surface registration skipped: " + error);
-        return true;
-    }
-    std::array<char, 256> message {};
-    if (!api.ohosCompositorSetAvc444DecodeSurfaces(
-            compositor, &targets, TRUE, message.data(), message.size())) {
-        log("OHOS compositor AVC444 surface registration failed: " +
-            std::string(message[0] == '\0' ? "unknown error" : message.data()));
-        return false;
-    }
-    log(message.data());
-    return true;
-}
-
-void NotifyOhosCompositorAvc444Frame(FreerdpRuntimeApi& api, uint32_t surfaceId,
-    uint32_t width, uint32_t height, uint32_t op, uint32_t codecId)
-{
-    freerdpOhosCompositor* compositor = CurrentOhosCompositor();
-    if (compositor != nullptr && api.ohosCompositorNotifyAvc444Frame != nullptr) {
-        ActivateAvc444GpuCompositorOutput(api);
-        api.ohosCompositorNotifyAvc444Frame(compositor, surfaceId, width, height, op, codecId);
-    }
 }
 
 void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)

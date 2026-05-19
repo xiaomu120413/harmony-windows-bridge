@@ -18,10 +18,6 @@ using FreerdpLogFn = std::function<void(const std::string&)>;
 
 struct RdpgfxPipelineCallbacks {
     std::function<DecoderSurfaceTarget()> decoderSurfaceTarget;
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    std::function<bool(FreerdpRuntimeApi&, uint32_t, uint32_t, const FreerdpLogFn&)>
-        registerAvc444DecodeSurfaces;
-#endif
     std::function<void()> startRenderPipeline;
     std::function<void()> stopRenderPipeline;
     std::function<void(const std::string&)> releaseRenderTarget;
@@ -40,10 +36,6 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
     const GraphicsPipelineConfig& graphicsConfig, const FreerdpLogFn& log, std::string& error);
 std::string OhosRdpgfxBridgeDiagnostics(FreerdpRuntimeApi& api);
 std::string OhosCompositorDiagnostics(FreerdpRuntimeApi& api);
-bool RegisterOhosCompositorAvc444DecodeSurfaces(FreerdpRuntimeApi& api,
-    const FREERDP_OHOS_AVC444_SURFACE_TARGETS& targets, const FreerdpLogFn& log);
-void NotifyOhosCompositorAvc444Frame(FreerdpRuntimeApi& api, uint32_t surfaceId,
-    uint32_t width, uint32_t height, uint32_t op, uint32_t codecId);
 void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx);
 void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx);
 #endif

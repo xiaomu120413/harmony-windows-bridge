@@ -194,24 +194,10 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionAddStandardChannels);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);
-        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_output_surfaces",
-            ohosAvcodecSetAvc444OutputSurfaces);
-        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_surface_route_enabled",
-            ohosAvcodecSetAvc444SurfaceRouteEnabled);
-        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_avc444_frame_callback",
-            ohosAvcodecSetAvc444FrameCallback);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_fallback_callback",
             ohosAvcodecSetFallbackCallback);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_get_diagnostics",
             ohosAvcodecGetDiagnostics);
-        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_new",
-            ohosAvcSurfacePoolNew);
-        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_free",
-            ohosAvcSurfacePoolFree);
-        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_destroy",
-            ohosAvcSurfacePoolDestroy);
-        LoadOptionalClientSymbol("freerdp_ohos_avc_surface_pool_ensure_avc444",
-            ohosAvcSurfacePoolEnsureAvc444);
         LoadOptionalClientSymbol("freerdp_ohos_compositor_new",
             ohosCompositorNew);
         LoadOptionalClientSymbol("freerdp_ohos_compositor_free",
@@ -228,10 +214,6 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosCompositorBeginAvc420Surface);
         LoadOptionalClientSymbol("freerdp_ohos_compositor_end_avc420_surface",
             ohosCompositorEndAvc420Surface);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_set_avc444_decode_surfaces",
-            ohosCompositorSetAvc444DecodeSurfaces);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_notify_avc444_frame",
-            ohosCompositorNotifyAvc444Frame);
         LoadOptionalClientSymbol("freerdp_ohos_compositor_get_diagnostics",
             ohosCompositorGetDiagnostics);
     }
