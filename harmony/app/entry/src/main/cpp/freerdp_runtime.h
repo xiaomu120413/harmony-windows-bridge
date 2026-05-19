@@ -20,7 +20,7 @@
 #if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 #include <client/OHOS/ohos_certificate.h>
 #include <client/OHOS/ohos_clipboard.h>
-#include <client/OHOS/ohos_compositor.h>
+#include <client/OHOS/ohos_avc420_route.h>
 #include <client/OHOS/ohos_display.h>
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
@@ -145,17 +145,17 @@ public:
     using OhosAvcodecFallbackCallbackFn = void (*)(const char*, void*);
     using OhosAvcodecSetFallbackCallbackFn = BOOL (*)(OhosAvcodecFallbackCallbackFn, void*);
     using OhosAvcodecGetDiagnosticsFn = const char* (*)();
-    using OhosCompositorNewFn = freerdpOhosCompositor* (*)();
-    using OhosCompositorFreeFn = void (*)(freerdpOhosCompositor*);
-    using OhosCompositorConfigureFn = BOOL (*)(
-        freerdpOhosCompositor*, const FREERDP_OHOS_COMPOSITOR_CONFIG*, char*, size_t);
-    using OhosCompositorResetFn = void (*)(freerdpOhosCompositor*);
-    using OhosCompositorSetOutputTargetFn = BOOL (*)(
-        freerdpOhosCompositor*, const FREERDP_OHOS_COMPOSITOR_OUTPUT_TARGET*, char*, size_t);
-    using OhosCompositorClearOutputTargetFn = BOOL (*)(freerdpOhosCompositor*, char*, size_t);
-    using OhosCompositorBeginAvc420SurfaceFn = BOOL (*)(freerdpOhosCompositor*, char*, size_t);
-    using OhosCompositorEndAvc420SurfaceFn = void (*)(freerdpOhosCompositor*);
-    using OhosCompositorGetDiagnosticsFn = const char* (*)(freerdpOhosCompositor*);
+    using OhosAvc420RouteNewFn = freerdpOhosAvc420Route* (*)();
+    using OhosAvc420RouteFreeFn = void (*)(freerdpOhosAvc420Route*);
+    using OhosAvc420RouteConfigureFn = BOOL (*)(
+        freerdpOhosAvc420Route*, const FREERDP_OHOS_AVC420_ROUTE_CONFIG*, char*, size_t);
+    using OhosAvc420RouteResetFn = void (*)(freerdpOhosAvc420Route*);
+    using OhosAvc420RouteSetOutputTargetFn = BOOL (*)(
+        freerdpOhosAvc420Route*, const FREERDP_OHOS_AVC420_ROUTE_OUTPUT_TARGET*, char*, size_t);
+    using OhosAvc420RouteClearOutputTargetFn = BOOL (*)(freerdpOhosAvc420Route*, char*, size_t);
+    using OhosAvc420RouteBeginSurfaceFn = BOOL (*)(freerdpOhosAvc420Route*, char*, size_t);
+    using OhosAvc420RouteEndSurfaceFn = void (*)(freerdpOhosAvc420Route*);
+    using OhosAvc420RouteGetDiagnosticsFn = const char* (*)(freerdpOhosAvc420Route*);
     using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
 
     FreerdpNewFn freerdpNew = nullptr;
@@ -242,15 +242,15 @@ public:
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetFallbackCallbackFn ohosAvcodecSetFallbackCallback = nullptr;
     OhosAvcodecGetDiagnosticsFn ohosAvcodecGetDiagnostics = nullptr;
-    OhosCompositorNewFn ohosCompositorNew = nullptr;
-    OhosCompositorFreeFn ohosCompositorFree = nullptr;
-    OhosCompositorConfigureFn ohosCompositorConfigure = nullptr;
-    OhosCompositorResetFn ohosCompositorReset = nullptr;
-    OhosCompositorSetOutputTargetFn ohosCompositorSetOutputTarget = nullptr;
-    OhosCompositorClearOutputTargetFn ohosCompositorClearOutputTarget = nullptr;
-    OhosCompositorBeginAvc420SurfaceFn ohosCompositorBeginAvc420Surface = nullptr;
-    OhosCompositorEndAvc420SurfaceFn ohosCompositorEndAvc420Surface = nullptr;
-    OhosCompositorGetDiagnosticsFn ohosCompositorGetDiagnostics = nullptr;
+    OhosAvc420RouteNewFn ohosAvc420RouteNew = nullptr;
+    OhosAvc420RouteFreeFn ohosAvc420RouteFree = nullptr;
+    OhosAvc420RouteConfigureFn ohosAvc420RouteConfigure = nullptr;
+    OhosAvc420RouteResetFn ohosAvc420RouteReset = nullptr;
+    OhosAvc420RouteSetOutputTargetFn ohosAvc420RouteSetOutputTarget = nullptr;
+    OhosAvc420RouteClearOutputTargetFn ohosAvc420RouteClearOutputTarget = nullptr;
+    OhosAvc420RouteBeginSurfaceFn ohosAvc420RouteBeginSurface = nullptr;
+    OhosAvc420RouteEndSurfaceFn ohosAvc420RouteEndSurface = nullptr;
+    OhosAvc420RouteGetDiagnosticsFn ohosAvc420RouteGetDiagnostics = nullptr;
     WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:

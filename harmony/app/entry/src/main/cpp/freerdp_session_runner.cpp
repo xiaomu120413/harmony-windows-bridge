@@ -343,7 +343,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
             } else if (graphicsConfig.h264 && errorCode == ERROR_NOT_SUPPORTED) {
                 result.failed = true;
                 result.message =
-                    "FreeRDP graphics negotiation failed: server did not confirm requested RDPGFX AVC420 mode while AVC444 is disabled";
+                    "FreeRDP graphics negotiation failed: server did not confirm requested RDPGFX H264 mode";
             } else {
                 result.failed = true;
                 result.message = "FreeRDP event loop failed: " + LastErrorMessage(api, errorCode);

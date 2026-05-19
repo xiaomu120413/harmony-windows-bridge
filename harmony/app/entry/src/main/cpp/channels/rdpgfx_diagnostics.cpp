@@ -81,9 +81,9 @@ std::string BuildGraphicsPipelineStatsLog()
     if (!bridgeDiagnostics.empty()) {
         out << " | " << bridgeDiagnostics;
     }
-    const std::string compositorDiagnostics = OhosCompositorDiagnostics(api);
-    if (!compositorDiagnostics.empty()) {
-        out << " | " << compositorDiagnostics;
+    const std::string avc420RouteDiagnostics = OhosAvc420RouteDiagnostics(api);
+    if (!avc420RouteDiagnostics.empty()) {
+        out << " | " << avc420RouteDiagnostics;
     }
     if (api.ohosAvcodecGetDiagnostics != nullptr) {
         const char* diagnostics = api.ohosAvcodecGetDiagnostics();

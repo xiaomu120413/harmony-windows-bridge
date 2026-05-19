@@ -198,24 +198,24 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosAvcodecSetFallbackCallback);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_get_diagnostics",
             ohosAvcodecGetDiagnostics);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_new",
-            ohosCompositorNew);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_free",
-            ohosCompositorFree);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_configure",
-            ohosCompositorConfigure);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_reset",
-            ohosCompositorReset);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_set_output_target",
-            ohosCompositorSetOutputTarget);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_clear_output_target",
-            ohosCompositorClearOutputTarget);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_begin_avc420_surface",
-            ohosCompositorBeginAvc420Surface);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_end_avc420_surface",
-            ohosCompositorEndAvc420Surface);
-        LoadOptionalClientSymbol("freerdp_ohos_compositor_get_diagnostics",
-            ohosCompositorGetDiagnostics);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_new",
+            ohosAvc420RouteNew);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_free",
+            ohosAvc420RouteFree);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_configure",
+            ohosAvc420RouteConfigure);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_reset",
+            ohosAvc420RouteReset);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_set_output_target",
+            ohosAvc420RouteSetOutputTarget);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_clear_output_target",
+            ohosAvc420RouteClearOutputTarget);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_begin_surface",
+            ohosAvc420RouteBeginSurface);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_end_surface",
+            ohosAvc420RouteEndSurface);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_get_diagnostics",
+            ohosAvc420RouteGetDiagnostics);
     }
     return loaded_;
 }
