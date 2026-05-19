@@ -10,6 +10,9 @@
 #include <cstdint>
 #include <mutex>
 
+#include <native_buffer/native_buffer.h>
+#include <native_window/external_window.h>
+
 namespace rdp_bridge {
 namespace {
 
@@ -170,6 +173,39 @@ bool BeginOhosAvc420Route(FreerdpRuntimeApi& api, const std::string& reason)
     return true;
 }
 
+void PrepareNativeWindowForAvcDecoder(OHNativeWindow* window, const std::string& reason)
+{
+    if (window == nullptr) {
+        return;
+    }
+    constexpr int32_t nv12Format = static_cast<int32_t>(NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP);
+    const int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(window, SET_FORMAT, nv12Format);
+    if (rc != 0) {
+        LogThroughCallbacks("AVC420 surface output: SET_FORMAT(NV12) warning after " + reason +
+            ": " + std::to_string(rc));
+        return;
+    }
+    LogThroughCallbacks(
+        "AVC420 surface output: NativeWindow format switched to NV12 before AVCodec bind (" +
+        reason + ")");
+}
+
+void RestoreNativeWindowToRgba(OHNativeWindow* window, const std::string& reason)
+{
+    if (window == nullptr) {
+        return;
+    }
+    constexpr int32_t rgbaFormat = static_cast<int32_t>(NATIVEBUFFER_PIXEL_FMT_RGBA_8888);
+    const int32_t rc = OH_NativeWindow_NativeWindowHandleOpt(window, SET_FORMAT, rgbaFormat);
+    if (rc != 0) {
+        LogThroughCallbacks("AVC420 surface output: SET_FORMAT(RGBA_8888) warning after " + reason +
+            ": " + std::to_string(rc));
+        return;
+    }
+    LogThroughCallbacks(
+        "AVC420 surface output: NativeWindow format restored to RGBA_8888 after " + reason);
+}
+
 bool BindAvc420SurfaceOutput(
     const std::string& reason, const FREERDP_OHOS_RDPGFX_SURFACE_COMMAND_INFO* command)
 {
@@ -211,6 +247,7 @@ bool BindAvc420SurfaceOutput(
     if (callbacks.releaseRenderTarget != nullptr) {
         callbacks.releaseRenderTarget("before AVC420 AVCodec surface bind after " + reason);
     }
+    PrepareNativeWindowForAvcDecoder(target.window, reason);
 
     if (!api.ohosAvcodecSetOutputSurface(target.window, target.width, target.height, TRUE)) {
         LogThroughCallbacks("AVC420 surface output activation failed after " + reason +
@@ -258,6 +295,12 @@ void SwitchAvc420SurfaceToSoftwareFallback(const std::string& reason)
     }
 
     RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.decoderSurfaceTarget != nullptr) {
+        RestoreNativeWindowToRgba(callbacks.decoderSurfaceTarget().window, reason);
+    }
+    if (callbacks.releaseRenderTarget != nullptr) {
+        callbacks.releaseRenderTarget("after AVCodec surface release: " + reason);
+    }
     if (callbacks.startRenderPipeline != nullptr) {
         callbacks.startRenderPipeline();
     }
