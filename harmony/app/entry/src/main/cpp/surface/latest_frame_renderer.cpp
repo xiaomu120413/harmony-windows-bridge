@@ -201,7 +201,7 @@ private:
     };
 
     static constexpr uint32_t kTargetFrameIntervalMs = 16;
-    static constexpr uint32_t kLargeDirtyFrameIntervalMs = 33;
+    static constexpr uint32_t kLargeDirtyFrameIntervalMs = 16;
     static constexpr uint32_t kLargeDirtyAreaPermille = 700;
 
     static uint32_t ResolveTargetFrameIntervalMs(const PendingFrame& frame, bool sizeChanged)
