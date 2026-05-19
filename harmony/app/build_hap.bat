@@ -36,6 +36,15 @@ if not defined HVIGORW_CMD (
   exit /b 1
 )
 
+if exist "%PROJECT_DIR%\..\out\ohos-arm64\runtime-libs\libfreerdp-client3.so" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\sync-freerdp-runtime.ps1"
+  if errorlevel 1 (
+    echo sync-freerdp-runtime failed with exit code %ERRORLEVEL%.
+    endlocal
+    exit /b %ERRORLEVEL%
+  )
+)
+
 call "%HVIGORW_CMD%" --no-daemon assembleHap --mode module -p product=default -p module=entry@default
 if errorlevel 1 (
   echo hvigor assembleHap failed with exit code %ERRORLEVEL%.

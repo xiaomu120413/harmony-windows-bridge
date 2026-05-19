@@ -44,6 +44,7 @@ export interface NativeConnectParams {
   resolution: string;
   certPolicy: string;
   graphicsMode?: string;
+  avc444GpuExperimental?: boolean;
   appFilesDir?: string;
 }
 

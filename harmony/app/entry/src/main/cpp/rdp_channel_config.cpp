@@ -134,6 +134,8 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
             " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
             " avc444=" + std::string(h264Requested ? "freerdp-native-yuv444" : "off") +
+            " avc444GpuExperiment=" +
+            std::string(graphicsConfig.avc444GpuExperimental ? "requested" : "off") +
             " capsFilter=" + Hex32(0) +
             " requestedCodec=" + std::string(h264Requested ? "avc420+avc444" : "none") +
             " rfx=off nscodec=" + std::string(h264Requested ? "on" : "off") +

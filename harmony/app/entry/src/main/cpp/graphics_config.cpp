@@ -23,6 +23,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = false;
         config.h264 = false;
+        config.avc444GpuExperimental = false;
         config.mode = "gdi";
         return config;
     }
@@ -30,6 +31,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = true;
         config.h264 = false;
+        config.avc444GpuExperimental = false;
         config.mode = "rdpgfx";
         return config;
     }
@@ -37,6 +39,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = true;
         config.h264 = true;
+        config.avc444GpuExperimental = false;
         config.mode = "rdpgfx-h264";
         return config;
     }
@@ -44,6 +47,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
     config.valid = false;
     config.enabled = false;
     config.h264 = false;
+    config.avc444GpuExperimental = false;
     config.mode = mode.empty() ? "missing" : "invalid";
     return config;
 }
@@ -75,11 +79,16 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
         config.valid = true;
         config.enabled = nativeConfig.enabled;
         config.h264 = nativeConfig.h264;
+        config.avc444GpuExperimental = params.avc444GpuExperimental &&
+            nativeConfig.enabled && nativeConfig.h264;
         config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
         return config;
     }
 
-    return strictConfig;
+    GraphicsPipelineConfig config = strictConfig;
+    config.avc444GpuExperimental = params.avc444GpuExperimental &&
+        config.enabled && config.h264;
+    return config;
 }
 
 std::string GraphicsModeValidationError(const std::string& graphicsMode)

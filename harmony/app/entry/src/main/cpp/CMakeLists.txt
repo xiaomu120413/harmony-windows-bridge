@@ -50,6 +50,7 @@ add_library(entry SHARED
     rdp_session_core.cpp
     rdp_session_channels.cpp
     rdp_session_input.cpp
+    surface/avc444_gpu_compositor.cpp
     surface/latest_frame_renderer.cpp
     surface/native_rgba_copy.cpp
     surface/native_window_rgba_painter.cpp
@@ -62,6 +63,9 @@ target_link_libraries(entry PUBLIC
     libEGL.so
     libGLESv3.so
     libnative_image.so
+    libnative_media_codecbase.so
+    libnative_media_core.so
+    libnative_media_vdec.so
     libnative_window.so
     libnative_buffer.so
     libpasteboard.so

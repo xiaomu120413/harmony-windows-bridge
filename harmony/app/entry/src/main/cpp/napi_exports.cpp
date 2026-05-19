@@ -47,6 +47,7 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.resolution = GetStringProperty(env, args[0], "resolution");
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
     params.graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
+    params.avc444GpuExperimental = GetBoolProperty(env, args[0], "avc444GpuExperimental", false);
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
 }
@@ -136,7 +137,8 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
         "static cliprdr text bridge, disp dynamic resolution, rdpsnd/OHAudio playback requested, "
         "and audin microphone permission requested on remote capture open; "
-        "rdpgfx runtime gated by graphicsMode; other optional channel negotiation off";
+        "rdpgfx runtime gated by graphicsMode; AVC444 GPU compositor experiment defaults off; "
+        "other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
     const std::string renderStats = BridgeRenderStatsLog();
@@ -253,6 +255,8 @@ napi_value Connect(napi_env env, napi_callback_info info)
     logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
     logs.push_back("graphicsMode=" + params.graphicsMode);
+    logs.push_back("avc444GpuExperimental=" +
+        std::string(params.avc444GpuExperimental ? "on" : "off"));
     logs.push_back("appFilesDir=" + params.appFilesDir);
     logs.push_back("starting native worker");
 

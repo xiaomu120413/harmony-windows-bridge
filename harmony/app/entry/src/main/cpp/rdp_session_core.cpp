@@ -382,6 +382,8 @@ struct RdpSession::Impl {
         EmitLog("native worker accepted params");
         EmitLog("target=" + params.host + ":" + params.port);
         EmitLog("graphicsMode=" + ParseGraphicsPipelineConfig(params).mode);
+        EmitLog("avc444GpuExperimental=" +
+            std::string(params.avc444GpuExperimental ? "on" : "off"));
 
         if (!running.load()) {
             EmitState("Disconnected");

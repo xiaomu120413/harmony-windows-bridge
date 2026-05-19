@@ -16,6 +16,7 @@ struct ConnectParams {
     std::string resolution;
     std::string certPolicy;
     std::string graphicsMode;
+    bool avc444GpuExperimental = false;
     std::string appFilesDir;
 };
 
@@ -72,6 +73,7 @@ struct GraphicsPipelineConfig {
     bool valid = true;
     bool enabled = false;
     bool h264 = false;
+    bool avc444GpuExperimental = false;
     std::string mode = "gdi";
 };
 

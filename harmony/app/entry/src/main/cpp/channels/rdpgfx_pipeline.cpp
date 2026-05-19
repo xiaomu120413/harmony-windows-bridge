@@ -2,6 +2,7 @@
 
 #include "channels/rdpgfx_diagnostics.h"
 #include "freerdp_runtime.h"
+#include "surface/avc444_gpu_compositor.h"
 #include "string_utils.h"
 
 #include <atomic>
@@ -15,6 +16,7 @@ namespace {
 
 std::atomic_bool g_avc420SurfaceOutputConfigured{false};
 std::atomic_bool g_avc420SurfaceOutputActive{false};
+std::atomic_bool g_avc444GpuExperimentalConfigured{false};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
 
@@ -279,6 +281,12 @@ BOOL OhosRdpgfxAvc420SurfaceCommandCallback(
     return FALSE;
 }
 
+BOOL OhosRdpgfxAvc444SurfaceCommandCallback(
+    const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command, void*)
+{
+    return SharedAvc444GpuCompositor().OnSurfaceCommand(command) ? TRUE : FALSE;
+}
+
 #endif
 
 } // namespace
@@ -354,6 +362,8 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
 {
     g_avc420SurfaceOutputConfigured.store(false);
     g_avc420SurfaceOutputActive.store(false);
+    g_avc444GpuExperimentalConfigured.store(false);
+    SharedAvc444GpuCompositor().Reset();
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
     }
@@ -418,6 +428,16 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
     (void)settings;
     SetRdpgfxRuntimeRequest(graphicsConfig.enabled, graphicsConfig.enabled && graphicsConfig.h264);
     SetRdpgfxBridgeAttached(false);
+    g_avc444GpuExperimentalConfigured.store(
+        graphicsConfig.enabled && graphicsConfig.h264 && graphicsConfig.avc444GpuExperimental);
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    Avc444GpuCompositorCallbacks avc444Callbacks;
+    avc444Callbacks.decoderSurfaceTarget = callbacks.decoderSurfaceTarget;
+    avc444Callbacks.stopRenderPipeline = callbacks.stopRenderPipeline;
+    avc444Callbacks.startRenderPipeline = callbacks.startRenderPipeline;
+    avc444Callbacks.releaseRenderTarget = callbacks.releaseRenderTarget;
+    SharedAvc444GpuCompositor().Configure(
+        g_avc444GpuExperimentalConfigured.load(), log, std::move(avc444Callbacks));
     ResetRdpgfxDiagnosticsStats();
 
     if (!graphicsConfig.enabled) {
@@ -445,6 +465,10 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
     }
 
     log("FreeRDP rdpgfx requested: dynamic channel owned by OHOS session helper + GDI graphics pipeline bridge");
+    log("OHOS AVC444 GPU compositor experiment " +
+        std::string(g_avc444GpuExperimentalConfigured.load()
+            ? "requested; GDI suppression remains blocked until compositor self-test"
+            : "off; AVC444 stays on FreeRDP native GDI"));
     log(BuildGraphicsPipelineStatsLog());
     return true;
 }
@@ -483,6 +507,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
 
     FREERDP_OHOS_RDPGFX_BRIDGE_CONFIG config = {};
     config.avc420SurfaceMode = g_avc420SurfaceOutputConfigured.load() ? TRUE : FALSE;
+    config.avc444GpuExperimental = g_avc444GpuExperimentalConfigured.load() ? TRUE : FALSE;
     RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
     if (callbacks.decoderSurfaceTarget != nullptr) {
         const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
@@ -491,6 +516,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     }
     config.log = OhosRdpgfxLogCallback;
     config.avc420SurfaceCommand = OhosRdpgfxAvc420SurfaceCommandCallback;
+    config.avc444SurfaceCommand = OhosRdpgfxAvc444SurfaceCommandCallback;
 
     std::array<char, 256> message {};
     if (api.ohosRdpgfxBridgeAttach == nullptr ||
