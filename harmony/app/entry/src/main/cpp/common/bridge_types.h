@@ -13,9 +13,9 @@ struct ConnectParams {
     std::string port;
     std::string username;
     std::string password;
-    std::string resolution;
+    std::string resolution = "auto";
     std::string certPolicy;
-    std::string graphicsMode;
+    std::string graphicsMode = "rdpgfx-h264";
     std::string appFilesDir;
 };
 

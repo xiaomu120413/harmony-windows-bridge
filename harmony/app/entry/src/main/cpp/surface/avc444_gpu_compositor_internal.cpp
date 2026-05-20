@@ -2194,6 +2194,7 @@ struct Avc444GpuCompositorImpl::State {
         const std::string route = std::string("hardware-decode+mapped-plane-gpu-combine+") +
             (codecV1 ? "avc444v1" : "avc444v2");
         if (ShouldLogFrequent(queuedPresents + 1U)) {
+            const std::string stream2Text = command->LC == 0 ? StreamText(command->stream2) : "unused";
             logs.push_back("AVC444 GPU compositor update detail: frame=" +
                 std::to_string(command->frameId) +
                 " LC=" + std::to_string(command->LC) +
@@ -2210,7 +2211,7 @@ struct Avc444GpuCompositorImpl::State {
                         static_cast<int64_t>(command->height)) +
                 " route=" + route +
                 " stream1=" + StreamText(command->stream1) +
-                " stream2=" + StreamText(command->stream2));
+                " stream2=" + stream2Text);
             if (lumaUpdated) {
                 logs.push_back("AVC444 GPU compositor luma frame layout: " +
                     FramePlaneText(lumaFrame));

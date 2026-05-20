@@ -1,10 +1,12 @@
 import { common } from '@kit.AbilityKit'
+import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
-  REMOTE_SURFACE_FOCUS_ID,
-  ConnectionState
+  HILOG_DOMAIN,
+  HILOG_TAG,
+  REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import rdpNative, { NativeCommandResult, NativeProbeResult } from 'libentry.so'
+import rdpNative, { NativeCommandResult } from 'libentry.so'
 
 @Entry
 @Component
@@ -13,12 +15,9 @@ struct Index {
   @State private port: string = '3389'
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
-  @State private resolution: string = 'auto'
   @State private certPolicy: string = 'ignore'
-  @State private graphicsMode: string = 'rdpgfx-h264'
   @State private showSession: boolean = false
-  @State private connectionState: ConnectionState = 'Idle'
-  @State private logText: string = 'Ready'
+  private connected: boolean = false
   private callbacksRegistered: boolean = false
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
@@ -30,7 +29,7 @@ struct Index {
   }
 
   private appendLog(line: string): void {
-    this.logText = `${this.logText}\n${line}`
+    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
   }
 
   private appendNativeLogs(lines: string[]): void {
@@ -80,29 +79,24 @@ struct Index {
     try {
       rdpNative.onState((state: string) => {
         this.deferUiUpdate(() => {
-          const nextState = this.toConnectionState(state)
           const wasConnected = this.isConnected()
-          if (nextState !== 'Connected' &&
-            (nextState === 'Disconnected' || nextState === 'Failed' || nextState === 'Idle')) {
+          const nextConnected = state === 'Connected'
+          if (!nextConnected && (state === 'Disconnected' || state === 'Failed' || state === 'Idle')) {
             this.setSessionVisible(false)
           }
-          this.connectionState = nextState
-          if (nextState === 'Connected' && !wasConnected) {
+          this.connected = nextConnected
+          if (nextConnected && !wasConnected) {
             this.setSessionVisible(true)
-            this.refreshNativeState()
             this.focusRemoteSurface()
           }
         })
       })
-      rdpNative.onLog((line: string) => {
-        this.deferUiUpdate(() => {
-          this.appendLog(line)
-        })
+      rdpNative.onLog((_line: string) => {
       })
       rdpNative.onError((message: string) => {
         this.deferUiUpdate(() => {
           this.setSessionVisible(false)
-          this.connectionState = 'Failed'
+          this.connected = false
           this.appendLog(`Native error: ${message}`)
         })
       })
@@ -127,17 +121,6 @@ struct Index {
     }
   }
 
-  private refreshNativeState(appendLogs: boolean = false): void {
-    try {
-      const result: NativeProbeResult = rdpNative.probe()
-      if (appendLogs) {
-        this.appendNativeLogs(result.logs)
-      }
-    } catch (error) {
-      this.appendLog(`Native state refresh failed: ${JSON.stringify(error)}`)
-    }
-  }
-
   private normalizeCertPolicy(value: string): string {
     const normalized = value.trim().toLowerCase()
     if (normalized === 'strict') {
@@ -159,7 +142,7 @@ struct Index {
 
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
-      this.connectionState = 'Idle'
+      this.connected = false
       this.appendLog('Missing host, username, or password')
       return
     }
@@ -169,21 +152,18 @@ struct Index {
     const port = this.port
     const username = this.username
     const password = this.password
-    const resolution = this.resolution
-    const graphicsMode = this.graphicsMode
     const appFilesDir = this.getAppFilesDir()
     this.certPolicy = policy
-    this.connectionState = 'Resolving'
+    this.connected = false
     this.setSessionVisible(true)
     this.appendLog(`Opening session surface for ${host}:${port}`)
     setTimeout((): void => {
-      this.startNativeConnect(host, port, username, password, resolution, policy, graphicsMode,
-        appFilesDir)
+      this.startNativeConnect(host, port, username, password, policy, appFilesDir)
     }, 0)
   }
 
   private startNativeConnect(host: string, port: string, username: string, password: string,
-    resolution: string, policy: string, graphicsMode: string, appFilesDir: string): void {
+    policy: string, appFilesDir: string): void {
     try {
       this.appendLog(`Calling native connect for ${host}:${port}`)
       const result: NativeCommandResult = rdpNative.connect({
@@ -191,22 +171,21 @@ struct Index {
         port: port,
         username: username,
         password: password,
-        resolution: resolution,
         certPolicy: policy,
-        graphicsMode: graphicsMode,
         appFilesDir: appFilesDir
       })
-      this.connectionState = this.toConnectionState(result.state)
       this.appendLog(result.message)
       this.appendNativeLogs(result.logs)
       if (result.ok) {
+        this.connected = result.state === 'Connected'
         this.setSessionVisible(true)
       } else {
         this.setSessionVisible(false)
+        this.connected = false
       }
     } catch (error) {
       this.setSessionVisible(false)
-      this.connectionState = 'Failed'
+      this.connected = false
       this.appendLog(`Native connect failed: ${JSON.stringify(error)}`)
     }
   }
@@ -219,7 +198,7 @@ struct Index {
   }
 
   private isConnected(): boolean {
-    return this.connectionState === 'Connected'
+    return this.connected
   }
 
   private focusRemoteSurface(): void {
@@ -247,34 +226,6 @@ struct Index {
     } catch (error) {
       this.appendLog(`Native release all keys failed: ${JSON.stringify(error)}`)
     }
-  }
-
-  private toConnectionState(value: string): ConnectionState {
-    if (value === 'Resolving') {
-      return 'Resolving'
-    }
-    if (value === 'TCP connected') {
-      return 'TCP connected'
-    }
-    if (value === 'Negotiating') {
-      return 'Negotiating'
-    }
-    if (value === 'Authenticating') {
-      return 'Authenticating'
-    }
-    if (value === 'Bridge ready') {
-      return 'Bridge ready'
-    }
-    if (value === 'Disconnected') {
-      return 'Disconnected'
-    }
-    if (value === 'Failed') {
-      return 'Failed'
-    }
-    if (value === 'Connected') {
-      return 'Connected'
-    }
-    return 'Idle'
   }
 
   @Builder
@@ -364,18 +315,12 @@ struct Index {
           .onLoad(() => {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent loaded')
-              this.refreshNativeState()
               this.focusRemoteSurface()
             })
           })
           .onDestroy(() => {
             this.deferUiUpdate(() => {
               this.appendLog('XComponent destroyed')
-            })
-          })
-          .onAreaChange(() => {
-            this.deferUiUpdate(() => {
-              this.refreshNativeState()
             })
           })
           .id(REMOTE_SURFACE_FOCUS_ID)

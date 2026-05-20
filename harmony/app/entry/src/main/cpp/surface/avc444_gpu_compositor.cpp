@@ -80,7 +80,7 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         lastFrameId_ = command->frameId;
         lastLC_ = command->LC;
         lastStream1Bytes_ = command->stream1.length;
-        lastStream2Bytes_ = command->stream2.length;
+        lastStream2Bytes_ = command->LC == 0 ? command->stream2.length : 0;
         lastTargetWidth_ = command->targetWidth;
         lastTargetHeight_ = command->targetHeight;
     }
@@ -88,8 +88,14 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
     if (shouldLogCommand || !frameOpen || !lcValid) {
         const RECTANGLE_16* stream1FirstRect = command->stream1.numRegionRects == 0 ?
             nullptr : command->stream1.regionRects;
-        const RECTANGLE_16* stream2FirstRect = command->stream2.numRegionRects == 0 ?
+        const bool hasStream2 = command->LC == 0;
+        const RECTANGLE_16* stream2FirstRect = !hasStream2 || command->stream2.numRegionRects == 0 ?
             nullptr : command->stream2.regionRects;
+        const std::string stream2Text = hasStream2 ?
+            "bytes:" + std::to_string(command->stream2.length) +
+                ",rects:" + std::to_string(command->stream2.numRegionRects) +
+                ",first:" + Avc444GpuCompositorImpl::RectText(stream2FirstRect) :
+            "unused";
         Log("AVC444 GPU compositor candidate: index=" + std::to_string(candidate) +
             " codec=" + std::to_string(command->codecId) +
             " surface=" + std::to_string(command->surfaceId) +
@@ -106,9 +112,7 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
             " stream1=bytes:" + std::to_string(command->stream1.length) +
             ",rects:" + std::to_string(command->stream1.numRegionRects) +
             ",first:" + Avc444GpuCompositorImpl::RectText(stream1FirstRect) +
-            " stream2=bytes:" + std::to_string(command->stream2.length) +
-            ",rects:" + std::to_string(command->stream2.numRegionRects) +
-            ",first:" + Avc444GpuCompositorImpl::RectText(stream2FirstRect));
+            " stream2=" + stream2Text);
     }
 
     Avc444GpuCompositorCallbacks callbacks;
