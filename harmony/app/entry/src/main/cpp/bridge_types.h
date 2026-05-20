@@ -16,7 +16,6 @@ struct ConnectParams {
     std::string resolution;
     std::string certPolicy;
     std::string graphicsMode;
-    bool avc444GpuExperimental = false;
     std::string appFilesDir;
 };
 

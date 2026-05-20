@@ -3431,7 +3431,7 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     lastTargetWidth_ = 0;
     lastTargetHeight_ = 0;
     diagnostics_ = enabled ?
-        "avc444 gpu compositor: configured experimental mapped-plane compositor, gdi preserved until first successful present" :
+        "avc444 gpu compositor: configured mapped-plane compositor, gdi preserved until first successful present" :
         "avc444 gpu compositor: off";
 }
 

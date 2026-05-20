@@ -16,7 +16,6 @@ struct Index {
   @State private resolution: string = 'auto'
   @State private certPolicy: string = 'ignore'
   @State private graphicsMode: string = 'rdpgfx-h264'
-  @State private avc444GpuExperimental: boolean = false
   @State private showSession: boolean = false
   @State private connectionState: ConnectionState = 'Idle'
   @State private logText: string = 'Ready'
@@ -172,7 +171,6 @@ struct Index {
     const password = this.password
     const resolution = this.resolution
     const graphicsMode = this.graphicsMode
-    const avc444GpuExperimental = this.avc444GpuExperimental
     const appFilesDir = this.getAppFilesDir()
     this.certPolicy = policy
     this.connectionState = 'Resolving'
@@ -180,16 +178,14 @@ struct Index {
     this.appendLog(`Opening session surface for ${host}:${port}`)
     setTimeout((): void => {
       this.startNativeConnect(host, port, username, password, resolution, policy, graphicsMode,
-        avc444GpuExperimental, appFilesDir)
+        appFilesDir)
     }, 0)
   }
 
   private startNativeConnect(host: string, port: string, username: string, password: string,
-    resolution: string, policy: string, graphicsMode: string, avc444GpuExperimental: boolean,
-    appFilesDir: string): void {
+    resolution: string, policy: string, graphicsMode: string, appFilesDir: string): void {
     try {
       this.appendLog(`Calling native connect for ${host}:${port}`)
-      this.appendLog(`AVC444 GPU experiment=${avc444GpuExperimental ? 'on' : 'off'}`)
       const result: NativeCommandResult = rdpNative.connect({
         host: host,
         port: port,
@@ -198,7 +194,6 @@ struct Index {
         resolution: resolution,
         certPolicy: policy,
         graphicsMode: graphicsMode,
-        avc444GpuExperimental: avc444GpuExperimental,
         appFilesDir: appFilesDir
       })
       this.connectionState = this.toConnectionState(result.state)
@@ -318,17 +313,6 @@ struct Index {
         .height(40)
         .width('100%')
         .margin({ bottom: 12 })
-
-        Button(this.avc444GpuExperimental ? 'AVC444 GPU Experiment: On' : 'AVC444 GPU Experiment: Off')
-          .height(40)
-          .width('100%')
-          .fontSize(13)
-          .backgroundColor(this.avc444GpuExperimental ? '#B42318' : '#E8EEF7')
-          .fontColor(this.avc444GpuExperimental ? Color.White : '#1D2433')
-          .margin({ bottom: 12 })
-          .onClick(() => {
-            this.avc444GpuExperimental = !this.avc444GpuExperimental
-          })
 
         Button('Connect')
           .height(44)

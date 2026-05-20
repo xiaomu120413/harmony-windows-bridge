@@ -3,6 +3,7 @@
 #include "channels/rdpgfx_diagnostics.h"
 #include "freerdp_runtime.h"
 #include "surface/avc444_gpu_compositor.h"
+#include "surface/render_output_owner.h"
 #include "string_utils.h"
 
 #include <atomic>
@@ -39,6 +40,14 @@ void LogThroughCallbacks(const std::string& line)
     RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
     if (callbacks.log != nullptr) {
         callbacks.log(line);
+    }
+}
+
+void ResetAvc444GpuOutputOwner(const std::string& reason)
+{
+    const RenderOutputOwner previous = ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
+    if (previous == RenderOutputOwner::Avc444Gpu) {
+        LogThroughCallbacks("render output owner reset after " + reason + ": avc444-gpu -> gdi");
     }
 }
 
@@ -387,6 +396,7 @@ void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
     g_avc420SurfaceOutputConfigured.store(false);
     g_avc420SurfaceOutputActive.store(false);
     g_avc444GpuExperimentalConfigured.store(false);
+    ResetAvc444GpuOutputOwner("AVC surface output reset");
     SharedAvc444GpuCompositor().Reset();
     if (api.ohosAvcodecSetOutputSurface != nullptr) {
         api.ohosAvcodecSetOutputSurface(nullptr, 0, 0, FALSE);
@@ -442,7 +452,7 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipeline
     g_avc420SurfaceOutputActive.store(false);
     log("OHOS AVCodec output surface armed: XComponent NativeWindow " +
         std::to_string(target.width) + "x" + std::to_string(target.height) +
-        " mode=deferred-until-avc420-surface-command avc444=freerdp-native-gdi gdi=active");
+        " mode=deferred-until-avc420-surface-command avc444=gpu-auto-with-gdi-fallback gdi=active");
     return true;
 }
 
@@ -489,9 +499,9 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
     }
 
     log("FreeRDP rdpgfx requested: dynamic channel owned by OHOS session helper + GDI graphics pipeline bridge");
-    log("OHOS AVC444 GPU compositor experiment " +
+    log("OHOS AVC444 GPU compositor " +
         std::string(g_avc444GpuExperimentalConfigured.load()
-            ? "requested; GDI suppression remains blocked until compositor self-test"
+            ? "enabled by default; GDI suppression remains blocked until compositor self-test"
             : "off; AVC444 stays on FreeRDP native GDI"));
     log(BuildGraphicsPipelineStatsLog());
     return true;
@@ -560,6 +570,8 @@ void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
     if (gfx == nullptr) {
         return;
     }
+
+    ResetAvc444GpuOutputOwner("rdpgfx diagnostics hook restore");
 
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     freerdpOhosRdpgfxBridge* bridge = CurrentOhosRdpgfxBridge();

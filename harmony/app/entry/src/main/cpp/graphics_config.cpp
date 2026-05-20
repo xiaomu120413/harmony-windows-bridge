@@ -39,7 +39,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = true;
         config.h264 = true;
-        config.avc444GpuExperimental = false;
+        config.avc444GpuExperimental = true;
         config.mode = "rdpgfx-h264";
         return config;
     }
@@ -79,15 +79,13 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
         config.valid = true;
         config.enabled = nativeConfig.enabled;
         config.h264 = nativeConfig.h264;
-        config.avc444GpuExperimental = params.avc444GpuExperimental &&
-            nativeConfig.enabled && nativeConfig.h264;
+        config.avc444GpuExperimental = nativeConfig.enabled && nativeConfig.h264;
         config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
         return config;
     }
 
     GraphicsPipelineConfig config = strictConfig;
-    config.avc444GpuExperimental = params.avc444GpuExperimental &&
-        config.enabled && config.h264;
+    config.avc444GpuExperimental = config.enabled && config.h264;
     return config;
 }
 

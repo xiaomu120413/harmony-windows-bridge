@@ -379,11 +379,12 @@ struct RdpSession::Impl {
 
     void WorkerMain(ConnectParams params)
     {
+        const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
         EmitLog("native worker accepted params");
         EmitLog("target=" + params.host + ":" + params.port);
-        EmitLog("graphicsMode=" + ParseGraphicsPipelineConfig(params).mode);
-        EmitLog("avc444GpuExperimental=" +
-            std::string(params.avc444GpuExperimental ? "on" : "off"));
+        EmitLog("graphicsMode=" + graphicsConfig.mode);
+        EmitLog("avc444GpuCompositor=" +
+            std::string(graphicsConfig.avc444GpuExperimental ? "auto-on" : "off"));
 
         if (!running.load()) {
             EmitState("Disconnected");
