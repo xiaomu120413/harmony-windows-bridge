@@ -34,6 +34,8 @@ public:
         bool avcodecHardwareReady = false;
         bool nativeBufferFormatsKnown = false;
         bool rawBufferCandidate = false;
+        bool avc444v1LayoutReady = false;
+        bool avc444v1ShaderReady = false;
         bool avc444v2LayoutReady = false;
         bool avc444v2ShaderReady = false;
         std::string diagnostics;
@@ -59,8 +61,9 @@ private:
     bool selfTestStarted_ = false;
     bool selfTestComplete_ = false;
     bool readyForGdiSuppression_ = false;
+    bool readyForAvc444v1_ = false;
+    bool readyForAvc444v2_ = false;
     uint64_t candidates_ = 0;
-    uint64_t frameMismatchRejects_ = 0;
     uint64_t invalidLcRejects_ = 0;
     uint32_t lastFrameId_ = 0;
     uint32_t lastLC_ = 0;

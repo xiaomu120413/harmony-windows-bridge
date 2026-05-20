@@ -22,6 +22,10 @@
 #include <native_buffer/buffer_common.h>
 #include <native_buffer/native_buffer.h>
 
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+#include <freerdp/primitives.h>
+#endif
+
 namespace rdp_bridge {
 namespace {
 
@@ -504,12 +508,13 @@ bool IsValidLcForCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
         case 0:
             return command->stream1.data != nullptr && command->stream1.length > 0 &&
                 command->stream2.data != nullptr && command->stream2.length > 0 &&
-                command->stream1.regionRects != nullptr && command->stream1.numRegionRects > 0 &&
-                command->stream2.regionRects != nullptr && command->stream2.numRegionRects > 0;
+                command->stream1.regionRects != nullptr &&
+                (command->stream2.numRegionRects == 0 ||
+                    command->stream2.regionRects != nullptr);
         case 1:
         case 2:
             return command->stream1.data != nullptr && command->stream1.length > 0 &&
-                command->stream1.regionRects != nullptr && command->stream1.numRegionRects > 0;
+                command->stream1.regionRects != nullptr;
         default:
             return false;
     }
@@ -517,7 +522,13 @@ bool IsValidLcForCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
 
 bool RectsValid(const RECTANGLE_16* rects, uint32_t count, uint32_t width, uint32_t height)
 {
-    if (rects == nullptr || count == 0 || width == 0 || height == 0) {
+    if (width == 0 || height == 0) {
+        return false;
+    }
+    if (count == 0) {
+        return true;
+    }
+    if (rects == nullptr) {
         return false;
     }
     for (uint32_t i = 0; i < count; ++i) {
@@ -610,20 +621,61 @@ bool RectsCoverFullSurface(const RECTANGLE_16* rects, uint32_t count, uint32_t w
     return true;
 }
 
-bool IsFullAvc444Refresh(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
-{
-    return command != nullptr && command->LC == 0 &&
-        RectsCoverFullSurface(command->stream1.regionRects, command->stream1.numRegionRects,
-            command->width, command->height) &&
-        RectsCoverFullSurface(command->stream2.regionRects, command->stream2.numRegionRects,
-            command->width, command->height);
-}
-
 std::string RectText(const RECTANGLE_16* rect);
 
 uint8_t TestByte(uint32_t x, uint32_t y, uint32_t seed)
 {
     return static_cast<uint8_t>((x * 37U + y * 17U + seed * 29U + 13U) & 0xFFU);
+}
+
+uint32_t ChromaV1PaddedHeight(uint32_t height)
+{
+    return height + 16U - (height % 16U);
+}
+
+uint32_t RequiredChromaV1SourceYHeight(const RECTANGLE_16& roi)
+{
+    return roi.top + ChromaV1PaddedHeight(roi.bottom - roi.top);
+}
+
+uint32_t RequiredChromaV1SourceYHeight(const RECTANGLE_16* rects, uint32_t count)
+{
+    uint32_t required = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        required = std::max(required, RequiredChromaV1SourceYHeight(rects[i]));
+    }
+    return required;
+}
+
+void ApplyChromaV1ShaderModel(const std::vector<uint8_t>& srcY,
+    const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV, uint32_t srcYStep,
+    uint32_t srcUvStep, std::vector<uint8_t>& dstU, std::vector<uint8_t>& dstV,
+    uint32_t dstStep, const RECTANGLE_16& roi)
+{
+    const uint32_t rectWidth = roi.right - roi.left;
+    const uint32_t rectHeight = roi.bottom - roi.top;
+    for (uint32_t y = roi.top; y < roi.bottom; ++y) {
+        for (uint32_t x = roi.left; x < roi.right; ++x) {
+            const uint32_t relX = x - roi.left;
+            const uint32_t relY = y - roi.top;
+            const uint32_t dst = y * dstStep + x;
+            if ((relY & 1U) == 1U) {
+                const uint32_t oddRow = relY / 2U;
+                const uint32_t group = oddRow / 8U;
+                const uint32_t inGroup = oddRow % 8U;
+                const uint32_t srcRowBase = roi.top + group * 16U + inGroup;
+                dstU[dst] = srcY[srcRowBase * srcYStep + roi.left + relX];
+                dstV[dst] = srcY[(srcRowBase + 8U) * srcYStep + roi.left + relX];
+            } else if ((relX & 1U) == 1U &&
+                relY < (rectHeight / 2U) * 2U &&
+                relX < (rectWidth / 2U) * 2U) {
+                const uint32_t srcX = roi.left / 2U + relX / 2U;
+                const uint32_t srcYCoord = roi.top / 2U + relY / 2U;
+                dstU[dst] = srcU[srcYCoord * srcUvStep + srcX];
+                dstV[dst] = srcV[srcYCoord * srcUvStep + srcX];
+            }
+        }
+    }
 }
 
 void ApplyChromaV2Reference(const std::vector<uint8_t>& srcY,
@@ -692,21 +744,59 @@ void ApplyChromaV2ShaderModel(const std::vector<uint8_t>& srcY,
     }
 }
 
+bool ApplyChromaPrimitiveReference(avc444_frame_type type, const std::string& label,
+    const std::vector<uint8_t>& srcY,
+    const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV, uint32_t srcYStep,
+    uint32_t srcUvStep, uint32_t totalWidth, uint32_t totalHeight,
+    std::vector<uint8_t>& dstU, std::vector<uint8_t>& dstV, uint32_t dstStep,
+    const RECTANGLE_16& roi, std::vector<std::string>& logs)
+{
+    DlHandle freerdp;
+    if (!freerdp.OpenAny({ "libfreerdp3.so" })) {
+        logs.push_back("AVC444 GPU compositor " + label + " primitive self-test failed: "
+            "dlopen libfreerdp3.so failed");
+        return false;
+    }
+    using PrimitivesGetFn = primitives_t* (*)();
+    const auto getPrimitives = freerdp.Symbol<PrimitivesGetFn>("primitives_get");
+    primitives_t* prims = getPrimitives ? getPrimitives() : nullptr;
+    if (prims == nullptr || prims->YUV420CombineToYUV444 == nullptr) {
+        logs.push_back("AVC444 GPU compositor " + label + " primitive self-test failed: "
+            "FreeRDP YUV420CombineToYUV444 primitive unavailable");
+        return false;
+    }
+    std::vector<uint8_t> dstY(dstU.size(), 0);
+    const BYTE* src[3] = { srcY.data(), srcU.data(), srcV.data() };
+    const UINT32 srcStep[3] = { srcYStep, srcUvStep, srcUvStep };
+    BYTE* dst[3] = { dstY.data(), dstU.data(), dstV.data() };
+    const UINT32 dstStepRaw[3] = { dstStep, dstStep, dstStep };
+    const pstatus_t status = prims->YUV420CombineToYUV444(type, src, srcStep,
+        totalWidth, totalHeight, dst, dstStepRaw, &roi);
+    if (status != PRIMITIVES_SUCCESS) {
+        logs.push_back("AVC444 GPU compositor " + label + " primitive self-test failed: "
+            "FreeRDP YUV420CombineToYUV444 status=" + std::to_string(status));
+        return false;
+    }
+    return true;
+}
+
 bool RunAvc444V2LayoutSelfTest(std::vector<std::string>& logs)
 {
-    constexpr uint32_t width = 64;
-    constexpr uint32_t height = 32;
-    constexpr uint32_t yStep = width;
-    constexpr uint32_t uvStep = width / 2U;
+    constexpr uint32_t width = 66;
+    constexpr uint32_t height = 34;
+    constexpr uint32_t alignedWidth = 96;
+    constexpr uint32_t alignedHeight = 48;
+    constexpr uint32_t yStep = alignedWidth;
+    constexpr uint32_t uvStep = alignedWidth / 2U;
     std::vector<uint8_t> srcY(yStep * height);
-    std::vector<uint8_t> srcU(uvStep * (height / 2U));
-    std::vector<uint8_t> srcV(uvStep * (height / 2U));
+    std::vector<uint8_t> srcU(uvStep * ((height + 1U) / 2U));
+    std::vector<uint8_t> srcV(uvStep * ((height + 1U) / 2U));
     for (uint32_t y = 0; y < height; ++y) {
         for (uint32_t x = 0; x < yStep; ++x) {
             srcY[y * yStep + x] = TestByte(x, y, 1);
         }
     }
-    for (uint32_t y = 0; y < height / 2U; ++y) {
+    for (uint32_t y = 0; y < (height + 1U) / 2U; ++y) {
         for (uint32_t x = 0; x < uvStep; ++x) {
             srcU[y * uvStep + x] = TestByte(x, y, 2);
             srcV[y * uvStep + x] = TestByte(x, y, 3);
@@ -714,23 +804,27 @@ bool RunAvc444V2LayoutSelfTest(std::vector<std::string>& logs)
     }
 
     const std::array<RECTANGLE_16, 5> rects {{
-        { 0, 0, 64, 32 },
+        { 0, 0, 66, 34 },
         { 4, 2, 36, 18 },
         { 2, 6, 34, 22 },
         { 8, 10, 56, 30 },
         { 12, 4, 28, 20 },
     }};
     for (const RECTANGLE_16& rect : rects) {
-        std::vector<uint8_t> refU(width * height, 0x80);
-        std::vector<uint8_t> refV(width * height, 0x81);
+        std::vector<uint8_t> refU(alignedWidth * height, 0x80);
+        std::vector<uint8_t> refV(alignedWidth * height, 0x81);
         std::vector<uint8_t> shaderU = refU;
         std::vector<uint8_t> shaderV = refV;
-        ApplyChromaV2Reference(srcY, srcU, srcV, yStep, uvStep, width, refU, refV, width, rect);
-        ApplyChromaV2ShaderModel(srcY, srcU, srcV, yStep, uvStep, width, shaderU, shaderV, width,
-            rect);
+        if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv2, "AVC444v2", srcY, srcU, srcV,
+                yStep, uvStep, alignedWidth, alignedHeight, refU, refV, alignedWidth,
+                rect, logs)) {
+            return false;
+        }
+        ApplyChromaV2ShaderModel(srcY, srcU, srcV, yStep, uvStep, alignedWidth, shaderU,
+            shaderV, alignedWidth, rect);
         for (uint32_t y = 0; y < height; ++y) {
             for (uint32_t x = 0; x < width; ++x) {
-                const uint32_t offset = y * width + x;
+                const uint32_t offset = y * alignedWidth + x;
                 if (refU[offset] != shaderU[offset] || refV[offset] != shaderV[offset]) {
                     logs.push_back("AVC444 GPU compositor AVC444v2 layout self-test failed: rect=" +
                         RectText(&rect) + " at=" + std::to_string(x) + "," +
@@ -744,7 +838,75 @@ bool RunAvc444V2LayoutSelfTest(std::vector<std::string>& logs)
     }
 
     logs.push_back("AVC444 GPU compositor AVC444v2 layout self-test passed against FreeRDP "
-        "general_ChromaV2ToYUV444 model");
+        "YUV420CombineToYUV444 primitive with 32-aligned AVC444v2 layout");
+    return true;
+}
+
+bool RunAvc444V1LayoutSelfTest(std::vector<std::string>& logs)
+{
+    constexpr uint32_t width = 66;
+    constexpr uint32_t height = 34;
+    constexpr uint32_t alignedWidth = 96;
+    constexpr uint32_t sourceYHeight = 64;
+    constexpr uint32_t yStep = alignedWidth;
+    constexpr uint32_t uvStep = alignedWidth / 2U;
+    std::vector<uint8_t> srcY(yStep * sourceYHeight);
+    std::vector<uint8_t> srcU(uvStep * ((height + 1U) / 2U));
+    std::vector<uint8_t> srcV(uvStep * ((height + 1U) / 2U));
+    for (uint32_t y = 0; y < sourceYHeight; ++y) {
+        for (uint32_t x = 0; x < yStep; ++x) {
+            srcY[y * yStep + x] = TestByte(x, y, 4);
+        }
+    }
+    for (uint32_t y = 0; y < (height + 1U) / 2U; ++y) {
+        for (uint32_t x = 0; x < uvStep; ++x) {
+            srcU[y * uvStep + x] = TestByte(x, y, 5);
+            srcV[y * uvStep + x] = TestByte(x, y, 6);
+        }
+    }
+
+    const std::array<RECTANGLE_16, 6> rects {{
+        { 0, 0, 66, 34 },
+        { 4, 2, 36, 18 },
+        { 2, 6, 34, 22 },
+        { 8, 10, 56, 30 },
+        { 12, 4, 28, 20 },
+        { 14, 3, 31, 20 },
+    }};
+    for (const RECTANGLE_16& rect : rects) {
+        if (RequiredChromaV1SourceYHeight(rect) > sourceYHeight) {
+            logs.push_back("AVC444 GPU compositor AVC444v1 layout self-test failed: "
+                "test source Y height too small");
+            return false;
+        }
+        std::vector<uint8_t> refU(alignedWidth * height, 0x80);
+        std::vector<uint8_t> refV(alignedWidth * height, 0x81);
+        std::vector<uint8_t> shaderU = refU;
+        std::vector<uint8_t> shaderV = refV;
+        if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv1, "AVC444v1", srcY, srcU, srcV,
+                yStep, uvStep, alignedWidth, sourceYHeight, refU, refV, alignedWidth,
+                rect, logs)) {
+            return false;
+        }
+        ApplyChromaV1ShaderModel(srcY, srcU, srcV, yStep, uvStep, shaderU, shaderV,
+            alignedWidth, rect);
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                const uint32_t offset = y * alignedWidth + x;
+                if (refU[offset] != shaderU[offset] || refV[offset] != shaderV[offset]) {
+                    logs.push_back("AVC444 GPU compositor AVC444v1 layout self-test failed: rect=" +
+                        RectText(&rect) + " at=" + std::to_string(x) + "," +
+                        std::to_string(y) + " ref=" + std::to_string(refU[offset]) + "/" +
+                        std::to_string(refV[offset]) + " shaderModel=" +
+                        std::to_string(shaderU[offset]) + "/" + std::to_string(shaderV[offset]));
+                    return false;
+                }
+            }
+        }
+    }
+
+    logs.push_back("AVC444 GPU compositor AVC444v1 layout self-test passed against FreeRDP "
+        "YUV420CombineToYUV444 primitive with AVC444v1 padded chroma layout");
     return true;
 }
 
@@ -817,6 +979,7 @@ struct DecodedFrame {
     uint32_t alignedWidth = 0;
     uint32_t alignedHeight = 0;
     uint32_t yUploadWidth = 0;
+    uint32_t yUploadHeight = 0;
     uint32_t uvUploadWidth = 0;
     uint32_t uvUploadHeight = 0;
     uint32_t nativeWidth = 0;
@@ -885,6 +1048,7 @@ struct DecodedFrame {
         alignedWidth = 0;
         alignedHeight = 0;
         yUploadWidth = 0;
+        yUploadHeight = 0;
         uvUploadWidth = 0;
         uvUploadHeight = 0;
         nativeWidth = 0;
@@ -912,6 +1076,7 @@ private:
         alignedWidth = other.alignedWidth;
         alignedHeight = other.alignedHeight;
         yUploadWidth = other.yUploadWidth;
+        yUploadHeight = other.yUploadHeight;
         uvUploadWidth = other.uvUploadWidth;
         uvUploadHeight = other.uvUploadHeight;
         nativeWidth = other.nativeWidth;
@@ -949,7 +1114,7 @@ std::string FramePlaneText(const DecodedFrame& frame)
         " uvStride=" + std::to_string(frame.uv.rowStride) +
         " uvColumn=" + std::to_string(frame.uv.columnStride) +
         " yUpload=" + std::to_string(frame.yUploadWidth) + "x" +
-            std::to_string(frame.height) +
+            std::to_string(frame.yUploadHeight) +
         " uvUpload=" + std::to_string(frame.uvUploadWidth) + "x" +
             std::to_string(frame.uvUploadHeight) +
         " order=" + std::string(frame.nv21 ? "NV21" : "NV12") +
@@ -1391,10 +1556,14 @@ private:
         }
 
         frame.yUploadWidth = std::min(frame.y.rowStride, std::max(frame.alignedWidth, frame.width));
+        frame.yUploadHeight = std::max(frame.height,
+            std::min(frame.nativeHeight > 0 ? frame.nativeHeight : frame.alignedHeight,
+                std::max(frame.alignedHeight, frame.height)));
         frame.uvUploadWidth = std::min(frame.uv.rowStride / 2U, std::max(frame.alignedWidth / 2U,
             (frame.width + 1U) / 2U));
         frame.uvUploadHeight = (frame.height + 1U) / 2U;
         return frame.yUploadWidth >= frame.alignedWidth &&
+            frame.yUploadHeight >= frame.height &&
             frame.uvUploadWidth >= (frame.alignedWidth / 2U) &&
             frame.uvUploadHeight > 0;
     }
@@ -1503,6 +1672,9 @@ public:
             if (lumaUvProgram_ != 0) {
                 glDeleteProgram(lumaUvProgram_);
             }
+            if (chromaV1Program_ != 0) {
+                glDeleteProgram(chromaV1Program_);
+            }
             if (chromaV2Program_ != 0) {
                 glDeleteProgram(chromaV2Program_);
             }
@@ -1530,6 +1702,7 @@ public:
         surfaceHeight_ = 0;
         copyYProgram_ = 0;
         lumaUvProgram_ = 0;
+        chromaV1Program_ = 0;
         chromaV2Program_ = 0;
         presentProgram_ = 0;
         hasLuma_ = false;
@@ -1699,6 +1872,11 @@ public:
         return out.str();
     }
 
+    bool HasWindowTarget() const
+    {
+        return window_ != nullptr && surface_ != EGL_NO_SURFACE;
+    }
+
     void InvalidateComposedState()
     {
         hasLuma_ = false;
@@ -1711,6 +1889,9 @@ public:
         if (!MakeCurrent(logs) || !UploadSource(frame, logs)) {
             return false;
         }
+        const bool hadChroma = hasChroma_;
+        const bool fullSurfaceLuma =
+            RectsCoverFullSurface(rects, rectCount, surfaceWidth_, surfaceHeight_);
 
         glUseProgram(copyYProgram_);
         glActiveTexture(GL_TEXTURE0);
@@ -1746,6 +1927,56 @@ public:
             return false;
         }
         hasLuma_ = true;
+        hasChroma_ = true;
+        if (!hadChroma) {
+            logs.push_back(
+                "AVC444 GPU luma update initialized base chroma from AVC444_LUMA stream, "
+                "matching FreeRDP LumaToYUV444"
+                " fullSurface=" + std::string(fullSurfaceLuma ? "yes" : "no"));
+        }
+        return true;
+    }
+
+    bool ApplyChromaV1(const DecodedFrame& frame, const RECTANGLE_16* rects, uint32_t rectCount,
+        std::vector<std::string>& logs)
+    {
+        const uint32_t requiredYHeight = RequiredChromaV1SourceYHeight(rects, rectCount);
+        if (requiredYHeight > frame.yUploadHeight) {
+            logs.push_back("AVC444 GPU chroma-v1 source rejected: requiredYHeight=" +
+                std::to_string(requiredYHeight) + " uploadedYHeight=" +
+                std::to_string(frame.yUploadHeight) +
+                " frame=" + FramePlaneText(frame));
+            return false;
+        }
+        if (!MakeCurrent(logs) || !UploadSource(frame, logs)) {
+            return false;
+        }
+
+        glUseProgram(chromaV1Program_);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, srcYTexture_);
+        glUniform1i(glGetUniformLocation(chromaV1Program_, "uSrcY"), 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, srcUVTexture_);
+        glUniform1i(glGetUniformLocation(chromaV1Program_, "uSrcUV"), 1);
+        glUniform1i(glGetUniformLocation(chromaV1Program_, "uSrcUComponent"), frame.nv21 ? 1 : 0);
+        glUniform1i(glGetUniformLocation(chromaV1Program_, "uSrcVComponent"), frame.nv21 ? 0 : 1);
+        glUniform1i(glGetUniformLocation(chromaV1Program_, "uSurfaceHeight"),
+            static_cast<GLint>(surfaceHeight_));
+        glUniform1i(glGetUniformLocation(chromaV1Program_, "uSrcYHeight"),
+            static_cast<GLint>(frame.yUploadHeight));
+
+        PingPongChromaPlane(true, rects, rectCount, chromaV1Program_);
+        PingPongChromaPlane(false, rects, rectCount, chromaV1Program_);
+
+        const GLenum error = glGetError();
+        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (error != GL_NO_ERROR) {
+            logs.push_back("AVC444 GPU chroma-v1 shader failed glError=" +
+                Hex32(static_cast<uint32_t>(error)));
+            return false;
+        }
+        hasChroma_ = true;
         return true;
     }
 
@@ -1874,6 +2105,113 @@ public:
         return true;
     }
 
+    bool RunChromaV1ShaderReadbackSelfTest(std::vector<std::string>& logs)
+    {
+        constexpr uint32_t width = 64;
+        constexpr uint32_t height = 32;
+        constexpr uint32_t sourceYHeight = 48;
+        constexpr uint32_t yStep = width;
+        constexpr uint32_t uvStep = width / 2U;
+        std::vector<uint8_t> srcY(yStep * sourceYHeight);
+        std::vector<uint8_t> srcU(uvStep * (height / 2U));
+        std::vector<uint8_t> srcV(uvStep * (height / 2U));
+        std::vector<uint8_t> srcUV(width * (height / 2U));
+        for (uint32_t y = 0; y < sourceYHeight; ++y) {
+            for (uint32_t x = 0; x < yStep; ++x) {
+                srcY[y * yStep + x] = TestByte(x, y, 10);
+            }
+        }
+        for (uint32_t y = 0; y < height / 2U; ++y) {
+            for (uint32_t x = 0; x < uvStep; ++x) {
+                const uint8_t u = TestByte(x, y, 11);
+                const uint8_t v = TestByte(x, y, 12);
+                srcU[y * uvStep + x] = u;
+                srcV[y * uvStep + x] = v;
+                srcUV[y * width + 2U * x + 0U] = u;
+                srcUV[y * width + 2U * x + 1U] = v;
+            }
+        }
+
+        const std::array<RECTANGLE_16, 6> rects {{
+            { 0, 0, 64, 32 },
+            { 4, 2, 36, 18 },
+            { 2, 6, 34, 22 },
+            { 8, 10, 56, 30 },
+            { 12, 4, 28, 20 },
+            { 14, 3, 31, 20 },
+        }};
+        std::vector<uint8_t> refU(width * height, 0x80);
+        std::vector<uint8_t> refV(width * height, 0x81);
+        for (const RECTANGLE_16& rect : rects) {
+            if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv1, "AVC444v1", srcY, srcU,
+                    srcV, yStep, uvStep, width, sourceYHeight, refU, refV, width, rect,
+                    logs)) {
+                return false;
+            }
+        }
+
+        DecodedFrame frame;
+        frame.y.data = srcY.data();
+        frame.y.rowStride = yStep;
+        frame.y.columnStride = 1;
+        frame.uv.data = srcUV.data();
+        frame.uv.rowStride = width;
+        frame.uv.columnStride = 2;
+        frame.width = width;
+        frame.height = height;
+        frame.alignedWidth = width;
+        frame.alignedHeight = sourceYHeight;
+        frame.yUploadWidth = width;
+        frame.yUploadHeight = sourceYHeight;
+        frame.uvUploadWidth = uvStep;
+        frame.uvUploadHeight = height / 2U;
+        frame.nv21 = false;
+
+        std::vector<uint8_t> baselineU(width * height, 0x80);
+        std::vector<uint8_t> baselineV(width * height, 0x81);
+        if (!MakeCurrent(logs) ||
+            !UploadPlaneTexture(uTexture_, baselineU, logs) ||
+            !UploadPlaneTexture(vTexture_, baselineV, logs)) {
+            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            return false;
+        }
+        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+        if (!ApplyChromaV1(frame, rects.data(), static_cast<uint32_t>(rects.size()), logs)) {
+            logs.push_back("AVC444 GPU compositor AVC444v1 shader readback self-test failed: "
+                "shader update did not complete");
+            return false;
+        }
+
+        std::vector<uint8_t> gotU;
+        std::vector<uint8_t> gotV;
+        if (!MakeCurrent(logs) || !ReadPlaneTexture(uTexture_, gotU, logs) ||
+            !ReadPlaneTexture(vTexture_, gotV, logs)) {
+            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            return false;
+        }
+        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+        for (uint32_t y = 0; y < height; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                const uint32_t offset = y * width + x;
+                if (gotU[offset] != refU[offset] || gotV[offset] != refV[offset]) {
+                    logs.push_back(
+                        "AVC444 GPU compositor AVC444v1 shader readback self-test failed: at=" +
+                        std::to_string(x) + "," + std::to_string(y) +
+                        " ref=" + std::to_string(refU[offset]) + "/" +
+                        std::to_string(refV[offset]) + " gpu=" +
+                        std::to_string(gotU[offset]) + "/" + std::to_string(gotV[offset]));
+                    return false;
+                }
+            }
+        }
+
+        logs.push_back("AVC444 GPU compositor AVC444v1 mapped shader readback self-test passed "
+            "bit-exact against FreeRDP YUV420CombineToYUV444 primitive");
+        return true;
+    }
+
     bool RunChromaV2ShaderReadbackSelfTest(std::vector<std::string>& logs)
     {
         constexpr uint32_t width = 64;
@@ -1910,8 +2248,10 @@ public:
         std::vector<uint8_t> refU(width * height, 0x80);
         std::vector<uint8_t> refV(width * height, 0x81);
         for (const RECTANGLE_16& rect : rects) {
-            ApplyChromaV2Reference(srcY, srcU, srcV, yStep, uvStep, width, refU, refV, width,
-                rect);
+            if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv2, "AVC444v2", srcY, srcU,
+                    srcV, yStep, uvStep, width, height, refU, refV, width, rect, logs)) {
+                return false;
+            }
         }
 
         DecodedFrame frame;
@@ -1926,6 +2266,7 @@ public:
         frame.alignedWidth = width;
         frame.alignedHeight = height;
         frame.yUploadWidth = width;
+        frame.yUploadHeight = height;
         frame.uvUploadWidth = uvStep;
         frame.uvUploadHeight = height / 2U;
         frame.nv21 = false;
@@ -1971,7 +2312,7 @@ public:
         }
 
         logs.push_back("AVC444 GPU compositor AVC444v2 mapped shader readback self-test passed "
-            "bit-exact against FreeRDP general_ChromaV2ToYUV444 model");
+            "bit-exact against FreeRDP YUV420CombineToYUV444 primitive");
         return true;
     }
 
@@ -2065,6 +2406,50 @@ private:
             "  float value = (component == 0) ? uv.r : uv.g;\n"
             "  fragColor = vec4(value, 0.0, 0.0, 1.0);\n"
             "}\n";
+        static constexpr const char* chromaV1Fragment =
+            "#version 300 es\n"
+            "precision mediump float;\n"
+            "uniform highp sampler2D uPrev;\n"
+            "uniform highp sampler2D uSrcY;\n"
+            "uniform highp sampler2D uSrcUV;\n"
+            "uniform int uSrcUComponent;\n"
+            "uniform int uSrcVComponent;\n"
+            "uniform int uTargetPlane;\n"
+            "uniform int uSurfaceHeight;\n"
+            "uniform int uSrcYHeight;\n"
+            "uniform int uRectLeft;\n"
+            "uniform int uRectTop;\n"
+            "uniform int uRectRight;\n"
+            "uniform int uRectBottom;\n"
+            "out vec4 fragColor;\n"
+            "float sampleUV(int x, int y, int component) {\n"
+            "  vec2 uv = texelFetch(uSrcUV, ivec2(x, y), 0).rg;\n"
+            "  return (component == 0) ? uv.r : uv.g;\n"
+            "}\n"
+            "void main() {\n"
+            "  int x = int(floor(gl_FragCoord.x));\n"
+            "  int y = int(floor(float(uSurfaceHeight) - gl_FragCoord.y));\n"
+            "  int relX = x - uRectLeft;\n"
+            "  int relY = y - uRectTop;\n"
+            "  int rectWidth = uRectRight - uRectLeft;\n"
+            "  int rectHeight = uRectBottom - uRectTop;\n"
+            "  int stateY = uSurfaceHeight - 1 - y;\n"
+            "  float value = texelFetch(uPrev, ivec2(x, stateY), 0).r;\n"
+            "  if ((relY & 1) == 1) {\n"
+            "    int oddRow = relY / 2;\n"
+            "    int group = oddRow / 8;\n"
+            "    int inGroup = oddRow - group * 8;\n"
+            "    int srcY = uRectTop + group * 16 + inGroup + ((uTargetPlane == 1) ? 8 : 0);\n"
+            "    srcY = min(srcY, uSrcYHeight - 1);\n"
+            "    value = texelFetch(uSrcY, ivec2(uRectLeft + relX, srcY), 0).r;\n"
+            "  } else if ((relX & 1) == 1 && relY < (rectHeight / 2) * 2 && relX < (rectWidth / 2) * 2) {\n"
+            "    int srcX = uRectLeft / 2 + relX / 2;\n"
+            "    int srcY = uRectTop / 2 + relY / 2;\n"
+            "    int component = (uTargetPlane == 0) ? uSrcUComponent : uSrcVComponent;\n"
+            "    value = sampleUV(srcX, srcY, component);\n"
+            "  }\n"
+            "  fragColor = vec4(value, 0.0, 0.0, 1.0);\n"
+            "}\n";
         static constexpr const char* chromaV2Fragment =
             "#version 300 es\n"
             "precision mediump float;\n"
@@ -2136,10 +2521,11 @@ private:
 
         copyYProgram_ = LinkProgram(updateVertex, copyYFragment, logs);
         lumaUvProgram_ = LinkProgram(updateVertex, lumaUvFragment, logs);
+        chromaV1Program_ = LinkProgram(updateVertex, chromaV1Fragment, logs);
         chromaV2Program_ = LinkProgram(updateVertex, chromaV2Fragment, logs);
         presentProgram_ = LinkProgram(presentVertex, presentFragment, logs);
         if (copyYProgram_ == 0 || lumaUvProgram_ == 0 ||
-            chromaV2Program_ == 0 || presentProgram_ == 0) {
+            chromaV1Program_ == 0 || chromaV2Program_ == 0 || presentProgram_ == 0) {
             return false;
         }
         return true;
@@ -2195,7 +2581,8 @@ private:
             logs.push_back("AVC444 GPU source upload rejected: invalid decoded frame");
             return false;
         }
-        if (frame.yUploadWidth == 0 || frame.uvUploadWidth == 0 || frame.uvUploadHeight == 0) {
+        if (frame.yUploadWidth == 0 || frame.yUploadHeight == 0 ||
+            frame.uvUploadWidth == 0 || frame.uvUploadHeight == 0) {
             logs.push_back("AVC444 GPU source upload rejected: invalid upload dimensions");
             return false;
         }
@@ -2204,14 +2591,16 @@ private:
         glBindTexture(GL_TEXTURE_2D, srcYTexture_);
         ConfigureTexture(GL_TEXTURE_2D);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, static_cast<GLint>(frame.y.rowStride));
-        if (srcYWidth_ != frame.yUploadWidth || srcYHeight_ != frame.height) {
+        if (srcYWidth_ != frame.yUploadWidth || srcYHeight_ != frame.yUploadHeight) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, static_cast<GLsizei>(frame.yUploadWidth),
-                static_cast<GLsizei>(frame.height), 0, GL_RED, GL_UNSIGNED_BYTE, frame.y.data);
+                static_cast<GLsizei>(frame.yUploadHeight), 0, GL_RED, GL_UNSIGNED_BYTE,
+                frame.y.data);
             srcYWidth_ = frame.yUploadWidth;
-            srcYHeight_ = frame.height;
+            srcYHeight_ = frame.yUploadHeight;
         } else {
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(frame.yUploadWidth),
-                static_cast<GLsizei>(frame.height), GL_RED, GL_UNSIGNED_BYTE, frame.y.data);
+                static_cast<GLsizei>(frame.yUploadHeight), GL_RED, GL_UNSIGNED_BYTE,
+                frame.y.data);
         }
 
         glBindTexture(GL_TEXTURE_2D, srcUVTexture_);
@@ -2240,7 +2629,8 @@ private:
     }
 
     void DrawRectsToTexture(GLuint texture, const RECTANGLE_16* rects, uint32_t rectCount,
-        GLint rectLeftLocation = -1, GLint rectTopLocation = -1)
+        GLint rectLeftLocation = -1, GLint rectTopLocation = -1,
+        GLint rectRightLocation = -1, GLint rectBottomLocation = -1)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
@@ -2263,6 +2653,12 @@ private:
             }
             if (rectTopLocation >= 0) {
                 glUniform1i(rectTopLocation, static_cast<GLint>(rect.top));
+            }
+            if (rectRightLocation >= 0) {
+                glUniform1i(rectRightLocation, static_cast<GLint>(rect.right));
+            }
+            if (rectBottomLocation >= 0) {
+                glUniform1i(rectBottomLocation, static_cast<GLint>(rect.bottom));
             }
             glViewport(static_cast<GLint>(rect.left),
                 static_cast<GLint>(surfaceHeight_ - rect.bottom),
@@ -2346,7 +2742,9 @@ private:
         glUniform1i(glGetUniformLocation(program, "uTargetPlane"), uPlane ? 0 : 1);
         DrawRectsToTexture(scratch, rects, rectCount,
             glGetUniformLocation(program, "uRectLeft"),
-            glGetUniformLocation(program, "uRectTop"));
+            glGetUniformLocation(program, "uRectTop"),
+            glGetUniformLocation(program, "uRectRight"),
+            glGetUniformLocation(program, "uRectBottom"));
         std::swap(current, scratch);
         if (uPlane) {
             uScratchTexture_ = scratch;
@@ -2380,6 +2778,7 @@ private:
 
     GLuint copyYProgram_ = 0;
     GLuint lumaUvProgram_ = 0;
+    GLuint chromaV1Program_ = 0;
     GLuint chromaV2Program_ = 0;
     GLuint presentProgram_ = 0;
     bool hasLuma_ = false;
@@ -2401,70 +2800,77 @@ bool RunAvc444V2GpuShaderSelfTest(std::vector<std::string>& logs)
     return passed;
 }
 
+bool RunAvc444V1GpuShaderSelfTest(std::vector<std::string>& logs)
+{
+    Avc444GpuRenderer renderer;
+    constexpr uint32_t width = 64;
+    constexpr uint32_t height = 32;
+    if (!renderer.Ensure(nullptr, 0, 0, width, height, logs)) {
+        logs.push_back("AVC444 GPU compositor AVC444v1 shader readback self-test failed: "
+            "renderer init failed");
+        return false;
+    }
+    const bool passed = renderer.RunChromaV1ShaderReadbackSelfTest(logs);
+    renderer.Destroy();
+    return passed;
+}
+
 #endif
 
 } // namespace
 
 struct Avc444GpuCompositor::Impl {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    Avc444HardwareDecoder lumaDecoder;
-    Avc444HardwareDecoder chromaDecoder;
+    Avc444HardwareDecoder avcDecoder;
     Avc444GpuRenderer renderer;
-    std::vector<uint8_t> sharedParameterSets;
-    std::vector<uint8_t> lumaParameterSets;
-    std::vector<uint8_t> chromaParameterSets;
+    std::vector<uint8_t> streamParameterSets;
     uint64_t streamPts = 0;
     uint64_t presented = 0;
     uint64_t queuedPresents = 0;
     uint64_t failures = 0;
     uint64_t ignoredUpdates = 0;
-    uint64_t resyncWaits = 0;
     uint64_t endFrameCallbacks = 0;
     uint64_t endFrameSkipInactive = 0;
     uint64_t endFrameSkipNoPending = 0;
     uint64_t endFrameMismatches = 0;
     uint64_t endFramePresentAttempts = 0;
     uint64_t pendingPresentOverwrites = 0;
-    bool requireFullRefresh = false;
     bool pendingPresent = false;
     bool resetDecodersBeforeNextDecode = false;
     uint32_t pendingFrameId = 0;
+    uint32_t pendingSurfaceWidth = 0;
+    uint32_t pendingSurfaceHeight = 0;
 
     void Destroy()
     {
         renderer.Destroy();
-        lumaDecoder.Close();
-        chromaDecoder.Close();
-        sharedParameterSets.clear();
-        lumaParameterSets.clear();
-        chromaParameterSets.clear();
+        avcDecoder.Close();
+        streamParameterSets.clear();
         queuedPresents = 0;
         presented = 0;
         failures = 0;
         ignoredUpdates = 0;
-        resyncWaits = 0;
         endFrameCallbacks = 0;
         endFrameSkipInactive = 0;
         endFrameSkipNoPending = 0;
         endFrameMismatches = 0;
         endFramePresentAttempts = 0;
         pendingPresentOverwrites = 0;
-        requireFullRefresh = false;
         pendingPresent = false;
         resetDecodersBeforeNextDecode = false;
         pendingFrameId = 0;
+        pendingSurfaceWidth = 0;
+        pendingSurfaceHeight = 0;
     }
 
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
-        const Avc444GpuCompositorCallbacks& callbacks, bool& active, std::vector<std::string>& logs)
+        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        std::vector<std::string>& logs)
     {
-        if (!command->frameOpen) {
-            logs.push_back("AVC444 GPU compositor rejected command outside an open RDPGFX frame: frame=" +
-                std::to_string(command->frameId) + " LC=" + std::to_string(command->LC));
-            return false;
-        }
-        if (command->codecId != RDPGFX_CODECID_AVC444v2) {
-            logs.push_back("AVC444 GPU compositor supports AVC444v2 only for now; codec=" +
+        const bool codecV1 = command->codecId == RDPGFX_CODECID_AVC444;
+        const bool codecV2 = command->codecId == RDPGFX_CODECID_AVC444v2;
+        if (!codecV1 && !codecV2) {
+            logs.push_back("AVC444 GPU compositor supports AVC444/AVC444v2 only; codec=" +
                 std::to_string(command->codecId) + " stays on GDI");
             return false;
         }
@@ -2475,21 +2881,20 @@ struct Avc444GpuCompositor::Impl {
             logs.push_back("AVC444 GPU compositor rejected invalid dirty rects");
             return false;
         }
-        const bool wasActive = active;
-        bool activatedForThisCommand = false;
+        const bool wasAuthoritative = authoritative;
         bool rendererStateTouched = false;
 
         auto ignoreActiveUpdate = [&](const std::string& reason, bool resetRenderer,
                                       bool resetDecoders) {
             ++ignoredUpdates;
-            requireFullRefresh = true;
             pendingPresent = false;
             pendingFrameId = 0;
+            pendingSurfaceWidth = 0;
+            pendingSurfaceHeight = 0;
             if (resetRenderer) {
-                renderer.Destroy();
                 logs.push_back(
-                    "AVC444 GPU compositor invalidated composed state; waiting for a full LC=0 "
-                    "luma/chroma refresh before presenting again");
+                    "AVC444 GPU compositor preserved the last composed state after an ignored "
+                    "update, matching FreeRDP's ignore-this-update behavior");
             }
             if (resetDecoders) {
                 resetDecodersBeforeNextDecode = true;
@@ -2508,6 +2913,8 @@ struct Avc444GpuCompositor::Impl {
             ++ignoredUpdates;
             pendingPresent = false;
             pendingFrameId = 0;
+            pendingSurfaceWidth = 0;
+            pendingSurfaceHeight = 0;
             logs.push_back(
                 "AVC444 GPU compositor dropped active update after bounded synchronous decode wait: " +
                 reason + "; preserving last presented GPU frame and trying the next command"
@@ -2520,7 +2927,7 @@ struct Avc444GpuCompositor::Impl {
             ++failures;
             logs.push_back("AVC444 GPU compositor failed: " + reason +
                 " failures=" + std::to_string(failures));
-            if (wasActive) {
+            if (wasAuthoritative) {
                 return ignoreActiveUpdate(reason, true, false);
             }
             if (rendererStateTouched) {
@@ -2528,15 +2935,6 @@ struct Avc444GpuCompositor::Impl {
                 logs.push_back(
                     "AVC444 GPU compositor reset warm-up renderer state after failed update; "
                     "FreeRDP native GDI path remains authoritative");
-            }
-            if (activatedForThisCommand) {
-                active = false;
-                if (callbacks.startRenderPipeline != nullptr) {
-                    callbacks.startRenderPipeline();
-                }
-                logs.push_back(
-                    "AVC444 GPU compositor activation failed before GDI suppression was returned to the "
-                    "RDPGFX bridge; preserving FreeRDP native GDI path for this command");
             }
             return false;
         };
@@ -2549,17 +2947,16 @@ struct Avc444GpuCompositor::Impl {
         bool chromaUpdated = false;
 
         if (resetDecodersBeforeNextDecode) {
-            lumaDecoder.Close();
-            chromaDecoder.Close();
+            avcDecoder.Close();
             resetDecodersBeforeNextDecode = false;
             logs.push_back(
-                "AVC444 GPU compositor reset hardware decoders before decode; waiting for cached "
-                "SPS/PPS or fresh parameter sets to bootstrap");
+                "AVC444 GPU compositor reset the single hardware decoder before decode; "
+                "waiting for cached SPS/PPS or fresh parameter sets to bootstrap");
         }
 
         if ((needsLuma || needsChroma) &&
             !renderer.Ensure(nullptr, 0, 0, command->width, command->height, logs)) {
-            if (!active) {
+            if (!authoritative) {
                 logs.push_back("AVC444 GPU compositor offscreen renderer unavailable before decode; keeping GDI");
                 return false;
             }
@@ -2568,25 +2965,26 @@ struct Avc444GpuCompositor::Impl {
         }
         if (needsLuma) {
             PreparedH264Packet packet = PrepareH264Packet(command->stream1.data,
-                command->stream1.length, lumaDecoder.Started(), lumaParameterSets,
-                sharedParameterSets, "luma", logs);
-            if (!lumaDecoder.Started() && !packet.hadParameterSets &&
+                command->stream1.length, avcDecoder.Started(), streamParameterSets,
+                streamParameterSets, "luma", logs);
+            if (!avcDecoder.Started() && !packet.hadParameterSets &&
                 !packet.prependedParameterSets) {
-                if (active) {
-                    return ignoreActiveUpdate("luma decoder missing initial SPS/PPS", true, true);
+                if (authoritative) {
+                    return ignoreActiveUpdate("single decoder missing initial SPS/PPS before luma stream",
+                        true, true);
                 }
-                logs.push_back("AVC444 GPU compositor waits for luma SPS/PPS before hardware decode; keeping GDI"
-                    " nalTypes=" + packet.nalSummary);
+                logs.push_back("AVC444 GPU compositor waits for luma SPS/PPS before single "
+                    "hardware decode; keeping GDI nalTypes=" + packet.nalSummary);
                 return false;
             }
-            if (!lumaDecoder.Ensure(command->width, command->height, "luma", logs)) {
-                return fail("luma decoder init");
+            if (!avcDecoder.Ensure(command->width, command->height, "avc444", logs)) {
+                return fail("single avc444 decoder init before luma");
             }
             const int64_t pts = static_cast<int64_t>(++streamPts);
             const DecodeResult decode =
-                lumaDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
+                avcDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
             if (decode != DecodeResult::Decoded) {
-                if (!active) {
+                if (!authoritative) {
                     logs.push_back("AVC444 GPU compositor luma warm-up decode " +
                         std::string(decode == DecodeResult::NoOutput ? "has no output yet" :
                             "failed") + "; keeping GDI");
@@ -2604,25 +3002,26 @@ struct Avc444GpuCompositor::Impl {
             const FREERDP_OHOS_RDPGFX_AVC444_STREAM_INFO* chromaStream =
                 command->LC == 0 ? &command->stream2 : &command->stream1;
             PreparedH264Packet packet = PrepareH264Packet(chromaStream->data,
-                chromaStream->length, chromaDecoder.Started(), chromaParameterSets,
-                sharedParameterSets, "chroma", logs);
-            if (!chromaDecoder.Started() && !packet.hadParameterSets &&
+                chromaStream->length, avcDecoder.Started(), streamParameterSets,
+                streamParameterSets, "chroma", logs);
+            if (!avcDecoder.Started() && !packet.hadParameterSets &&
                 !packet.prependedParameterSets) {
-                if (active) {
-                    return ignoreActiveUpdate("chroma decoder missing initial SPS/PPS", true, true);
+                if (authoritative) {
+                    return ignoreActiveUpdate("single decoder missing initial SPS/PPS before chroma stream",
+                        true, true);
                 }
-                logs.push_back("AVC444 GPU compositor waits for chroma SPS/PPS before hardware decode; keeping GDI"
-                    " nalTypes=" + packet.nalSummary);
+                logs.push_back("AVC444 GPU compositor waits for chroma SPS/PPS before single "
+                    "hardware decode; keeping GDI nalTypes=" + packet.nalSummary);
                 return false;
             }
-            if (!chromaDecoder.Ensure(command->width, command->height, "chroma", logs)) {
-                return fail("chroma decoder init");
+            if (!avcDecoder.Ensure(command->width, command->height, "avc444", logs)) {
+                return fail("single avc444 decoder init before chroma");
             }
             const int64_t pts = static_cast<int64_t>(++streamPts);
             const DecodeResult decode =
-                chromaDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
+                avcDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
             if (decode != DecodeResult::Decoded) {
-                if (!active) {
+                if (!authoritative) {
                     logs.push_back("AVC444 GPU compositor chroma warm-up decode " +
                         std::string(decode == DecodeResult::NoOutput ? "has no output yet" :
                             "failed") + "; keeping GDI");
@@ -2636,32 +3035,19 @@ struct Avc444GpuCompositor::Impl {
             chromaUpdated = true;
         }
 
-        if (requireFullRefresh && !IsFullAvc444Refresh(command)) {
-            ++resyncWaits;
-            if (resyncWaits <= 8 || (resyncWaits % 120) == 0) {
-                logs.push_back(
-                    "AVC444 GPU compositor decoded but ignored update while waiting for full refresh: "
-                    "frame=" + std::to_string(command->frameId) +
-                    " LC=" + std::to_string(command->LC) +
-                    " waits=" + std::to_string(resyncWaits) +
-                    " stream1First=" + RectText(command->stream1.numRegionRects == 0 ?
-                        nullptr : command->stream1.regionRects) +
-                    " stream2First=" + RectText(command->stream2.numRegionRects == 0 ?
-                        nullptr : command->stream2.regionRects));
-            }
-            return active;
-        }
-        if (requireFullRefresh) {
-            logs.push_back(
-                "AVC444 GPU compositor accepted full LC=0 luma/chroma refresh for renderer resync");
-            requireFullRefresh = false;
-            renderer.InvalidateComposedState();
+        const uint32_t dirtyRectCount = command->stream1.numRegionRects +
+            (command->LC == 0 ? command->stream2.numRegionRects : 0U);
+        if (dirtyRectCount == 0) {
+            logs.push_back("AVC444 GPU compositor decoded command with no dirty rects; "
+                "matching FreeRDP UpdateSurfaceArea no-op frame=" +
+                std::to_string(command->frameId) + " LC=" + std::to_string(command->LC));
+            return authoritative;
         }
 
         if (needsLuma) {
-            if (!lumaFrame.PlanesValid() && !lumaDecoder.MapDecodedFrame(lumaFrame, logs)) {
+            if (!lumaFrame.PlanesValid() && !avcDecoder.MapDecodedFrame(lumaFrame, logs)) {
                 rendererStateTouched = true;
-                if (!active) {
+                if (!authoritative) {
                     logs.push_back("AVC444 GPU compositor luma mapped-plane output failed; keeping GDI");
                     renderer.Destroy();
                     return false;
@@ -2671,7 +3057,7 @@ struct Avc444GpuCompositor::Impl {
             if (!renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
                     command->stream1.numRegionRects, logs)) {
                 rendererStateTouched = true;
-                if (!active) {
+                if (!authoritative) {
                     logs.push_back("AVC444 GPU compositor luma offscreen update failed; keeping GDI");
                     renderer.Destroy();
                     return false;
@@ -2684,24 +3070,28 @@ struct Avc444GpuCompositor::Impl {
         if (needsChroma) {
             const FREERDP_OHOS_RDPGFX_AVC444_STREAM_INFO* chromaStream =
                 command->LC == 0 ? &command->stream2 : &command->stream1;
-            if (!chromaFrame.PlanesValid() && !chromaDecoder.MapDecodedFrame(chromaFrame, logs)) {
+            if (!chromaFrame.PlanesValid() && !avcDecoder.MapDecodedFrame(chromaFrame, logs)) {
                 rendererStateTouched = true;
-                if (!active) {
+                if (!authoritative) {
                     logs.push_back("AVC444 GPU compositor chroma mapped-plane output failed; keeping GDI");
                     renderer.Destroy();
                     return false;
                 }
                 return fail("chroma mapped-plane output");
             }
-            if (!renderer.ApplyChromaV2(chromaFrame, chromaStream->regionRects,
-                    chromaStream->numRegionRects, logs)) {
+            const bool chromaApplied = codecV1 ?
+                renderer.ApplyChromaV1(chromaFrame, chromaStream->regionRects,
+                    chromaStream->numRegionRects, logs) :
+                renderer.ApplyChromaV2(chromaFrame, chromaStream->regionRects,
+                    chromaStream->numRegionRects, logs);
+            if (!chromaApplied) {
                 rendererStateTouched = true;
-                if (!active) {
+                if (!authoritative) {
                     logs.push_back("AVC444 GPU compositor chroma offscreen update failed; keeping GDI");
                     renderer.Destroy();
                     return false;
                 }
-                return fail("chroma-v2 shader update");
+                return fail(codecV1 ? "chroma-v1 shader update" : "chroma-v2 shader update");
             }
             rendererStateTouched = true;
         }
@@ -2710,49 +3100,20 @@ struct Avc444GpuCompositor::Impl {
             logs.push_back("AVC444 GPU compositor warmed " +
                 std::string(lumaUpdated ? "luma" : "-") + "/" +
                 std::string(chromaUpdated ? "chroma" : "-") +
-                " state; waiting for both luma and chroma before suppressing GDI");
-            if (active) {
-                requireFullRefresh = true;
+                " state; waiting for complete luma/base-chroma state before suppressing GDI");
+            if (authoritative) {
                 ++ignoredUpdates;
                 pendingPresent = false;
                 pendingFrameId = 0;
+                pendingSurfaceWidth = 0;
+                pendingSurfaceHeight = 0;
                 logs.push_back(
                     "AVC444 GPU compositor ignored not-ready composed state while active; "
-                    "GDI remains suppressed and renderer will wait for full LC=0 refresh "
+                    "GDI remains suppressed and the next command will continue the stream "
                     "ignoredUpdates=" + std::to_string(ignoredUpdates));
                 return true;
             }
             return false;
-        }
-
-        DecoderSurfaceTarget target {};
-        if (callbacks.decoderSurfaceTarget != nullptr) {
-            target = callbacks.decoderSurfaceTarget();
-        }
-        if (target.window == nullptr || target.width == 0 || target.height == 0) {
-            if (active) {
-                return fail("target unavailable");
-            }
-            logs.push_back("AVC444 GPU compositor target unavailable");
-            return false;
-        }
-
-        if (!active) {
-            if (callbacks.stopRenderPipeline != nullptr) {
-                callbacks.stopRenderPipeline();
-            }
-            if (callbacks.releaseRenderTarget != nullptr) {
-                callbacks.releaseRenderTarget("before AVC444 GPU compositor window bind");
-            }
-            active = true;
-            activatedForThisCommand = true;
-            logs.push_back("AVC444 GPU compositor took XComponent target after successful decode: " +
-                std::to_string(target.width) + "x" + std::to_string(target.height));
-        }
-
-        if (!renderer.Ensure(target.window, target.width, target.height,
-                command->width, command->height, logs)) {
-            return fail("renderer init");
         }
 
         if (pendingPresent) {
@@ -2766,21 +3127,22 @@ struct Avc444GpuCompositor::Impl {
                     " presented=" + std::to_string(presented));
             }
         }
-        const std::string route = "hardware-decode+mapped-plane-gpu-combine";
+        const std::string route = std::string("hardware-decode+mapped-plane-gpu-combine+") +
+            (codecV1 ? "avc444v1" : "avc444v2");
         if (ShouldLogFrequent(queuedPresents + 1U)) {
             logs.push_back("AVC444 GPU compositor update detail: frame=" +
                 std::to_string(command->frameId) +
                 " LC=" + std::to_string(command->LC) +
                 " lumaUpdated=" + std::string(lumaUpdated ? "yes" : "no") +
                 " chromaUpdated=" + std::string(chromaUpdated ? "yes" : "no") +
-                " target=" + std::to_string(target.width) + "x" +
-                    std::to_string(target.height) +
+                " targetHint=" + std::to_string(command->targetWidth) + "x" +
+                    std::to_string(command->targetHeight) +
                 " remoteSurface=" + std::to_string(command->width) + "x" +
                     std::to_string(command->height) +
                 " targetMinusSurface=" +
-                    std::to_string(static_cast<int64_t>(target.width) -
+                    std::to_string(static_cast<int64_t>(command->targetWidth) -
                         static_cast<int64_t>(command->width)) + "x" +
-                    std::to_string(static_cast<int64_t>(target.height) -
+                    std::to_string(static_cast<int64_t>(command->targetHeight) -
                         static_cast<int64_t>(command->height)) +
                 " route=" + route +
                 " stream1=" + StreamText(command->stream1) +
@@ -2796,17 +3158,178 @@ struct Avc444GpuCompositor::Impl {
         }
         pendingPresent = true;
         pendingFrameId = command->frameId;
+        pendingSurfaceWidth = command->width;
+        pendingSurfaceHeight = command->height;
         ++queuedPresents;
         if (ShouldLogFrequent(queuedPresents)) {
             logs.push_back("AVC444 GPU compositor queued EndFrame present: frame=" +
                 std::to_string(command->frameId) + " LC=" + std::to_string(command->LC) +
                 " queued=" + std::to_string(queuedPresents) +
-                " route=" + route);
+                " route=" + route +
+                " suppress=this-command");
+        }
+        if (!command->frameOpen) {
+            logs.push_back("AVC444 GPU compositor queued inter-frame AVC444 update; "
+                "the bridge will mirror FreeRDP dirty state and then trigger present: frame=" +
+                std::to_string(command->frameId) + " LC=" + std::to_string(command->LC));
+        }
+        if (!authoritative) {
+            authoritative = true;
+            logs.push_back("AVC444 GPU compositor is authoritative after queued update; "
+                "GDI is suppressed now and present is deferred until the bridge mirrors "
+                "FreeRDP dirty/update ordering");
         }
         return true;
     }
 
-    bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame, bool active,
+    bool PresentQueuedUpdate(const std::string& trigger, uint32_t frameId,
+        uint32_t activeFrameId, bool matchedFrame,
+        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        std::vector<std::string>& logs)
+    {
+        if (!pendingPresent) {
+            logs.push_back("AVC444 GPU compositor " + trigger +
+                " present skipped: pending=no authoritative=" +
+                std::string(authoritative ? "yes" : "no") + " " + renderer.DebugState());
+            return false;
+        }
+
+        if (!matchedFrame || frameId != pendingFrameId) {
+            ++endFrameMismatches;
+            ++ignoredUpdates;
+            pendingPresent = false;
+            const uint32_t queuedFrameId = pendingFrameId;
+            pendingFrameId = 0;
+            pendingSurfaceWidth = 0;
+            pendingSurfaceHeight = 0;
+            logs.push_back("AVC444 GPU compositor dropped pending present at " + trigger +
+                " mismatch: frame=" + std::to_string(frameId) +
+                " queuedFrame=" + std::to_string(queuedFrameId) +
+                " activeFrame=" + std::to_string(activeFrameId) +
+                " matched=" + std::string(matchedFrame ? "yes" : "no") +
+                " mismatches=" + std::to_string(endFrameMismatches) +
+                " ignoredUpdates=" + std::to_string(ignoredUpdates) +
+                " " + renderer.DebugState());
+            return authoritative;
+        }
+
+        if (pendingSurfaceWidth == 0 || pendingSurfaceHeight == 0) {
+            ++failures;
+            ++ignoredUpdates;
+            pendingPresent = false;
+            pendingFrameId = 0;
+            pendingSurfaceWidth = 0;
+            pendingSurfaceHeight = 0;
+            logs.push_back("AVC444 GPU compositor dropped pending " + trigger +
+                " present with invalid surface dimensions; authoritative=" +
+                std::string(authoritative ? "yes" : "no") +
+                " failures=" + std::to_string(failures) +
+                " ignoredUpdates=" + std::to_string(ignoredUpdates));
+            return authoritative;
+        }
+
+        DecoderSurfaceTarget target {};
+        if (callbacks.decoderSurfaceTarget != nullptr) {
+            target = callbacks.decoderSurfaceTarget();
+        }
+        if (target.window == nullptr || target.width == 0 || target.height == 0) {
+            ++failures;
+            ++ignoredUpdates;
+            pendingPresent = false;
+            pendingFrameId = 0;
+            pendingSurfaceWidth = 0;
+            pendingSurfaceHeight = 0;
+            logs.push_back("AVC444 GPU compositor " + trigger + " target unavailable; "
+                "authoritative=" + std::string(authoritative ? "yes" : "no") +
+                " failures=" + std::to_string(failures) +
+                " ignoredUpdates=" + std::to_string(ignoredUpdates) +
+                (authoritative ? "; preserving GPU ownership and continuing with the next command" :
+                    "; FreeRDP native GDI remains authoritative"));
+            return authoritative;
+        }
+
+        const bool attachingWindowTarget = !renderer.HasWindowTarget();
+        bool renderPipelineStopped = false;
+        if (attachingWindowTarget) {
+            if (callbacks.stopRenderPipeline != nullptr) {
+                callbacks.stopRenderPipeline();
+                renderPipelineStopped = true;
+            }
+            if (callbacks.releaseRenderTarget != nullptr) {
+                callbacks.releaseRenderTarget(
+                    "before AVC444 GPU compositor " + trigger + " takeover");
+            }
+            logs.push_back("AVC444 GPU compositor taking XComponent target at " + trigger +
+                " for AVC444 GPU present: target=" +
+                std::to_string(target.width) + "x" + std::to_string(target.height) +
+                " surface=" + std::to_string(pendingSurfaceWidth) + "x" +
+                std::to_string(pendingSurfaceHeight));
+        }
+
+        auto failPresent = [&](const std::string& reason) {
+            ++failures;
+            ++ignoredUpdates;
+            pendingPresent = false;
+            pendingFrameId = 0;
+            pendingSurfaceWidth = 0;
+            pendingSurfaceHeight = 0;
+            if (!authoritative && attachingWindowTarget && renderPipelineStopped &&
+                callbacks.startRenderPipeline != nullptr) {
+                callbacks.startRenderPipeline();
+            }
+            logs.push_back("AVC444 GPU compositor " + trigger + " present failed: " + reason +
+                " authoritative=" + std::string(authoritative ? "yes" : "no") +
+                " failures=" + std::to_string(failures) +
+                " ignoredUpdates=" + std::to_string(ignoredUpdates) +
+                (authoritative ? "; preserving GPU ownership and continuing with the next command" :
+                    "; FreeRDP native GDI remains authoritative"));
+            return authoritative;
+        };
+
+        if (!renderer.Ensure(target.window, target.width, target.height,
+                pendingSurfaceWidth, pendingSurfaceHeight, logs)) {
+            return failPresent("renderer window attach");
+        }
+
+        ++endFramePresentAttempts;
+        const bool logPresentSummary = ShouldLogFrequent(endFramePresentAttempts);
+        if (logPresentSummary) {
+            logs.push_back("AVC444 GPU compositor " + trigger + " present attempt: "
+                "frame=" + std::to_string(frameId) +
+                " pendingFrame=" + std::to_string(pendingFrameId) +
+                " attempts=" + std::to_string(endFramePresentAttempts) +
+                " queued=" + std::to_string(queuedPresents) +
+                " presented=" + std::to_string(presented) +
+                " authoritative=" + std::string(authoritative ? "yes" : "no") +
+                " " + renderer.DebugState());
+        }
+
+        if (!renderer.Present(logs, logPresentSummary)) {
+            return failPresent("draw/swap");
+        }
+
+        pendingPresent = false;
+        pendingFrameId = 0;
+        pendingSurfaceWidth = 0;
+        pendingSurfaceHeight = 0;
+        ++presented;
+        if (!authoritative) {
+            authoritative = true;
+            logs.push_back("AVC444 GPU compositor is authoritative after successful " + trigger +
+                " present; future AVC444 SurfaceCommand updates may suppress FreeRDP native GDI");
+        }
+        if (ShouldLogFrequent(presented)) {
+            logs.push_back("AVC444 GPU compositor presented at " + trigger + ": frame=" +
+                std::to_string(frameId) + " presented=" + std::to_string(presented) +
+                " attempts=" + std::to_string(endFramePresentAttempts) +
+                " queued=" + std::to_string(queuedPresents) +
+                " authoritative=" + std::string(authoritative ? "yes" : "no"));
+        }
+        return true;
+    }
+
+    bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
+        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
         std::vector<std::string>& logs)
     {
         ++endFrameCallbacks;
@@ -2814,21 +3337,16 @@ struct Avc444GpuCompositor::Impl {
         const uint32_t activeFrameId = frame == nullptr ? 0 : frame->activeFrameId;
         const bool matchedFrame = frame != nullptr && frame->matchedFrame;
 
-        if (!active || !pendingPresent) {
-            if (!active) {
-                ++endFrameSkipInactive;
-            }
-            if (!pendingPresent) {
-                ++endFrameSkipNoPending;
-            }
-            const uint64_t skipCount = !active ? endFrameSkipInactive : endFrameSkipNoPending;
-            if (ShouldLogFrequent(skipCount) || ShouldLogFrequent(endFrameCallbacks)) {
+        if (!pendingPresent) {
+            ++endFrameSkipNoPending;
+            if (ShouldLogFrequent(endFrameSkipNoPending) ||
+                ShouldLogFrequent(endFrameCallbacks)) {
                 logs.push_back("AVC444 GPU compositor EndFrame callback skipped: "
                     "endFrame=" + std::to_string(frameId) +
                     " activeFrame=" + std::to_string(activeFrameId) +
                     " matched=" + std::string(matchedFrame ? "yes" : "no") +
-                    " active=" + std::string(active ? "yes" : "no") +
-                    " pending=" + std::string(pendingPresent ? "yes" : "no") +
+                    " authoritative=" + std::string(authoritative ? "yes" : "no") +
+                    " pending=no "
                     " pendingFrame=" + std::to_string(pendingFrameId) +
                     " callbacks=" + std::to_string(endFrameCallbacks) +
                     " skipInactive=" + std::to_string(endFrameSkipInactive) +
@@ -2840,66 +3358,8 @@ struct Avc444GpuCompositor::Impl {
             return false;
         }
 
-        if (!matchedFrame || frameId != pendingFrameId) {
-            ++endFrameMismatches;
-            ++ignoredUpdates;
-            requireFullRefresh = true;
-            pendingPresent = false;
-            const uint32_t queuedFrameId = pendingFrameId;
-            pendingFrameId = 0;
-            renderer.Destroy();
-            logs.push_back("AVC444 GPU compositor dropped pending present at EndFrame mismatch: "
-                "endFrame=" + std::to_string(frameId) +
-                " queuedFrame=" + std::to_string(queuedFrameId) +
-                " activeFrame=" +
-                std::to_string(frame == nullptr ? 0 : frame->activeFrameId) +
-                " matched=" + std::string(matchedFrame ? "yes" : "no") +
-                " mismatches=" + std::to_string(endFrameMismatches) +
-                " callbacks=" + std::to_string(endFrameCallbacks) +
-                "; waiting for full LC=0 refresh ignoredUpdates=" +
-                std::to_string(ignoredUpdates) + " " + renderer.DebugState());
-            return true;
-        }
-
-        ++endFramePresentAttempts;
-        const bool logPresentSummary = ShouldLogFrequent(endFramePresentAttempts);
-        if (logPresentSummary) {
-            logs.push_back("AVC444 GPU compositor EndFrame present attempt: "
-                "endFrame=" + std::to_string(frameId) +
-                " pendingFrame=" + std::to_string(pendingFrameId) +
-                " attempts=" + std::to_string(endFramePresentAttempts) +
-                " callbacks=" + std::to_string(endFrameCallbacks) +
-                " queued=" + std::to_string(queuedPresents) +
-                " presented=" + std::to_string(presented) +
-                " " + renderer.DebugState());
-        }
-
-        if (!renderer.Present(logs, logPresentSummary)) {
-            ++failures;
-            ++ignoredUpdates;
-            requireFullRefresh = true;
-            pendingPresent = false;
-            pendingFrameId = 0;
-            renderer.Destroy();
-            logs.push_back("AVC444 GPU compositor EndFrame present failed; ignored update while "
-                "preserving GPU ownership and waiting for full LC=0 refresh failures=" +
-                std::to_string(failures) + " ignoredUpdates=" +
-                std::to_string(ignoredUpdates) + " attempts=" +
-                std::to_string(endFramePresentAttempts) + " " + renderer.DebugState());
-            return true;
-        }
-
-        pendingPresent = false;
-        pendingFrameId = 0;
-        ++presented;
-        if (ShouldLogFrequent(presented)) {
-            logs.push_back("AVC444 GPU compositor presented at EndFrame: frame=" +
-                std::to_string(frameId) + " presented=" + std::to_string(presented) +
-                " attempts=" + std::to_string(endFramePresentAttempts) +
-                " callbacks=" + std::to_string(endFrameCallbacks) +
-                " queued=" + std::to_string(queuedPresents));
-        }
-        return true;
+        return PresentQueuedUpdate("EndFrame", frameId, activeFrameId, matchedFrame,
+            callbacks, authoritative, logs);
     }
 #else
     void Destroy() {}
@@ -2924,9 +3384,10 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     selfTestStarted_ = false;
     selfTestComplete_ = false;
     readyForGdiSuppression_ = false;
+    readyForAvc444v1_ = false;
+    readyForAvc444v2_ = false;
     active_ = false;
     candidates_ = 0;
-    frameMismatchRejects_ = 0;
     invalidLcRejects_ = 0;
     lastFrameId_ = 0;
     lastLC_ = 0;
@@ -2963,6 +3424,8 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
     bool frameOpen = false;
     bool lcValid = false;
     uint64_t candidate = 0;
+    const bool codecV1 = command->codecId == RDPGFX_CODECID_AVC444;
+    const bool codecV2 = command->codecId == RDPGFX_CODECID_AVC444v2;
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -2978,9 +3441,6 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
 
         frameOpen = command->frameOpen ? true : false;
         lcValid = IsValidLcForCommand(command);
-        if (!frameOpen) {
-            frameMismatchRejects_++;
-        }
         if (!lcValid) {
             invalidLcRejects_++;
         }
@@ -2996,10 +3456,14 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         SelfTestResult result = RunSelfTest(command->targetWidth, command->targetHeight);
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            const bool commonReady =
+                result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate;
             selfTestComplete_ = true;
-            readyForGdiSuppression_ =
-                result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate &&
-                result.avc444v2LayoutReady && result.avc444v2ShaderReady;
+            readyForAvc444v1_ =
+                commonReady && result.avc444v1LayoutReady && result.avc444v1ShaderReady;
+            readyForAvc444v2_ =
+                commonReady && result.avc444v2LayoutReady && result.avc444v2ShaderReady;
+            readyForGdiSuppression_ = readyForAvc444v1_ || readyForAvc444v2_;
             diagnostics_ = result.diagnostics;
         }
         Log("AVC444 GPU compositor self-test complete: " + result.diagnostics +
@@ -3018,8 +3482,9 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
             " frameOpen=" + std::string(frameOpen ? "yes" : "no") +
             " LC=" + std::to_string(command->LC) +
             " lcValid=" + std::string(lcValid ? "yes" : "no") +
-            " commandRect=" + std::to_string(command->left) + "," +
-            std::to_string(command->top) + " " +
+            " commandOrigin=" + std::to_string(command->left) + "," +
+            std::to_string(command->top) +
+            " surfaceSize=" +
             std::to_string(command->width) + "x" + std::to_string(command->height) +
             " target=" + std::to_string(command->targetWidth) + "x" +
             std::to_string(command->targetHeight) +
@@ -3034,16 +3499,23 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
     bool selfTestGate = false;
     Avc444GpuCompositorCallbacks callbacks;
     bool active = false;
+    bool readyForV1 = false;
+    bool readyForV2 = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        selfTestGate = readyForGdiSuppression_;
+        readyForV1 = readyForAvc444v1_;
+        readyForV2 = readyForAvc444v2_;
+        selfTestGate = (codecV1 && readyForV1) || (codecV2 && readyForV2);
         callbacks = callbacks_;
         active = active_;
     }
 
-    if (!frameOpen || !lcValid || !selfTestGate) {
+    if (!lcValid || !selfTestGate) {
         if (!selfTestGate && shouldLogCommand) {
-            Log("AVC444 GPU compositor gate closed; keeping FreeRDP native GDI path");
+            Log("AVC444 GPU compositor gate closed for this codec; keeping FreeRDP native "
+                "GDI path: codec=" + std::to_string(command->codecId) +
+                " avc444v1Ready=" + std::string(readyForV1 ? "yes" : "no") +
+                " avc444v2Ready=" + std::string(readyForV2 ? "yes" : "no"));
         }
         return false;
     }
@@ -3063,12 +3535,20 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
             active_ = active;
             if (consumed) {
                 readyForGdiSuppression_ = true;
+                if (codecV1) {
+                    readyForAvc444v1_ = true;
+                }
+                if (codecV2) {
+                    readyForAvc444v2_ = true;
+                }
             }
             diagnostics_ = "avc444 gpu compositor: enabled=yes selfTest=yes active=" +
                 std::string(active_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " lastLC=" + std::to_string(lastLC_) +
+                " avc444v1Ready=" + std::string(readyForAvc444v1_ ? "yes" : "no") +
+                " avc444v2Ready=" + std::string(readyForAvc444v2_ ? "yes" : "no") +
                 " suppress=" + std::string(consumed ? "this-command" : "no");
         }
     }
@@ -3085,6 +3565,7 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
     }
 
     std::vector<std::string> logs;
+    Avc444GpuCompositorCallbacks callbacks;
     bool handled = false;
     {
         std::lock_guard<std::mutex> processLock(processingMutex_);
@@ -3095,17 +3576,24 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
                 return false;
             }
             active = active_;
+            callbacks = callbacks_;
         }
 
-        handled = impl_ != nullptr && impl_->PresentEndFrame(frame, active, logs);
+        handled = impl_ != nullptr && impl_->PresentEndFrame(frame, callbacks, active, logs);
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            active_ = active;
+            if (active_) {
+                readyForGdiSuppression_ = true;
+            }
             diagnostics_ = "avc444 gpu compositor: enabled=yes selfTest=" +
                 std::string(selfTestComplete_ ? "yes" : "no") +
                 " active=" + std::string(active_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " lastLC=" + std::to_string(lastLC_) +
+                " avc444v1Ready=" + std::string(readyForAvc444v1_ ? "yes" : "no") +
+                " avc444v2Ready=" + std::string(readyForAvc444v2_ ? "yes" : "no") +
                 " endFrame=" + std::to_string(frame->frameId) +
                 " endFramePresent=" + std::string(handled ? "handled" : "none");
         }
@@ -3125,7 +3613,10 @@ Avc444GpuCompositor::SelfTestResult Avc444GpuCompositor::RunSelfTest(
     std::vector<std::string> avcodecLogs = ProbeAvcCapability(width, height, result);
     logs.insert(logs.end(), avcodecLogs.begin(), avcodecLogs.end());
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
+    result.avc444v1LayoutReady = RunAvc444V1LayoutSelfTest(logs);
     result.avc444v2LayoutReady = RunAvc444V2LayoutSelfTest(logs);
+    result.avc444v1ShaderReady =
+        result.avc444v1LayoutReady && RunAvc444V1GpuShaderSelfTest(logs);
     result.avc444v2ShaderReady =
         result.avc444v2LayoutReady && RunAvc444V2GpuShaderSelfTest(logs);
 #endif
@@ -3136,9 +3627,15 @@ Avc444GpuCompositor::SelfTestResult Avc444GpuCompositor::RunSelfTest(
         " nativeBufferFormats=" + std::string(result.nativeBufferFormatsKnown ? "known" : "unknown") +
         " rawYuvCandidate=" + std::string(result.rawBufferCandidate ? "yes" : "no") +
         " source=mapped-plane" +
+        " avc444v1Layout=" + std::string(result.avc444v1LayoutReady ? "yes" : "no") +
+        " avc444v1Shader=" + std::string(result.avc444v1ShaderReady ? "yes" : "no") +
         " avc444v2Layout=" + std::string(result.avc444v2LayoutReady ? "yes" : "no") +
         " avc444v2Shader=" + std::string(result.avc444v2ShaderReady ? "yes" : "no") +
-        " readyForSuppressGdi=" +
+        " readyForSuppressGdi=avc444v1:" +
+        std::string((result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate &&
+            result.avc444v1LayoutReady && result.avc444v1ShaderReady) ?
+                "after-successful-present" : "no") +
+        ",avc444v2:" +
         std::string((result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate &&
             result.avc444v2LayoutReady && result.avc444v2ShaderReady) ?
                 "after-successful-present" : "no");
