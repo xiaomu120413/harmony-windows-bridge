@@ -42,6 +42,6 @@ Keep app-side:
 - XComponent/native-window target selection and render ownership;
 - OH_AVCodec and GLES compositor object lifetime.
 
-`surface/avc444_gpu_compositor.cpp` is intentionally still a single file after
-the directory cleanup. Split it separately so file movement and compositor
-behavior changes do not land in the same patch.
+`surface/avc444_gpu_compositor.cpp` is the small public facade. The larger
+decoder, GL, and AVC444 composition internals live in
+`surface/avc444_gpu_compositor_internal.cpp`.
