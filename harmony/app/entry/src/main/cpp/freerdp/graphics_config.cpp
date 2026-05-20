@@ -62,26 +62,40 @@ FreerdpRuntimeApi* LoadedRuntime()
     return &api;
 }
 
+#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+GraphicsPipelineConfig FromNativeGraphicsConfig(const FREERDP_OHOS_GRAPHICS_CONFIG& nativeConfig,
+    const std::string& requestedMode)
+{
+    GraphicsPipelineConfig config;
+    config.valid = nativeConfig.mode != FREERDP_OHOS_GRAPHICS_MODE_INVALID;
+    config.enabled = nativeConfig.enabled;
+    config.h264 = nativeConfig.h264;
+    config.avc444GpuExperimental = nativeConfig.enabled && nativeConfig.h264;
+    if (config.valid) {
+        config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
+    } else {
+        config.mode = TrimAscii(requestedMode).empty() ? "missing" : "invalid";
+    }
+    return config;
+}
+#endif
+
 } // namespace
 
 GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
 {
+    if (FreerdpRuntimeApi* api = LoadedRuntime();
+        api != nullptr && api->ohosGraphicsConfigFromMode != nullptr) {
+#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
+        const FREERDP_OHOS_GRAPHICS_CONFIG nativeConfig =
+            api->ohosGraphicsConfigFromMode(params.graphicsMode.c_str());
+        return FromNativeGraphicsConfig(nativeConfig, params.graphicsMode);
+#endif
+    }
+
     const GraphicsPipelineConfig strictConfig = ParseGraphicsModeStrict(params.graphicsMode);
     if (!strictConfig.valid) {
         return strictConfig;
-    }
-
-    if (FreerdpRuntimeApi* api = LoadedRuntime();
-        api != nullptr && api->ohosGraphicsConfigFromMode != nullptr) {
-        const FREERDP_OHOS_GRAPHICS_CONFIG nativeConfig =
-            api->ohosGraphicsConfigFromMode(params.graphicsMode.c_str());
-        GraphicsPipelineConfig config;
-        config.valid = true;
-        config.enabled = nativeConfig.enabled;
-        config.h264 = nativeConfig.h264;
-        config.avc444GpuExperimental = nativeConfig.enabled && nativeConfig.h264;
-        config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
-        return config;
     }
 
     GraphicsPipelineConfig config = strictConfig;
@@ -91,7 +105,9 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
 
 std::string GraphicsModeValidationError(const std::string& graphicsMode)
 {
-    const GraphicsPipelineConfig config = ParseGraphicsModeStrict(graphicsMode);
+    ConnectParams params;
+    params.graphicsMode = graphicsMode;
+    const GraphicsPipelineConfig config = ParseGraphicsPipelineConfig(params);
     if (config.valid) {
         return "";
     }
@@ -105,11 +121,6 @@ std::string GraphicsModeValidationError(const std::string& graphicsMode)
 
 std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
 {
-    const GraphicsPipelineConfig strictConfig = ParseGraphicsModeStrict(params.graphicsMode);
-    if (!strictConfig.valid) {
-        return {};
-    }
-
     if (FreerdpRuntimeApi* api = LoadedRuntime();
         api != nullptr && api->ohosGraphicsFallbackModes != nullptr) {
         const char* nativeModes[3] = {};
@@ -121,6 +132,11 @@ std::vector<std::string> BuildGraphicsFallbackModes(const ConnectParams& params)
             modes.emplace_back(nativeModes[index] == nullptr ? "gdi" : nativeModes[index]);
         }
         return modes;
+    }
+
+    const GraphicsPipelineConfig strictConfig = ParseGraphicsModeStrict(params.graphicsMode);
+    if (!strictConfig.valid) {
+        return {};
     }
 
     if (strictConfig.mode == "rdpgfx-h264") {
