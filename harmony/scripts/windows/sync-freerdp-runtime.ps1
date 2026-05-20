@@ -29,11 +29,40 @@ if (-not $targetResolved.StartsWith($repoResolved, [System.StringComparison]::Or
 }
 
 Get-ChildItem -LiteralPath $target -Force | Remove-Item -Recurse -Force
-Get-ChildItem -LiteralPath $runtimeSource -Force |
-  Where-Object { $_.Name -notin @("libohaudio.so", "libOpenSLES.so", "libhilog_ndk.z.so") } |
-  ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force
+
+$runtimeLibraryNames = @(
+  "libc++_shared.so",
+  "libcjson.so.1",
+  "libcrypto.so.3",
+  "libfreerdp-client3.so",
+  "libfreerdp3.so",
+  "libssl.so.3",
+  "libwinpr3.so",
+  "libz.so.1",
+  "liburiparser.so.1",
+  "libopenh264.so.7",
+  "libavcodec.so.60",
+  "libavdevice.so.60",
+  "libavfilter.so.9",
+  "libavformat.so.60",
+  "libavutil.so.58",
+  "libswresample.so.4",
+  "libswscale.so.7"
+)
+
+foreach ($name in $runtimeLibraryNames) {
+  $sourcePath = Join-Path $runtimeSource $name
+  if (Test-Path -LiteralPath $sourcePath) {
+    Copy-Item -LiteralPath $sourcePath -Destination $target -Force
   }
+}
+
+$osslModuleSource = Join-Path $runtimeSource "ossl-modules/legacy.so"
+if (Test-Path -LiteralPath $osslModuleSource) {
+  $osslModuleTarget = Join-Path $target "ossl-modules"
+  New-Item -ItemType Directory -Force -Path $osslModuleTarget | Out-Null
+  Copy-Item -LiteralPath $osslModuleSource -Destination $osslModuleTarget -Force
+}
 Copy-Item -LiteralPath $probeSource -Destination $target -Force
 
 $requiredNames = @(
