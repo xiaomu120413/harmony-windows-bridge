@@ -1,6 +1,7 @@
 #include "surface/avc444_gpu_compositor.h"
 
 #include "common/string_utils.h"
+#include "freerdp/freerdp_runtime.h"
 #include "surface/native_rgba_copy.h"
 #include "surface/render_output_owner.h"
 
@@ -12,7 +13,6 @@
 #include <utility>
 #include <vector>
 
-#include <dlfcn.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <multimedia/player_framework/native_avbuffer.h>
@@ -22,10 +22,6 @@
 #include <multimedia/player_framework/native_avformat.h>
 #include <native_buffer/buffer_common.h>
 #include <native_buffer/native_buffer.h>
-
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-#include <freerdp/primitives.h>
-#endif
 
 namespace rdp_bridge {
 namespace {
@@ -195,28 +191,6 @@ uint32_t AlignUp(uint32_t value, uint32_t align)
     return align == 0 ? value : value + ((value % align) == 0 ? 0 : align - (value % align));
 }
 
-template <typename T>
-std::string JoinNumbers(const T* values, uint32_t count, uint32_t limit = 12)
-{
-    if (values == nullptr || count == 0) {
-        return "[]";
-    }
-    std::ostringstream out;
-    out << "[";
-    const uint32_t shown = std::min(count, limit);
-    for (uint32_t i = 0; i < shown; ++i) {
-        if (i != 0) {
-            out << ",";
-        }
-        out << static_cast<int32_t>(values[i]);
-    }
-    if (shown < count) {
-        out << ",...";
-    }
-    out << "]";
-    return out.str();
-}
-
 std::string NativeBufferFormatName(OH_NativeBuffer_Format format)
 {
     switch (format) {
@@ -235,680 +209,44 @@ std::string NativeBufferFormatName(OH_NativeBuffer_Format format)
     }
 }
 
-bool IsRawYuvCandidate(OH_NativeBuffer_Format format)
-{
-    return format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_SP ||
-        format == NATIVEBUFFER_PIXEL_FMT_YCRCB_420_SP ||
-        format == NATIVEBUFFER_PIXEL_FMT_YCBCR_420_P ||
-        format == NATIVEBUFFER_PIXEL_FMT_YCRCB_420_P ||
-        format == NATIVEBUFFER_PIXEL_FMT_Y8;
-}
-
-std::string JoinNativeBufferFormats(const OH_NativeBuffer_Format* formats, uint32_t count,
-    bool& rawCandidate)
-{
-    rawCandidate = false;
-    if (formats == nullptr || count == 0) {
-        return "[]";
-    }
-    std::ostringstream out;
-    out << "[";
-    const uint32_t shown = std::min<uint32_t>(count, 12);
-    for (uint32_t i = 0; i < shown; ++i) {
-        if (i != 0) {
-            out << ",";
-        }
-        rawCandidate = rawCandidate || IsRawYuvCandidate(formats[i]);
-        out << NativeBufferFormatName(formats[i]);
-    }
-    for (uint32_t i = shown; i < count; ++i) {
-        rawCandidate = rawCandidate || IsRawYuvCandidate(formats[i]);
-    }
-    if (shown < count) {
-        out << ",...";
-    }
-    out << "]";
-    return out.str();
-}
-
-struct DlHandle {
-    void* handle = nullptr;
-
-    ~DlHandle()
-    {
-        if (handle != nullptr) {
-            dlclose(handle);
-        }
-    }
-
-    bool OpenAny(const std::vector<const char*>& names)
-    {
-        for (const char* name : names) {
-            handle = dlopen(name, RTLD_NOW | RTLD_LOCAL);
-            if (handle != nullptr) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    template <typename T>
-    T Symbol(const char* name) const
-    {
-        return handle == nullptr ? nullptr : reinterpret_cast<T>(dlsym(handle, name));
-    }
-};
-
-std::vector<std::string> ProbeAvcCapability(uint32_t width, uint32_t height,
-    Avc444GpuCompositor::SelfTestResult& result)
-{
-    using GetCapabilityByCategoryFn =
-        OH_AVCapability* (*)(const char*, bool, OH_AVCodecCategory);
-    using IsHardwareFn = bool (*)(OH_AVCapability*);
-    using GetNameFn = const char* (*)(OH_AVCapability*);
-    using GetMaxInstancesFn = int32_t (*)(OH_AVCapability*);
-    using GetWidthAlignmentFn = OH_AVErrCode (*)(OH_AVCapability*, int32_t*);
-    using GetHeightAlignmentFn = OH_AVErrCode (*)(OH_AVCapability*, int32_t*);
-    using IsVideoSizeSupportedFn = bool (*)(OH_AVCapability*, int32_t, int32_t);
-    using GetPixelFormatsFn = OH_AVErrCode (*)(OH_AVCapability*, const int32_t**, uint32_t*);
-    using GetNativeBufferFormatsFn = OH_AVErrCode (*)(
-        OH_AVCapability*, const OH_NativeBuffer_Format**, uint32_t*);
-
-    std::vector<std::string> logs;
-    DlHandle media;
-    if (!media.OpenAny({
-            "libnative_media_codecbase.so",
-            "libnative_media_core.so",
-            "libnative_media_vdec.so",
-        })) {
-        logs.push_back("AVC444 GPU compositor AVCodec probe: dlopen failed");
-        return logs;
-    }
-
-    const auto getCapabilityByCategory =
-        media.Symbol<GetCapabilityByCategoryFn>("OH_AVCodec_GetCapabilityByCategory");
-    const auto isHardware = media.Symbol<IsHardwareFn>("OH_AVCapability_IsHardware");
-    const auto getName = media.Symbol<GetNameFn>("OH_AVCapability_GetName");
-    const auto getMaxInstances =
-        media.Symbol<GetMaxInstancesFn>("OH_AVCapability_GetMaxSupportedInstances");
-    const auto getWidthAlignment =
-        media.Symbol<GetWidthAlignmentFn>("OH_AVCapability_GetVideoWidthAlignment");
-    const auto getHeightAlignment =
-        media.Symbol<GetHeightAlignmentFn>("OH_AVCapability_GetVideoHeightAlignment");
-    const auto isVideoSizeSupported =
-        media.Symbol<IsVideoSizeSupportedFn>("OH_AVCapability_IsVideoSizeSupported");
-    const auto getPixelFormats =
-        media.Symbol<GetPixelFormatsFn>("OH_AVCapability_GetVideoSupportedPixelFormats");
-    const auto getNativeBufferFormats = media.Symbol<GetNativeBufferFormatsFn>(
-        "OH_AVCapability_GetVideoSupportedNativeBufferFormats");
-
-    if (getCapabilityByCategory == nullptr) {
-        logs.push_back("AVC444 GPU compositor AVCodec probe: capability symbol missing");
-        return logs;
-    }
-
-    OH_AVCapability* capability = getCapabilityByCategory(kAvcMime, false, HARDWARE);
-    if (capability == nullptr) {
-        logs.push_back("AVC444 GPU compositor AVCodec probe: no hardware H.264 decoder capability");
-        return logs;
-    }
-
-    result.avcodecHardwareReady = isHardware == nullptr || isHardware(capability);
-    const char* name = getName == nullptr ? nullptr : getName(capability);
-    const int32_t maxInstances = getMaxInstances == nullptr ? -1 : getMaxInstances(capability);
-    int32_t widthAlignment = 0;
-    int32_t heightAlignment = 0;
-    if (getWidthAlignment != nullptr) {
-        getWidthAlignment(capability, &widthAlignment);
-    }
-    if (getHeightAlignment != nullptr) {
-        getHeightAlignment(capability, &heightAlignment);
-    }
-    const bool sizeSupported = (isVideoSizeSupported == nullptr || width == 0 || height == 0) ?
-        true : isVideoSizeSupported(capability, static_cast<int32_t>(width), static_cast<int32_t>(height));
-
-    const int32_t* pixelFormats = nullptr;
-    uint32_t pixelFormatCount = 0;
-    std::string pixelFormatText = "unavailable";
-    if (getPixelFormats != nullptr &&
-        getPixelFormats(capability, &pixelFormats, &pixelFormatCount) == AV_ERR_OK) {
-        pixelFormatText = JoinNumbers(pixelFormats, pixelFormatCount);
-    }
-
-    const OH_NativeBuffer_Format* nativeFormats = nullptr;
-    uint32_t nativeFormatCount = 0;
-    std::string nativeFormatText = "symbol-missing";
-    bool rawCandidate = false;
-    if (getNativeBufferFormats != nullptr) {
-        result.nativeBufferFormatsKnown = true;
-        if (getNativeBufferFormats(capability, &nativeFormats, &nativeFormatCount) == AV_ERR_OK) {
-            nativeFormatText = JoinNativeBufferFormats(nativeFormats, nativeFormatCount, rawCandidate);
-        } else {
-            nativeFormatText = "query-failed";
-        }
-    }
-    result.rawBufferCandidate = rawCandidate;
-
-    logs.push_back("AVC444 GPU compositor AVCodec probe: hardware=" +
-        std::string(result.avcodecHardwareReady ? "yes" : "no") +
-        " name=" + SafeCString(name) +
-        " maxInstances=" + std::to_string(maxInstances) +
-        " align=" + std::to_string(widthAlignment) + "x" + std::to_string(heightAlignment) +
-        " size=" + std::to_string(width) + "x" + std::to_string(height) +
-        " sizeSupported=" + std::string(sizeSupported ? "yes" : "no") +
-        " pixelFormats=" + pixelFormatText +
-        " nativeBufferFormats=" + nativeFormatText +
-        " rawYuvCandidate=" + std::string(rawCandidate ? "yes" : "no"));
-
-    return logs;
-}
-
-std::vector<std::string> ProbeEglContext(Avc444GpuCompositor::SelfTestResult& result)
-{
-    std::vector<std::string> logs;
-    EGLDisplay display = EGL_NO_DISPLAY;
-    EGLConfig config = nullptr;
-    EGLSurface surface = EGL_NO_SURFACE;
-    EGLContext context = EGL_NO_CONTEXT;
-
-    auto cleanup = [&]() {
-        if (display != EGL_NO_DISPLAY && context != EGL_NO_CONTEXT && surface != EGL_NO_SURFACE) {
-            eglMakeCurrent(display, surface, surface, context);
-        }
-        if (display != EGL_NO_DISPLAY) {
-            eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        }
-        if (display != EGL_NO_DISPLAY && context != EGL_NO_CONTEXT) {
-            eglDestroyContext(display, context);
-        }
-        if (display != EGL_NO_DISPLAY && surface != EGL_NO_SURFACE) {
-            eglDestroySurface(display, surface);
-        }
-        if (display != EGL_NO_DISPLAY) {
-            eglTerminate(display);
-        }
-    };
-
-    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (display == EGL_NO_DISPLAY) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglGetDisplay failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-    if (!eglInitialize(display, nullptr, nullptr)) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglInitialize failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-    if (!eglBindAPI(EGL_OPENGL_ES_API)) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglBindAPI failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-
-    const EGLint configAttribs[] = {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
-        EGL_NONE,
-    };
-    EGLint configCount = 0;
-    if (!eglChooseConfig(display, configAttribs, &config, 1, &configCount) || configCount <= 0) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglChooseConfig failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-
-    const EGLint pbufferAttribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
-    surface = eglCreatePbufferSurface(display, config, pbufferAttribs);
-    if (surface == EGL_NO_SURFACE) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglCreatePbufferSurface failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-
-    const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
-    context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
-    if (context == EGL_NO_CONTEXT) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglCreateContext failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-    if (!eglMakeCurrent(display, surface, surface, context)) {
-        logs.push_back("AVC444 GPU compositor EGL probe: eglMakeCurrent failed " +
-            Hex32(static_cast<uint32_t>(eglGetError())));
-        cleanup();
-        return logs;
-    }
-
-    result.eglReady = true;
-    logs.push_back("AVC444 GPU compositor EGL probe: egl=ready es3=yes "
-        "mapped-plane compositor only");
-
-    cleanup();
-    return logs;
-}
-
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 
 bool IsValidLcForCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
 {
-    if (command == nullptr) {
-        return false;
-    }
-    switch (command->LC) {
-        case 0:
-            return command->stream1.data != nullptr && command->stream1.length > 0 &&
-                command->stream2.data != nullptr && command->stream2.length > 0 &&
-                command->stream1.regionRects != nullptr &&
-                (command->stream2.numRegionRects == 0 ||
-                    command->stream2.regionRects != nullptr);
-        case 1:
-        case 2:
-            return command->stream1.data != nullptr && command->stream1.length > 0 &&
-                command->stream1.regionRects != nullptr;
-        default:
-            return false;
-    }
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    std::string error;
+    return EnsureFreerdpRuntimeLoaded(api, error) &&
+        api.ohosRdpgfxAvc444CommandLcIsValid != nullptr &&
+        api.ohosRdpgfxAvc444CommandLcIsValid(command) != FALSE;
 }
 
 bool RectsValid(const RECTANGLE_16* rects, uint32_t count, uint32_t width, uint32_t height)
 {
-    if (width == 0 || height == 0) {
-        return false;
-    }
-    if (count == 0) {
-        return true;
-    }
-    if (rects == nullptr) {
-        return false;
-    }
-    for (uint32_t i = 0; i < count; ++i) {
-        const RECTANGLE_16& r = rects[i];
-        if (r.left >= r.right || r.top >= r.bottom || r.right > width || r.bottom > height) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool RectsContainFullSurface(const RECTANGLE_16* rects, uint32_t count, uint32_t width,
-    uint32_t height)
-{
-    if (rects == nullptr || count == 0 || width == 0 || height == 0) {
-        return false;
-    }
-    for (uint32_t i = 0; i < count; ++i) {
-        const RECTANGLE_16& r = rects[i];
-        if (r.left == 0 && r.top == 0 && r.right == width && r.bottom == height) {
-            return true;
-        }
-    }
-    return false;
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    std::string error;
+    return EnsureFreerdpRuntimeLoaded(api, error) && api.ohosRdpgfxRectsValid != nullptr &&
+        api.ohosRdpgfxRectsValid(rects, count, width, height) != FALSE;
 }
 
 bool RectsCoverFullSurface(const RECTANGLE_16* rects, uint32_t count, uint32_t width,
     uint32_t height)
 {
-    if (!RectsValid(rects, count, width, height)) {
-        return false;
-    }
-    if (RectsContainFullSurface(rects, count, width, height)) {
-        return true;
-    }
-
-    std::vector<uint32_t> edges;
-    edges.reserve((static_cast<size_t>(count) * 2U) + 2U);
-    edges.push_back(0);
-    edges.push_back(height);
-    for (uint32_t i = 0; i < count; ++i) {
-        edges.push_back(rects[i].top);
-        edges.push_back(rects[i].bottom);
-    }
-    std::sort(edges.begin(), edges.end());
-    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
-
-    for (size_t band = 0; band + 1U < edges.size(); ++band) {
-        const uint32_t top = edges[band];
-        const uint32_t bottom = edges[band + 1U];
-        if (top == bottom) {
-            continue;
-        }
-
-        std::vector<std::pair<uint32_t, uint32_t>> intervals;
-        intervals.reserve(count);
-        for (uint32_t i = 0; i < count; ++i) {
-            const RECTANGLE_16& r = rects[i];
-            if (r.top <= top && r.bottom >= bottom) {
-                intervals.emplace_back(r.left, r.right);
-            }
-        }
-        if (intervals.empty()) {
-            return false;
-        }
-        std::sort(intervals.begin(), intervals.end());
-
-        uint32_t coveredRight = 0;
-        bool started = false;
-        for (const auto& interval : intervals) {
-            if (!started) {
-                if (interval.first != 0) {
-                    return false;
-                }
-                coveredRight = interval.second;
-                started = true;
-            } else if (interval.first <= coveredRight) {
-                coveredRight = std::max(coveredRight, interval.second);
-            } else {
-                return false;
-            }
-            if (coveredRight >= width) {
-                break;
-            }
-        }
-        if (!started || coveredRight < width) {
-            return false;
-        }
-    }
-    return true;
-}
-
-std::string RectText(const RECTANGLE_16* rect);
-
-uint8_t TestByte(uint32_t x, uint32_t y, uint32_t seed)
-{
-    return static_cast<uint8_t>((x * 37U + y * 17U + seed * 29U + 13U) & 0xFFU);
-}
-
-uint32_t ChromaV1PaddedHeight(uint32_t height)
-{
-    return height + 16U - (height % 16U);
-}
-
-uint32_t RequiredChromaV1SourceYHeight(const RECTANGLE_16& roi)
-{
-    return roi.top + ChromaV1PaddedHeight(roi.bottom - roi.top);
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    std::string error;
+    return EnsureFreerdpRuntimeLoaded(api, error) &&
+        api.ohosRdpgfxRectsCoverFullSurface != nullptr &&
+        api.ohosRdpgfxRectsCoverFullSurface(rects, count, width, height) != FALSE;
 }
 
 uint32_t RequiredChromaV1SourceYHeight(const RECTANGLE_16* rects, uint32_t count)
 {
-    uint32_t required = 0;
-    for (uint32_t i = 0; i < count; ++i) {
-        required = std::max(required, RequiredChromaV1SourceYHeight(rects[i]));
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    std::string error;
+    if (!EnsureFreerdpRuntimeLoaded(api, error) ||
+        api.ohosRdpgfxAvc444ChromaV1RequiredYHeight == nullptr) {
+        return UINT32_MAX;
     }
-    return required;
-}
-
-void ApplyChromaV1ShaderModel(const std::vector<uint8_t>& srcY,
-    const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV, uint32_t srcYStep,
-    uint32_t srcUvStep, std::vector<uint8_t>& dstU, std::vector<uint8_t>& dstV,
-    uint32_t dstStep, const RECTANGLE_16& roi)
-{
-    const uint32_t rectWidth = roi.right - roi.left;
-    const uint32_t rectHeight = roi.bottom - roi.top;
-    for (uint32_t y = roi.top; y < roi.bottom; ++y) {
-        for (uint32_t x = roi.left; x < roi.right; ++x) {
-            const uint32_t relX = x - roi.left;
-            const uint32_t relY = y - roi.top;
-            const uint32_t dst = y * dstStep + x;
-            if ((relY & 1U) == 1U) {
-                const uint32_t oddRow = relY / 2U;
-                const uint32_t group = oddRow / 8U;
-                const uint32_t inGroup = oddRow % 8U;
-                const uint32_t srcRowBase = roi.top + group * 16U + inGroup;
-                dstU[dst] = srcY[srcRowBase * srcYStep + roi.left + relX];
-                dstV[dst] = srcY[(srcRowBase + 8U) * srcYStep + roi.left + relX];
-            } else if ((relX & 1U) == 1U &&
-                relY < (rectHeight / 2U) * 2U &&
-                relX < (rectWidth / 2U) * 2U) {
-                const uint32_t srcX = roi.left / 2U + relX / 2U;
-                const uint32_t srcYCoord = roi.top / 2U + relY / 2U;
-                dstU[dst] = srcU[srcYCoord * srcUvStep + srcX];
-                dstV[dst] = srcV[srcYCoord * srcUvStep + srcX];
-            }
-        }
-    }
-}
-
-void ApplyChromaV2Reference(const std::vector<uint8_t>& srcY,
-    const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV, uint32_t srcYStep,
-    uint32_t srcUvStep, uint32_t totalWidth, std::vector<uint8_t>& dstU,
-    std::vector<uint8_t>& dstV, uint32_t dstStep, const RECTANGLE_16& roi)
-{
-    const uint32_t width = roi.right - roi.left;
-    const uint32_t height = roi.bottom - roi.top;
-    const uint32_t halfWidth = (width + 1U) / 2U;
-    const uint32_t halfHeight = (height + 1U) / 2U;
-    const uint32_t quarterWidth = (width + 3U) / 4U;
-
-    for (uint32_t y = 0; y < height; ++y) {
-        const uint32_t yTop = y + roi.top;
-        const uint32_t srcOddBase = yTop * srcYStep + roi.left / 2U;
-        const uint32_t srcOddVBase = srcOddBase + totalWidth / 2U;
-        const uint32_t dstBase = yTop * dstStep + roi.left;
-        for (uint32_t x = 0; x < halfWidth; ++x) {
-            const uint32_t odd = 2U * x + 1U;
-            dstU[dstBase + odd] = srcY[srcOddBase + x];
-            dstV[dstBase + odd] = srcY[srcOddVBase + x];
-        }
-    }
-
-    for (uint32_t y = 0; y < halfHeight; ++y) {
-        const uint32_t srcRow = y + roi.top / 2U;
-        const uint32_t srcBase = srcRow * srcUvStep + roi.left / 4U;
-        const uint32_t srcVBase = srcBase + totalWidth / 4U;
-        const uint32_t dstBase = (2U * y + 1U + roi.top) * dstStep + roi.left;
-        for (uint32_t x = 0; x < quarterWidth; ++x) {
-            dstU[dstBase + 4U * x + 0U] = srcU[srcBase + x];
-            dstV[dstBase + 4U * x + 0U] = srcU[srcVBase + x];
-            dstU[dstBase + 4U * x + 2U] = srcV[srcBase + x];
-            dstV[dstBase + 4U * x + 2U] = srcV[srcVBase + x];
-        }
-    }
-}
-
-void ApplyChromaV2ShaderModel(const std::vector<uint8_t>& srcY,
-    const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV, uint32_t srcYStep,
-    uint32_t srcUvStep, uint32_t totalWidth, std::vector<uint8_t>& dstU,
-    std::vector<uint8_t>& dstV, uint32_t dstStep, const RECTANGLE_16& roi)
-{
-    for (uint32_t y = roi.top; y < roi.bottom; ++y) {
-        for (uint32_t x = roi.left; x < roi.right; ++x) {
-            const uint32_t relX = x - roi.left;
-            const uint32_t relY = y - roi.top;
-            const uint32_t dst = y * dstStep + x;
-            if ((relX & 1U) == 1U) {
-                const uint32_t srcX = roi.left / 2U + relX / 2U;
-                dstU[dst] = srcY[y * srcYStep + srcX];
-                dstV[dst] = srcY[y * srcYStep + srcX + totalWidth / 2U];
-            } else if ((relY & 1U) == 1U && (relX & 3U) == 0U) {
-                const uint32_t srcX = roi.left / 4U + relX / 4U;
-                const uint32_t srcYCoord = roi.top / 2U + relY / 2U;
-                dstU[dst] = srcU[srcYCoord * srcUvStep + srcX];
-                dstV[dst] = srcU[srcYCoord * srcUvStep + srcX + totalWidth / 4U];
-            } else if ((relY & 1U) == 1U && (relX & 3U) == 2U) {
-                const uint32_t srcX = roi.left / 4U + relX / 4U;
-                const uint32_t srcYCoord = roi.top / 2U + relY / 2U;
-                dstU[dst] = srcV[srcYCoord * srcUvStep + srcX];
-                dstV[dst] = srcV[srcYCoord * srcUvStep + srcX + totalWidth / 4U];
-            }
-        }
-    }
-}
-
-bool ApplyChromaPrimitiveReference(avc444_frame_type type, const std::string& label,
-    const std::vector<uint8_t>& srcY,
-    const std::vector<uint8_t>& srcU, const std::vector<uint8_t>& srcV, uint32_t srcYStep,
-    uint32_t srcUvStep, uint32_t totalWidth, uint32_t totalHeight,
-    std::vector<uint8_t>& dstU, std::vector<uint8_t>& dstV, uint32_t dstStep,
-    const RECTANGLE_16& roi, std::vector<std::string>& logs)
-{
-    DlHandle freerdp;
-    if (!freerdp.OpenAny({ "libfreerdp3.so" })) {
-        logs.push_back("AVC444 GPU compositor " + label + " primitive self-test failed: "
-            "dlopen libfreerdp3.so failed");
-        return false;
-    }
-    using PrimitivesGetFn = primitives_t* (*)();
-    const auto getPrimitives = freerdp.Symbol<PrimitivesGetFn>("primitives_get");
-    primitives_t* prims = getPrimitives ? getPrimitives() : nullptr;
-    if (prims == nullptr || prims->YUV420CombineToYUV444 == nullptr) {
-        logs.push_back("AVC444 GPU compositor " + label + " primitive self-test failed: "
-            "FreeRDP YUV420CombineToYUV444 primitive unavailable");
-        return false;
-    }
-    std::vector<uint8_t> dstY(dstU.size(), 0);
-    const BYTE* src[3] = { srcY.data(), srcU.data(), srcV.data() };
-    const UINT32 srcStep[3] = { srcYStep, srcUvStep, srcUvStep };
-    BYTE* dst[3] = { dstY.data(), dstU.data(), dstV.data() };
-    const UINT32 dstStepRaw[3] = { dstStep, dstStep, dstStep };
-    const pstatus_t status = prims->YUV420CombineToYUV444(type, src, srcStep,
-        totalWidth, totalHeight, dst, dstStepRaw, &roi);
-    if (status != PRIMITIVES_SUCCESS) {
-        logs.push_back("AVC444 GPU compositor " + label + " primitive self-test failed: "
-            "FreeRDP YUV420CombineToYUV444 status=" + std::to_string(status));
-        return false;
-    }
-    return true;
-}
-
-bool RunAvc444V2LayoutSelfTest(std::vector<std::string>& logs)
-{
-    constexpr uint32_t width = 66;
-    constexpr uint32_t height = 34;
-    constexpr uint32_t alignedWidth = 96;
-    constexpr uint32_t alignedHeight = 48;
-    constexpr uint32_t yStep = alignedWidth;
-    constexpr uint32_t uvStep = alignedWidth / 2U;
-    std::vector<uint8_t> srcY(yStep * height);
-    std::vector<uint8_t> srcU(uvStep * ((height + 1U) / 2U));
-    std::vector<uint8_t> srcV(uvStep * ((height + 1U) / 2U));
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < yStep; ++x) {
-            srcY[y * yStep + x] = TestByte(x, y, 1);
-        }
-    }
-    for (uint32_t y = 0; y < (height + 1U) / 2U; ++y) {
-        for (uint32_t x = 0; x < uvStep; ++x) {
-            srcU[y * uvStep + x] = TestByte(x, y, 2);
-            srcV[y * uvStep + x] = TestByte(x, y, 3);
-        }
-    }
-
-    const std::array<RECTANGLE_16, 5> rects {{
-        { 0, 0, 66, 34 },
-        { 4, 2, 36, 18 },
-        { 2, 6, 34, 22 },
-        { 8, 10, 56, 30 },
-        { 12, 4, 28, 20 },
-    }};
-    for (const RECTANGLE_16& rect : rects) {
-        std::vector<uint8_t> refU(alignedWidth * height, 0x80);
-        std::vector<uint8_t> refV(alignedWidth * height, 0x81);
-        std::vector<uint8_t> shaderU = refU;
-        std::vector<uint8_t> shaderV = refV;
-        if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv2, "AVC444v2", srcY, srcU, srcV,
-                yStep, uvStep, alignedWidth, alignedHeight, refU, refV, alignedWidth,
-                rect, logs)) {
-            return false;
-        }
-        ApplyChromaV2ShaderModel(srcY, srcU, srcV, yStep, uvStep, alignedWidth, shaderU,
-            shaderV, alignedWidth, rect);
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint32_t offset = y * alignedWidth + x;
-                if (refU[offset] != shaderU[offset] || refV[offset] != shaderV[offset]) {
-                    logs.push_back("AVC444 GPU compositor AVC444v2 layout self-test failed: rect=" +
-                        RectText(&rect) + " at=" + std::to_string(x) + "," +
-                        std::to_string(y) + " ref=" + std::to_string(refU[offset]) + "/" +
-                        std::to_string(refV[offset]) + " shaderModel=" +
-                        std::to_string(shaderU[offset]) + "/" + std::to_string(shaderV[offset]));
-                    return false;
-                }
-            }
-        }
-    }
-
-    logs.push_back("AVC444 GPU compositor AVC444v2 layout self-test passed against FreeRDP "
-        "YUV420CombineToYUV444 primitive with 32-aligned AVC444v2 layout");
-    return true;
-}
-
-bool RunAvc444V1LayoutSelfTest(std::vector<std::string>& logs)
-{
-    constexpr uint32_t width = 66;
-    constexpr uint32_t height = 34;
-    constexpr uint32_t alignedWidth = 96;
-    constexpr uint32_t sourceYHeight = 64;
-    constexpr uint32_t yStep = alignedWidth;
-    constexpr uint32_t uvStep = alignedWidth / 2U;
-    std::vector<uint8_t> srcY(yStep * sourceYHeight);
-    std::vector<uint8_t> srcU(uvStep * ((height + 1U) / 2U));
-    std::vector<uint8_t> srcV(uvStep * ((height + 1U) / 2U));
-    for (uint32_t y = 0; y < sourceYHeight; ++y) {
-        for (uint32_t x = 0; x < yStep; ++x) {
-            srcY[y * yStep + x] = TestByte(x, y, 4);
-        }
-    }
-    for (uint32_t y = 0; y < (height + 1U) / 2U; ++y) {
-        for (uint32_t x = 0; x < uvStep; ++x) {
-            srcU[y * uvStep + x] = TestByte(x, y, 5);
-            srcV[y * uvStep + x] = TestByte(x, y, 6);
-        }
-    }
-
-    const std::array<RECTANGLE_16, 6> rects {{
-        { 0, 0, 66, 34 },
-        { 4, 2, 36, 18 },
-        { 2, 6, 34, 22 },
-        { 8, 10, 56, 30 },
-        { 12, 4, 28, 20 },
-        { 14, 3, 31, 20 },
-    }};
-    for (const RECTANGLE_16& rect : rects) {
-        if (RequiredChromaV1SourceYHeight(rect) > sourceYHeight) {
-            logs.push_back("AVC444 GPU compositor AVC444v1 layout self-test failed: "
-                "test source Y height too small");
-            return false;
-        }
-        std::vector<uint8_t> refU(alignedWidth * height, 0x80);
-        std::vector<uint8_t> refV(alignedWidth * height, 0x81);
-        std::vector<uint8_t> shaderU = refU;
-        std::vector<uint8_t> shaderV = refV;
-        if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv1, "AVC444v1", srcY, srcU, srcV,
-                yStep, uvStep, alignedWidth, sourceYHeight, refU, refV, alignedWidth,
-                rect, logs)) {
-            return false;
-        }
-        ApplyChromaV1ShaderModel(srcY, srcU, srcV, yStep, uvStep, shaderU, shaderV,
-            alignedWidth, rect);
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint32_t offset = y * alignedWidth + x;
-                if (refU[offset] != shaderU[offset] || refV[offset] != shaderV[offset]) {
-                    logs.push_back("AVC444 GPU compositor AVC444v1 layout self-test failed: rect=" +
-                        RectText(&rect) + " at=" + std::to_string(x) + "," +
-                        std::to_string(y) + " ref=" + std::to_string(refU[offset]) + "/" +
-                        std::to_string(refV[offset]) + " shaderModel=" +
-                        std::to_string(shaderU[offset]) + "/" + std::to_string(shaderV[offset]));
-                    return false;
-                }
-            }
-        }
-    }
-
-    logs.push_back("AVC444 GPU compositor AVC444v1 layout self-test passed against FreeRDP "
-        "YUV420CombineToYUV444 primitive with AVC444v1 padded chroma layout");
-    return true;
+    return api.ohosRdpgfxAvc444ChromaV1RequiredYHeight(rects, count);
 }
 
 std::string RectText(const RECTANGLE_16* rect)
@@ -2106,217 +1444,6 @@ public:
         return true;
     }
 
-    bool RunChromaV1ShaderReadbackSelfTest(std::vector<std::string>& logs)
-    {
-        constexpr uint32_t width = 64;
-        constexpr uint32_t height = 32;
-        constexpr uint32_t sourceYHeight = 48;
-        constexpr uint32_t yStep = width;
-        constexpr uint32_t uvStep = width / 2U;
-        std::vector<uint8_t> srcY(yStep * sourceYHeight);
-        std::vector<uint8_t> srcU(uvStep * (height / 2U));
-        std::vector<uint8_t> srcV(uvStep * (height / 2U));
-        std::vector<uint8_t> srcUV(width * (height / 2U));
-        for (uint32_t y = 0; y < sourceYHeight; ++y) {
-            for (uint32_t x = 0; x < yStep; ++x) {
-                srcY[y * yStep + x] = TestByte(x, y, 10);
-            }
-        }
-        for (uint32_t y = 0; y < height / 2U; ++y) {
-            for (uint32_t x = 0; x < uvStep; ++x) {
-                const uint8_t u = TestByte(x, y, 11);
-                const uint8_t v = TestByte(x, y, 12);
-                srcU[y * uvStep + x] = u;
-                srcV[y * uvStep + x] = v;
-                srcUV[y * width + 2U * x + 0U] = u;
-                srcUV[y * width + 2U * x + 1U] = v;
-            }
-        }
-
-        const std::array<RECTANGLE_16, 6> rects {{
-            { 0, 0, 64, 32 },
-            { 4, 2, 36, 18 },
-            { 2, 6, 34, 22 },
-            { 8, 10, 56, 30 },
-            { 12, 4, 28, 20 },
-            { 14, 3, 31, 20 },
-        }};
-        std::vector<uint8_t> refU(width * height, 0x80);
-        std::vector<uint8_t> refV(width * height, 0x81);
-        for (const RECTANGLE_16& rect : rects) {
-            if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv1, "AVC444v1", srcY, srcU,
-                    srcV, yStep, uvStep, width, sourceYHeight, refU, refV, width, rect,
-                    logs)) {
-                return false;
-            }
-        }
-
-        DecodedFrame frame;
-        frame.y.data = srcY.data();
-        frame.y.rowStride = yStep;
-        frame.y.columnStride = 1;
-        frame.uv.data = srcUV.data();
-        frame.uv.rowStride = width;
-        frame.uv.columnStride = 2;
-        frame.width = width;
-        frame.height = height;
-        frame.alignedWidth = width;
-        frame.alignedHeight = sourceYHeight;
-        frame.yUploadWidth = width;
-        frame.yUploadHeight = sourceYHeight;
-        frame.uvUploadWidth = uvStep;
-        frame.uvUploadHeight = height / 2U;
-        frame.nv21 = false;
-
-        std::vector<uint8_t> baselineU(width * height, 0x80);
-        std::vector<uint8_t> baselineV(width * height, 0x81);
-        if (!MakeCurrent(logs) ||
-            !UploadPlaneTexture(uTexture_, baselineU, logs) ||
-            !UploadPlaneTexture(vTexture_, baselineV, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-        if (!ApplyChromaV1(frame, rects.data(), static_cast<uint32_t>(rects.size()), logs)) {
-            logs.push_back("AVC444 GPU compositor AVC444v1 shader readback self-test failed: "
-                "shader update did not complete");
-            return false;
-        }
-
-        std::vector<uint8_t> gotU;
-        std::vector<uint8_t> gotV;
-        if (!MakeCurrent(logs) || !ReadPlaneTexture(uTexture_, gotU, logs) ||
-            !ReadPlaneTexture(vTexture_, gotV, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint32_t offset = y * width + x;
-                if (gotU[offset] != refU[offset] || gotV[offset] != refV[offset]) {
-                    logs.push_back(
-                        "AVC444 GPU compositor AVC444v1 shader readback self-test failed: at=" +
-                        std::to_string(x) + "," + std::to_string(y) +
-                        " ref=" + std::to_string(refU[offset]) + "/" +
-                        std::to_string(refV[offset]) + " gpu=" +
-                        std::to_string(gotU[offset]) + "/" + std::to_string(gotV[offset]));
-                    return false;
-                }
-            }
-        }
-
-        logs.push_back("AVC444 GPU compositor AVC444v1 mapped shader readback self-test passed "
-            "bit-exact against FreeRDP YUV420CombineToYUV444 primitive");
-        return true;
-    }
-
-    bool RunChromaV2ShaderReadbackSelfTest(std::vector<std::string>& logs)
-    {
-        constexpr uint32_t width = 64;
-        constexpr uint32_t height = 32;
-        constexpr uint32_t yStep = width;
-        constexpr uint32_t uvStep = width / 2U;
-        std::vector<uint8_t> srcY(yStep * height);
-        std::vector<uint8_t> srcU(uvStep * (height / 2U));
-        std::vector<uint8_t> srcV(uvStep * (height / 2U));
-        std::vector<uint8_t> srcUV(width * (height / 2U));
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < yStep; ++x) {
-                srcY[y * yStep + x] = TestByte(x, y, 7);
-            }
-        }
-        for (uint32_t y = 0; y < height / 2U; ++y) {
-            for (uint32_t x = 0; x < uvStep; ++x) {
-                const uint8_t u = TestByte(x, y, 8);
-                const uint8_t v = TestByte(x, y, 9);
-                srcU[y * uvStep + x] = u;
-                srcV[y * uvStep + x] = v;
-                srcUV[y * width + 2U * x + 0U] = u;
-                srcUV[y * width + 2U * x + 1U] = v;
-            }
-        }
-
-        const std::array<RECTANGLE_16, 5> rects {{
-            { 0, 0, 64, 32 },
-            { 4, 2, 36, 18 },
-            { 2, 6, 34, 22 },
-            { 8, 10, 56, 30 },
-            { 12, 4, 28, 20 },
-        }};
-        std::vector<uint8_t> refU(width * height, 0x80);
-        std::vector<uint8_t> refV(width * height, 0x81);
-        for (const RECTANGLE_16& rect : rects) {
-            if (!ApplyChromaPrimitiveReference(AVC444_CHROMAv2, "AVC444v2", srcY, srcU,
-                    srcV, yStep, uvStep, width, height, refU, refV, width, rect, logs)) {
-                return false;
-            }
-        }
-
-        DecodedFrame frame;
-        frame.y.data = srcY.data();
-        frame.y.rowStride = yStep;
-        frame.y.columnStride = 1;
-        frame.uv.data = srcUV.data();
-        frame.uv.rowStride = width;
-        frame.uv.columnStride = 2;
-        frame.width = width;
-        frame.height = height;
-        frame.alignedWidth = width;
-        frame.alignedHeight = height;
-        frame.yUploadWidth = width;
-        frame.yUploadHeight = height;
-        frame.uvUploadWidth = uvStep;
-        frame.uvUploadHeight = height / 2U;
-        frame.nv21 = false;
-
-        std::vector<uint8_t> baselineU(width * height, 0x80);
-        std::vector<uint8_t> baselineV(width * height, 0x81);
-        if (!MakeCurrent(logs) ||
-            !UploadPlaneTexture(uTexture_, baselineU, logs) ||
-            !UploadPlaneTexture(vTexture_, baselineV, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-        if (!ApplyChromaV2(frame, rects.data(), static_cast<uint32_t>(rects.size()), logs)) {
-            logs.push_back("AVC444 GPU compositor AVC444v2 shader readback self-test failed: "
-                "shader update did not complete");
-            return false;
-        }
-
-        std::vector<uint8_t> gotU;
-        std::vector<uint8_t> gotV;
-        if (!MakeCurrent(logs) || !ReadPlaneTexture(uTexture_, gotU, logs) ||
-            !ReadPlaneTexture(vTexture_, gotV, logs)) {
-            eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-            return false;
-        }
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                const uint32_t offset = y * width + x;
-                if (gotU[offset] != refU[offset] || gotV[offset] != refV[offset]) {
-                    logs.push_back(
-                        "AVC444 GPU compositor AVC444v2 shader readback self-test failed: at=" +
-                        std::to_string(x) + "," + std::to_string(y) +
-                        " ref=" + std::to_string(refU[offset]) + "/" +
-                        std::to_string(refV[offset]) + " gpu=" +
-                        std::to_string(gotU[offset]) + "/" + std::to_string(gotV[offset]));
-                    return false;
-                }
-            }
-        }
-
-        logs.push_back("AVC444 GPU compositor AVC444v2 mapped shader readback self-test passed "
-            "bit-exact against FreeRDP YUV420CombineToYUV444 primitive");
-        return true;
-    }
-
 private:
     bool MakeCurrent(std::vector<std::string>& logs)
     {
@@ -2669,53 +1796,6 @@ private:
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    bool UploadPlaneTexture(GLuint texture, const std::vector<uint8_t>& data,
-        std::vector<std::string>& logs)
-    {
-        if (data.size() < static_cast<size_t>(surfaceWidth_) * surfaceHeight_) {
-            logs.push_back("AVC444 GPU self-test plane upload rejected: data too small");
-            return false;
-        }
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        ConfigureTexture(GL_TEXTURE_2D);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(surfaceWidth_),
-            static_cast<GLsizei>(surfaceHeight_), GL_RED, GL_UNSIGNED_BYTE, data.data());
-        const GLenum error = glGetError();
-        if (error != GL_NO_ERROR) {
-            logs.push_back("AVC444 GPU self-test plane upload failed glError=" +
-                Hex32(static_cast<uint32_t>(error)));
-            return false;
-        }
-        return true;
-    }
-
-    bool ReadPlaneTexture(GLuint texture, std::vector<uint8_t>& topLeft,
-        std::vector<std::string>& logs)
-    {
-        std::vector<uint8_t> bottomLeft(static_cast<size_t>(surfaceWidth_) * surfaceHeight_);
-        topLeft.assign(bottomLeft.size(), 0);
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-        glReadPixels(0, 0, static_cast<GLsizei>(surfaceWidth_),
-            static_cast<GLsizei>(surfaceHeight_), GL_RED, GL_UNSIGNED_BYTE, bottomLeft.data());
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        const GLenum error = glGetError();
-        if (error != GL_NO_ERROR) {
-            logs.push_back("AVC444 GPU self-test plane readback failed glError=" +
-                Hex32(static_cast<uint32_t>(error)));
-            return false;
-        }
-
-        for (uint32_t y = 0; y < surfaceHeight_; ++y) {
-            const uint32_t srcY = surfaceHeight_ - 1U - y;
-            std::memcpy(topLeft.data() + static_cast<size_t>(y) * surfaceWidth_,
-                bottomLeft.data() + static_cast<size_t>(srcY) * surfaceWidth_, surfaceWidth_);
-        }
-        return true;
-    }
-
     void CopyPlaneTexture(GLuint source, GLuint target)
     {
         GLint activeTexture = GL_TEXTURE0;
@@ -2785,36 +1865,6 @@ private:
     bool hasLuma_ = false;
     bool hasChroma_ = false;
 };
-
-bool RunAvc444V2GpuShaderSelfTest(std::vector<std::string>& logs)
-{
-    Avc444GpuRenderer renderer;
-    constexpr uint32_t width = 64;
-    constexpr uint32_t height = 32;
-    if (!renderer.Ensure(nullptr, 0, 0, width, height, logs)) {
-        logs.push_back("AVC444 GPU compositor AVC444v2 shader readback self-test failed: "
-            "renderer init failed");
-        return false;
-    }
-    const bool passed = renderer.RunChromaV2ShaderReadbackSelfTest(logs);
-    renderer.Destroy();
-    return passed;
-}
-
-bool RunAvc444V1GpuShaderSelfTest(std::vector<std::string>& logs)
-{
-    Avc444GpuRenderer renderer;
-    constexpr uint32_t width = 64;
-    constexpr uint32_t height = 32;
-    if (!renderer.Ensure(nullptr, 0, 0, width, height, logs)) {
-        logs.push_back("AVC444 GPU compositor AVC444v1 shader readback self-test failed: "
-            "renderer init failed");
-        return false;
-    }
-    const bool passed = renderer.RunChromaV1ShaderReadbackSelfTest(logs);
-    renderer.Destroy();
-    return passed;
-}
 
 #endif
 
@@ -3416,11 +2466,6 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     enabled_ = enabled;
     log_ = std::move(log);
     callbacks_ = std::move(callbacks);
-    selfTestStarted_ = false;
-    selfTestComplete_ = false;
-    readyForGdiSuppression_ = false;
-    readyForAvc444v1_ = false;
-    readyForAvc444v2_ = false;
     active_ = false;
     candidates_ = 0;
     invalidLcRejects_ = 0;
@@ -3431,7 +2476,7 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     lastTargetWidth_ = 0;
     lastTargetHeight_ = 0;
     diagnostics_ = enabled ?
-        "avc444 gpu compositor: configured mapped-plane compositor, gdi preserved until first successful present" :
+        "avc444 gpu compositor: configured mapped-plane compositor, gdi suppression follows per-command GPU success" :
         "avc444 gpu compositor: off";
 }
 
@@ -3454,13 +2499,10 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         return false;
     }
 
-    bool shouldRunSelfTest = false;
     bool shouldLogCommand = false;
     bool frameOpen = false;
     bool lcValid = false;
     uint64_t candidate = 0;
-    const bool codecV1 = command->codecId == RDPGFX_CODECID_AVC444;
-    const bool codecV2 = command->codecId == RDPGFX_CODECID_AVC444v2;
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -3469,10 +2511,6 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         }
         candidate = ++candidates_;
         shouldLogCommand = candidate <= 12 || (candidate % 120) == 0;
-        shouldRunSelfTest = !selfTestStarted_;
-        if (shouldRunSelfTest) {
-            selfTestStarted_ = true;
-        }
 
         frameOpen = command->frameOpen ? true : false;
         lcValid = IsValidLcForCommand(command);
@@ -3485,24 +2523,6 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         lastStream2Bytes_ = command->stream2.length;
         lastTargetWidth_ = command->targetWidth;
         lastTargetHeight_ = command->targetHeight;
-    }
-
-    if (shouldRunSelfTest) {
-        SelfTestResult result = RunSelfTest(command->targetWidth, command->targetHeight);
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            const bool commonReady =
-                result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate;
-            selfTestComplete_ = true;
-            readyForAvc444v1_ =
-                commonReady && result.avc444v1LayoutReady && result.avc444v1ShaderReady;
-            readyForAvc444v2_ =
-                commonReady && result.avc444v2LayoutReady && result.avc444v2ShaderReady;
-            readyForGdiSuppression_ = readyForAvc444v1_ || readyForAvc444v2_;
-            diagnostics_ = result.diagnostics;
-        }
-        Log("AVC444 GPU compositor self-test complete: " + result.diagnostics +
-            "; GDI suppression still requires a successful decode+shader+present for this command");
     }
 
     if (shouldLogCommand || !frameOpen || !lcValid) {
@@ -3531,27 +2551,15 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
             ",first:" + RectText(stream2FirstRect));
     }
 
-    bool selfTestGate = false;
     Avc444GpuCompositorCallbacks callbacks;
     bool active = false;
-    bool readyForV1 = false;
-    bool readyForV2 = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        readyForV1 = readyForAvc444v1_;
-        readyForV2 = readyForAvc444v2_;
-        selfTestGate = (codecV1 && readyForV1) || (codecV2 && readyForV2);
         callbacks = callbacks_;
         active = active_;
     }
 
-    if (!lcValid || !selfTestGate) {
-        if (!selfTestGate && shouldLogCommand) {
-            Log("AVC444 GPU compositor gate closed for this codec; keeping FreeRDP native "
-                "GDI path: codec=" + std::to_string(command->codecId) +
-                " avc444v1Ready=" + std::string(readyForV1 ? "yes" : "no") +
-                " avc444v2Ready=" + std::string(readyForV2 ? "yes" : "no"));
-        }
+    if (!lcValid) {
         return false;
     }
 
@@ -3568,22 +2576,11 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         {
             std::lock_guard<std::mutex> lock(mutex_);
             active_ = active;
-            if (consumed) {
-                readyForGdiSuppression_ = true;
-                if (codecV1) {
-                    readyForAvc444v1_ = true;
-                }
-                if (codecV2) {
-                    readyForAvc444v2_ = true;
-                }
-            }
-            diagnostics_ = "avc444 gpu compositor: enabled=yes selfTest=yes active=" +
+            diagnostics_ = "avc444 gpu compositor: enabled=yes active=" +
                 std::string(active_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " lastLC=" + std::to_string(lastLC_) +
-                " avc444v1Ready=" + std::string(readyForAvc444v1_ ? "yes" : "no") +
-                " avc444v2Ready=" + std::string(readyForAvc444v2_ ? "yes" : "no") +
                 " suppress=" + std::string(consumed ? "this-command" : "no");
         }
     }
@@ -3618,17 +2615,11 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
         {
             std::lock_guard<std::mutex> lock(mutex_);
             active_ = active;
-            if (active_) {
-                readyForGdiSuppression_ = true;
-            }
-            diagnostics_ = "avc444 gpu compositor: enabled=yes selfTest=" +
-                std::string(selfTestComplete_ ? "yes" : "no") +
-                " active=" + std::string(active_ ? "yes" : "no") +
+            diagnostics_ = "avc444 gpu compositor: enabled=yes active=" +
+                std::string(active_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " lastLC=" + std::to_string(lastLC_) +
-                " avc444v1Ready=" + std::string(readyForAvc444v1_ ? "yes" : "no") +
-                " avc444v2Ready=" + std::string(readyForAvc444v2_ ? "yes" : "no") +
                 " endFrame=" + std::to_string(frame->frameId) +
                 " endFramePresent=" + std::string(handled ? "handled" : "none");
         }
@@ -3639,48 +2630,6 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
     return handled;
 }
 #endif
-
-Avc444GpuCompositor::SelfTestResult Avc444GpuCompositor::RunSelfTest(
-    uint32_t width, uint32_t height)
-{
-    SelfTestResult result;
-    std::vector<std::string> logs = ProbeEglContext(result);
-    std::vector<std::string> avcodecLogs = ProbeAvcCapability(width, height, result);
-    logs.insert(logs.end(), avcodecLogs.begin(), avcodecLogs.end());
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    result.avc444v1LayoutReady = RunAvc444V1LayoutSelfTest(logs);
-    result.avc444v2LayoutReady = RunAvc444V2LayoutSelfTest(logs);
-    result.avc444v1ShaderReady =
-        result.avc444v1LayoutReady && RunAvc444V1GpuShaderSelfTest(logs);
-    result.avc444v2ShaderReady =
-        result.avc444v2LayoutReady && RunAvc444V2GpuShaderSelfTest(logs);
-#endif
-
-    result.diagnostics =
-        "avc444 gpu compositor: egl=" + std::string(result.eglReady ? "yes" : "no") +
-        " avcodecHardware=" + std::string(result.avcodecHardwareReady ? "yes" : "no") +
-        " nativeBufferFormats=" + std::string(result.nativeBufferFormatsKnown ? "known" : "unknown") +
-        " rawYuvCandidate=" + std::string(result.rawBufferCandidate ? "yes" : "no") +
-        " source=mapped-plane" +
-        " avc444v1Layout=" + std::string(result.avc444v1LayoutReady ? "yes" : "no") +
-        " avc444v1Shader=" + std::string(result.avc444v1ShaderReady ? "yes" : "no") +
-        " avc444v2Layout=" + std::string(result.avc444v2LayoutReady ? "yes" : "no") +
-        " avc444v2Shader=" + std::string(result.avc444v2ShaderReady ? "yes" : "no") +
-        " readyForSuppressGdi=avc444v1:" +
-        std::string((result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate &&
-            result.avc444v1LayoutReady && result.avc444v1ShaderReady) ?
-                "after-successful-present" : "no") +
-        ",avc444v2:" +
-        std::string((result.eglReady && result.avcodecHardwareReady && result.rawBufferCandidate &&
-            result.avc444v2LayoutReady && result.avc444v2ShaderReady) ?
-                "after-successful-present" : "no");
-
-    Avc444GpuCompositor& compositor = SharedAvc444GpuCompositor();
-    for (const std::string& line : logs) {
-        compositor.Log(line);
-    }
-    return result;
-}
 
 void Avc444GpuCompositor::Log(const std::string& message) const
 {

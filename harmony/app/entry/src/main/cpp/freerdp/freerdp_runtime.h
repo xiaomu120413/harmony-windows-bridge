@@ -134,6 +134,14 @@ public:
     using OhosRdpgfxBridgeDetachFn = void (*)(freerdpOhosRdpgfxBridge*, RdpgfxClientContext*);
     using OhosRdpgfxBridgeSetGdiAttachedFn = void (*)(freerdpOhosRdpgfxBridge*, BOOL);
     using OhosRdpgfxBridgeGetDiagnosticsFn = const char* (*)(freerdpOhosRdpgfxBridge*);
+    using OhosRdpgfxAvc444CommandLcIsValidFn =
+        BOOL (*)(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO*);
+    using OhosRdpgfxRectsValidFn =
+        BOOL (*)(const RECTANGLE_16*, UINT32, UINT32, UINT32);
+    using OhosRdpgfxRectsCoverFullSurfaceFn =
+        BOOL (*)(const RECTANGLE_16*, UINT32, UINT32, UINT32);
+    using OhosRdpgfxAvc444ChromaV1RequiredYHeightFn =
+        UINT32 (*)(const RECTANGLE_16*, UINT32);
     using OhosSessionConfigDefaultFn = FREERDP_OHOS_SESSION_CONFIG (*)();
     using OhosSessionApplySettingsFn = BOOL (*)(rdpSettings*,
         const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
@@ -235,6 +243,11 @@ public:
     OhosRdpgfxBridgeDetachFn ohosRdpgfxBridgeDetach = nullptr;
     OhosRdpgfxBridgeSetGdiAttachedFn ohosRdpgfxBridgeSetGdiAttached = nullptr;
     OhosRdpgfxBridgeGetDiagnosticsFn ohosRdpgfxBridgeGetDiagnostics = nullptr;
+    OhosRdpgfxAvc444CommandLcIsValidFn ohosRdpgfxAvc444CommandLcIsValid = nullptr;
+    OhosRdpgfxRectsValidFn ohosRdpgfxRectsValid = nullptr;
+    OhosRdpgfxRectsCoverFullSurfaceFn ohosRdpgfxRectsCoverFullSurface = nullptr;
+    OhosRdpgfxAvc444ChromaV1RequiredYHeightFn
+        ohosRdpgfxAvc444ChromaV1RequiredYHeight = nullptr;
     OhosSessionConfigDefaultFn ohosSessionConfigDefault = nullptr;
     OhosSessionApplySettingsFn ohosSessionApplySettings = nullptr;
     OhosSessionApplyConnectionSettingsFn ohosSessionApplyConnectionSettings = nullptr;

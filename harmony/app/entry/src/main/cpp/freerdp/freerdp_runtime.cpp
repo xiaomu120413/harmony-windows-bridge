@@ -184,6 +184,14 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosRdpgfxBridgeSetGdiAttached);
         LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_get_diagnostics",
             ohosRdpgfxBridgeGetDiagnostics);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_avc444_command_lc_is_valid",
+            ohosRdpgfxAvc444CommandLcIsValid);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_rects_valid",
+            ohosRdpgfxRectsValid);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_rects_cover_full_surface",
+            ohosRdpgfxRectsCoverFullSurface);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_avc444_chroma_v1_required_y_height",
+            ohosRdpgfxAvc444ChromaV1RequiredYHeight);
         LoadOptionalClientSymbol("freerdp_ohos_session_config_default",
             ohosSessionConfigDefault);
         LoadOptionalClientSymbol("freerdp_ohos_session_apply_settings",

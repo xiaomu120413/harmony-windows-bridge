@@ -29,18 +29,6 @@ public:
     Avc444GpuCompositor(const Avc444GpuCompositor&) = delete;
     Avc444GpuCompositor& operator=(const Avc444GpuCompositor&) = delete;
 
-    struct SelfTestResult {
-        bool eglReady = false;
-        bool avcodecHardwareReady = false;
-        bool nativeBufferFormatsKnown = false;
-        bool rawBufferCandidate = false;
-        bool avc444v1LayoutReady = false;
-        bool avc444v1ShaderReady = false;
-        bool avc444v2LayoutReady = false;
-        bool avc444v2ShaderReady = false;
-        std::string diagnostics;
-    };
-
     void Configure(bool enabled, Avc444GpuLogFn log,
         Avc444GpuCompositorCallbacks callbacks = {});
     void Reset();
@@ -52,17 +40,11 @@ public:
 #endif
 
 private:
-    static SelfTestResult RunSelfTest(uint32_t width, uint32_t height);
     void Log(const std::string& message) const;
 
     mutable std::mutex processingMutex_;
     mutable std::mutex mutex_;
     bool enabled_ = false;
-    bool selfTestStarted_ = false;
-    bool selfTestComplete_ = false;
-    bool readyForGdiSuppression_ = false;
-    bool readyForAvc444v1_ = false;
-    bool readyForAvc444v2_ = false;
     uint64_t candidates_ = 0;
     uint64_t invalidLcRejects_ = 0;
     uint32_t lastFrameId_ = 0;

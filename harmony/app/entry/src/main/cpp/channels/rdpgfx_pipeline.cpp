@@ -501,7 +501,7 @@ bool ConfigureGraphicsPipelineChannel(FreerdpRuntimeApi& api, rdpSettings* setti
     log("FreeRDP rdpgfx requested: dynamic channel owned by OHOS session helper + GDI graphics pipeline bridge");
     log("OHOS AVC444 GPU compositor " +
         std::string(g_avc444GpuExperimentalConfigured.load()
-            ? "enabled by default; GDI suppression remains blocked until compositor self-test"
+            ? "enabled by default; GDI suppression is per-command after GPU handling succeeds"
             : "off; AVC444 stays on FreeRDP native GDI"));
     log(BuildGraphicsPipelineStatsLog());
     return true;
