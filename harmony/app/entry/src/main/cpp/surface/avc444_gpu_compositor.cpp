@@ -1,6 +1,6 @@
 #include "surface/avc444_gpu_compositor.h"
 
-#include "string_utils.h"
+#include "common/string_utils.h"
 #include "surface/native_rgba_copy.h"
 #include "surface/render_output_owner.h"
 

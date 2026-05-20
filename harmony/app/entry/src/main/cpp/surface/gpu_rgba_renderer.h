@@ -1,7 +1,7 @@
 #pragma once
 
-#include "bridge_types.h"
-#include "string_utils.h"
+#include "common/bridge_types.h"
+#include "common/string_utils.h"
 
 #include <algorithm>
 #include <cstring>

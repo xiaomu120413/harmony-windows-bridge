@@ -5,7 +5,7 @@
 #include <mutex>
 #include <string>
 
-#include "bridge_types.h"
+#include "common/bridge_types.h"
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <client/OHOS/ohos_rdpgfx.h>

@@ -1,6 +1,6 @@
 #include "surface/surface_bridge.h"
 
-#include "bridge_log.h"
+#include "common/bridge_log.h"
 #include "surface/gpu_rgba_renderer.h"
 #include "surface/native_window_rgba_painter.h"
 

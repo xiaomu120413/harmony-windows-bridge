@@ -1,6 +1,6 @@
 #pragma once
 
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
 
 #include <functional>
 #include <memory>

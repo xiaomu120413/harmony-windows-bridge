@@ -1,10 +1,10 @@
 #include "channels/rdpgfx_pipeline.h"
 
 #include "channels/rdpgfx_diagnostics.h"
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
 #include "surface/avc444_gpu_compositor.h"
 #include "surface/render_output_owner.h"
-#include "string_utils.h"
+#include "common/string_utils.h"
 
 #include <atomic>
 #include <array>

@@ -1,7 +1,7 @@
 #include "surface/native_window_rgba_painter.h"
 
-#include "frame_utils.h"
-#include "net_utils.h"
+#include "common/frame_utils.h"
+#include "common/net_utils.h"
 #include "surface/native_rgba_copy.h"
 
 #include <algorithm>

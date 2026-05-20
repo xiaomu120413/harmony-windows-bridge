@@ -1,7 +1,7 @@
-#include "rdpgfx_diagnostics.h"
+#include "channels/rdpgfx_diagnostics.h"
 
 #include "channels/rdpgfx_pipeline.h"
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
 #include "surface/avc444_gpu_compositor.h"
 
 #include <atomic>

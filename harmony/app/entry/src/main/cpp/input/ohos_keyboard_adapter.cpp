@@ -1,7 +1,7 @@
 #include "input/ohos_keyboard_adapter.h"
 
 #include "client/OHOS/ohos_keyboard.h"
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
 
 #include <array>
 

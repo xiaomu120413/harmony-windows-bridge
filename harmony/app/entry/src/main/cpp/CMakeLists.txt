@@ -25,38 +25,38 @@ if(EXISTS ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h)
 endif()
 
 add_library(entry SHARED
-    bridge_log.cpp
-    certificate_policy.cpp
+    common/bridge_log.cpp
+    freerdp/certificate_policy.cpp
     channels/audio_diagnostics.cpp
     channels/clipboard_bridge.cpp
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
-    frame_utils.cpp
+    common/frame_utils.cpp
     input/ohos_keyboard_adapter.cpp
     input/xcomponent_input_bridge.cpp
-    freerdp_session_runner.cpp
-    freerdp_gdi_bridge.cpp
-    freerdp_runtime.cpp
-    graphics_config.cpp
-    microphone_permission_bridge.cpp
-    module_init.cpp
-    native_bridge_context.cpp
-    net_utils.cpp
-    napi_event_sink.cpp
-    napi_exports.cpp
-    napi_utils.cpp
-    probe_utils.cpp
-    rdp_channel_config.cpp
-    rdp_session_core.cpp
-    rdp_session_channels.cpp
-    rdp_session_input.cpp
+    session/freerdp_session_runner.cpp
+    freerdp/freerdp_gdi_bridge.cpp
+    freerdp/freerdp_runtime.cpp
+    freerdp/graphics_config.cpp
+    napi/microphone_permission_bridge.cpp
+    napi/module_init.cpp
+    napi/native_bridge_context.cpp
+    common/net_utils.cpp
+    napi/napi_event_sink.cpp
+    napi/napi_exports.cpp
+    napi/napi_utils.cpp
+    common/probe_utils.cpp
+    freerdp/rdp_channel_config.cpp
+    session/rdp_session_core.cpp
+    session/rdp_session_channels.cpp
+    session/rdp_session_input.cpp
     surface/avc444_gpu_compositor.cpp
     surface/latest_frame_renderer.cpp
     surface/native_rgba_copy.cpp
     surface/native_window_rgba_painter.cpp
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
-    string_utils.cpp)
+    common/string_utils.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so
