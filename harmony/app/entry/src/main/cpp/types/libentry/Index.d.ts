@@ -41,7 +41,7 @@ export interface NativeConnectParams {
   port: string;
   username: string;
   password: string;
-  resolution: string;
+  resolution?: string;
   certPolicy: string;
   graphicsMode?: string;
   appFilesDir?: string;

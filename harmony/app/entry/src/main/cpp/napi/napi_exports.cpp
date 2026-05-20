@@ -44,9 +44,15 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.port = GetStringProperty(env, args[0], "port");
     params.username = GetStringProperty(env, args[0], "username");
     params.password = GetStringProperty(env, args[0], "password");
-    params.resolution = GetStringProperty(env, args[0], "resolution");
+    const std::string resolution = GetStringProperty(env, args[0], "resolution");
+    if (!resolution.empty()) {
+        params.resolution = resolution;
+    }
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
-    params.graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
+    const std::string graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
+    if (!graphicsMode.empty()) {
+        params.graphicsMode = graphicsMode;
+    }
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
 }
@@ -136,7 +142,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
         "static cliprdr text bridge, disp dynamic resolution, rdpsnd/OHAudio playback requested, "
         "and audin microphone permission requested on remote capture open; "
-        "rdpgfx runtime gated by graphicsMode; AVC444 GPU compositor defaults on with GDI fallback; "
+        "rdpgfx runtime defaults to rdpgfx-h264; AVC444 GPU compositor defaults on with GDI fallback; "
         "other optional channel negotiation off";
 
     const std::string audioStats = BuildOHAudioStatsLog();
