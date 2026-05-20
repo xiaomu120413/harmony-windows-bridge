@@ -27,6 +27,7 @@ struct RdpgfxPipelineCallbacks {
 void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks);
 bool IsAvc420SurfaceOutputEnabled();
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
+void UpdateRdpgfxSurfaceTargetIfReady(const std::string& reason);
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api);

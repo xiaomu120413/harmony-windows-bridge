@@ -6,6 +6,13 @@
 namespace rdp_bridge {
 namespace {
 
+constexpr uint32_t kOneToOneFitTolerancePx = 16;
+
+uint32_t DimensionDelta(uint32_t a, uint32_t b)
+{
+    return a > b ? a - b : b - a;
+}
+
 void CopyRgbaPixelToNative(uint8_t* pixel, int32_t format, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
     if (format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 || format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888) {
@@ -104,6 +111,16 @@ RenderViewport FitFrameIntoTarget(uint32_t targetWidth, uint32_t targetHeight,
 {
     RenderViewport viewport;
     if (targetWidth == 0 || targetHeight == 0 || sourceWidth == 0 || sourceHeight == 0) {
+        return viewport;
+    }
+
+    if (sourceWidth <= targetWidth && sourceHeight <= targetHeight &&
+        DimensionDelta(targetWidth, sourceWidth) <= kOneToOneFitTolerancePx &&
+        DimensionDelta(targetHeight, sourceHeight) <= kOneToOneFitTolerancePx) {
+        viewport.width = sourceWidth;
+        viewport.height = sourceHeight;
+        viewport.x = (targetWidth - viewport.width) / 2U;
+        viewport.y = (targetHeight - viewport.height) / 2U;
         return viewport;
     }
 

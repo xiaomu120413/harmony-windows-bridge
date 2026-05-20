@@ -433,6 +433,31 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason)
 #endif
 }
 
+void UpdateRdpgfxSurfaceTargetIfReady(const std::string& reason)
+{
+#if defined(HARMONY_HAS_FREERDP_HEADERS)
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    freerdpOhosRdpgfxBridge* bridge = CurrentOhosRdpgfxBridge();
+    if (bridge == nullptr || api.ohosRdpgfxBridgeSetSurfaceTarget == nullptr) {
+        return;
+    }
+
+    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
+    if (callbacks.decoderSurfaceTarget == nullptr) {
+        LogThroughCallbacks("RDPGFX surface target update skipped after " + reason +
+            ": decoder surface callback is not configured");
+        return;
+    }
+
+    const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+    UpdateOhosRdpgfxSurfaceTarget(api, target.width, target.height);
+    LogThroughCallbacks("RDPGFX surface target updated after " + reason + ": " +
+        std::to_string(target.width) + "x" + std::to_string(target.height));
+#else
+    (void)reason;
+#endif
+}
+
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api)
 {

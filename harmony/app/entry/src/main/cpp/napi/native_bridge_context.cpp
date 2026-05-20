@@ -265,6 +265,7 @@ void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceCreated(component, window);
     g_resizeCoordinator.Reset("surface created");
+    UpdateRdpgfxSurfaceTargetIfReady("surface created");
     UpdateAvc420SurfaceOutputIfActive("surface created");
     RequestSurfaceRepaint("surface created");
 }
@@ -272,6 +273,7 @@ void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceChanged(component, window);
+    UpdateRdpgfxSurfaceTargetIfReady("surface changed");
     UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
     g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface changed");
@@ -287,6 +289,7 @@ void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
     }
     g_surface.OnSurfaceDestroyed(component, window);
     g_resizeCoordinator.Reset("surface destroyed");
+    UpdateRdpgfxSurfaceTargetIfReady("surface destroyed");
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");
 }
 
@@ -364,6 +367,7 @@ bool NotifyBridgeSurfaceLayout(uint32_t width, uint32_t height, std::string& mes
     const bool changed = g_surface.OnSurfaceLayout(width, height, message);
     EmitNativeLog(message);
     if (changed) {
+        UpdateRdpgfxSurfaceTargetIfReady("surface layout changed");
         UpdateAvc420SurfaceOutputIfActive("surface layout changed");
         const SurfaceSnapshot snapshot = g_surface.Snapshot();
         g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface layout changed");
