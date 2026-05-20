@@ -753,6 +753,32 @@ copy_runtime_lib_pattern() {
   fi
 }
 
+copy_runtime_soname_pattern() {
+  local pattern="$1"
+  local required="${2:-0}"
+  local copied=0
+  local readelf="$OHOS_LLVM_HOME/bin/llvm-readelf"
+  shopt -s nullglob
+  for lib in "$PREFIX/lib"/$pattern; do
+    [[ -f "$lib" ]] || continue
+    local soname
+    soname="$("$readelf" -d "$lib" 2>/dev/null | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p' | head -n 1)"
+    [[ -n "$soname" ]] || soname="$(basename "$lib")"
+    if [[ -f "$RUNTIME_DIR/$soname" ]]; then
+      copied=1
+      continue
+    fi
+    cp -L "$lib" "$RUNTIME_DIR/$soname"
+    copied=1
+  done
+  shopt -u nullglob
+
+  if [[ "$required" == "1" && "$copied" != "1" ]]; then
+    printf 'Missing required runtime library pattern: %s\n' "$pattern" >&2
+    exit 1
+  fi
+}
+
 copy_ohos_runtime_lib() {
   local name="$1"
   local required="${2:-0}"
@@ -789,15 +815,15 @@ stage_runtime_libs() {
   copy_runtime_lib_pattern "libcrypto.so.3" 1
   copy_runtime_lib_pattern "libcjson.so.1" 1
   copy_runtime_lib_pattern "libz.so.1" 1
-  copy_runtime_lib_pattern "liburiparser.so*" "$(is_enabled "$ENABLE_URIPARSER" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libopenh264.so*" "$(is_enabled "$ENABLE_OPENH264" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libavcodec.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libavdevice.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libavfilter.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libavformat.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libavutil.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libswresample.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
-  copy_runtime_lib_pattern "libswscale.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "liburiparser.so*" "$(is_enabled "$ENABLE_URIPARSER" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libopenh264.so*" "$(is_enabled "$ENABLE_OPENH264" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libavcodec.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libavdevice.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libavfilter.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libavformat.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libavutil.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libswresample.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
+  copy_runtime_soname_pattern "libswscale.so*" "$(is_enabled "$ENABLE_FFMPEG" && printf 1 || printf 0)"
 
   if [[ "$WITH_OPENSLES" == "ON" ]]; then
     copy_ohos_runtime_lib "libOpenSLES.so" 1
