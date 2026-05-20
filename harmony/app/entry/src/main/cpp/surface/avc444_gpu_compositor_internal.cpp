@@ -1188,7 +1188,7 @@ public:
             " surface=" + std::to_string(surfaceWidth_) + "x" +
             std::to_string(surfaceHeight_) +
             (window == nullptr ? " offscreen-pbuffer" : " window") +
-            " GLES3 mapped-plane shader path present=direct-yuv444-rgb");
+            " GLES3 mapped-plane shader path present=direct-yuv444-rgb-average-undo");
         return true;
     }
 
@@ -1500,7 +1500,7 @@ private:
             "}\n";
         static constexpr const char* copyYFragment =
             "#version 300 es\n"
-            "precision mediump float;\n"
+            "precision highp float;\n"
             "uniform highp sampler2D uSrcY;\n"
             "uniform int uSrcHeight;\n"
             "uniform int uSurfaceHeight;\n"
@@ -1513,7 +1513,7 @@ private:
             "}\n";
         static constexpr const char* lumaUvFragment =
             "#version 300 es\n"
-            "precision mediump float;\n"
+            "precision highp float;\n"
             "uniform highp sampler2D uSrcUV;\n"
             "uniform int uSrcUComponent;\n"
             "uniform int uSrcVComponent;\n"
@@ -1536,7 +1536,7 @@ private:
             "}\n";
         static constexpr const char* chromaV1Fragment =
             "#version 300 es\n"
-            "precision mediump float;\n"
+            "precision highp float;\n"
             "uniform highp sampler2D uPrev;\n"
             "uniform highp sampler2D uSrcY;\n"
             "uniform highp sampler2D uSrcUV;\n"
@@ -1580,7 +1580,7 @@ private:
             "}\n";
         static constexpr const char* chromaV2Fragment =
             "#version 300 es\n"
-            "precision mediump float;\n"
+            "precision highp float;\n"
             "uniform highp sampler2D uPrev;\n"
             "uniform highp sampler2D uSrcY;\n"
             "uniform highp sampler2D uSrcUV;\n"
@@ -1620,7 +1620,7 @@ private:
             "}\n";
         static constexpr const char* presentFragment =
             "#version 300 es\n"
-            "precision mediump float;\n"
+            "precision highp float;\n"
             "in vec2 vTexCoord;\n"
             "uniform highp sampler2D uY;\n"
             "uniform highp sampler2D uU;\n"
@@ -1633,12 +1633,25 @@ private:
             "  y = clamp(y, 0, uSurfaceHeight - 1);\n"
             "  return texelFetch(tex, ivec2(x, uSurfaceHeight - 1 - y), 0).r;\n"
             "}\n"
+            "float conditionalClipAverage(float value, float original) {\n"
+            "  float clipped = clamp(value, 0.0, 1.0);\n"
+            "  return (abs(clipped - original) < (30.0 / 255.0)) ? original : clipped;\n"
+            "}\n"
+            "float fetchPlaneWithAverageUndo(sampler2D tex, int x, int y) {\n"
+            "  float original = fetchPlane(tex, x, y);\n"
+            "  if (((x & 1) == 0) && ((y & 1) == 0) && x + 1 < uSurfaceWidth && y + 1 < uSurfaceHeight) {\n"
+            "    float sub = fetchPlane(tex, x + 1, y) + fetchPlane(tex, x, y + 1) + "
+                "fetchPlane(tex, x + 1, y + 1);\n"
+            "    return conditionalClipAverage(4.0 * original - sub, original);\n"
+            "  }\n"
+            "  return original;\n"
+            "}\n"
             "void main() {\n"
             "  int x = clamp(int(floor(vTexCoord.x * float(uSurfaceWidth))), 0, uSurfaceWidth - 1);\n"
             "  int y = clamp(int(floor(vTexCoord.y * float(uSurfaceHeight))), 0, uSurfaceHeight - 1);\n"
             "  float yy = fetchPlane(uY, x, y);\n"
-            "  float uu = fetchPlane(uU, x, y);\n"
-            "  float vv = fetchPlane(uV, x, y);\n"
+            "  float uu = fetchPlaneWithAverageUndo(uU, x, y);\n"
+            "  float vv = fetchPlaneWithAverageUndo(uV, x, y);\n"
             "  float d = uu - (128.0 / 255.0);\n"
             "  float e = vv - (128.0 / 255.0);\n"
             "  vec3 rgb = vec3(yy + 1.57421875 * e,\n"

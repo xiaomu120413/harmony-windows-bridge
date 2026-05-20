@@ -15,6 +15,13 @@
 
 namespace rdp_bridge {
 
+static constexpr uint32_t kOneToOneFitTolerancePx = 16;
+
+static uint32_t DimensionDelta(uint32_t a, uint32_t b)
+{
+    return a > b ? a - b : b - a;
+}
+
 std::string ReadXComponentId(OH_NativeXComponent* component)
 {
     char id[OH_XCOMPONENT_ID_LEN_MAX + 1] = {};
@@ -310,6 +317,16 @@ private:
     {
         RenderViewport viewport;
         if (targetWidth == 0 || targetHeight == 0 || sourceWidth == 0 || sourceHeight == 0) {
+            return viewport;
+        }
+
+        if (sourceWidth <= targetWidth && sourceHeight <= targetHeight &&
+            DimensionDelta(targetWidth, sourceWidth) <= kOneToOneFitTolerancePx &&
+            DimensionDelta(targetHeight, sourceHeight) <= kOneToOneFitTolerancePx) {
+            viewport.width = sourceWidth;
+            viewport.height = sourceHeight;
+            viewport.x = (targetWidth - viewport.width) / 2U;
+            viewport.y = (targetHeight - viewport.height) / 2U;
             return viewport;
         }
 
