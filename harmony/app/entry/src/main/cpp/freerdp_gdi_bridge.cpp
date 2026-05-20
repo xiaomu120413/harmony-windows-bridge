@@ -2,6 +2,7 @@
 
 #include "bridge_log.h"
 #include "freerdp_runtime.h"
+#include "surface/render_output_owner.h"
 
 #include <algorithm>
 #include <atomic>
@@ -23,6 +24,8 @@ namespace {
 
 std::mutex g_gdiCallbacksMutex;
 GdiBridgeCallbacks g_gdiCallbacks;
+
+void EmitGdiLog(const std::string& line);
 
 GdiBridgeCallbacks SnapshotGdiBridgeCallbacks()
 {
@@ -48,6 +51,15 @@ bool QueueGdiFrame(const RgbaFrame& frame, std::string& message, bool forceRende
 
 void StartGdiRenderPipeline()
 {
+    static std::atomic_uint32_t skipLogCount{0};
+    if (IsAvc444GpuRenderOutputOwner()) {
+        const uint32_t count = ++skipLogCount;
+        if (count <= 3 || count % 60 == 0) {
+            EmitGdiLog("GDI render pipeline start skipped: outputOwner=" +
+                CurrentRenderOutputOwnerName() + " count=" + std::to_string(count));
+        }
+        return;
+    }
     GdiBridgeCallbacks callbacks = SnapshotGdiBridgeCallbacks();
     if (callbacks.startRenderPipeline) {
         callbacks.startRenderPipeline();
@@ -70,6 +82,19 @@ void EmitGdiLog(const std::string& line)
     } else {
         EmitHilogInfo(line);
     }
+}
+
+void ClearGdiInvalidRegion(rdpGdi* gdi)
+{
+    if (gdi == nullptr || gdi->primary == nullptr || gdi->primary->hdc == nullptr ||
+        gdi->primary->hdc->hwnd == nullptr) {
+        return;
+    }
+    HGDI_WND hwnd = gdi->primary->hdc->hwnd;
+    if (hwnd->invalid != nullptr) {
+        hwnd->invalid->null = TRUE;
+    }
+    hwnd->ninvalid = 0;
 }
 
 } // namespace
@@ -205,6 +230,18 @@ BOOL HarmonyEndPaint(rdpContext* context)
     }
 
     rdpGdi* gdi = context->gdi;
+    if (IsAvc444GpuRenderOutputOwner()) {
+        static std::atomic_uint32_t skipLogCount{0};
+        ClearGdiInvalidRegion(gdi);
+        const uint32_t count = ++skipLogCount;
+        if (count <= 3 || count % 120 == 0) {
+            EmitGdiLog("FreeRDP GDI EndPaint skipped: outputOwner=" +
+                CurrentRenderOutputOwnerName() +
+                " because AVC444 GPU compositor owns the XComponent count=" +
+                std::to_string(count));
+        }
+        return TRUE;
+    }
     if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
         gdi->height <= 0 || gdi->stride == 0) {
         return TRUE;
@@ -241,14 +278,7 @@ BOOL HarmonyEndPaint(rdpContext* context)
         }
     }
 
-    if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
-        gdi->primary->hdc->hwnd != nullptr) {
-        HGDI_WND hwnd = gdi->primary->hdc->hwnd;
-        if (hwnd->invalid != nullptr) {
-            hwnd->invalid->null = TRUE;
-        }
-        hwnd->ninvalid = 0;
-    }
+    ClearGdiInvalidRegion(gdi);
     return TRUE;
 }
 

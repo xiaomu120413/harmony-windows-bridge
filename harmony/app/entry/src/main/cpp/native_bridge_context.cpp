@@ -6,6 +6,7 @@
 #include "input/xcomponent_input_bridge.h"
 #include "string_utils.h"
 #include "surface/latest_frame_renderer.h"
+#include "surface/render_output_owner.h"
 
 #include <atomic>
 #include <cstdint>
@@ -130,6 +131,10 @@ SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 
 bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender)
 {
+    if (IsAvc444GpuRenderOutputOwner()) {
+        message = "render output owned by " + CurrentRenderOutputOwnerName();
+        return false;
+    }
     std::string resizeMessage;
     if (!g_resizeCoordinator.ShouldQueueFrame(frame, resizeMessage)) {
         message = resizeMessage;
@@ -151,6 +156,15 @@ void DropPendingRenderFrame(const std::string& reason)
 
 void StartRenderPipeline()
 {
+    static std::atomic_uint32_t skipLogCount{0};
+    if (IsAvc444GpuRenderOutputOwner()) {
+        const uint32_t count = ++skipLogCount;
+        if (count <= 3 || count % 60 == 0) {
+            EmitNativeLog("GDI render pipeline start skipped: outputOwner=" +
+                CurrentRenderOutputOwnerName() + " count=" + std::to_string(count));
+        }
+        return;
+    }
     g_frameRenderer.SetCallbacks(RenderSurfaceRgbaFrame, EmitNativeLog);
     g_frameRenderer.Start();
 }
@@ -267,6 +281,10 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
+    const RenderOutputOwner previous = ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
+    if (previous == RenderOutputOwner::Avc444Gpu) {
+        EmitNativeLog("render output owner reset after surface destroyed: avc444-gpu -> gdi");
+    }
     g_surface.OnSurfaceDestroyed(component, window);
     g_resizeCoordinator.Reset("surface destroyed");
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");

@@ -2,6 +2,7 @@
 
 #include "string_utils.h"
 #include "surface/native_rgba_copy.h"
+#include "surface/render_output_owner.h"
 
 #include <algorithm>
 #include <array>
@@ -3170,14 +3171,27 @@ struct Avc444GpuCompositor::Impl {
         }
         if (!command->frameOpen) {
             logs.push_back("AVC444 GPU compositor queued inter-frame AVC444 update; "
-                "the bridge will mirror FreeRDP dirty state and then trigger present: frame=" +
+                "the bridge will skip FreeRDP dirty state and trigger GPU present: frame=" +
                 std::to_string(command->frameId) + " LC=" + std::to_string(command->LC));
         }
         if (!authoritative) {
+            const RenderOutputOwner previousOwner =
+                ExchangeRenderOutputOwner(RenderOutputOwner::Avc444Gpu);
+            if (previousOwner != RenderOutputOwner::Avc444Gpu) {
+                if (callbacks.stopRenderPipeline != nullptr) {
+                    callbacks.stopRenderPipeline();
+                }
+                if (callbacks.releaseRenderTarget != nullptr) {
+                    callbacks.releaseRenderTarget(
+                        "before AVC444 GPU compositor SurfaceCommand takeover");
+                }
+                logs.push_back("AVC444 GPU compositor claimed render output ownership at "
+                    "SurfaceCommand before suppressing FreeRDP GDI: previousOwner=" +
+                    RenderOutputOwnerName(previousOwner) + " outputOwner=avc444-gpu");
+            }
             authoritative = true;
             logs.push_back("AVC444 GPU compositor is authoritative after queued update; "
-                "GDI is suppressed now and present is deferred until the bridge mirrors "
-                "FreeRDP dirty/update ordering");
+                "GDI is suppressed now and present is deferred until the matching frame boundary");
         }
         return true;
     }
@@ -3187,6 +3201,22 @@ struct Avc444GpuCompositor::Impl {
         const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
         std::vector<std::string>& logs)
     {
+        auto releaseWarmupOwnership = [&](const std::string& reason) {
+            if (presented != 0) {
+                return;
+            }
+            const RenderOutputOwner previous =
+                ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
+            if (previous == RenderOutputOwner::Avc444Gpu) {
+                authoritative = false;
+                if (callbacks.startRenderPipeline != nullptr) {
+                    callbacks.startRenderPipeline();
+                }
+                logs.push_back("AVC444 GPU compositor released output ownership before first "
+                    "present completed: reason=" + reason + " outputOwner=gdi");
+            }
+        };
+
         if (!pendingPresent) {
             logs.push_back("AVC444 GPU compositor " + trigger +
                 " present skipped: pending=no authoritative=" +
@@ -3210,6 +3240,7 @@ struct Avc444GpuCompositor::Impl {
                 " mismatches=" + std::to_string(endFrameMismatches) +
                 " ignoredUpdates=" + std::to_string(ignoredUpdates) +
                 " " + renderer.DebugState());
+            releaseWarmupOwnership("EndFrame mismatch before first present");
             return authoritative;
         }
 
@@ -3225,6 +3256,7 @@ struct Avc444GpuCompositor::Impl {
                 std::string(authoritative ? "yes" : "no") +
                 " failures=" + std::to_string(failures) +
                 " ignoredUpdates=" + std::to_string(ignoredUpdates));
+            releaseWarmupOwnership("invalid pending surface dimensions");
             return authoritative;
         }
 
@@ -3245,6 +3277,7 @@ struct Avc444GpuCompositor::Impl {
                 " ignoredUpdates=" + std::to_string(ignoredUpdates) +
                 (authoritative ? "; preserving GPU ownership and continuing with the next command" :
                     "; FreeRDP native GDI remains authoritative"));
+            releaseWarmupOwnership("target unavailable");
             return authoritative;
         }
 
@@ -3283,6 +3316,7 @@ struct Avc444GpuCompositor::Impl {
                 " ignoredUpdates=" + std::to_string(ignoredUpdates) +
                 (authoritative ? "; preserving GPU ownership and continuing with the next command" :
                     "; FreeRDP native GDI remains authoritative"));
+            releaseWarmupOwnership(reason);
             return authoritative;
         };
 
@@ -3377,6 +3411,7 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     if (impl_) {
         impl_->Destroy();
     }
+    ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
     std::lock_guard<std::mutex> lock(mutex_);
     enabled_ = enabled;
     log_ = std::move(log);
