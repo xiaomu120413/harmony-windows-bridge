@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rdp_session_core.h"
+#include "session/rdp_session_core.h"
 
 #include <cstdint>
 #include <functional>

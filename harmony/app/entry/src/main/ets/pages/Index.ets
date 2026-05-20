@@ -9,7 +9,7 @@ import rdpNative, { NativeCommandResult, NativeProbeResult } from 'libentry.so'
 @Entry
 @Component
 struct Index {
-  @State private host: string = '192.168.43.28'
+  @State private host: string = '172.20.10.3'
   @State private port: string = '3389'
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
@@ -177,7 +177,8 @@ struct Index {
     this.setSessionVisible(true)
     this.appendLog(`Opening session surface for ${host}:${port}`)
     setTimeout((): void => {
-      this.startNativeConnect(host, port, username, password, resolution, policy, graphicsMode, appFilesDir)
+      this.startNativeConnect(host, port, username, password, resolution, policy, graphicsMode,
+        appFilesDir)
     }, 0)
   }
 

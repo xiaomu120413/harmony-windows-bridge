@@ -1,6 +1,6 @@
-#include "clipboard_bridge.h"
+#include "channels/clipboard_bridge.h"
 
-#include "bridge_log.h"
+#include "common/bridge_log.h"
 
 #include <memory>
 #include <string>

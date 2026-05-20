@@ -1,12 +1,12 @@
 #pragma once
 
-#include "bridge_types.h"
+#include "common/bridge_types.h"
 
 #include <functional>
 #include <string>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
 
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/settings.h>

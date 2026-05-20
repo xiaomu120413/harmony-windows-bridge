@@ -1,6 +1,6 @@
 #include "channels/audio_diagnostics.h"
 
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
 
 #include <sstream>
 

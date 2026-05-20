@@ -1,7 +1,8 @@
-#include "rdpgfx_diagnostics.h"
+#include "channels/rdpgfx_diagnostics.h"
 
 #include "channels/rdpgfx_pipeline.h"
-#include "freerdp_runtime.h"
+#include "freerdp/freerdp_runtime.h"
+#include "surface/avc444_gpu_compositor.h"
 
 #include <atomic>
 #include <sstream>
@@ -85,6 +86,7 @@ std::string BuildGraphicsPipelineStatsLog()
     if (!avc420RouteDiagnostics.empty()) {
         out << " | " << avc420RouteDiagnostics;
     }
+    out << " | " << SharedAvc444GpuCompositor().Diagnostics();
     if (api.ohosAvcodecGetDiagnostics != nullptr) {
         const char* diagnostics = api.ohosAvcodecGetDiagnostics();
         if (diagnostics != nullptr && diagnostics[0] != '\0') {

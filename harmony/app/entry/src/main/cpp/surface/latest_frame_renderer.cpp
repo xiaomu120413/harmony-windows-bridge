@@ -1,7 +1,7 @@
-#include "latest_frame_renderer.h"
+#include "surface/latest_frame_renderer.h"
 
-#include "bridge_log.h"
-#include "frame_utils.h"
+#include "common/bridge_log.h"
+#include "common/frame_utils.h"
 
 #include <chrono>
 #include <condition_variable>
