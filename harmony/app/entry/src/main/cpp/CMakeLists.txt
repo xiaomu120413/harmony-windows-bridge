@@ -51,6 +51,7 @@ add_library(entry SHARED
     session/rdp_session_channels.cpp
     session/rdp_session_input.cpp
     surface/avc444_gpu_compositor.cpp
+    surface/avc444_gpu_compositor_internal.cpp
     surface/latest_frame_renderer.cpp
     surface/native_rgba_copy.cpp
     surface/native_window_rgba_painter.cpp

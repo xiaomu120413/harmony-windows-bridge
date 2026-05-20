@@ -15,6 +15,8 @@ namespace rdp_bridge {
 
 using Avc444GpuLogFn = std::function<void(const std::string&)>;
 
+class Avc444GpuCompositorImpl;
+
 struct Avc444GpuCompositorCallbacks {
     std::function<DecoderSurfaceTarget()> decoderSurfaceTarget;
     std::function<void()> stopRenderPipeline;
@@ -57,8 +59,7 @@ private:
     Avc444GpuLogFn log_;
     Avc444GpuCompositorCallbacks callbacks_;
     bool active_ = false;
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+    std::unique_ptr<Avc444GpuCompositorImpl> impl_;
 };
 
 Avc444GpuCompositor& SharedAvc444GpuCompositor();
