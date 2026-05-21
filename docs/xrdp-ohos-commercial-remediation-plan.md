@@ -571,3 +571,19 @@ xrdp session summary:
 - `Test-NetConnection 127.0.0.1 -Port 13390` 通过，设备侧 `3390` 处于 LISTEN。
 - Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp surface H264 encoder ready`、`xrdp surface H264 capture started 2560x1440@15fps`、`xrdp surface H264 frame queued: seq=1`、`xrdp.ohos.frame: queued AVC420 frame`。
 - 音频链路仍正常，日志中出现 `xrdp.ohos.rdpsnd: client formats`、`training round_trip_ms`、`audio queued`、`sent wave chunk`、`wave confirm`。
+
+## 16. 2026-05-21 Phase 3 lifecycle controller 执行记录
+
+已继续把 `xrdp_server_bridge.cpp` 中的 capture lifecycle 状态机下沉到 xrdp 源码侧：
+
+- 新增 `ohos_capture_controller.cpp` / `.h`，承载 client capture requested 状态、3 秒失败退避、resize restart 判断、suppress stop/resume、session disconnect cleanup、输入授权 prime/reset 策略。
+- app 侧 `xrdp_server_bridge.cpp` 不再直接维护 `XrdpClientCaptureState`，也不再直接分发 `SESSION_CONNECT` / `SESSION_DISCONNECT` / `SUPPRESS_OUTPUT` / `MONITOR_RESIZE` 的 capture start/stop 逻辑，只保留回调适配和 backend event 状态记录。
+- controller 仍通过 app wrapper 回调启动/停止当前 `StartXrdpScreenCapture()`，因此运行行为保持不变；后续可以再把 backend event 回调注册和 capture controller 入口继续并入 xrdp backend module。
+
+本轮验证：
+
+- `cmd /c build_hap.bat` 在 `harmony/app` 下通过。
+- 已安装到设备并启动 `com.huawei.freerdp/EntryAbility`。
+- `Test-NetConnection 127.0.0.1 -Port 13390` 通过，设备侧 `3390` 处于 LISTEN。
+- Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp active mstsc session detected; scheduling screen capture ...`、`xrdp client screen capture active ...`、`xrdp surface H264 frame queued ...`。
+- 音频链路仍正常，日志中出现 rdpsnd `client formats`、`training`、`audio queued`、`sent wave chunk`、`wave confirm`。

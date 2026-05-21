@@ -1,6 +1,7 @@
 #include "xrdp/xrdp_server_bridge.h"
 
 #include "common/bridge_log.h"
+#include "ohos/ohos_capture_controller.h"
 #include "xrdp/xrdp_display_geometry.h"
 #include "xrdp/xrdp_input_injector.h"
 #include "xrdp/xrdp_screen_capture_bridge.h"
@@ -606,21 +607,6 @@ XrdpVideoFrameSubmitter& VideoSubmitter()
     return submitter;
 }
 
-struct XrdpClientCaptureState {
-    std::mutex mutex;
-    bool requested = false;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    std::chrono::steady_clock::time_point lastFailure;
-};
-
-XrdpClientCaptureState& ClientCaptureState()
-{
-    static XrdpClientCaptureState state;
-    return state;
-}
-
-std::atomic<bool> g_xrdpInputAuthorizationPrimed { false };
 std::atomic<uint64_t> g_xrdpEncodedBackpressureCount { 0 };
 
 std::string HexFlags(uint32_t flags)
@@ -738,84 +724,53 @@ void StoreResolvedPathsLocked(XrdpServerState& state, const XrdpResolvedPaths& p
     state.logPath = paths.logPath;
 }
 
-void ResetXrdpClientCaptureState(const std::string& reason)
+bool StartControllerCapture(const xrdp_ohos::CaptureOptions& options, std::string& message, void*)
 {
-    {
-        std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
-        ClientCaptureState().requested = false;
-        ClientCaptureState().width = 0;
-        ClientCaptureState().height = 0;
-    }
+    XrdpScreenCaptureOptions bridgeOptions;
+    bridgeOptions.width = options.width;
+    bridgeOptions.height = options.height;
+    bridgeOptions.frameRate = options.frameRate;
+    bridgeOptions.showCursor = options.showCursor;
+    return StartXrdpScreenCapture(bridgeOptions, message);
+}
+
+void StopControllerCapture(const std::string& reason, void*)
+{
     StopXrdpScreenCapture(reason);
+}
+
+void UpdateControllerCaptureTarget(uint32_t width, uint32_t height, void*)
+{
+    UpdateXrdpScreenCaptureTarget(width, height);
+}
+
+void PrimeControllerInputAuthorization(const std::string& reason, void*)
+{
+    PrimeXrdpInputInjectorAuthorization(reason);
+}
+
+void ResetControllerInput(const std::string& reason, void*)
+{
     ResetXrdpInputInjector(reason);
 }
 
-void StopXrdpCaptureForClient(const std::string& reason)
+std::string DescribeControllerGeometry(void*)
 {
-    {
-        std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
-        ClientCaptureState().requested = false;
-        ClientCaptureState().width = 0;
-        ClientCaptureState().height = 0;
-    }
-    StopXrdpScreenCapture(reason);
+    return FormatXrdpDisplayGeometry(QueryXrdpDisplayGeometry());
 }
 
-void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
+xrdp_ohos::CaptureController& CaptureController()
 {
-    if (width == 0 || height == 0 || width > 8192 || height > 8192) {
-        return;
-    }
-
-    XrdpScreenCaptureOptions options {};
-    options.width = width;
-    options.height = height;
-    options.frameRate = 15;
-    options.showCursor = false;
-    const XrdpDisplayGeometry geometry = QueryXrdpDisplayGeometry();
-    bool restartCapture = false;
-
-    {
-        std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
-        XrdpClientCaptureState& state = ClientCaptureState();
-        if (state.requested && state.width == width && state.height == height) {
-            return;
-        }
-        restartCapture = state.requested && (state.width != width || state.height != height);
-        const auto now = std::chrono::steady_clock::now();
-        if (state.lastFailure != std::chrono::steady_clock::time_point {} &&
-            now - state.lastFailure < std::chrono::seconds(3)) {
-            return;
-        }
-        state.requested = true;
-        state.width = width;
-        state.height = height;
-    }
-
-    EmitHilogInfo("xrdp active mstsc session detected; scheduling screen capture desktop=" +
-        std::to_string(width) + "x" + std::to_string(height) + " " +
-        FormatXrdpDisplayGeometry(geometry) +
-        " inputMapping=desktop-content-fit-to-display" +
-        (restartCapture ? " restartCapture=1" : " restartCapture=0"));
-
-    std::thread([options, restartCapture]() {
-        if (restartCapture) {
-            StopXrdpScreenCapture("xrdp desktop size changed to " +
-                std::to_string(options.width) + "x" + std::to_string(options.height));
-        }
-        std::string message;
-        if (StartXrdpScreenCapture(options, message)) {
-            EmitHilogInfo("xrdp client screen capture active: " + message);
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
-            ClientCaptureState().requested = false;
-            ClientCaptureState().lastFailure = std::chrono::steady_clock::now();
-        }
-        EmitHilogError("xrdp client screen capture failed: " + message);
-    }).detach();
+    static xrdp_ohos::CaptureController controller({
+        StartControllerCapture,
+        StopControllerCapture,
+        UpdateControllerCaptureTarget,
+        PrimeControllerInputAuthorization,
+        ResetControllerInput,
+        DescribeControllerGeometry,
+        nullptr,
+    });
+    return controller;
 }
 
 const char* XrdpBackendEventTypeName(int type)
@@ -878,43 +833,7 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
             " flags=" + std::to_string(event->flags));
     }
 
-    if (event->width > 0 && event->height > 0) {
-        UpdateXrdpScreenCaptureTarget(static_cast<uint32_t>(event->width),
-            static_cast<uint32_t>(event->height));
-    }
-
-    switch (event->type) {
-        case XRDP_OHOS_BACKEND_EVENT_SESSION_CONNECT:
-            if (event->width > 0 && event->height > 0) {
-                StartXrdpCaptureForClient(static_cast<uint32_t>(event->width),
-                    static_cast<uint32_t>(event->height));
-            }
-            if (!g_xrdpInputAuthorizationPrimed.exchange(true)) {
-                PrimeXrdpInputInjectorAuthorization("xrdp client connected");
-            }
-            break;
-        case XRDP_OHOS_BACKEND_EVENT_SESSION_DISCONNECT:
-            g_xrdpInputAuthorizationPrimed.store(false);
-            ResetXrdpClientCaptureState("xrdp client disconnected");
-            break;
-        case XRDP_OHOS_BACKEND_EVENT_MONITOR_RESIZE:
-        case XRDP_OHOS_BACKEND_EVENT_MONITOR_FULL_INVALIDATE:
-            if (event->connected != 0 && event->width > 0 && event->height > 0) {
-                StartXrdpCaptureForClient(static_cast<uint32_t>(event->width),
-                    static_cast<uint32_t>(event->height));
-            }
-            break;
-        case XRDP_OHOS_BACKEND_EVENT_SUPPRESS_OUTPUT:
-            if (event->suppress != 0) {
-                StopXrdpCaptureForClient("xrdp output suppressed");
-            } else if (event->connected != 0 && event->width > 0 && event->height > 0) {
-                StartXrdpCaptureForClient(static_cast<uint32_t>(event->width),
-                    static_cast<uint32_t>(event->height));
-            }
-            break;
-        default:
-            break;
-    }
+    CaptureController().HandleBackendEvent(*event);
 }
 
 void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
@@ -1479,7 +1398,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             threadState.lastDisconnectReason = threadState.lastMessage;
             exitMessage = threadState.lastMessage;
         }
-        ResetXrdpClientCaptureState("xrdp server exit");
+        CaptureController().Reset("xrdp server exit");
         VideoSubmitter().Stop("xrdp server exit");
         EmitHilogInfo(exitMessage);
     }).detach();
