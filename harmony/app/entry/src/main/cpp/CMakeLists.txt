@@ -64,10 +64,12 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
+    xrdp/xrdp_audio_capture_bridge.cpp
     xrdp/xrdp_display_geometry.cpp
     xrdp/xrdp_input_injector.cpp
     xrdp/xrdp_screen_capture_bridge.cpp
-    xrdp/xrdp_server_bridge.cpp)
+    xrdp/xrdp_server_bridge.cpp
+    xrdp/xrdp_surface_h264_capture.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so

@@ -21,6 +21,10 @@ struct XrdpScreenCaptureDiagnostics {
     uint64_t readyCount = 0;
     uint64_t submittedCount = 0;
     uint64_t droppedCount = 0;
+    uint64_t audioReadyCount = 0;
+    uint64_t audioSubmittedCount = 0;
+    uint64_t audioDroppedCount = 0;
+    uint64_t audioBytes = 0;
     uint64_t captureErrorCount = 0;
 };
 

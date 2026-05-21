@@ -2,7 +2,9 @@
 
 #include "common/bridge_log.h"
 #include "common/bridge_types.h"
+#include "xrdp/xrdp_audio_capture_bridge.h"
 #include "xrdp/xrdp_server_bridge.h"
+#include "xrdp/xrdp_surface_h264_capture.h"
 
 #include <algorithm>
 #include <atomic>
@@ -24,6 +26,12 @@ namespace {
 
 constexpr uint32_t kMaxCaptureDimension = 8192;
 constexpr uint32_t kDefaultCaptureFrameRate = 15;
+
+uint64_t NowUs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
 
 std::string CaptureErrToString(OH_AVSCREEN_CAPTURE_ErrCode code)
 {
@@ -84,9 +92,7 @@ OH_AVScreenCaptureConfig BuildRawScreenCaptureConfig(const XrdpScreenCaptureOpti
     config.captureMode = OH_CAPTURE_HOME_SCREEN;
     config.dataType = OH_ORIGINAL_STREAM;
 
-    config.audioInfo.micCapInfo.audioSource = OH_SOURCE_INVALID;
-    config.audioInfo.innerCapInfo.audioSource = OH_SOURCE_INVALID;
-    config.audioInfo.audioEncInfo.audioCodecformat = OH_AUDIO_DEFAULT;
+    ConfigureXrdpPlaybackAudioCapture(config);
 
     config.videoInfo.videoCapInfo.displayId = 0;
     config.videoInfo.videoCapInfo.missionIDs = nullptr;
@@ -157,6 +163,7 @@ public:
         captureErrorCount_ = 0;
         submittedCount_.store(0);
         droppedCount_.store(0);
+        audioPump_.Start(capture, "raw");
         worker_ = std::thread([this]() { WorkerLoop(); });
 
         rc = OH_AVScreenCapture_StartScreenCapture(capture);
@@ -172,6 +179,7 @@ public:
                 worker.join();
                 lock.lock();
             }
+            audioPump_.Stop("raw start failed");
             ReleaseFailedCapture(failedCapture);
             message = "OH_AVScreenCapture_StartScreenCapture failed: " + CaptureErrToString(rc);
             EmitHilogError("xrdp screen capture start failed: " + message);
@@ -205,6 +213,7 @@ public:
         if (worker.joinable()) {
             worker.join();
         }
+        audioPump_.Stop(reason);
         if (capture != nullptr) {
             const OH_AVSCREEN_CAPTURE_ErrCode stopRc = OH_AVScreenCapture_StopScreenCapture(capture);
             const OH_AVSCREEN_CAPTURE_ErrCode releaseRc = OH_AVScreenCapture_Release(capture);
@@ -245,6 +254,7 @@ public:
         diagnostics.submittedCount = submittedCount_.load();
         diagnostics.droppedCount = droppedCount_.load();
         diagnostics.captureErrorCount = captureErrorCount_;
+        audioPump_.FillDiagnostics(diagnostics);
         return diagnostics;
     }
 
@@ -282,8 +292,9 @@ private:
         Instance().HandleCaptureError(errorCode);
     }
 
-    static void OnAudioBufferAvailable(OH_AVScreenCapture*, bool, OH_AudioCaptureSourceType)
+    static void OnAudioBufferAvailable(OH_AVScreenCapture* capture, bool isReady, OH_AudioCaptureSourceType type)
     {
+        Instance().audioPump_.HandleAudioReady(capture, isReady, type);
     }
 
     static void OnVideoBufferAvailable(OH_AVScreenCapture* capture, bool isReady)
@@ -355,6 +366,7 @@ private:
         int64_t timestamp = 0;
         OH_Rect region {};
         OH_NativeBuffer* buffer = OH_AVScreenCapture_AcquireVideoBuffer(capture, &fence, &timestamp, &region);
+        const uint64_t captureAcquireUs = NowUs();
         if (buffer == nullptr) {
             LogSampledError("xrdp screen capture acquire video buffer returned null", readyCount);
             return;
@@ -372,14 +384,15 @@ private:
             return;
         }
 
-        QueueMappedFrame(capture, buffer, mapped, config, timestamp, region, readyCount);
+        QueueMappedFrame(capture, buffer, mapped, config, timestamp, captureAcquireUs, region, readyCount);
 
         OH_NativeBuffer_Unmap(buffer);
         OH_AVScreenCapture_ReleaseVideoBuffer(capture);
     }
 
     void QueueMappedFrame(OH_AVScreenCapture*, OH_NativeBuffer*, void* mapped,
-        const OH_NativeBuffer_Config& config, int64_t timestamp, const OH_Rect& region, uint64_t readyCount)
+        const OH_NativeBuffer_Config& config, int64_t timestamp, uint64_t captureAcquireUs,
+        const OH_Rect& region, uint64_t readyCount)
     {
         XrdpScreenCaptureOptions target;
         {
@@ -420,6 +433,9 @@ private:
         frame.width = config.width;
         frame.height = config.height;
         frame.source_sequence = readyCount;
+        frame.capture_timestamp_us = timestamp > 0 ? static_cast<uint64_t>(timestamp / 1000) : 0;
+        frame.capture_acquire_us = captureAcquireUs;
+        frame.bridge_queue_us = NowUs();
 
         std::string message;
         const bool queued = QueueXrdpVideoFrame(frame, message);
@@ -469,6 +485,7 @@ private:
     uint64_t captureErrorCount_ = 0;
     std::atomic<uint64_t> submittedCount_ { 0 };
     std::atomic<uint64_t> droppedCount_ { 0 };
+    XrdpAudioCapturePump audioPump_;
 };
 
 XrdpRawScreenCapture& ScreenCapture()
@@ -480,11 +497,22 @@ XrdpRawScreenCapture& ScreenCapture()
 
 bool StartXrdpScreenCapture(const XrdpScreenCaptureOptions& options, std::string& message)
 {
-    return ScreenCapture().Start(options, message);
+    std::string surfaceMessage;
+    if (StartXrdpSurfaceH264Capture(options, surfaceMessage)) {
+        message = surfaceMessage;
+        return true;
+    }
+
+    EmitHilogError("xrdp surface H264 capture unavailable, falling back to raw path: " + surfaceMessage);
+    std::string rawMessage;
+    const bool rawStarted = ScreenCapture().Start(options, rawMessage);
+    message = rawStarted ? rawMessage : surfaceMessage + "; raw fallback failed: " + rawMessage;
+    return rawStarted;
 }
 
 void StopXrdpScreenCapture(const std::string& reason)
 {
+    StopXrdpSurfaceH264Capture(reason);
     ScreenCapture().Stop(reason);
 }
 
@@ -495,6 +523,10 @@ void UpdateXrdpScreenCaptureTarget(uint32_t width, uint32_t height)
 
 XrdpScreenCaptureDiagnostics GetXrdpScreenCaptureDiagnostics()
 {
+    XrdpScreenCaptureDiagnostics surface = GetXrdpSurfaceH264CaptureDiagnostics();
+    if (surface.running) {
+        return surface;
+    }
     return ScreenCapture().Snapshot();
 }
 
