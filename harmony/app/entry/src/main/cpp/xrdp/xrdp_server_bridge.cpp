@@ -128,6 +128,14 @@ public:
                 message = "xrdp video backoff: no active mstsc session dropped=" + std::to_string(dropped);
                 return false;
             }
+            if (hasPending_) {
+                const uint64_t dropped = ++preCopyDropCount_;
+                message = "xrdp video queue busy; frame dropped before copy dropped=" +
+                    std::to_string(dropped) +
+                    " queued=" + std::to_string(queuedCount_) +
+                    " submitted=" + std::to_string(submittedCount_);
+                return false;
+            }
         }
 
         const size_t frameBytes = rowBytes * static_cast<size_t>(frame.height);
@@ -311,6 +319,7 @@ private:
     uint64_t submittedCount_ = 0;
     uint64_t failedCount_ = 0;
     uint64_t backoffDropCount_ = 0;
+    uint64_t preCopyDropCount_ = 0;
     int lastStatus_ = 0;
     std::chrono::steady_clock::time_point lastStatusAt_;
 };

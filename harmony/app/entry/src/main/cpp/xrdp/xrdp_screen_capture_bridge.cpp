@@ -154,6 +154,9 @@ public:
         running_ = true;
         capture_ = capture;
         videoReady_ = false;
+        captureErrorCount_ = 0;
+        submittedCount_.store(0);
+        droppedCount_.store(0);
         worker_ = std::thread([this]() { WorkerLoop(); });
 
         rc = OH_AVScreenCapture_StartScreenCapture(capture);
@@ -274,7 +277,21 @@ private:
 
     void HandleCaptureError(int32_t errorCode)
     {
-        EmitHilogError("xrdp screen capture callback error=" + std::to_string(errorCode));
+        XrdpScreenCaptureOptions target;
+        bool running = false;
+        uint64_t errorCount = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            target = target_;
+            running = running_;
+            errorCount = ++captureErrorCount_;
+        }
+        const auto code = static_cast<OH_AVSCREEN_CAPTURE_ErrCode>(errorCode);
+        EmitHilogError("xrdp screen capture callback error=" + CaptureErrToString(code) +
+            " raw=" + std::to_string(errorCode) +
+            " running=" + std::string(running ? "true" : "false") +
+            " target=" + DescribeOptions(target) +
+            " count=" + std::to_string(errorCount));
     }
 
     void HandleVideoReady(OH_AVScreenCapture* capture, bool isReady)
@@ -433,6 +450,7 @@ private:
     bool running_ = false;
     bool videoReady_ = false;
     uint64_t readyCount_ = 0;
+    uint64_t captureErrorCount_ = 0;
     std::atomic<uint64_t> submittedCount_ { 0 };
     std::atomic<uint64_t> droppedCount_ { 0 };
 };
