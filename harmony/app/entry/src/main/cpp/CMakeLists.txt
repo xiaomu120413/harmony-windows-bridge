@@ -64,6 +64,7 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_display_geometry.c
     xrdp/xrdp_audio_capture_bridge.cpp
     xrdp/xrdp_display_geometry.cpp
     xrdp/xrdp_input_injector.cpp

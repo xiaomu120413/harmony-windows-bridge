@@ -159,7 +159,7 @@ configure_xrdp() {
   fi
 
   export PKG_CONFIG_PATH="$XRDP_DEPS_PREFIX/lib/pkgconfig:$XRDP_DEPS_PREFIX/share/pkgconfig:${PKG_CONFIG_PATH:-}"
-  export CPPFLAGS="-I$XRDP_DEPS_PREFIX/include ${CPPFLAGS:-}"
+  export CPPFLAGS="-I$OHOS_NDK_HOME/sysroot/usr/include -I$XRDP_DEPS_PREFIX/include ${CPPFLAGS:-}"
   export CFLAGS="-D__MUSL__ -O2 ${CFLAGS:-}"
   export LDFLAGS="-L$XRDP_DEPS_PREFIX/lib -Wl,-rpath,'\$\$ORIGIN' -Wl,-rpath,'\$\$ORIGIN/../lib' -Wl,-rpath,'\$\$ORIGIN/..' ${LDFLAGS:-}"
   export CC="$cc_cmd"
