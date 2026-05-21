@@ -77,6 +77,7 @@ target_link_libraries(entry PUBLIC
     libnative_image.so
     libnative_media_codecbase.so
     libnative_media_core.so
+    libnative_media_venc.so
     libnative_media_vdec.so
     libnative_avscreen_capture.so
     libnative_display_manager.so
