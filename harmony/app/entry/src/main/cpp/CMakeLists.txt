@@ -58,6 +58,7 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
+    xrdp/xrdp_display_geometry.cpp
     xrdp/xrdp_input_injector.cpp
     xrdp/xrdp_screen_capture_bridge.cpp
     xrdp/xrdp_server_bridge.cpp)
