@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <cstring>
 #include <cstdlib>
+#include <cstdint>
 #include <dlfcn.h>
 #include <mutex>
 #include <string>
@@ -24,6 +25,7 @@ constexpr uint32_t kDefaultPort = 3390;
 
 using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
+using XrdpSubmitBgraFrameFn = int (*)(const void*, int, int, int);
 
 struct XrdpLoadedServer {
     void* handle = nullptr;
@@ -32,9 +34,16 @@ struct XrdpLoadedServer {
     std::string libraryPath;
 };
 
+struct XrdpLoadedBackend {
+    void* handle = nullptr;
+    XrdpSubmitBgraFrameFn submitBgraFrameFn = nullptr;
+    std::string libraryPath;
+};
+
 struct XrdpServerState {
     std::mutex mutex;
     XrdpLoadedServer loaded;
+    XrdpLoadedBackend backend;
     std::atomic<bool> running { false };
     std::atomic<int> lastExitCode { 0 };
     std::string lastMessage;
@@ -265,6 +274,22 @@ std::vector<std::string> BuildLibraryCandidates(const XrdpServerParams& params, 
     return candidates;
 }
 
+std::vector<std::string> BuildBackendCandidates(const XrdpServerParams& params, const XrdpResolvedPaths& paths)
+{
+    std::vector<std::string> candidates;
+    AddUnique(candidates, JoinPath(paths.modulePath, kBackendLibraryName));
+    AddUnique(candidates, JoinPath(paths.nativeLibDir, kBackendLibraryName));
+    AddUnique(candidates, JoinPath(JoinPath(paths.runtimeRoot, "lib"), kBackendLibraryName));
+
+    if (!params.hnpRoot.empty()) {
+        AddUnique(candidates, ResolveHnpChild(params.hnpRoot, "lib/libxrdpohos.so"));
+    }
+
+    AddUnique(candidates, "/data/service/hnp/xrdp.org/xrdp_0.1.0/lib/libxrdpohos.so");
+    AddUnique(candidates, kBackendLibraryName);
+    return candidates;
+}
+
 void SetEnvPath(const char* name, const std::string& value, std::vector<std::string>& logs)
 {
     if (value.empty()) {
@@ -337,6 +362,49 @@ bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& p
     return false;
 }
 
+bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
+    XrdpServerCommandResult& result)
+{
+    XrdpServerState& state = ServerState();
+    if (state.backend.handle != nullptr && state.backend.submitBgraFrameFn != nullptr) {
+        result.logs.push_back("xrdp OHOS backend already loaded: " + state.backend.libraryPath);
+        return true;
+    }
+
+    for (const std::string& candidate : BuildBackendCandidates(params, paths)) {
+        if (candidate != kBackendLibraryName && !PathExists(candidate)) {
+            result.logs.push_back("xrdp OHOS backend candidate missing: " + candidate);
+            continue;
+        }
+
+        dlerror();
+        void* handle = dlopen(candidate.c_str(), RTLD_NOW | RTLD_GLOBAL);
+        if (handle == nullptr) {
+            const char* error = dlerror();
+            result.logs.push_back("dlopen backend failed: " + candidate + " error=" +
+                (error == nullptr ? "unknown" : error));
+            continue;
+        }
+
+        auto submitFn = reinterpret_cast<XrdpSubmitBgraFrameFn>(
+            dlsym(handle, "xrdp_ohos_backend_submit_bgra_frame"));
+        if (submitFn == nullptr) {
+            result.logs.push_back("xrdp OHOS backend frame symbol missing in: " + candidate);
+            dlclose(handle);
+            continue;
+        }
+
+        state.backend.handle = handle;
+        state.backend.submitBgraFrameFn = submitFn;
+        state.backend.libraryPath = candidate;
+        result.logs.push_back("xrdp OHOS backend loaded: " + candidate);
+        return true;
+    }
+
+    result.logs.push_back("xrdp OHOS backend was not found");
+    return false;
+}
+
 void FillPathResult(XrdpServerCommandResult& result, const XrdpResolvedPaths& paths)
 {
     result.runtimeRoot = paths.runtimeRoot;
@@ -404,6 +472,9 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             EmitHilogError(result.message);
             return result;
         }
+        if (!LoadBackendLocked(params, paths, result)) {
+            result.logs.push_back("xrdp server can still start, but external frame push is unavailable");
+        }
     }
 
     const uint32_t port = params.port == 0 ? kDefaultPort : params.port;
@@ -440,6 +511,76 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     result.message = "xrdp server start requested on port " + std::to_string(port);
     result.logs.push_back(result.message);
     EmitHilogInfo(result.message);
+    return result;
+}
+
+XrdpServerCommandResult PushXrdpTestFrame(const XrdpServerParams& params, uint32_t width, uint32_t height)
+{
+    XrdpServerCommandResult result;
+    XrdpSubmitBgraFrameFn submitFn = nullptr;
+    std::string backendPath;
+    static std::atomic<uint32_t> sequence { 0 };
+
+    if (width == 0) {
+        width = 960;
+    }
+    if (height == 0) {
+        height = 540;
+    }
+    if (width > 8192 || height > 8192) {
+        result.ok = false;
+        result.state = "Failed";
+        result.message = "xrdp test frame dimensions are out of range";
+        result.logs.push_back("width=" + std::to_string(width) + " height=" + std::to_string(height));
+        return result;
+    }
+
+    const XrdpResolvedPaths paths = ResolvePaths(params);
+    FillPathResult(result, paths);
+
+    {
+        std::lock_guard<std::mutex> lock(ServerState().mutex);
+        if (!LoadBackendLocked(params, paths, result)) {
+            result.ok = false;
+            result.state = "Failed";
+            result.message = "xrdp OHOS backend frame entry is unavailable";
+            EmitHilogError(result.message);
+            return result;
+        }
+        submitFn = ServerState().backend.submitBgraFrameFn;
+        backendPath = ServerState().backend.libraryPath;
+    }
+
+    const uint32_t frameId = sequence.fetch_add(1) + 1;
+    const uint32_t stride = width * 4U;
+    std::vector<uint8_t> bgra(static_cast<size_t>(stride) * static_cast<size_t>(height));
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            const size_t offset = static_cast<size_t>(y) * stride + static_cast<size_t>(x) * 4U;
+            bgra[offset + 0] = static_cast<uint8_t>((x + frameId * 17U) & 0xFFU);
+            bgra[offset + 1] = static_cast<uint8_t>((y + frameId * 29U) & 0xFFU);
+            bgra[offset + 2] = static_cast<uint8_t>(((x ^ y) + frameId * 43U) & 0xFFU);
+            bgra[offset + 3] = 0xFFU;
+        }
+    }
+
+    const int status = submitFn(bgra.data(), static_cast<int>(width), static_cast<int>(height),
+        static_cast<int>(stride));
+    result.ok = status == 0;
+    result.state = result.ok ? "FrameQueued" : "Failed";
+    result.message = result.ok ? "xrdp test BGRA frame queued" :
+        "xrdp test BGRA frame was not accepted";
+    result.logs.push_back("backendPath=" + backendPath);
+    result.logs.push_back("width=" + std::to_string(width) + " height=" + std::to_string(height) +
+        " stride=" + std::to_string(stride) + " status=" + std::to_string(status));
+    if (status == -4) {
+        result.logs.push_back("xrdp backend has no active mstsc session yet");
+    }
+    if (result.ok) {
+        EmitHilogInfo(result.message);
+    } else {
+        EmitHilogError(result.message);
+    }
     return result;
 }
 
