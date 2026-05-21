@@ -47,7 +47,7 @@ struct Index {
   aboutToAppear(): void {
     this.registerNativeCallbacks()
     this.getPermissionManager().ensurePasteboardReadPermission('page appear')
-    this.getPermissionManager().logFullDiskAccessPermission('page appear')
+    this.getPermissionManager().ensureFullDiskAccessPermission('page appear')
     this.getPermissionManager().ensureScreenRecordingPermission('page appear')
     this.ensureXrdpServerStarted('page appear')
   }
