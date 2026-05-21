@@ -131,7 +131,7 @@ SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
     static std::atomic_uint32_t xrdpSkippedLogCount{0};
 
     std::string xrdpMessage;
-    if (QueueXrdpVideoFrame(frame, xrdpMessage)) {
+    if (QueueXrdpRgbaFrame(frame, xrdpMessage)) {
         const uint32_t count = ++xrdpQueuedLogCount;
         if (count <= 3 || count % 60 == 0) {
             EmitNativeLog("xrdp video frame queued from surface render: " + xrdpMessage);

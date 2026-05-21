@@ -36,11 +36,6 @@ struct DirtyFrameStats {
     uint32_t areaPermille = 0;
 };
 
-enum class FramePixelFormat {
-    Rgba,
-    Bgra,
-};
-
 struct RgbaFrame {
     const uint8_t* data = nullptr;
     uint32_t width = 0;
@@ -50,7 +45,6 @@ struct RgbaFrame {
     DirtyFrameStats dirty;
     uint64_t sequence = 0;
     uint64_t dirtySequenceStart = 0;
-    FramePixelFormat pixelFormat = FramePixelFormat::Rgba;
 };
 
 struct RenderStatsSnapshot {

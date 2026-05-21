@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common/bridge_types.h"
+#include "xrdp/xrdp_video_frame.h"
 
 namespace rdp_bridge {
 
@@ -32,6 +33,7 @@ struct XrdpServerCommandResult {
 };
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
-bool QueueXrdpVideoFrame(const RgbaFrame& frame, std::string& message);
+bool QueueXrdpVideoFrame(const XrdpVideoFrame& frame, std::string& message);
+bool QueueXrdpRgbaFrame(const RgbaFrame& frame, std::string& message);
 
 } // namespace rdp_bridge
