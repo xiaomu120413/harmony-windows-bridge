@@ -1,6 +1,7 @@
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
+  ACCESS_USER_FULL_DISK_PERMISSION,
   HILOG_DOMAIN,
   HILOG_TAG,
   MICROPHONE_PERMISSION,
@@ -76,6 +77,11 @@ export class RdpPermissionManager {
       .finally(() => {
         this.pasteboardPermissionInFlight = false
       })
+  }
+
+  logFullDiskAccessPermission(trigger: string): void {
+    const granted = this.hasPermission(ACCESS_USER_FULL_DISK_PERMISSION, 'Full disk access')
+    this.delegate.log(`Full disk access permission ${granted ? 'granted' : 'not granted'}: ${trigger}`)
   }
 
   ensureMicrophonePermission(trigger: string): Promise<boolean> {
