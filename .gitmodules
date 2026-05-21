@@ -4,5 +4,5 @@
 	branch = ohos-port
 [submodule "harmony/third_party/xrdp"]
 	path = harmony/third_party/xrdp
-	url = https://github.com/neutrinolabs/xrdp.git
+	url = https://github.com/xiaomu120413/xrdp.git
 	branch = ohos-port
