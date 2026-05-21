@@ -35,9 +35,9 @@ export class RdpPermissionCallbackDelegate implements RdpPermissionDelegate {
 export class RdpPermissionManager {
   private delegate: RdpPermissionDelegate
   private pasteboardPermissionRequested: boolean = false
-  private pasteboardPermissionInFlight: boolean = false
-  private microphonePermissionInFlight: boolean = false
   private microphonePermissionRequest: Promise<boolean> | null = null
+  private fullDiskAccessPermissionRequested: boolean = false
+  private fullDiskAccessPermissionRequest: Promise<boolean> | null = null
   private screenRecordingPermissionRequested: boolean = false
   private screenRecordingPermissionRequest: Promise<boolean> | null = null
 
@@ -50,7 +50,7 @@ export class RdpPermissionManager {
       this.appendPasteboardPermissionLog(`Pasteboard read permission granted: ${trigger}`)
       return
     }
-    if (this.pasteboardPermissionRequested || this.pasteboardPermissionInFlight) {
+    if (this.pasteboardPermissionRequested) {
       return
     }
 
@@ -61,17 +61,36 @@ export class RdpPermissionManager {
     }
 
     this.pasteboardPermissionRequested = true
-    this.pasteboardPermissionInFlight = true
     this.requestPermissionFromUser(context, READ_PASTEBOARD_PERMISSION, 'Pasteboard read',
       (line: string): void => this.appendPasteboardPermissionLog(line))
-      .finally(() => {
-        this.pasteboardPermissionInFlight = false
-      })
   }
 
-  logFullDiskAccessPermission(trigger: string): void {
-    const granted = this.hasPermission(ACCESS_USER_FULL_DISK_PERMISSION, 'Full disk access')
-    this.delegate.log(`Full disk access permission ${granted ? 'granted' : 'not granted'}: ${trigger}`)
+  ensureFullDiskAccessPermission(trigger: string): Promise<boolean> {
+    if (this.hasPermission(ACCESS_USER_FULL_DISK_PERMISSION, 'Full disk access')) {
+      this.delegate.log(`Full disk access permission granted: ${trigger}`)
+      return Promise.resolve(true)
+    }
+    if (this.fullDiskAccessPermissionRequest !== null) {
+      return this.fullDiskAccessPermissionRequest
+    }
+    if (this.fullDiskAccessPermissionRequested) {
+      this.delegate.log(`Full disk access permission is not granted: ${trigger}`)
+      return Promise.resolve(false)
+    }
+
+    const context = this.delegate.getContext()
+    if (context === null) {
+      this.delegate.log('Full disk access permission request skipped: no UIAbilityContext')
+      return Promise.resolve(false)
+    }
+
+    this.fullDiskAccessPermissionRequested = true
+    this.fullDiskAccessPermissionRequest = this.openPermissionOnSetting(context,
+      ACCESS_USER_FULL_DISK_PERMISSION, 'Full disk access')
+      .finally(() => {
+        this.fullDiskAccessPermissionRequest = null
+      })
+    return this.fullDiskAccessPermissionRequest
   }
 
   ensureMicrophonePermission(trigger: string): Promise<boolean> {
@@ -89,11 +108,9 @@ export class RdpPermissionManager {
       return Promise.resolve(false)
     }
 
-    this.microphonePermissionInFlight = true
     this.microphonePermissionRequest = this.requestPermissionFromUser(context, MICROPHONE_PERMISSION, 'Microphone',
       (line: string): void => this.delegate.log(line))
       .finally(() => {
-        this.microphonePermissionInFlight = false
         this.microphonePermissionRequest = null
       })
     return this.microphonePermissionRequest
@@ -118,19 +135,9 @@ export class RdpPermissionManager {
       return Promise.resolve(false)
     }
 
-    const atManager = abilityAccessCtrl.createAtManager()
     this.screenRecordingPermissionRequested = true
-    this.screenRecordingPermissionRequest = atManager.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION)
-      .then((result: abilityAccessCtrl.SelectedResult) => {
-        const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
-          this.hasPermission(SCREEN_RECORDING_PERMISSION, 'Screen recording')
-        this.delegate.log(`Screen recording setting result: granted=${granted} result=${result}`)
-        return granted
-      })
-      .catch((error: Error) => {
-        this.delegate.log(`Screen recording setting request failed: ${JSON.stringify(error)}`)
-        return false
-      })
+    this.screenRecordingPermissionRequest = this.openPermissionOnSetting(context,
+      SCREEN_RECORDING_PERMISSION, 'Screen recording')
       .finally(() => {
         this.screenRecordingPermissionRequest = null
       })
@@ -156,6 +163,22 @@ export class RdpPermissionManager {
       })
       .catch((error: Error) => {
         log(`${label} permission request failed: ${JSON.stringify(error)}`)
+        return false
+      })
+  }
+
+  private openPermissionOnSetting(context: common.UIAbilityContext, permission: Permissions,
+    label: string): Promise<boolean> {
+    const atManager = abilityAccessCtrl.createAtManager()
+    return atManager.openPermissionOnSetting(context, permission)
+      .then((result: abilityAccessCtrl.SelectedResult) => {
+        const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
+          this.hasPermission(permission, label)
+        this.delegate.log(`${label} setting result: granted=${granted} result=${result}`)
+        return granted
+      })
+      .catch((error: Error) => {
+        this.delegate.log(`${label} setting request failed: ${JSON.stringify(error)}`)
         return false
       })
   }
