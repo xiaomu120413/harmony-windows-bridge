@@ -22,10 +22,27 @@ constexpr const char* kDefaultRuntimeRoot = "/data/storage/el2/base/files/xrdp";
 constexpr const char* kServerLibraryName = "libxrdpserver.so";
 constexpr const char* kBackendLibraryName = "libxrdpohos.so";
 constexpr uint32_t kDefaultPort = 3390;
+constexpr int32_t kXrdpWmMouseMove = 100;
 
 using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
 using XrdpSubmitBgraFrameFn = int (*)(const void*, int, int, int);
+
+struct XrdpOhosInputEvent {
+    int32_t version = 0;
+    int32_t msg = 0;
+    long param1 = 0;
+    long param2 = 0;
+    long param3 = 0;
+    long param4 = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t bpp = 0;
+    int32_t connected = 0;
+};
+
+using XrdpInputEventCallbackFn = void (*)(const XrdpOhosInputEvent*, void*);
+using XrdpSetInputCallbackFn = int (*)(XrdpInputEventCallbackFn, void*);
 
 struct XrdpLoadedServer {
     void* handle = nullptr;
@@ -37,6 +54,7 @@ struct XrdpLoadedServer {
 struct XrdpLoadedBackend {
     void* handle = nullptr;
     XrdpSubmitBgraFrameFn submitBgraFrameFn = nullptr;
+    XrdpSetInputCallbackFn setInputCallbackFn = nullptr;
     std::string libraryPath;
 };
 
@@ -65,6 +83,33 @@ XrdpServerState& ServerState()
 {
     static XrdpServerState state;
     return state;
+}
+
+void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
+{
+    static std::atomic<uint32_t> inputEventCount { 0 };
+
+    if (event == nullptr) {
+        return;
+    }
+
+    const uint32_t count = inputEventCount.fetch_add(1) + 1;
+    const bool sampledMove = event->msg == kXrdpWmMouseMove && (count <= 32 || (count % 256U) == 0U);
+    if (event->msg == kXrdpWmMouseMove && !sampledMove) {
+        return;
+    }
+
+    EmitHilogInfo("xrdp input callback: count=" + std::to_string(count) +
+        " version=" + std::to_string(event->version) +
+        " msg=" + std::to_string(event->msg) +
+        " p=(" + std::to_string(event->param1) +
+        "," + std::to_string(event->param2) +
+        "," + std::to_string(event->param3) +
+        "," + std::to_string(event->param4) +
+        ") desktop=" + std::to_string(event->width) +
+        "x" + std::to_string(event->height) +
+        " bpp=" + std::to_string(event->bpp) +
+        " connected=" + std::to_string(event->connected));
 }
 
 bool IsAbsolutePath(const std::string& value)
@@ -368,6 +413,10 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
     XrdpServerState& state = ServerState();
     if (state.backend.handle != nullptr && state.backend.submitBgraFrameFn != nullptr) {
         result.logs.push_back("xrdp OHOS backend already loaded: " + state.backend.libraryPath);
+        if (state.backend.setInputCallbackFn != nullptr) {
+            const int rc = state.backend.setInputCallbackFn(OnXrdpInputEvent, nullptr);
+            result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
+        }
         return true;
     }
 
@@ -393,11 +442,20 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             dlclose(handle);
             continue;
         }
+        auto setInputCallbackFn = reinterpret_cast<XrdpSetInputCallbackFn>(
+            dlsym(handle, "xrdp_ohos_backend_set_input_callback"));
 
         state.backend.handle = handle;
         state.backend.submitBgraFrameFn = submitFn;
+        state.backend.setInputCallbackFn = setInputCallbackFn;
         state.backend.libraryPath = candidate;
         result.logs.push_back("xrdp OHOS backend loaded: " + candidate);
+        if (setInputCallbackFn != nullptr) {
+            const int rc = setInputCallbackFn(OnXrdpInputEvent, nullptr);
+            result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
+        } else {
+            result.logs.push_back("xrdp OHOS backend input callback symbol missing in: " + candidate);
+        }
         return true;
     }
 
