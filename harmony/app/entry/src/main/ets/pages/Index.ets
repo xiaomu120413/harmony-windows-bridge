@@ -281,7 +281,7 @@ struct Index {
   private buildConnectPage() {
     Scroll() {
       Column() {
-        Text('FreeRDP HarmonyOS')
+        Text('HarmonyOS 和 Windows 互联工具')
           .fontSize(24)
           .fontWeight(FontWeight.Bold)
           .fontColor('#101828')
