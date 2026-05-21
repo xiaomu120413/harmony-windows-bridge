@@ -584,6 +584,7 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
     options.frameRate = 15;
     options.showCursor = false;
     const XrdpDisplayGeometry geometry = QueryXrdpDisplayGeometry();
+    bool restartCapture = false;
 
     {
         std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
@@ -591,6 +592,7 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
         if (state.requested && state.width == width && state.height == height) {
             return;
         }
+        restartCapture = state.requested && (state.width != width || state.height != height);
         const auto now = std::chrono::steady_clock::now();
         if (state.lastFailure != std::chrono::steady_clock::time_point {} &&
             now - state.lastFailure < std::chrono::seconds(3)) {
@@ -604,9 +606,14 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
     EmitHilogInfo("xrdp active mstsc session detected; scheduling screen capture desktop=" +
         std::to_string(width) + "x" + std::to_string(height) + " " +
         FormatXrdpDisplayGeometry(geometry) +
-        " inputMapping=desktop-content-fit-to-display");
+        " inputMapping=desktop-content-fit-to-display" +
+        (restartCapture ? " restartCapture=1" : " restartCapture=0"));
 
-    std::thread([options]() {
+    std::thread([options, restartCapture]() {
+        if (restartCapture) {
+            StopXrdpScreenCapture("xrdp desktop size changed to " +
+                std::to_string(options.width) + "x" + std::to_string(options.height));
+        }
         std::string message;
         if (StartXrdpScreenCapture(options, message)) {
             EmitHilogInfo("xrdp client screen capture active: " + message);

@@ -220,7 +220,7 @@ configure_xrdp() {
       --disable-rdpsndaudin \
       --disable-utmp \
       --disable-smartcard \
-      --disable-rfxcodec \
+      --enable-rfxcodec \
       --with-imlib2=no \
       --with-freetype2=no
   ) 2>&1 | tee "$LOG_DIR/xrdp-configure.log"
@@ -288,6 +288,10 @@ verify_outputs() {
   if is_enabled "$ENABLE_OPENH264"; then
     grep -Eq 'openh264[[:space:]]+yes' "$LOG_DIR/xrdp-configure.log" || {
       printf 'xrdp configure did not enable OpenH264; see %s\n' "$LOG_DIR/xrdp-configure.log" >&2
+      exit 1
+    }
+    grep -Eq 'rfxcodec[[:space:]]+yes' "$LOG_DIR/xrdp-configure.log" || {
+      printf 'xrdp configure did not enable rfxcodec, which gates the GFX/H.264 path; see %s\n' "$LOG_DIR/xrdp-configure.log" >&2
       exit 1
     }
   fi
