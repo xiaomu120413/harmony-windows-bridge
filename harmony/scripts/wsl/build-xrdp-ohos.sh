@@ -19,6 +19,7 @@ OHOS_AUTOTOOLS_HOST="${OHOS_AUTOTOOLS_HOST:-aarch64-unknown-linux-musl}"
 JOBS="${JOBS:-$(nproc)}"
 FORCE_REBUILD="${FORCE_REBUILD:-0}"
 ENABLE_CCACHE="${ENABLE_CCACHE:-auto}"
+ENABLE_OPENH264="${ENABLE_XRDP_OPENH264:-1}"
 CCACHE_PROGRAM="${CCACHE_PROGRAM:-ccache}"
 CCACHE_LAUNCHER=""
 
@@ -168,6 +169,19 @@ configure_xrdp() {
   export NM="$OHOS_LLVM_HOME/bin/llvm-nm"
   export STRIP="$OHOS_LLVM_HOME/bin/llvm-strip"
 
+  local openh264_flag="--disable-openh264"
+  if is_enabled "$ENABLE_OPENH264"; then
+    if ! pkg-config --exists 'openh264 >= 2.0.0'; then
+      printf 'OpenH264 was requested but openh264 >= 2.0.0 was not found under XRDP_DEPS_PREFIX: %s\n' "$XRDP_DEPS_PREFIX" >&2
+      printf 'Build the OHOS dependency sysroot first, or set ENABLE_XRDP_OPENH264=0 to disable H.264.\n' >&2
+      exit 1
+    fi
+    openh264_flag="--enable-openh264"
+    log "xrdp OpenH264 enabled: $(pkg-config --modversion openh264)"
+  else
+    log "xrdp OpenH264 disabled"
+  fi
+
   log "configure xrdp for OHOS"
   (
     cd "$BUILD_DIR"
@@ -200,7 +214,7 @@ configure_xrdp() {
       --disable-ibus \
       --disable-pixman \
       --disable-x264 \
-      --disable-openh264 \
+      "$openh264_flag" \
       --disable-nvenc \
       --disable-accel \
       --disable-rdpsndaudin \
@@ -271,6 +285,12 @@ verify_outputs() {
     printf 'Installed xrdp.ini does not point to libxrdpohos.so: %s\n' "$config" >&2
     exit 1
   }
+  if is_enabled "$ENABLE_OPENH264"; then
+    grep -Eq 'openh264[[:space:]]+yes' "$LOG_DIR/xrdp-configure.log" || {
+      printf 'xrdp configure did not enable OpenH264; see %s\n' "$LOG_DIR/xrdp-configure.log" >&2
+      exit 1
+    }
+  fi
 
   log "xrdp OHOS outputs"
   file "$server" || true

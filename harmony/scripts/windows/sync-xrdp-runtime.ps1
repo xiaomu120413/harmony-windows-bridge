@@ -43,6 +43,17 @@ function Copy-LibraryAliases([string]$SourceDir, [string]$RealName, [string[]]$A
   }
 }
 
+function Get-OpenH264RealName([string]$SourceDir) {
+  $candidate = Get-ChildItem -LiteralPath $SourceDir -File -Filter "libopenh264.so*" |
+    Where-Object { $_.Length -gt 0 } |
+    Sort-Object Name -Descending |
+    Select-Object -First 1
+  if ($null -eq $candidate) {
+    throw "Missing OpenH264 runtime library in dependency sysroot: $SourceDir"
+  }
+  $candidate.Name
+}
+
 if (-not (Test-Path -LiteralPath $xrdpExecutable)) {
   throw "Missing xrdp executable: $xrdpExecutable"
 }
@@ -95,6 +106,8 @@ function Copy-RawLibraryAliases([string]$SourceDir, [string]$RealName, [string[]
   }
 }
 
+$openH264RealName = Get-OpenH264RealName $depsLibSource
+
 Copy-LibraryAliases $xrdpLibSource "libcommon.so.0.0.0" @("libcommon.so.0", "libcommon.so")
 Copy-LibraryAliases $xrdpLibSource "libipm.so.0.0.0" @("libipm.so.0", "libipm.so")
 Copy-LibraryAliases $xrdpLibSource "libtoml.so.1.0.0" @("libtoml.so.1", "libtoml.so")
@@ -105,6 +118,7 @@ Copy-Item -LiteralPath $embeddedServer -Destination (Join-Path $targetLib "libxr
 Copy-LibraryAliases $depsLibSource "libssl.so.3" @("libssl.so")
 Copy-LibraryAliases $depsLibSource "libcrypto.so.3" @("libcrypto.so")
 Copy-LibraryAliases $depsLibSource "libz.so.1.3.1" @("libz.so.1", "libz.so")
+Copy-LibraryAliases $depsLibSource $openH264RealName @("libopenh264.so.7", "libopenh264.so")
 
 Copy-RawLibraryAliases $xrdpLibSource "libcommon.so.0.0.0" @("libcommon.so.0", "libcommon.so")
 Copy-RawLibraryAliases $xrdpLibSource "libipm.so.0.0.0" @("libipm.so.0", "libipm.so")
@@ -115,6 +129,7 @@ Copy-Item -LiteralPath $embeddedServer -Destination (Join-Path $targetRawLib "li
 Copy-RawLibraryAliases $depsLibSource "libssl.so.3" @("libssl.so")
 Copy-RawLibraryAliases $depsLibSource "libcrypto.so.3" @("libcrypto.so")
 Copy-RawLibraryAliases $depsLibSource "libz.so.1.3.1" @("libz.so.1", "libz.so")
+Copy-RawLibraryAliases $depsLibSource $openH264RealName @("libopenh264.so.7", "libopenh264.so")
 
 Copy-Item -LiteralPath $xrdpExecutable -Destination (Join-Path $targetBin "xrdp") -Force
 Copy-Item -LiteralPath $xrdpExecutable -Destination (Join-Path $targetNativeBin "xrdp") -Force
@@ -137,7 +152,8 @@ $requiredLibs = @(
   "libxrdpohos.so",
   "libxrdpserver.so",
   "libssl.so.3",
-  "libcrypto.so.3"
+  "libcrypto.so.3",
+  "libopenh264.so.7"
 )
 
 foreach ($name in $requiredLibs) {
@@ -154,6 +170,7 @@ $requiredRawFiles = @(
   (Join-Path $targetRawLib "libxrdp.so.0"),
   (Join-Path $targetRawLib "libcommon.so.0"),
   (Join-Path $targetRawLib "libssl.so.3"),
+  (Join-Path $targetRawLib "libopenh264.so.7"),
   (Join-Path $targetConfig "xrdp.ini"),
   (Join-Path $targetConfig "rsakeys.ini"),
   (Join-Path $targetConfig "km-00000409.toml"),
