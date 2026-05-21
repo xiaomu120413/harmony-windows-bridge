@@ -513,3 +513,21 @@ xrdp session summary:
 
 每笔提交都应能独立构建、独立 review，避免一笔提交同时做目录迁移、行为改动和
 日志策略调整。
+
+## 13. 2026-05-21 Phase 1 执行记录
+
+已完成 display geometry 和输入注入下沉的第一步：
+
+- `ohos_display_geometry.c` 已进入 `third_party/xrdp/ohos`，app 侧 `xrdp_display_geometry.cpp` 只保留薄封装。
+- 新增 `ohos_input_auth.c`、`ohos_input_keymap.c`、`ohos_input_mouse.c`、`ohos_input.c`、`ohos_input.h`，分别承载注入授权、键盘映射、鼠标坐标/事件映射、注入状态和对外入口。
+- `ohos.c` 在收到 xrdp 输入事件后直接调用 native input 模块，并在 session summary 中输出 native input 摘要。
+- `xrdp_ohos.h` 新增 `XRDP_OHOS_FEATURE_DIRECT_INPUT`，app bridge 发现该 feature 后跳过旧的 input callback 注册；旧 `xrdp_input_injector.cpp` 先保留为旧 backend fallback，Phase 4 再移除。
+- xrdp backend 新增 `multimodalinput/oh_input_manager.h` / `oh_key_code.h` configure 检查，并链接 `-lohinput`。
+
+本轮验证：
+
+- `wsl bash harmony/scripts/wsl/build-xrdp-ohos.sh` 通过。
+- `cmd /c build_hap.bat` 在 `harmony/app` 下通过，输出 `entry-default-signed.hap`。
+- 已安装到设备 `3QC0124C11000711` 并启动 `com.huawei.freerdp/EntryAbility`。
+- `Test-NetConnection 127.0.0.1 -Port 13390` 通过，设备侧 `3390` 处于 LISTEN。
+- Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp.ohos.input: mouse inject ... rc=0`，说明输入已经走 xrdp native 侧注入路径。
