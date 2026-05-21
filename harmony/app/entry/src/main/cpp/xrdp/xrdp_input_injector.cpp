@@ -87,6 +87,7 @@ std::atomic<bool> g_authorizationRequested { false };
 std::atomic<uint32_t> g_authorizationLogCount { 0 };
 std::mutex g_authorizationMutex;
 std::chrono::steady_clock::time_point g_lastAuthorizationRequest;
+std::atomic<int64_t> g_lastMouseActionTime { 0 };
 
 struct MouseCoordinates {
     int32_t displayId = 0;
@@ -121,6 +122,18 @@ int64_t NowMs()
 {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+}
+
+int64_t NextMouseActionTime()
+{
+    const int64_t now = NowMs();
+    int64_t previous = g_lastMouseActionTime.load();
+    while (true) {
+        const int64_t next = now > previous ? now : previous + 1;
+        if (g_lastMouseActionTime.compare_exchange_weak(previous, next)) {
+            return next;
+        }
+    }
 }
 
 int32_t ClampToRange(long value, int32_t minValue, int32_t maxValue)
@@ -509,6 +522,7 @@ bool IsInputEvent(const XrdpOhosInputEvent& event)
 struct MouseDispatch {
     bool supported = false;
     bool wheel = false;
+    bool moveBeforeButton = false;
     int32_t action = MOUSE_ACTION_MOVE;
     int32_t button = MOUSE_BUTTON_NONE;
     int32_t axisType = MOUSE_AXIS_SCROLL_VERTICAL;
@@ -549,56 +563,66 @@ MouseDispatch MapMouseEvent(const XrdpOhosInputEvent& event)
             dispatch.action = MOUSE_ACTION_MOVE;
             break;
         case kXrdpWmLeftButtonDown:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_DOWN;
             dispatch.button = MOUSE_BUTTON_LEFT;
             dispatch.buttonMask = kMouseButtonLeftMask;
             dispatch.buttonDown = true;
             break;
         case kXrdpWmLeftButtonUp:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_UP;
             dispatch.button = MOUSE_BUTTON_LEFT;
             dispatch.buttonMask = kMouseButtonLeftMask;
             break;
         case kXrdpWmRightButtonDown:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_DOWN;
             dispatch.button = MOUSE_BUTTON_RIGHT;
             dispatch.buttonMask = kMouseButtonRightMask;
             dispatch.buttonDown = true;
             break;
         case kXrdpWmRightButtonUp:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_UP;
             dispatch.button = MOUSE_BUTTON_RIGHT;
             dispatch.buttonMask = kMouseButtonRightMask;
             break;
         case kXrdpWmMiddleButtonDown:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_DOWN;
             dispatch.button = MOUSE_BUTTON_MIDDLE;
             dispatch.buttonMask = kMouseButtonMiddleMask;
             dispatch.buttonDown = true;
             break;
         case kXrdpWmMiddleButtonUp:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_UP;
             dispatch.button = MOUSE_BUTTON_MIDDLE;
             dispatch.buttonMask = kMouseButtonMiddleMask;
             break;
         case kXrdpWmXButton1Down:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_DOWN;
             dispatch.button = MOUSE_BUTTON_BACK;
             dispatch.buttonMask = kMouseButtonBackMask;
             dispatch.buttonDown = true;
             break;
         case kXrdpWmXButton1Up:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_UP;
             dispatch.button = MOUSE_BUTTON_BACK;
             dispatch.buttonMask = kMouseButtonBackMask;
             break;
         case kXrdpWmXButton2Down:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_DOWN;
             dispatch.button = MOUSE_BUTTON_FORWARD;
             dispatch.buttonMask = kMouseButtonForwardMask;
             dispatch.buttonDown = true;
             break;
         case kXrdpWmXButton2Up:
+            dispatch.moveBeforeButton = true;
             dispatch.action = MOUSE_ACTION_BUTTON_UP;
             dispatch.button = MOUSE_BUTTON_FORWARD;
             dispatch.buttonMask = kMouseButtonForwardMask;
@@ -677,7 +701,9 @@ int32_t InjectMouseEventOnce(const MouseDispatch& dispatch, const MouseCoordinat
     OH_Input_SetMouseEventGlobalX(mouseEvent, coordinates.globalX);
     OH_Input_SetMouseEventGlobalY(mouseEvent, coordinates.globalY);
     OH_Input_SetMouseEventButton(mouseEvent, dispatch.button);
-    OH_Input_SetMouseEventActionTime(mouseEvent, NowMs());
+    const bool orderedButtonSequence = dispatch.moveBeforeButton ||
+        action == MOUSE_ACTION_BUTTON_DOWN || action == MOUSE_ACTION_BUTTON_UP;
+    OH_Input_SetMouseEventActionTime(mouseEvent, orderedButtonSequence ? NextMouseActionTime() : NowMs());
     if (dispatch.wheel) {
         OH_Input_SetMouseEventAxisType(mouseEvent, dispatch.axisType);
         OH_Input_SetMouseEventAxisValue(mouseEvent, axisValue);
@@ -691,13 +717,21 @@ int32_t InjectMouseEventOnce(const MouseDispatch& dispatch, const MouseCoordinat
 bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& dispatch,
     const MouseCoordinates& coordinates, std::string& message)
 {
+    int32_t moveRc = INPUT_SUCCESS;
+    if (dispatch.moveBeforeButton) {
+        MouseDispatch moveDispatch = dispatch;
+        moveDispatch.action = MOUSE_ACTION_MOVE;
+        moveDispatch.button = dispatch.buttonDown ? MOUSE_BUTTON_NONE : dispatch.button;
+        moveDispatch.wheel = false;
+        moveRc = InjectMouseEventOnce(moveDispatch, coordinates, MOUSE_ACTION_MOVE, 0.0F, message);
+    }
     int32_t beginRc = INPUT_SUCCESS;
-    if (dispatch.beginAxisBeforeUpdate) {
+    if (moveRc == INPUT_SUCCESS && dispatch.beginAxisBeforeUpdate) {
         beginRc = InjectMouseEventOnce(dispatch, coordinates, MOUSE_ACTION_AXIS_BEGIN, 0.0F, message);
     }
-    const int32_t rc = beginRc == INPUT_SUCCESS ?
+    const int32_t rc = moveRc == INPUT_SUCCESS && beginRc == INPUT_SUCCESS ?
         InjectMouseEventOnce(dispatch, coordinates, dispatch.action, dispatch.axisValue, message) :
-        beginRc;
+        (moveRc != INPUT_SUCCESS ? moveRc : beginRc);
     int32_t endRc = INPUT_SUCCESS;
     if (rc == INPUT_SUCCESS && dispatch.endAxisAfterUpdate) {
         endRc = InjectMouseEventOnce(dispatch, coordinates, MOUSE_ACTION_AXIS_END, 0.0F, message);
@@ -739,12 +773,16 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
             message += " endRc=" + std::to_string(endRc);
         }
     }
+    if (dispatch.moveBeforeButton) {
+        message += " moveRc=" + std::to_string(moveRc);
+    }
     message += " rc=" + std::to_string(rc);
-    if (beginRc == INPUT_PERMISSION_DENIED || rc == INPUT_PERMISSION_DENIED || endRc == INPUT_PERMISSION_DENIED) {
+    if (moveRc == INPUT_PERMISSION_DENIED || beginRc == INPUT_PERMISSION_DENIED ||
+        rc == INPUT_PERMISSION_DENIED || endRc == INPUT_PERMISSION_DENIED) {
         g_authorizedStatus.store(UNAUTHORIZED);
         g_authorizationRequested.store(false);
     }
-    return beginRc == INPUT_SUCCESS && rc == INPUT_SUCCESS && endRc == INPUT_SUCCESS;
+    return moveRc == INPUT_SUCCESS && beginRc == INPUT_SUCCESS && rc == INPUT_SUCCESS && endRc == INPUT_SUCCESS;
 }
 
 bool InjectKeyEvent(const XrdpOhosInputEvent& event, int32_t keyCode, std::string& message)
@@ -1008,6 +1046,7 @@ private:
             if (!dispatch.supported) {
                 return;
             }
+            const uint32_t pressedBefore = pressedButtons_;
             if (IsMouseMove(event) && dispatch.button == MOUSE_BUTTON_NONE) {
                 dispatch.button = ActiveMouseButtonFromMask(pressedButtons_ & kMouseButtonMaskAll);
             }
@@ -1021,6 +1060,10 @@ private:
                 } else {
                     pressedButtons_ &= ~dispatch.buttonMask;
                 }
+            }
+            if (dispatch.buttonMask != 0U) {
+                message += " pressedBefore=" + std::to_string(pressedBefore) +
+                    " pressedAfter=" + std::to_string(pressedButtons_);
             }
             important = event.msg != kXrdpWmMouseMove;
         }
