@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
@@ -39,6 +40,7 @@ using XrdpStopFn = int (*)(void);
 using XrdpSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
 using XrdpSubmitEncodedFrameFn = int (*)(const xrdp_ohos_encoded_frame*);
 using XrdpSubmitAudioFrameFn = int (*)(const xrdp_ohos_audio_frame*);
+using XrdpGetAbiInfoFn = int (*)(xrdp_ohos_abi_info*);
 using XrdpSetInputCallbackFn = int (*)(xrdp_ohos_input_event_fn, void*);
 using XrdpSetBackendEventCallbackFn = int (*)(xrdp_ohos_backend_event_fn, void*);
 
@@ -161,11 +163,14 @@ struct XrdpLoadedServer {
 
 struct XrdpLoadedBackend {
     void* handle = nullptr;
+    XrdpGetAbiInfoFn getAbiInfoFn = nullptr;
     XrdpSubmitFrameFn submitFrameFn = nullptr;
     XrdpSubmitEncodedFrameFn submitEncodedFrameFn = nullptr;
     XrdpSubmitAudioFrameFn submitAudioFrameFn = nullptr;
     XrdpSetInputCallbackFn setInputCallbackFn = nullptr;
     XrdpSetBackendEventCallbackFn setEventCallbackFn = nullptr;
+    xrdp_ohos_abi_info abiInfo {};
+    bool abiInfoValid = false;
     std::string libraryPath;
 };
 
@@ -616,6 +621,23 @@ XrdpClientCaptureState& ClientCaptureState()
 }
 
 std::atomic<bool> g_xrdpInputAuthorizationPrimed { false };
+std::atomic<uint64_t> g_xrdpEncodedBackpressureCount { 0 };
+
+std::string HexFlags(uint32_t flags)
+{
+    std::ostringstream stream;
+    stream << "0x" << std::hex << flags;
+    return stream.str();
+}
+
+std::string FormatBackendAbi(const xrdp_ohos_abi_info& info)
+{
+    return "api=" + std::to_string(info.api_version) +
+        " mod=" + std::to_string(info.mod_version) +
+        " inputEvent=" + std::to_string(info.input_event_version) +
+        " backendEvent=" + std::to_string(info.backend_event_version) +
+        " features=" + HexFlags(info.feature_flags);
+}
 
 void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
 {
@@ -634,6 +656,7 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
     diagnostics.logs.push_back("xrdp lastDisconnectReason=" + diagnostics.lastDisconnectReason);
     diagnostics.logs.push_back("xrdp counters backendEvents=" + std::to_string(diagnostics.backendEventCount) +
         " inputEvents=" + std::to_string(diagnostics.inputEventCount) +
+        " encodedBackpressure=" + std::to_string(g_xrdpEncodedBackpressureCount.load()) +
         " lastExitCode=" + std::to_string(diagnostics.lastExitCode));
     diagnostics.logs.push_back("xrdp capture running=" + std::string(capture.running ? "true" : "false") +
         " target=" + std::to_string(capture.width) + "x" + std::to_string(capture.height) +
@@ -1223,6 +1246,11 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
     XrdpServerState& state = ServerState();
     if (state.backend.handle != nullptr && state.backend.submitFrameFn != nullptr) {
         result.logs.push_back("xrdp OHOS backend already loaded: " + state.backend.libraryPath);
+        if (state.backend.abiInfoValid) {
+            result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(state.backend.abiInfo));
+        } else {
+            result.logs.push_back("xrdp OHOS backend ABI unavailable");
+        }
         result.logs.push_back(std::string("xrdp OHOS backend audio callback ") +
             (state.backend.submitAudioFrameFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS backend encoded frame callback ") +
@@ -1262,6 +1290,8 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         }
         auto setInputCallbackFn = reinterpret_cast<XrdpSetInputCallbackFn>(
             dlsym(handle, "xrdp_ohos_backend_set_input_callback"));
+        auto getAbiInfoFn = reinterpret_cast<XrdpGetAbiInfoFn>(
+            dlsym(handle, "xrdp_ohos_backend_get_abi_info"));
         auto setEventCallbackFn = reinterpret_cast<XrdpSetBackendEventCallbackFn>(
             dlsym(handle, "xrdp_ohos_backend_set_event_callback"));
         auto submitAudioFn = reinterpret_cast<XrdpSubmitAudioFrameFn>(
@@ -1269,14 +1299,39 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         auto submitEncodedFn = reinterpret_cast<XrdpSubmitEncodedFrameFn>(
             dlsym(handle, "xrdp_ohos_backend_submit_encoded_frame"));
 
+        xrdp_ohos_abi_info abiInfo {};
+        bool abiInfoValid = false;
+        if (getAbiInfoFn != nullptr) {
+            abiInfo.size = sizeof(abiInfo);
+            const int abiRc = getAbiInfoFn(&abiInfo);
+            if (abiRc != XRDP_OHOS_BACKEND_STATUS_OK ||
+                abiInfo.api_version != XRDP_OHOS_API_VERSION ||
+                abiInfo.mod_version != XRDP_OHOS_MOD_VERSION) {
+                result.logs.push_back("xrdp OHOS backend ABI mismatch in: " + candidate +
+                    " rc=" + std::to_string(abiRc) +
+                    " " + FormatBackendAbi(abiInfo));
+                dlclose(handle);
+                continue;
+            }
+            abiInfoValid = true;
+        }
+
         state.backend.handle = handle;
+        state.backend.getAbiInfoFn = getAbiInfoFn;
         state.backend.submitFrameFn = submitFn;
         state.backend.submitEncodedFrameFn = submitEncodedFn;
         state.backend.submitAudioFrameFn = submitAudioFn;
         state.backend.setInputCallbackFn = setInputCallbackFn;
         state.backend.setEventCallbackFn = setEventCallbackFn;
+        state.backend.abiInfo = abiInfo;
+        state.backend.abiInfoValid = abiInfoValid;
         state.backend.libraryPath = candidate;
         result.logs.push_back("xrdp OHOS backend loaded: " + candidate);
+        if (abiInfoValid) {
+            result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(abiInfo));
+        } else {
+            result.logs.push_back("xrdp OHOS backend ABI symbol missing in: " + candidate);
+        }
         if (submitAudioFn != nullptr) {
             result.logs.push_back("xrdp OHOS backend audio callback loaded");
         } else {
@@ -1484,6 +1539,14 @@ bool QueueXrdpEncodedVideoFrame(const xrdp_ohos_encoded_frame& frame, std::strin
 
     const int status = submitFn(&frame);
     if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
+        if (status == XRDP_OHOS_BACKEND_STATUS_BACKPRESSURE) {
+            const uint64_t count = g_xrdpEncodedBackpressureCount.fetch_add(1) + 1;
+            message = "xrdp encoded video backpressure count=" + std::to_string(count);
+            if (count <= 3 || (count % 60U) == 0U) {
+                EmitHilogInfo(message);
+            }
+            return false;
+        }
         message = "xrdp encoded video submit status=" + std::to_string(status);
         return false;
     }
