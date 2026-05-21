@@ -79,6 +79,8 @@ constexpr uint32_t kMouseButtonMiddleMask = 1U << 1U;
 constexpr uint32_t kMouseButtonRightMask = 1U << 2U;
 constexpr uint32_t kMouseButtonForwardMask = 1U << 3U;
 constexpr uint32_t kMouseButtonBackMask = 1U << 4U;
+constexpr uint32_t kMouseButtonMaskAll = kMouseButtonLeftMask | kMouseButtonMiddleMask |
+    kMouseButtonRightMask | kMouseButtonForwardMask | kMouseButtonBackMask;
 
 std::atomic<Input_InjectionStatus> g_authorizedStatus { UNAUTHORIZED };
 std::atomic<bool> g_authorizationRequested { false };
@@ -489,6 +491,11 @@ bool IsMouseMove(const XrdpOhosInputEvent& event)
     return event.msg == kXrdpWmMouseMove;
 }
 
+bool IsMouseButtonEvent(const XrdpOhosInputEvent& event)
+{
+    return event.msg >= kXrdpWmLeftButtonUp && event.msg <= kXrdpWmXButton2Down;
+}
+
 bool IsInputEvent(const XrdpOhosInputEvent& event)
 {
     if (event.msg == kXrdpEventSessionConnect || event.msg == kXrdpEventSessionDisconnect) {
@@ -511,6 +518,26 @@ struct MouseDispatch {
     uint32_t buttonMask = 0;
     bool buttonDown = false;
 };
+
+int32_t ActiveMouseButtonFromMask(uint32_t mask)
+{
+    if ((mask & kMouseButtonLeftMask) != 0U) {
+        return MOUSE_BUTTON_LEFT;
+    }
+    if ((mask & kMouseButtonMiddleMask) != 0U) {
+        return MOUSE_BUTTON_MIDDLE;
+    }
+    if ((mask & kMouseButtonRightMask) != 0U) {
+        return MOUSE_BUTTON_RIGHT;
+    }
+    if ((mask & kMouseButtonForwardMask) != 0U) {
+        return MOUSE_BUTTON_FORWARD;
+    }
+    if ((mask & kMouseButtonBackMask) != 0U) {
+        return MOUSE_BUTTON_BACK;
+    }
+    return MOUSE_BUTTON_NONE;
+}
 
 MouseDispatch MapMouseEvent(const XrdpOhosInputEvent& event)
 {
@@ -579,25 +606,25 @@ MouseDispatch MapMouseEvent(const XrdpOhosInputEvent& event)
         case kXrdpWmWheelUpUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_VERTICAL;
-            dispatch.axisValue = static_cast<float>(kWheelStep);
+            dispatch.axisValue = -static_cast<float>(kWheelStep);
             dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmWheelDownUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_VERTICAL;
-            dispatch.axisValue = -static_cast<float>(kWheelStep);
+            dispatch.axisValue = static_cast<float>(kWheelStep);
             dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmHWheelLeftUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_HORIZONTAL;
-            dispatch.axisValue = -static_cast<float>(kWheelStep);
+            dispatch.axisValue = static_cast<float>(kWheelStep);
             dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmHWheelRightUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_HORIZONTAL;
-            dispatch.axisValue = static_cast<float>(kWheelStep);
+            dispatch.axisValue = -static_cast<float>(kWheelStep);
             dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmTouchVScroll:
@@ -777,6 +804,9 @@ public:
             condition_.notify_one();
             return true;
         }
+        if (IsMouseButtonEvent(event)) {
+            DropTrailingMoveLocked();
+        }
         if (queue_.size() >= kMaxInputQueue) {
             if (IsMouseMove(event)) {
                 message = "xrdp input queue full; mouse move dropped";
@@ -830,6 +860,13 @@ private:
                 dropped_.fetch_add(1U);
                 return;
             }
+        }
+    }
+
+    void DropTrailingMoveLocked()
+    {
+        if (!queue_.empty() && IsMouseMove(queue_.back())) {
+            queue_.pop_back();
         }
     }
 
@@ -970,6 +1007,9 @@ private:
             MouseDispatch dispatch = MapMouseEvent(event);
             if (!dispatch.supported) {
                 return;
+            }
+            if (IsMouseMove(event) && dispatch.button == MOUSE_BUTTON_NONE) {
+                dispatch.button = ActiveMouseButtonFromMask(pressedButtons_ & kMouseButtonMaskAll);
             }
             const MouseCoordinates coordinates = ResolveMouseCoordinates(event);
             lastMouseX_ = coordinates.displayX;
