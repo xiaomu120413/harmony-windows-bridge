@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
+. (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1")
 $source = Resolve-Path (Join-Path $repoRoot $SourceRoot)
 $deps = Resolve-Path (Join-Path $repoRoot $DepsRoot)
 $targetHnpRoot = Join-Path $repoRoot $TargetHnpRoot
@@ -97,6 +98,7 @@ Copy-LibraryAliases $depsLibSource "libz.so.1.3.1" @("libz.so.1", "libz.so") $st
 Get-ChildItem -LiteralPath $configSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $stageConfig -Force
 }
+Copy-XrdpRuntimeConfigExtras -RepoRoot $repoRoot -DestinationDir $stageConfig
 Get-ChildItem -LiteralPath $shareSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $stageShare -Force
 }
@@ -139,6 +141,8 @@ $requiredHnpStageFiles = @(
   (Join-Path $stageLib "libcommon.so.0"),
   (Join-Path $stageLib "libssl.so.3"),
   (Join-Path $stageConfig "xrdp.ini"),
+  (Join-Path $stageConfig "rsakeys.ini"),
+  (Join-Path $stageConfig "km-00000409.toml"),
   (Join-Path $stageConfig "xrdp_keyboard.toml"),
   (Join-Path $stageShare "sans-10.fv1")
 )
