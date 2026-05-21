@@ -531,3 +531,18 @@ xrdp session summary:
 - 已安装到设备 `3QC0124C11000711` 并启动 `com.huawei.freerdp/EntryAbility`。
 - `Test-NetConnection 127.0.0.1 -Port 13390` 通过，设备侧 `3390` 处于 LISTEN。
 - Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp.ohos.input: mouse inject ... rc=0`，说明输入已经走 xrdp native 侧注入路径。
+
+## 14. 2026-05-21 Phase 2 执行记录
+
+已完成 audio pump 核心实现下沉的第一步：
+
+- 新增 `ohos_audio_capture_bridge.cpp` / `.h` 到 `third_party/xrdp/ohos`，承载 playback audio capture 配置、audio-ready worker、buffer acquire/release、采样日志和统计。
+- app 侧 `xrdp_audio_capture_bridge.cpp` 缩减为薄包装，只负责把 `xrdp_ohos_audio_frame` 提交到现有 backend ABI。
+- 当前 audio capture 的生命周期仍由 app 侧 screen/H264 capture 对象触发；等 screen/H264 capture 下沉后，再把 start/stop policy 完整移入 xrdp backend。
+
+本轮验证：
+
+- `cmd /c build_hap.bat` 在 `harmony/app` 下通过。
+- 已安装到设备 `3QC0124C11000711` 并启动 `com.huawei.freerdp/EntryAbility`。
+- Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp audio capture pump started label=surface-h264`、`xrdp audio capture queued ...`、`xrdp.ohos.rdpsnd: sent wave chunk ...`、`wave confirm ...`。
+- 连接初期在 rdpsnd channel ready 之前有少量 `status=-4` not queued 日志，随后 client format/training 完成并正常发送音频；该行为符合当前生命周期边界，后续 screen/H264 下沉时可进一步延后 pump start。
