@@ -105,11 +105,6 @@ struct MouseCoordinates {
     int32_t contentWidth = 0;
     int32_t contentHeight = 0;
     bool scaled = false;
-    bool availableValid = false;
-    int32_t availableLeft = 0;
-    int32_t availableTop = 0;
-    uint32_t availableWidth = 0;
-    uint32_t availableHeight = 0;
     bool virtualPixelRatioValid = false;
     float virtualPixelRatio = 0.0F;
 };
@@ -223,11 +218,6 @@ XrdpDisplayGeometry GetDisplayGeometry()
         (!previous.valid || previous.displayId != g_displayGeometry.displayId ||
             previous.width != g_displayGeometry.width || previous.height != g_displayGeometry.height ||
             previous.originX != g_displayGeometry.originX || previous.originY != g_displayGeometry.originY ||
-            previous.availableValid != g_displayGeometry.availableValid ||
-            previous.availableLeft != g_displayGeometry.availableLeft ||
-            previous.availableTop != g_displayGeometry.availableTop ||
-            previous.availableWidth != g_displayGeometry.availableWidth ||
-            previous.availableHeight != g_displayGeometry.availableHeight ||
             previous.virtualPixelRatioValid != g_displayGeometry.virtualPixelRatioValid ||
             previous.virtualPixelRatio != g_displayGeometry.virtualPixelRatio ||
             previous.sourceModeValid != g_displayGeometry.sourceModeValid ||
@@ -262,6 +252,12 @@ MouseCoordinates ResolveMouseCoordinates(const XrdpOhosInputEvent& event)
         coordinates.displayX = ScaleCoordinate(event.param1, sourceWidth, geometry.width);
         coordinates.displayY = ScaleCoordinate(event.param2, sourceHeight, geometry.height);
     }
+    if (geometry.height > 1 && coordinates.displayY == 0) {
+        coordinates.displayY = 1;
+    }
+    if (geometry.width > 1 && coordinates.displayX == 0) {
+        coordinates.displayX = 1;
+    }
     coordinates.globalX = geometry.originX + coordinates.displayX;
     coordinates.globalY = geometry.originY + coordinates.displayY;
     coordinates.sourceWidth = sourceWidth;
@@ -269,11 +265,6 @@ MouseCoordinates ResolveMouseCoordinates(const XrdpOhosInputEvent& event)
     coordinates.targetWidth = geometry.width;
     coordinates.targetHeight = geometry.height;
     coordinates.scaled = sourceWidth != geometry.width || sourceHeight != geometry.height;
-    coordinates.availableValid = geometry.availableValid;
-    coordinates.availableLeft = geometry.availableLeft;
-    coordinates.availableTop = geometry.availableTop;
-    coordinates.availableWidth = geometry.availableWidth;
-    coordinates.availableHeight = geometry.availableHeight;
     coordinates.virtualPixelRatioValid = geometry.virtualPixelRatioValid;
     coordinates.virtualPixelRatio = geometry.virtualPixelRatio;
     return coordinates;
@@ -547,6 +538,24 @@ int32_t ActiveMouseButtonFromMask(uint32_t mask)
     return MOUSE_BUTTON_NONE;
 }
 
+int32_t MouseButtonUpMessageFromMask(uint32_t mask)
+{
+    switch (mask) {
+        case kMouseButtonLeftMask:
+            return kXrdpWmLeftButtonUp;
+        case kMouseButtonMiddleMask:
+            return kXrdpWmMiddleButtonUp;
+        case kMouseButtonRightMask:
+            return kXrdpWmRightButtonUp;
+        case kMouseButtonForwardMask:
+            return kXrdpWmXButton2Up;
+        case kMouseButtonBackMask:
+            return kXrdpWmXButton1Up;
+        default:
+            return kXrdpWmLeftButtonUp;
+    }
+}
+
 MouseDispatch MapMouseEvent(const XrdpOhosInputEvent& event)
 {
     MouseDispatch dispatch;
@@ -706,8 +715,7 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
         beginRc = InjectMouseEventOnce(dispatch, coordinates, MOUSE_ACTION_AXIS_BEGIN, 0.0F, message);
     }
     const int32_t rc = beginRc == INPUT_SUCCESS ?
-        InjectMouseEventOnce(dispatch, coordinates, dispatch.action, dispatch.axisValue, message) :
-        beginRc;
+        InjectMouseEventOnce(dispatch, coordinates, dispatch.action, dispatch.axisValue, message) : beginRc;
     int32_t endRc = INPUT_SUCCESS;
     if (rc == INPUT_SUCCESS && dispatch.endAxisAfterUpdate) {
         endRc = InjectMouseEventOnce(dispatch, coordinates, MOUSE_ACTION_AXIS_END, 0.0F, message);
@@ -730,12 +738,6 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
             "," + std::to_string(coordinates.contentWidth) +
             "," + std::to_string(coordinates.contentHeight) + ")";
     }
-    if (coordinates.availableValid) {
-        message += " available=(" + std::to_string(coordinates.availableLeft) +
-            "," + std::to_string(coordinates.availableTop) +
-            "," + std::to_string(coordinates.availableWidth) +
-            "," + std::to_string(coordinates.availableHeight) + ")";
-    }
     if (coordinates.virtualPixelRatioValid) {
         message += " vpr=" + std::to_string(coordinates.virtualPixelRatio);
     }
@@ -750,7 +752,8 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
         }
     }
     message += " rc=" + std::to_string(rc);
-    if (beginRc == INPUT_PERMISSION_DENIED || rc == INPUT_PERMISSION_DENIED || endRc == INPUT_PERMISSION_DENIED) {
+    if (beginRc == INPUT_PERMISSION_DENIED || rc == INPUT_PERMISSION_DENIED ||
+        endRc == INPUT_PERMISSION_DENIED) {
         g_authorizedStatus.store(UNAUTHORIZED);
         g_authorizationRequested.store(false);
     }
@@ -967,7 +970,7 @@ private:
             return;
         }
         XrdpOhosInputEvent event;
-        event.msg = kXrdpWmLeftButtonUp;
+        event.msg = MouseButtonUpMessageFromMask(mask);
         event.param1 = lastMouseX_;
         event.param2 = lastMouseY_;
         MouseDispatch dispatch;

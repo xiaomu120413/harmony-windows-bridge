@@ -12,11 +12,6 @@ struct XrdpDisplayGeometry {
     int32_t height = 0;
     int32_t originX = 0;
     int32_t originY = 0;
-    bool availableValid = false;
-    int32_t availableLeft = 0;
-    int32_t availableTop = 0;
-    uint32_t availableWidth = 0;
-    uint32_t availableHeight = 0;
     bool virtualPixelRatioValid = false;
     float virtualPixelRatio = 0.0F;
     bool refreshRateValid = false;

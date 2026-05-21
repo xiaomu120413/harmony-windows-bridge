@@ -51,17 +51,6 @@ XrdpDisplayGeometry QueryXrdpDisplayGeometry()
         geometry.sourceMode = static_cast<int32_t>(sourceMode);
     }
 
-    NativeDisplayManager_Rect* availableArea = nullptr;
-    if (OH_NativeDisplayManager_CreateAvailableArea(displayId, &availableArea) == DISPLAY_MANAGER_OK &&
-        availableArea != nullptr) {
-        geometry.availableValid = true;
-        geometry.availableLeft = availableArea->left;
-        geometry.availableTop = availableArea->top;
-        geometry.availableWidth = availableArea->width;
-        geometry.availableHeight = availableArea->height;
-        OH_NativeDisplayManager_DestroyAvailableArea(availableArea);
-    }
-
     return geometry;
 }
 
@@ -75,10 +64,6 @@ std::string FormatXrdpDisplayGeometry(const XrdpDisplayGeometry& geometry)
     stream << "display id=" << geometry.displayId <<
         " size=" << geometry.width << "x" << geometry.height <<
         " origin=(" << geometry.originX << "," << geometry.originY << ")";
-    if (geometry.availableValid) {
-        stream << " available=(" << geometry.availableLeft << "," << geometry.availableTop <<
-            "," << geometry.availableWidth << "," << geometry.availableHeight << ")";
-    }
     if (geometry.virtualPixelRatioValid) {
         stream << " vpr=" << std::fixed << std::setprecision(3) << geometry.virtualPixelRatio;
     }
