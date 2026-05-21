@@ -65,7 +65,12 @@ add_library(entry SHARED
     surface/surface_bridge.cpp
     common/string_utils.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_audio_capture_bridge.cpp
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_common.cpp
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_h264.cpp
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_h264_encoder.cpp
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_raw.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_display_geometry.c
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_h264_payload.cpp
     xrdp/xrdp_audio_capture_bridge.cpp
     xrdp/xrdp_display_geometry.cpp
     xrdp/xrdp_input_injector.cpp
