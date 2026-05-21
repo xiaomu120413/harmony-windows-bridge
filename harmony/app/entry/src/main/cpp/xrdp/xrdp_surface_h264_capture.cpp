@@ -29,6 +29,7 @@ namespace {
 constexpr uint32_t kMaxCaptureDimension = 8192;
 constexpr uint32_t kDefaultCaptureFrameRate = 15;
 constexpr int32_t kDefaultBitrate = 20000000;
+constexpr int32_t kDefaultIFrameInterval = 1000;
 constexpr int64_t kOutputTimeoutUs = 8000;
 
 uint64_t NowUs()
@@ -329,6 +330,7 @@ public:
             return false;
         }
 
+        RequestKeyFrameForCodec(codec_, "start");
         message = "xrdp surface H264 capture started " + DescribeOptions(options);
         EmitHilogInfo(message);
         return true;
@@ -455,7 +457,7 @@ private:
         OH_AVFormat_SetDoubleValue(format, OH_MD_KEY_FRAME_RATE, static_cast<double>(options.frameRate));
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENCODE_BITRATE_MODE, BITRATE_MODE_CBR);
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_PROFILE, AVC_PROFILE_BASELINE);
-        OH_AVFormat_SetIntValue(format, OH_MD_KEY_I_FRAME_INTERVAL, 1000);
+        OH_AVFormat_SetIntValue(format, OH_MD_KEY_I_FRAME_INTERVAL, kDefaultIFrameInterval);
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_ENABLE_SYNC_MODE, 1);
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENABLE_LOW_LATENCY, 1);
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENCODER_ENABLE_B_FRAME, 0);
@@ -699,6 +701,8 @@ private:
         frame.width = static_cast<int>(target.width);
         frame.height = static_cast<int>(target.height);
         frame.format = XRDP_OHOS_ENCODED_FRAME_FORMAT_H264_AVC420;
+        frame.flags = (attr.flags & AVCODEC_BUFFER_FLAGS_SYNC_FRAME) != 0 ?
+            XRDP_OHOS_ENCODED_FRAME_FLAG_SYNC : 0U;
         frame.source_sequence = sequence;
         frame.capture_timestamp_us = captureUs;
         frame.capture_acquire_us = captureUs;
@@ -722,12 +726,48 @@ private:
 
         if (message != "xrdp server is not running") {
             const uint64_t dropped = droppedCount_.fetch_add(1) + 1;
+            if (message == "xrdp encoded video submit status=-6") {
+                RequestKeyFrame("xrdp h264 backpressure");
+            }
             if (dropped <= 5 || (dropped % 120U) == 0U) {
                 EmitHilogInfo("xrdp surface H264 frame not queued: " + message +
                     " bytes=" + std::to_string(payload.size()) +
                     " dropped=" + std::to_string(dropped));
             }
         }
+    }
+
+    void RequestKeyFrame(const char* reason)
+    {
+        OH_AVCodec* codec = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            codec = codec_;
+        }
+        RequestKeyFrameForCodec(codec, reason);
+    }
+
+    static void RequestKeyFrameForCodec(OH_AVCodec* codec, const char* reason)
+    {
+        if (codec == nullptr) {
+            return;
+        }
+
+        OH_AVFormat* format = OH_AVFormat_Create();
+        if (format == nullptr) {
+            return;
+        }
+        OH_AVFormat_SetIntValue(format, OH_MD_KEY_REQUEST_I_FRAME, 1);
+        const OH_AVErrCode rc = OH_VideoEncoder_SetParameter(codec, format);
+        OH_AVFormat_Destroy(format);
+        if (rc != AV_ERR_OK) {
+            EmitHilogError("xrdp surface H264 request key frame failed reason=" +
+                std::string(reason == nullptr ? "unknown" : reason) +
+                " rc=" + AvErrToString(rc));
+            return;
+        }
+        EmitHilogInfo("xrdp surface H264 requested key frame reason=" +
+            std::string(reason == nullptr ? "unknown" : reason));
     }
 
     static void Cleanup(OH_AVCodec* codec, OHNativeWindow* surface, OH_AVScreenCapture* capture,
