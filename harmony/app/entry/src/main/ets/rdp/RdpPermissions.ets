@@ -62,18 +62,8 @@ export class RdpPermissionManager {
 
     this.pasteboardPermissionRequested = true
     this.pasteboardPermissionInFlight = true
-    const atManager = abilityAccessCtrl.createAtManager()
-    atManager.requestPermissionsFromUser(context, [READ_PASTEBOARD_PERMISSION])
-      .then((result) => {
-        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
-          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
-        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
-          this.hasPermission(READ_PASTEBOARD_PERMISSION, 'Pasteboard')
-        this.appendPasteboardPermissionLog(`Pasteboard read permission request result: granted=${granted} auth=${authResult}`)
-      })
-      .catch((error: Error) => {
-        this.appendPasteboardPermissionLog(`Pasteboard read permission request failed: ${JSON.stringify(error)}`)
-      })
+    this.requestPermissionFromUser(context, READ_PASTEBOARD_PERMISSION, 'Pasteboard read',
+      (line: string): void => this.appendPasteboardPermissionLog(line))
       .finally(() => {
         this.pasteboardPermissionInFlight = false
       })
@@ -100,20 +90,8 @@ export class RdpPermissionManager {
     }
 
     this.microphonePermissionInFlight = true
-    const atManager = abilityAccessCtrl.createAtManager()
-    this.microphonePermissionRequest = atManager.requestPermissionsFromUser(context, [MICROPHONE_PERMISSION])
-      .then((result) => {
-        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
-          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
-        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
-          this.hasPermission(MICROPHONE_PERMISSION, 'Microphone')
-        this.delegate.log(`Microphone permission request result: granted=${granted} auth=${authResult}`)
-        return granted
-      })
-      .catch((error: Error) => {
-        this.delegate.log(`Microphone permission request failed: ${JSON.stringify(error)}`)
-        return false
-      })
+    this.microphonePermissionRequest = this.requestPermissionFromUser(context, MICROPHONE_PERMISSION, 'Microphone',
+      (line: string): void => this.delegate.log(line))
       .finally(() => {
         this.microphonePermissionInFlight = false
         this.microphonePermissionRequest = null
@@ -162,6 +140,24 @@ export class RdpPermissionManager {
   private appendPasteboardPermissionLog(line: string): void {
     this.delegate.log(line)
     hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
+  }
+
+  private requestPermissionFromUser(context: common.UIAbilityContext, permission: Permissions, label: string,
+    log: (line: string) => void): Promise<boolean> {
+    const atManager = abilityAccessCtrl.createAtManager()
+    return atManager.requestPermissionsFromUser(context, [permission])
+      .then((result) => {
+        const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
+          result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
+        const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
+          this.hasPermission(permission, label)
+        log(`${label} permission request result: granted=${granted} auth=${authResult}`)
+        return granted
+      })
+      .catch((error: Error) => {
+        log(`${label} permission request failed: ${JSON.stringify(error)}`)
+        return false
+      })
   }
 
   private getSelfAccessTokenId(): number {
