@@ -19,6 +19,7 @@ struct Index {
   @State private showSession: boolean = false
   private connected: boolean = false
   private callbacksRegistered: boolean = false
+  private xrdpServerStartRequested: boolean = false
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
 
@@ -41,6 +42,8 @@ struct Index {
   aboutToAppear(): void {
     this.registerNativeCallbacks()
     this.getPermissionManager().ensurePasteboardReadPermission('page appear')
+    this.getPermissionManager().ensureScreenRecordingPermission('page appear')
+    this.ensureXrdpServerStarted('page appear')
   }
 
   aboutToDisappear(): void {
@@ -236,49 +239,21 @@ struct Index {
     }
   }
 
-  private probeXrdpNative(): void {
-    try {
-      const result: NativeXrdpServerResult = rdpNative.probeXrdpServer(this.xrdpParams())
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-    } catch (error) {
-      this.appendLog(`xrdp probe failed: ${JSON.stringify(error)}`)
+  private ensureXrdpServerStarted(trigger: string): void {
+    if (this.xrdpServerStartRequested) {
+      return
     }
-  }
-
-  private startXrdpNative(): void {
+    this.xrdpServerStartRequested = true
     try {
-      const result: NativeXrdpServerResult = rdpNative.startXrdpServer(this.xrdpParams())
-      this.appendLog(result.message)
+      const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams())
+      this.appendLog(`${result.message}: ${trigger}`)
       this.appendNativeLogs(result.logs)
+      if (!result.ok) {
+        this.xrdpServerStartRequested = false
+      }
     } catch (error) {
-      this.appendLog(`xrdp start failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private stopXrdpNative(): void {
-    try {
-      const result: NativeXrdpServerResult = rdpNative.stopXrdpServer()
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-    } catch (error) {
-      this.appendLog(`xrdp stop failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private pushXrdpTestFrame(): void {
-    try {
-      const params = this.xrdpParams()
-      const result: NativeXrdpServerResult = rdpNative.pushXrdpTestFrame({
-        appFilesDir: params.appFilesDir,
-        port: params.port,
-        width: 960,
-        height: 540
-      })
-      this.appendLog(result.message)
-      this.appendNativeLogs(result.logs)
-    } catch (error) {
-      this.appendLog(`xrdp frame push failed: ${JSON.stringify(error)}`)
+      this.xrdpServerStartRequested = false
+      this.appendLog(`xrdp ensure start failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -326,50 +301,6 @@ struct Index {
           .fontColor(Color.White)
           .onClick(() => {
             this.connectNative()
-          })
-
-        Row() {
-          Button('Probe xrdp')
-            .height(40)
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor('#E8EEF7')
-            .fontColor('#1D2433')
-            .onClick(() => {
-              this.probeXrdpNative()
-            })
-          Button('Start xrdp')
-            .height(40)
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor('#0A84FF')
-            .fontColor(Color.White)
-            .onClick(() => {
-              this.startXrdpNative()
-            })
-          Button('Stop xrdp')
-            .height(40)
-            .layoutWeight(1)
-            .fontSize(13)
-            .backgroundColor('#E8EEF7')
-            .fontColor('#1D2433')
-            .onClick(() => {
-              this.stopXrdpNative()
-            })
-        }
-        .height(42)
-        .width('100%')
-        .margin({ top: 12 })
-
-        Button('Push xrdp frame')
-          .height(40)
-          .width('100%')
-          .fontSize(13)
-          .backgroundColor('#E8EEF7')
-          .fontColor('#1D2433')
-          .margin({ top: 8 })
-          .onClick(() => {
-            this.pushXrdpTestFrame()
           })
       }
       .padding(20)

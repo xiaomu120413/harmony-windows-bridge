@@ -356,47 +356,10 @@ napi_value Disconnect(napi_env env, napi_callback_info info)
     return result;
 }
 
-napi_value ProbeXrdpServer(napi_env env, napi_callback_info info)
-{
-    const XrdpServerParams params = ReadXrdpServerParams(env, info);
-    return MakeXrdpServerResult(env, rdp_bridge::ProbeXrdpServer(params));
-}
-
-napi_value StartXrdpServer(napi_env env, napi_callback_info info)
+napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
 {
     const XrdpServerParams params = ReadXrdpServerParams(env, info);
     return MakeXrdpServerResult(env, rdp_bridge::StartXrdpServer(params));
-}
-
-napi_value StopXrdpServer(napi_env env, napi_callback_info info)
-{
-    (void)info;
-    return MakeXrdpServerResult(env, rdp_bridge::StopXrdpServer());
-}
-
-napi_value PushXrdpTestFrame(napi_env env, napi_callback_info info)
-{
-    const XrdpServerParams params = ReadXrdpServerParams(env, info);
-    napi_value arg = GetFirstArgument(env, info);
-    napi_valuetype type = napi_undefined;
-    uint32_t width = 0;
-    uint32_t height = 0;
-
-    if (arg != nullptr) {
-        napi_typeof(env, arg, &type);
-    }
-    if (arg != nullptr && type == napi_object) {
-        width = GetUint32Property(env, arg, "width", 0);
-        height = GetUint32Property(env, arg, "height", 0);
-        if (width == 0) {
-            width = ParseUint32String(GetStringProperty(env, arg, "width"), 0);
-        }
-        if (height == 0) {
-            height = ParseUint32String(GetStringProperty(env, arg, "height"), 0);
-        }
-    }
-
-    return MakeXrdpServerResult(env, rdp_bridge::PushXrdpTestFrame(params, width, height));
 }
 
 napi_value SendPointer(napi_env env, napi_callback_info info)
@@ -756,10 +719,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"probeXrdpServer", nullptr, ProbeXrdpServer, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"startXrdpServer", nullptr, StartXrdpServer, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"stopXrdpServer", nullptr, StopXrdpServer, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"pushXrdpTestFrame", nullptr, PushXrdpTestFrame, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointerEvent", nullptr, SendPointerEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},

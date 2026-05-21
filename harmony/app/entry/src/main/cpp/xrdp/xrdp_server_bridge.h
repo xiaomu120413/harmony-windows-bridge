@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "common/bridge_types.h"
+
 namespace rdp_bridge {
 
 struct XrdpServerParams {
@@ -29,9 +31,7 @@ struct XrdpServerCommandResult {
     std::string modulePath;
 };
 
-XrdpServerCommandResult ProbeXrdpServer(const XrdpServerParams& params);
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
-XrdpServerCommandResult StopXrdpServer();
-XrdpServerCommandResult PushXrdpTestFrame(const XrdpServerParams& params, uint32_t width, uint32_t height);
+bool QueueXrdpVideoFrame(const RgbaFrame& frame, std::string& message);
 
 } // namespace rdp_bridge

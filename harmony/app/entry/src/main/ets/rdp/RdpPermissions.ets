@@ -4,7 +4,8 @@ import {
   HILOG_DOMAIN,
   HILOG_TAG,
   MICROPHONE_PERMISSION,
-  READ_PASTEBOARD_PERMISSION
+  READ_PASTEBOARD_PERMISSION,
+  SCREEN_RECORDING_PERMISSION
 } from './RdpConstants'
 
 export interface RdpPermissionDelegate {
@@ -36,6 +37,8 @@ export class RdpPermissionManager {
   private pasteboardPermissionInFlight: boolean = false
   private microphonePermissionInFlight: boolean = false
   private microphonePermissionRequest: Promise<boolean> | null = null
+  private screenRecordingPermissionRequested: boolean = false
+  private screenRecordingPermissionRequest: Promise<boolean> | null = null
 
   constructor(delegate: RdpPermissionDelegate) {
     this.delegate = delegate
@@ -110,6 +113,44 @@ export class RdpPermissionManager {
         this.microphonePermissionRequest = null
       })
     return this.microphonePermissionRequest
+  }
+
+  ensureScreenRecordingPermission(trigger: string): Promise<boolean> {
+    if (this.hasPermission(SCREEN_RECORDING_PERMISSION, 'Screen recording')) {
+      this.delegate.log(`Screen recording permission granted: ${trigger}`)
+      return Promise.resolve(true)
+    }
+    if (this.screenRecordingPermissionRequest !== null) {
+      return this.screenRecordingPermissionRequest
+    }
+    if (this.screenRecordingPermissionRequested) {
+      this.delegate.log(`Screen recording permission is not granted: ${trigger}`)
+      return Promise.resolve(false)
+    }
+
+    const context = this.delegate.getContext()
+    if (context === null) {
+      this.delegate.log('Screen recording permission request skipped: no UIAbilityContext')
+      return Promise.resolve(false)
+    }
+
+    const atManager = abilityAccessCtrl.createAtManager()
+    this.screenRecordingPermissionRequested = true
+    this.screenRecordingPermissionRequest = atManager.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION)
+      .then((result: abilityAccessCtrl.SelectedResult) => {
+        const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
+          this.hasPermission(SCREEN_RECORDING_PERMISSION, 'Screen recording')
+        this.delegate.log(`Screen recording setting result: granted=${granted} result=${result}`)
+        return granted
+      })
+      .catch((error: Error) => {
+        this.delegate.log(`Screen recording setting request failed: ${JSON.stringify(error)}`)
+        return false
+      })
+      .finally(() => {
+        this.screenRecordingPermissionRequest = null
+      })
+    return this.screenRecordingPermissionRequest
   }
 
   private appendPasteboardPermissionLog(line: string): void {

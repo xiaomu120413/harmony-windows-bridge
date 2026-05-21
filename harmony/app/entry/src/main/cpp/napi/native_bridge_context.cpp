@@ -7,6 +7,7 @@
 #include "common/string_utils.h"
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
+#include "xrdp/xrdp_server_bridge.h"
 
 #include <atomic>
 #include <cstdint>
@@ -126,6 +127,22 @@ ResizeCoordinator g_resizeCoordinator;
 
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
+    static std::atomic_uint32_t xrdpQueuedLogCount{0};
+    static std::atomic_uint32_t xrdpSkippedLogCount{0};
+
+    std::string xrdpMessage;
+    if (QueueXrdpVideoFrame(frame, xrdpMessage)) {
+        const uint32_t count = ++xrdpQueuedLogCount;
+        if (count <= 3 || count % 60 == 0) {
+            EmitNativeLog("xrdp video frame queued from surface render: " + xrdpMessage);
+        }
+    } else if (!xrdpMessage.empty() && xrdpMessage != "xrdp server is not running") {
+        const uint32_t count = ++xrdpSkippedLogCount;
+        if (count <= 3 || count % 120 == 0) {
+            EmitNativeLog("xrdp video frame skipped from surface render: " + xrdpMessage +
+                " count=" + std::to_string(count));
+        }
+    }
     return g_surface.RenderRgbaFrame(frame);
 }
 

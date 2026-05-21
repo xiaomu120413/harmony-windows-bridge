@@ -1,17 +1,22 @@
 #include "xrdp/xrdp_server_bridge.h"
 
 #include "common/bridge_log.h"
+#include "xrdp/xrdp_screen_capture_bridge.h"
 
 #include <atomic>
 #include <cerrno>
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
 #include <dlfcn.h>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
+#include <utility>
 #include <unistd.h>
 #include <vector>
 
@@ -79,10 +84,311 @@ struct XrdpResolvedPaths {
     std::string logPath;
 };
 
+class XrdpVideoFrameSubmitter {
+public:
+    bool Enqueue(const RgbaFrame& frame, XrdpSubmitBgraFrameFn submitFn, std::string& message)
+    {
+        if (submitFn == nullptr) {
+            message = "xrdp video backend is not loaded";
+            return false;
+        }
+
+        const int32_t sourceStride = frame.strideBytes > 0 ? frame.strideBytes :
+            static_cast<int32_t>(frame.width * 4U);
+        if (frame.data == nullptr || frame.width == 0 || frame.height == 0 ||
+            frame.width > kMaxFrameDimension || frame.height > kMaxFrameDimension ||
+            sourceStride < static_cast<int32_t>(frame.width * 4U)) {
+            message = "invalid xrdp video frame";
+            return false;
+        }
+
+        const size_t rowBytes = static_cast<size_t>(frame.width) * 4U;
+        if (frame.height > std::numeric_limits<size_t>::max() / rowBytes) {
+            message = "xrdp video frame is too large";
+            return false;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (lastStatus_ == -4 && lastStatusAt_ != std::chrono::steady_clock::time_point {} &&
+                now - lastStatusAt_ < std::chrono::milliseconds(500)) {
+                const uint64_t dropped = ++backoffDropCount_;
+                message = "xrdp video backoff: no active mstsc session dropped=" + std::to_string(dropped);
+                return false;
+            }
+        }
+
+        const size_t frameBytes = rowBytes * static_cast<size_t>(frame.height);
+        PendingFrame next;
+        next.width = frame.width;
+        next.height = frame.height;
+        next.submitFn = submitFn;
+        next.label = frame.label.empty() ? "rgba frame" : frame.label;
+        next.rgba.resize(frameBytes);
+
+        const auto copyStart = std::chrono::steady_clock::now();
+        for (uint32_t y = 0; y < frame.height; ++y) {
+            const auto* source = frame.data + static_cast<size_t>(y) * static_cast<size_t>(sourceStride);
+            auto* target = next.rgba.data() + static_cast<size_t>(y) * rowBytes;
+            std::memcpy(target, source, rowBytes);
+        }
+        const auto copyEnd = std::chrono::steady_clock::now();
+        next.copyUs = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(copyEnd - copyStart).count());
+
+        uint64_t queued = 0;
+        uint64_t replaced = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            StartLocked();
+            next.sequence = ++sequence_;
+            if (hasPending_) {
+                ++replacedCount_;
+            }
+            pending_ = std::move(next);
+            hasPending_ = true;
+            queued = ++queuedCount_;
+            replaced = replacedCount_;
+        }
+        condition_.notify_one();
+
+        message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+            " xrdp-video queued copy=" + std::to_string(next.copyUs / 1000.0) +
+            "ms queued=" + std::to_string(queued) +
+            " replaced=" + std::to_string(replaced);
+        return true;
+    }
+
+    void Stop(const std::string& reason)
+    {
+        std::thread worker;
+        bool shouldLog = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!running_ && !worker_.joinable()) {
+                return;
+            }
+            running_ = false;
+            hasPending_ = false;
+            pending_ = PendingFrame {};
+            worker = std::move(worker_);
+            shouldLog = true;
+        }
+        condition_.notify_one();
+        if (worker.joinable()) {
+            worker.join();
+        }
+        if (shouldLog) {
+            EmitHilogInfo("xrdp video submitter stopped after " + reason);
+        }
+    }
+
+private:
+    static constexpr uint32_t kMaxFrameDimension = 8192;
+
+    struct PendingFrame {
+        std::vector<uint8_t> rgba;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        uint32_t copyUs = 0;
+        uint64_t sequence = 0;
+        std::string label;
+        XrdpSubmitBgraFrameFn submitFn = nullptr;
+    };
+
+    void StartLocked()
+    {
+        if (running_) {
+            return;
+        }
+
+        running_ = true;
+        worker_ = std::thread([this]() { WorkerLoop(); });
+        EmitHilogInfo("xrdp video submitter started");
+    }
+
+    static bool ConvertRgbaToBgra(const PendingFrame& frame, std::vector<uint8_t>& bgra)
+    {
+        const size_t rowBytes = static_cast<size_t>(frame.width) * 4U;
+        const size_t frameBytes = rowBytes * static_cast<size_t>(frame.height);
+        if (frame.rgba.size() != frameBytes || frame.width == 0 || frame.height == 0) {
+            return false;
+        }
+
+        bgra.resize(frameBytes);
+        for (uint32_t y = 0; y < frame.height; ++y) {
+            const uint8_t* source = frame.rgba.data() + static_cast<size_t>(y) * rowBytes;
+            uint8_t* target = bgra.data() + static_cast<size_t>(y) * rowBytes;
+            for (uint32_t x = 0; x < frame.width; ++x) {
+                const size_t offset = static_cast<size_t>(x) * 4U;
+                target[offset + 0] = source[offset + 2];
+                target[offset + 1] = source[offset + 1];
+                target[offset + 2] = source[offset + 0];
+                target[offset + 3] = source[offset + 3];
+            }
+        }
+        return true;
+    }
+
+    void WorkerLoop()
+    {
+        for (;;) {
+            PendingFrame frame;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                condition_.wait(lock, [this]() { return !running_ || hasPending_; });
+                if (!running_ && !hasPending_) {
+                    return;
+                }
+                frame = std::move(pending_);
+                hasPending_ = false;
+            }
+
+            std::vector<uint8_t> bgra;
+            const auto convertStart = std::chrono::steady_clock::now();
+            const bool converted = ConvertRgbaToBgra(frame, bgra);
+            const auto convertEnd = std::chrono::steady_clock::now();
+            const uint32_t convertUs = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(convertEnd - convertStart).count());
+            const int status = converted && frame.submitFn != nullptr ?
+                frame.submitFn(bgra.data(), static_cast<int>(frame.width), static_cast<int>(frame.height),
+                    static_cast<int>(frame.width * 4U)) :
+                -1;
+
+            uint64_t submitted = 0;
+            uint64_t failed = 0;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                lastStatus_ = status;
+                lastStatusAt_ = std::chrono::steady_clock::now();
+                if (status == 0) {
+                    submitted = ++submittedCount_;
+                } else {
+                    failed = ++failedCount_;
+                }
+            }
+
+            if (status == 0) {
+                if (submitted <= 3 || (submitted % 60U) == 0U) {
+                    EmitHilogInfo("xrdp video frame submitted: seq=" + std::to_string(frame.sequence) +
+                        " size=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+                        " copy=" + std::to_string(frame.copyUs / 1000.0) +
+                        "ms convert=" + std::to_string(convertUs / 1000.0) +
+                        "ms count=" + std::to_string(submitted) +
+                        " label=" + frame.label);
+                }
+            } else if (status == -4) {
+                if (failed <= 3 || (failed % 120U) == 0U) {
+                    EmitHilogInfo("xrdp video frame skipped: no active mstsc session status=-4 count=" +
+                        std::to_string(failed));
+                }
+            } else if (failed <= 3 || (failed % 120U) == 0U) {
+                EmitHilogError("xrdp video frame submit failed: status=" + std::to_string(status) +
+                    " size=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
+                    " count=" + std::to_string(failed));
+            }
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::thread worker_;
+    PendingFrame pending_;
+    bool running_ = false;
+    bool hasPending_ = false;
+    uint64_t sequence_ = 0;
+    uint64_t queuedCount_ = 0;
+    uint64_t replacedCount_ = 0;
+    uint64_t submittedCount_ = 0;
+    uint64_t failedCount_ = 0;
+    uint64_t backoffDropCount_ = 0;
+    int lastStatus_ = 0;
+    std::chrono::steady_clock::time_point lastStatusAt_;
+};
+
 XrdpServerState& ServerState()
 {
     static XrdpServerState state;
     return state;
+}
+
+XrdpVideoFrameSubmitter& VideoSubmitter()
+{
+    static XrdpVideoFrameSubmitter submitter;
+    return submitter;
+}
+
+struct XrdpClientCaptureState {
+    std::mutex mutex;
+    bool requested = false;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::chrono::steady_clock::time_point lastFailure;
+};
+
+XrdpClientCaptureState& ClientCaptureState()
+{
+    static XrdpClientCaptureState state;
+    return state;
+}
+
+void ResetXrdpClientCaptureState(const std::string& reason)
+{
+    {
+        std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
+        ClientCaptureState().requested = false;
+        ClientCaptureState().width = 0;
+        ClientCaptureState().height = 0;
+    }
+    StopXrdpScreenCapture(reason);
+}
+
+void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
+{
+    if (width == 0 || height == 0 || width > 8192 || height > 8192) {
+        return;
+    }
+
+    XrdpScreenCaptureOptions options {};
+    options.width = width;
+    options.height = height;
+    options.frameRate = 15;
+    options.showCursor = true;
+
+    {
+        std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
+        XrdpClientCaptureState& state = ClientCaptureState();
+        if (state.requested && state.width == width && state.height == height) {
+            return;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (state.lastFailure != std::chrono::steady_clock::time_point {} &&
+            now - state.lastFailure < std::chrono::seconds(3)) {
+            return;
+        }
+        state.requested = true;
+        state.width = width;
+        state.height = height;
+    }
+
+    EmitHilogInfo("xrdp active mstsc session detected; scheduling screen capture " +
+        std::to_string(width) + "x" + std::to_string(height));
+
+    std::thread([options]() {
+        std::string message;
+        if (StartXrdpScreenCapture(options, message)) {
+            EmitHilogInfo("xrdp client screen capture active: " + message);
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
+            ClientCaptureState().requested = false;
+            ClientCaptureState().lastFailure = std::chrono::steady_clock::now();
+        }
+        EmitHilogError("xrdp client screen capture failed: " + message);
+    }).detach();
 }
 
 void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
@@ -110,6 +416,19 @@ void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
         "x" + std::to_string(event->height) +
         " bpp=" + std::to_string(event->bpp) +
         " connected=" + std::to_string(event->connected));
+
+    if (event->width > 0 && event->height > 0) {
+        UpdateXrdpScreenCaptureTarget(static_cast<uint32_t>(event->width),
+            static_cast<uint32_t>(event->height));
+    }
+    if (event->connected == 0) {
+        ResetXrdpClientCaptureState("xrdp client disconnected");
+        return;
+    }
+    if (event->width > 0 && event->height > 0) {
+        StartXrdpCaptureForClient(static_cast<uint32_t>(event->width),
+            static_cast<uint32_t>(event->height));
+    }
 }
 
 bool IsAbsolutePath(const std::string& value)
@@ -477,19 +796,6 @@ void FillPathResult(XrdpServerCommandResult& result, const XrdpResolvedPaths& pa
 
 } // namespace
 
-XrdpServerCommandResult ProbeXrdpServer(const XrdpServerParams& params)
-{
-    XrdpServerCommandResult result;
-    const XrdpResolvedPaths paths = ResolvePaths(params);
-    FillPathResult(result, paths);
-
-    std::lock_guard<std::mutex> lock(ServerState().mutex);
-    result.ok = LoadServerLocked(params, paths, result);
-    result.state = result.ok ? (ServerState().running.load() ? "Listening" : "Ready") : "Failed";
-    result.message = result.ok ? "xrdp embedded server is available" : "xrdp embedded server is not available";
-    return result;
-}
-
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
 {
     XrdpServerCommandResult result;
@@ -561,6 +867,8 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         threadState.lastExitCode.store(code);
         threadState.running.store(false);
         threadState.lastMessage = "xrdp server exited with code " + std::to_string(code);
+        ResetXrdpClientCaptureState("xrdp server exit");
+        VideoSubmitter().Stop("xrdp server exit");
         EmitHilogInfo(threadState.lastMessage);
     }).detach();
 
@@ -568,106 +876,26 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     result.state = "Listening";
     result.message = "xrdp server start requested on port " + std::to_string(port);
     result.logs.push_back(result.message);
+    result.logs.push_back("xrdp raw screen capture waits for an active mstsc session");
     EmitHilogInfo(result.message);
     return result;
 }
 
-XrdpServerCommandResult PushXrdpTestFrame(const XrdpServerParams& params, uint32_t width, uint32_t height)
+bool QueueXrdpVideoFrame(const RgbaFrame& frame, std::string& message)
 {
-    XrdpServerCommandResult result;
     XrdpSubmitBgraFrameFn submitFn = nullptr;
-    std::string backendPath;
-    static std::atomic<uint32_t> sequence { 0 };
-
-    if (width == 0) {
-        width = 960;
-    }
-    if (height == 0) {
-        height = 540;
-    }
-    if (width > 8192 || height > 8192) {
-        result.ok = false;
-        result.state = "Failed";
-        result.message = "xrdp test frame dimensions are out of range";
-        result.logs.push_back("width=" + std::to_string(width) + " height=" + std::to_string(height));
-        return result;
-    }
-
-    const XrdpResolvedPaths paths = ResolvePaths(params);
-    FillPathResult(result, paths);
 
     {
         std::lock_guard<std::mutex> lock(ServerState().mutex);
-        if (!LoadBackendLocked(params, paths, result)) {
-            result.ok = false;
-            result.state = "Failed";
-            result.message = "xrdp OHOS backend frame entry is unavailable";
-            EmitHilogError(result.message);
-            return result;
+        XrdpServerState& state = ServerState();
+        if (!state.running.load()) {
+            message = "xrdp server is not running";
+            return false;
         }
-        submitFn = ServerState().backend.submitBgraFrameFn;
-        backendPath = ServerState().backend.libraryPath;
+        submitFn = state.backend.submitBgraFrameFn;
     }
 
-    const uint32_t frameId = sequence.fetch_add(1) + 1;
-    const uint32_t stride = width * 4U;
-    std::vector<uint8_t> bgra(static_cast<size_t>(stride) * static_cast<size_t>(height));
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
-            const size_t offset = static_cast<size_t>(y) * stride + static_cast<size_t>(x) * 4U;
-            bgra[offset + 0] = static_cast<uint8_t>((x + frameId * 17U) & 0xFFU);
-            bgra[offset + 1] = static_cast<uint8_t>((y + frameId * 29U) & 0xFFU);
-            bgra[offset + 2] = static_cast<uint8_t>(((x ^ y) + frameId * 43U) & 0xFFU);
-            bgra[offset + 3] = 0xFFU;
-        }
-    }
-
-    const int status = submitFn(bgra.data(), static_cast<int>(width), static_cast<int>(height),
-        static_cast<int>(stride));
-    result.ok = status == 0;
-    result.state = result.ok ? "FrameQueued" : "Failed";
-    result.message = result.ok ? "xrdp test BGRA frame queued" :
-        "xrdp test BGRA frame was not accepted";
-    result.logs.push_back("backendPath=" + backendPath);
-    result.logs.push_back("width=" + std::to_string(width) + " height=" + std::to_string(height) +
-        " stride=" + std::to_string(stride) + " status=" + std::to_string(status));
-    if (status == -4) {
-        result.logs.push_back("xrdp backend has no active mstsc session yet");
-    }
-    if (result.ok) {
-        EmitHilogInfo(result.message);
-    } else {
-        EmitHilogError(result.message);
-    }
-    return result;
-}
-
-XrdpServerCommandResult StopXrdpServer()
-{
-    XrdpServerCommandResult result;
-    XrdpServerState& state = ServerState();
-
-    std::lock_guard<std::mutex> lock(state.mutex);
-    if (state.loaded.stopFn == nullptr) {
-        result.ok = !state.running.load();
-        result.state = "Idle";
-        result.message = "xrdp server library is not loaded";
-        result.logs.push_back(result.message);
-        return result;
-    }
-
-    const int status = state.loaded.stopFn();
-    result.ok = status == 0;
-    result.state = state.running.load() ? "Stopping" : "Idle";
-    result.message = result.ok ? "xrdp server stop requested" : "xrdp server stop request failed";
-    result.libraryPath = state.loaded.libraryPath;
-    result.logs.push_back(result.message);
-    result.logs.push_back("lastExitCode=" + std::to_string(state.lastExitCode.load()));
-    if (!state.lastMessage.empty()) {
-        result.logs.push_back(state.lastMessage);
-    }
-    EmitHilogInfo(result.message);
-    return result;
+    return VideoSubmitter().Enqueue(frame, submitFn, message);
 }
 
 } // namespace rdp_bridge

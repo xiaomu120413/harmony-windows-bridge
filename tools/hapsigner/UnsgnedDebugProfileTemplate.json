@@ -16,11 +16,13 @@
   },
   "acls": {
     "allowed-acls": [
+      "ohos.permission.CUSTOM_SCREEN_RECORDING",
       "ohos.permission.READ_PASTEBOARD"
     ]
   },
   "permissions": {
     "restricted-permissions": [
+      "ohos.permission.CUSTOM_SCREEN_RECORDING",
       "ohos.permission.READ_PASTEBOARD"
     ]
   },
