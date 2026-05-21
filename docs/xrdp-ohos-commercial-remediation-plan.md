@@ -546,3 +546,28 @@ xrdp session summary:
 - 已安装到设备 `3QC0124C11000711` 并启动 `com.huawei.freerdp/EntryAbility`。
 - Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp audio capture pump started label=surface-h264`、`xrdp audio capture queued ...`、`xrdp.ohos.rdpsnd: sent wave chunk ...`、`wave confirm ...`。
 - 连接初期在 rdpsnd channel ready 之前有少量 `status=-4` not queued 日志，随后 client format/training 完成并正常发送音频；该行为符合当前生命周期边界，后续 screen/H264 下沉时可进一步延后 pump start。
+
+## 15. 2026-05-21 Phase 3 子阶段执行记录
+
+已完成 screen/H264 capture 核心实现下沉的第一步，保持现有 session event 策略不变：
+
+- `third_party/xrdp/ohos` 新增 `ohos_capture_types.h`、`ohos_capture_common.*`、`ohos_capture_raw.*`、`ohos_capture_h264.*`、`ohos_capture_h264_encoder.*`、`ohos_h264_payload.*`。
+- raw screen capture、surface H264 capture、H264 encoder 配置/I 帧请求、H264 payload Annex-B 规范化、capture 日志与 diagnostics 类型已经放到 xrdp 源码侧。
+- app 侧 `xrdp_screen_capture_bridge.cpp` 与 `xrdp_surface_h264_capture.cpp` 缩减为薄包装，只负责类型转换和调用 `QueueXrdpVideoFrame` / `QueueXrdpEncodedVideoFrame` / `QueueXrdpAudioFrame`。
+- 当前 `SESSION_CONNECT` / `SESSION_DISCONNECT` / `SUPPRESS_OUTPUT` / `MONITOR_RESIZE` lifecycle 仍由 app 侧 `xrdp_server_bridge.cpp` 驱动；下一阶段再把 capture controller 和 session policy 继续下沉，避免本笔同时改变运行策略。
+
+文件大小结果：
+
+- `ohos_capture_raw.cpp` 约 383 行。
+- `ohos_capture_h264.cpp` 约 424 行。
+- `ohos_capture_h264_encoder.cpp` 约 164 行。
+- `ohos_h264_payload.cpp` 约 121 行。
+- app 侧 `xrdp_screen_capture_bridge.cpp` 约 84 行，`xrdp_surface_h264_capture.cpp` 约 64 行。
+
+本轮验证：
+
+- `cmd /c build_hap.bat` 在 `harmony/app` 下通过。
+- 已安装到设备并启动 `com.huawei.freerdp/EntryAbility`。
+- `Test-NetConnection 127.0.0.1 -Port 13390` 通过，设备侧 `3390` 处于 LISTEN。
+- Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp surface H264 encoder ready`、`xrdp surface H264 capture started 2560x1440@15fps`、`xrdp surface H264 frame queued: seq=1`、`xrdp.ohos.frame: queued AVC420 frame`。
+- 音频链路仍正常，日志中出现 `xrdp.ohos.rdpsnd: client formats`、`training round_trip_ms`、`audio queued`、`sent wave chunk`、`wave confirm`。
