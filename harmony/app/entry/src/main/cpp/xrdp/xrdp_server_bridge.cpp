@@ -81,7 +81,7 @@ struct XrdpResolvedPaths {
 
 class XrdpVideoFrameSubmitter {
 public:
-    bool Enqueue(const RgbaFrame& frame, XrdpSubmitBgraFrameFn submitFn, std::string& message)
+    bool Enqueue(const XrdpVideoFrame& frame, XrdpSubmitBgraFrameFn submitFn, std::string& message)
     {
         if (submitFn == nullptr) {
             message = "xrdp video backend is not loaded";
@@ -121,6 +121,7 @@ public:
         next.submitFn = submitFn;
         next.label = frame.label.empty() ? "video frame" : frame.label;
         next.pixelFormat = frame.pixelFormat;
+        next.sourceSequence = frame.sourceSequence;
         next.pixelBytes = frameBytes;
         next.pixels = AllocateBytes(frameBytes);
         if (next.pixels == nullptr) {
@@ -196,8 +197,9 @@ private:
         uint32_t height = 0;
         uint32_t copyUs = 0;
         uint64_t sequence = 0;
+        uint64_t sourceSequence = 0;
         std::string label;
-        FramePixelFormat pixelFormat = FramePixelFormat::Rgba;
+        XrdpVideoPixelFormat pixelFormat = XrdpVideoPixelFormat::Rgba;
         XrdpSubmitBgraFrameFn submitFn = nullptr;
     };
 
@@ -278,7 +280,7 @@ private:
             const auto convertStart = std::chrono::steady_clock::now();
             const uint8_t* bgraData = nullptr;
             bool converted = false;
-            if (frame.pixelFormat == FramePixelFormat::Bgra) {
+            if (frame.pixelFormat == XrdpVideoPixelFormat::Bgra) {
                 converted = frame.pixels != nullptr && frame.pixelBytes != 0U;
                 bgraData = frame.pixels.get();
             } else {
@@ -312,7 +314,8 @@ private:
                         " size=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
                         " copy=" + std::to_string(frame.copyUs / 1000.0) +
                         "ms convert=" + std::to_string(convertUs / 1000.0) +
-                        "ms pixel=" + std::string(frame.pixelFormat == FramePixelFormat::Bgra ? "bgra" : "rgba") +
+                        "ms pixel=" + std::string(frame.pixelFormat == XrdpVideoPixelFormat::Bgra ? "bgra" : "rgba") +
+                        " sourceSeq=" + std::to_string(frame.sourceSequence) +
                         " count=" + std::to_string(submitted) +
                         " label=" + frame.label);
                 }
@@ -929,7 +932,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     return result;
 }
 
-bool QueueXrdpVideoFrame(const RgbaFrame& frame, std::string& message)
+bool QueueXrdpVideoFrame(const XrdpVideoFrame& frame, std::string& message)
 {
     XrdpSubmitBgraFrameFn submitFn = nullptr;
 
@@ -944,6 +947,19 @@ bool QueueXrdpVideoFrame(const RgbaFrame& frame, std::string& message)
     }
 
     return VideoSubmitter().Enqueue(frame, submitFn, message);
+}
+
+bool QueueXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
+{
+    XrdpVideoFrame xrdpFrame;
+    xrdpFrame.data = frame.data;
+    xrdpFrame.width = frame.width;
+    xrdpFrame.height = frame.height;
+    xrdpFrame.strideBytes = frame.strideBytes;
+    xrdpFrame.label = frame.label.empty() ? "rgba frame" : frame.label;
+    xrdpFrame.sourceSequence = frame.sequence;
+    xrdpFrame.pixelFormat = XrdpVideoPixelFormat::Rgba;
+    return QueueXrdpVideoFrame(xrdpFrame, message);
 }
 
 } // namespace rdp_bridge
