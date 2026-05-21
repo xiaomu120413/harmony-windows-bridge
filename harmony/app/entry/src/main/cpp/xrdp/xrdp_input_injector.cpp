@@ -811,18 +811,23 @@ public:
 
         Start();
         std::lock_guard<std::mutex> lock(mutex_);
-        if (IsMouseMove(event) && !queue_.empty() && IsMouseMove(queue_.back())) {
-            queue_.back() = event;
-            message = "xrdp input mouse move coalesced";
+        if (IsMouseMove(event)) {
+            const bool replaced = hasPendingMove_;
+            pendingMove_ = event;
+            hasPendingMove_ = true;
+            if (replaced) {
+                const uint32_t coalesced = coalescedMove_.fetch_add(1U) + 1U;
+                message = "xrdp input mouse move coalesced pending latest coalesced=" +
+                    std::to_string(coalesced);
+            } else {
+                queued_.fetch_add(1U);
+                message = "xrdp input mouse move queued latest";
+            }
             condition_.notify_one();
             return true;
         }
+        FlushPendingMoveLocked();
         if (queue_.size() >= kMaxInputQueue) {
-            if (IsMouseMove(event)) {
-                message = "xrdp input queue full; mouse move dropped";
-                dropped_.fetch_add(1U);
-                return false;
-            }
             DropOldestMoveLocked();
         }
         if (queue_.size() >= kMaxInputQueue) {
@@ -843,6 +848,7 @@ public:
         Start();
         std::lock_guard<std::mutex> lock(mutex_);
         queue_.clear();
+        hasPendingMove_ = false;
         resetRequested_ = true;
         resetReason_ = reason;
         condition_.notify_one();
@@ -873,13 +879,37 @@ private:
         }
     }
 
+    bool MakeRoomForQueuedEventLocked()
+    {
+        if (queue_.size() < kMaxInputQueue) {
+            return true;
+        }
+        DropOldestMoveLocked();
+        return queue_.size() < kMaxInputQueue;
+    }
+
+    void FlushPendingMoveLocked()
+    {
+        if (!hasPendingMove_) {
+            return;
+        }
+        if (!MakeRoomForQueuedEventLocked()) {
+            hasPendingMove_ = false;
+            dropped_.fetch_add(1U);
+            return;
+        }
+        queue_.push_back(pendingMove_);
+        hasPendingMove_ = false;
+    }
+
     void DropQueuedEventsLocked(const std::string& reason)
     {
-        const size_t count = queue_.size();
+        const size_t count = queue_.size() + (hasPendingMove_ ? 1U : 0U);
         if (count == 0) {
             return;
         }
         queue_.clear();
+        hasPendingMove_ = false;
         dropped_.fetch_add(static_cast<uint32_t>(count));
         const uint32_t logCount = queueClearLogCount_.fetch_add(1U) + 1U;
         if (logCount <= 10U || (logCount % 100U) == 0U) {
@@ -898,13 +928,13 @@ private:
             {
                 std::unique_lock<std::mutex> lock(mutex_);
                 condition_.wait(lock, [this]() {
-                    return resetRequested_ || !queue_.empty();
+                    return resetRequested_ || !queue_.empty() || hasPendingMove_;
                 });
                 if (resetRequested_) {
                     reset = true;
                     resetRequested_ = false;
                     resetReason.swap(resetReason_);
-                } else if (!queue_.empty()) {
+                } else {
                     lock.unlock();
                     std::string authMessage;
                     if (!EnsureInjectionAuthorized(authMessage)) {
@@ -922,6 +952,10 @@ private:
                     } else if (!queue_.empty()) {
                         event = queue_.front();
                         queue_.pop_front();
+                        hasEvent = true;
+                    } else if (hasPendingMove_) {
+                        event = pendingMove_;
+                        hasPendingMove_ = false;
                         hasEvent = true;
                     }
                 }
@@ -1040,7 +1074,8 @@ private:
         }
         EmitInputResult(message + " queued=" + std::to_string(queued_.load()) +
             " sent=" + std::to_string(sent_.load()) +
-            " dropped=" + std::to_string(dropped_.load()), ok, important);
+            " dropped=" + std::to_string(dropped_.load()) +
+            " coalescedMove=" + std::to_string(coalescedMove_.load()), ok, important);
     }
 
     std::atomic<bool> started_ { false };
@@ -1048,6 +1083,8 @@ private:
     std::mutex mutex_;
     std::condition_variable condition_;
     std::deque<XrdpOhosInputEvent> queue_;
+    XrdpOhosInputEvent pendingMove_ {};
+    bool hasPendingMove_ = false;
     bool resetRequested_ = false;
     std::string resetReason_;
     std::set<int32_t> pressedKeys_;
@@ -1057,6 +1094,7 @@ private:
     std::atomic<uint32_t> queued_ { 0 };
     std::atomic<uint32_t> sent_ { 0 };
     std::atomic<uint32_t> dropped_ { 0 };
+    std::atomic<uint32_t> coalescedMove_ { 0 };
     std::atomic<uint32_t> queueClearLogCount_ { 0 };
 };
 

@@ -93,6 +93,7 @@ struct XrdpResolvedPaths {
 struct XrdpVideoSubmitterStats {
     bool running = false;
     bool hasPending = false;
+    bool submitting = false;
     uint64_t queuedCount = 0;
     uint64_t replacedCount = 0;
     uint64_t submittedCount = 0;
@@ -146,14 +147,6 @@ public:
                 message = "xrdp video backoff: no active mstsc session dropped=" + std::to_string(dropped);
                 return false;
             }
-            if (hasPending_) {
-                const uint64_t dropped = ++preCopyDropCount_;
-                message = "xrdp video queue busy; frame dropped before copy dropped=" +
-                    std::to_string(dropped) +
-                    " queued=" + std::to_string(queuedCount_) +
-                    " submitted=" + std::to_string(submittedCount_);
-                return false;
-            }
         }
 
         const size_t frameBytes = rowBytes * static_cast<size_t>(frame.height);
@@ -193,11 +186,13 @@ public:
 
         uint64_t queued = 0;
         uint64_t replaced = 0;
+        bool replacedPending = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             StartLocked();
             next.sequence = ++sequence_;
             if (hasPending_) {
+                replacedPending = true;
                 ++replacedCount_;
                 RecycleBufferLocked(std::move(pending_.pixels), pending_.pixelBytes);
             }
@@ -209,9 +204,10 @@ public:
         condition_.notify_one();
 
         message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-            " xrdp-video queued copy=" + std::to_string(copyUs / 1000.0) +
+            " xrdp-video queued mode=latest copy=" + std::to_string(copyUs / 1000.0) +
             "ms queued=" + std::to_string(queued) +
             " replaced=" + std::to_string(replaced) +
+            " replacedPending=" + std::string(replacedPending ? "true" : "false") +
             " buffer=" + std::string(copiedToReusedBuffer ? "reused" : "new");
         return true;
     }
@@ -249,6 +245,7 @@ public:
         XrdpVideoSubmitterStats stats;
         stats.running = running_;
         stats.hasPending = hasPending_;
+        stats.submitting = submitting_;
         stats.queuedCount = queuedCount_;
         stats.replacedCount = replacedCount_;
         stats.submittedCount = submittedCount_;
@@ -354,6 +351,7 @@ private:
                 }
                 frame = std::move(pending_);
                 hasPending_ = false;
+                submitting_ = true;
             }
 
             xrdp_ohos_frame submittedFrame {};
@@ -375,6 +373,7 @@ private:
             uint64_t failed = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
+                submitting_ = false;
                 lastStatus_ = status;
                 lastStatusAt_ = std::chrono::steady_clock::now();
                 lastCopyUs_ = frame.copyUs;
@@ -417,6 +416,7 @@ private:
     PendingFrame pending_;
     bool running_ = false;
     bool hasPending_ = false;
+    bool submitting_ = false;
     uint64_t sequence_ = 0;
     uint64_t queuedCount_ = 0;
     uint64_t replacedCount_ = 0;
@@ -489,6 +489,7 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
         " errors=" + std::to_string(capture.captureErrorCount));
     diagnostics.logs.push_back("xrdp video running=" + std::string(video.running ? "true" : "false") +
         " pending=" + std::string(video.hasPending ? "true" : "false") +
+        " submitting=" + std::string(video.submitting ? "true" : "false") +
         " queued=" + std::to_string(video.queuedCount) +
         " submitted=" + std::to_string(video.submittedCount) +
         " failed=" + std::to_string(video.failedCount) +
