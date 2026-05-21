@@ -17,6 +17,10 @@
       "value": "Read the local clipboard so FreeRDP can redirect text paste operations to the remote desktop."
     },
     {
+      "name": "full_disk_access_reason",
+      "value": "Access local files referenced by clipboard URI and image paste operations for remote desktop clipboard redirection."
+    },
+    {
       "name": "microphone_reason",
       "value": "Capture microphone audio so FreeRDP can redirect local voice input to the remote desktop."
     },
