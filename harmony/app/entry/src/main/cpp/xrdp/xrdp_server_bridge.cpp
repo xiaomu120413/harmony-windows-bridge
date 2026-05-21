@@ -366,7 +366,7 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
     EmitHilogInfo("xrdp active mstsc session detected; scheduling screen capture desktop=" +
         std::to_string(width) + "x" + std::to_string(height) + " " +
         FormatXrdpDisplayGeometry(geometry) +
-        " inputMapping=desktop-to-full-display");
+        " inputMapping=desktop-content-fit-to-display");
 
     std::thread([options]() {
         std::string message;

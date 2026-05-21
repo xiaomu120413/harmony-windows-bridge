@@ -96,6 +96,11 @@ struct MouseCoordinates {
     int32_t sourceHeight = 0;
     int32_t targetWidth = 0;
     int32_t targetHeight = 0;
+    bool contentRectValid = false;
+    int32_t contentLeft = 0;
+    int32_t contentTop = 0;
+    int32_t contentWidth = 0;
+    int32_t contentHeight = 0;
     bool scaled = false;
     bool availableValid = false;
     int32_t availableLeft = 0;
@@ -144,6 +149,49 @@ int32_t ScaleCoordinate(long value, int32_t sourceSize, int32_t targetSize)
         0, targetSize - 1);
 }
 
+int32_t ScaleCoordinateFromContent(long value, int32_t contentStart, int32_t contentSize, int32_t targetSize)
+{
+    if (targetSize <= 1) {
+        return 0;
+    }
+    if (contentSize <= 1) {
+        return ClampToRange(value - contentStart, 0, targetSize - 1);
+    }
+    const int32_t source = ClampToRange(value - contentStart, 0, contentSize - 1);
+    const double ratio = static_cast<double>(source) / static_cast<double>(contentSize - 1);
+    return ClampToRange(static_cast<long>(std::llround(ratio * static_cast<double>(targetSize - 1))),
+        0, targetSize - 1);
+}
+
+void ResolveContentRect(int32_t sourceWidth, int32_t sourceHeight, int32_t targetWidth, int32_t targetHeight,
+    MouseCoordinates& coordinates)
+{
+    coordinates.contentRectValid = true;
+    coordinates.contentLeft = 0;
+    coordinates.contentTop = 0;
+    coordinates.contentWidth = sourceWidth;
+    coordinates.contentHeight = sourceHeight;
+
+    if (sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+        coordinates.contentRectValid = false;
+        return;
+    }
+
+    const double scaleX = static_cast<double>(sourceWidth) / static_cast<double>(targetWidth);
+    const double scaleY = static_cast<double>(sourceHeight) / static_cast<double>(targetHeight);
+    const double scale = std::min(scaleX, scaleY);
+    if (scale <= 0.0) {
+        return;
+    }
+
+    coordinates.contentWidth = ClampToRange(
+        static_cast<long>(std::llround(static_cast<double>(targetWidth) * scale)), 1, sourceWidth);
+    coordinates.contentHeight = ClampToRange(
+        static_cast<long>(std::llround(static_cast<double>(targetHeight) * scale)), 1, sourceHeight);
+    coordinates.contentLeft = (sourceWidth - coordinates.contentWidth) / 2;
+    coordinates.contentTop = (sourceHeight - coordinates.contentHeight) / 2;
+}
+
 XrdpDisplayGeometry GetDisplayGeometry()
 {
     const auto now = std::chrono::steady_clock::now();
@@ -189,8 +237,16 @@ MouseCoordinates ResolveMouseCoordinates(const XrdpOhosInputEvent& event)
     const int32_t sourceWidth = event.width > 0 ? event.width : geometry.width;
     const int32_t sourceHeight = event.height > 0 ? event.height : geometry.height;
     coordinates.displayId = static_cast<int32_t>(geometry.displayId);
-    coordinates.displayX = ScaleCoordinate(event.param1, sourceWidth, geometry.width);
-    coordinates.displayY = ScaleCoordinate(event.param2, sourceHeight, geometry.height);
+    ResolveContentRect(sourceWidth, sourceHeight, geometry.width, geometry.height, coordinates);
+    if (coordinates.contentRectValid) {
+        coordinates.displayX = ScaleCoordinateFromContent(event.param1, coordinates.contentLeft,
+            coordinates.contentWidth, geometry.width);
+        coordinates.displayY = ScaleCoordinateFromContent(event.param2, coordinates.contentTop,
+            coordinates.contentHeight, geometry.height);
+    } else {
+        coordinates.displayX = ScaleCoordinate(event.param1, sourceWidth, geometry.width);
+        coordinates.displayY = ScaleCoordinate(event.param2, sourceHeight, geometry.height);
+    }
     coordinates.globalX = geometry.originX + coordinates.displayX;
     coordinates.globalY = geometry.originY + coordinates.displayY;
     coordinates.sourceWidth = sourceWidth;
@@ -450,6 +506,8 @@ struct MouseDispatch {
     int32_t button = MOUSE_BUTTON_NONE;
     int32_t axisType = MOUSE_AXIS_SCROLL_VERTICAL;
     float axisValue = 0.0f;
+    bool beginAxisBeforeUpdate = false;
+    bool endAxisAfterUpdate = false;
     uint32_t buttonMask = 0;
     bool buttonDown = false;
 };
@@ -522,60 +580,70 @@ MouseDispatch MapMouseEvent(const XrdpOhosInputEvent& event)
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_VERTICAL;
             dispatch.axisValue = static_cast<float>(kWheelStep);
+            dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmWheelDownUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_VERTICAL;
             dispatch.axisValue = -static_cast<float>(kWheelStep);
+            dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmHWheelLeftUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_HORIZONTAL;
             dispatch.axisValue = -static_cast<float>(kWheelStep);
+            dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmHWheelRightUp:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_HORIZONTAL;
             dispatch.axisValue = static_cast<float>(kWheelStep);
+            dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmTouchVScroll:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_VERTICAL;
             dispatch.axisValue = static_cast<float>(event.param3);
+            dispatch.beginAxisBeforeUpdate = true;
+            dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmTouchHScroll:
             dispatch.wheel = true;
             dispatch.axisType = MOUSE_AXIS_SCROLL_HORIZONTAL;
             dispatch.axisValue = static_cast<float>(event.param3);
+            dispatch.beginAxisBeforeUpdate = true;
+            dispatch.endAxisAfterUpdate = true;
             break;
         case kXrdpWmWheelUpDown:
         case kXrdpWmWheelDownDown:
         case kXrdpWmHWheelLeftDown:
         case kXrdpWmHWheelRightDown:
-            dispatch.supported = false;
+            dispatch.wheel = true;
+            dispatch.action = MOUSE_ACTION_AXIS_BEGIN;
+            dispatch.axisValue = 0.0F;
             break;
         default:
             dispatch.supported = false;
             break;
     }
 
-    if (dispatch.wheel) {
+    if (dispatch.wheel && dispatch.action != MOUSE_ACTION_AXIS_BEGIN) {
         dispatch.action = MOUSE_ACTION_AXIS_UPDATE;
         dispatch.button = MOUSE_BUTTON_NONE;
     }
     return dispatch;
 }
 
-bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& dispatch,
-    const MouseCoordinates& coordinates, std::string& message)
+int32_t InjectMouseEventOnce(const MouseDispatch& dispatch, const MouseCoordinates& coordinates,
+    int32_t action, float axisValue, std::string& message)
 {
     Input_MouseEvent* mouseEvent = OH_Input_CreateMouseEvent();
     if (mouseEvent == nullptr) {
         message = "xrdp input mouse event allocation failed";
-        return false;
+        return INPUT_PARAMETER_ERROR;
     }
 
-    OH_Input_SetMouseEventAction(mouseEvent, dispatch.action);
+    OH_Input_SetMouseEventAction(mouseEvent, action);
     OH_Input_SetMouseEventDisplayX(mouseEvent, coordinates.displayX);
     OH_Input_SetMouseEventDisplayY(mouseEvent, coordinates.displayY);
     OH_Input_SetMouseEventDisplayId(mouseEvent, coordinates.displayId);
@@ -585,11 +653,29 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
     OH_Input_SetMouseEventActionTime(mouseEvent, NowMs());
     if (dispatch.wheel) {
         OH_Input_SetMouseEventAxisType(mouseEvent, dispatch.axisType);
-        OH_Input_SetMouseEventAxisValue(mouseEvent, dispatch.axisValue);
+        OH_Input_SetMouseEventAxisValue(mouseEvent, axisValue);
     }
 
     const int32_t rc = OH_Input_InjectMouseEventGlobal(mouseEvent);
     OH_Input_DestroyMouseEvent(&mouseEvent);
+    return rc;
+}
+
+bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& dispatch,
+    const MouseCoordinates& coordinates, std::string& message)
+{
+    int32_t beginRc = INPUT_SUCCESS;
+    if (dispatch.beginAxisBeforeUpdate) {
+        beginRc = InjectMouseEventOnce(dispatch, coordinates, MOUSE_ACTION_AXIS_BEGIN, 0.0F, message);
+    }
+    const int32_t rc = beginRc == INPUT_SUCCESS ?
+        InjectMouseEventOnce(dispatch, coordinates, dispatch.action, dispatch.axisValue, message) :
+        beginRc;
+    int32_t endRc = INPUT_SUCCESS;
+    if (rc == INPUT_SUCCESS && dispatch.endAxisAfterUpdate) {
+        endRc = InjectMouseEventOnce(dispatch, coordinates, MOUSE_ACTION_AXIS_END, 0.0F, message);
+    }
+
     message = "xrdp mouse inject msg=" + std::to_string(event.msg) +
         " action=" + std::to_string(dispatch.action) +
         " button=" + std::to_string(dispatch.button) +
@@ -601,6 +687,12 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
         "x" + std::to_string(coordinates.sourceHeight) +
         " target=" + std::to_string(coordinates.targetWidth) +
         "x" + std::to_string(coordinates.targetHeight);
+    if (coordinates.contentRectValid) {
+        message += " content=(" + std::to_string(coordinates.contentLeft) +
+            "," + std::to_string(coordinates.contentTop) +
+            "," + std::to_string(coordinates.contentWidth) +
+            "," + std::to_string(coordinates.contentHeight) + ")";
+    }
     if (coordinates.availableValid) {
         message += " available=(" + std::to_string(coordinates.availableLeft) +
             "," + std::to_string(coordinates.availableTop) +
@@ -610,12 +702,22 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
     if (coordinates.virtualPixelRatioValid) {
         message += " vpr=" + std::to_string(coordinates.virtualPixelRatio);
     }
+    if (dispatch.wheel) {
+        message += " axisType=" + std::to_string(dispatch.axisType) +
+            " axisValue=" + std::to_string(dispatch.axisValue);
+        if (dispatch.beginAxisBeforeUpdate) {
+            message += " beginRc=" + std::to_string(beginRc);
+        }
+        if (dispatch.endAxisAfterUpdate) {
+            message += " endRc=" + std::to_string(endRc);
+        }
+    }
     message += " rc=" + std::to_string(rc);
-    if (rc == INPUT_PERMISSION_DENIED) {
+    if (beginRc == INPUT_PERMISSION_DENIED || rc == INPUT_PERMISSION_DENIED || endRc == INPUT_PERMISSION_DENIED) {
         g_authorizedStatus.store(UNAUTHORIZED);
         g_authorizationRequested.store(false);
     }
-    return rc == INPUT_SUCCESS;
+    return beginRc == INPUT_SUCCESS && rc == INPUT_SUCCESS && endRc == INPUT_SUCCESS;
 }
 
 bool InjectKeyEvent(const XrdpOhosInputEvent& event, int32_t keyCode, std::string& message)
