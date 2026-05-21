@@ -1,0 +1,462 @@
+#include "xrdp/xrdp_server_internal.h"
+
+#include <cerrno>
+#include <cstddef>
+#include <cstdlib>
+#include <cstring>
+#include <dlfcn.h>
+#include <sstream>
+#include <sys/stat.h>
+#include <unistd.h>
+
+namespace rdp_bridge {
+namespace xrdp_bridge_internal {
+namespace {
+
+std::string HexFlags(uint32_t flags)
+{
+    std::ostringstream stream;
+    stream << "0x" << std::hex << flags;
+    return stream.str();
+}
+
+std::string FormatBackendAbi(const xrdp_ohos_abi_info& info)
+{
+    return "api=" + std::to_string(info.api_version) +
+        " mod=" + std::to_string(info.mod_version) +
+        " inputEvent=" + std::to_string(info.input_event_version) +
+        " backendEvent=" + std::to_string(info.backend_event_version) +
+        " features=" + HexFlags(info.feature_flags);
+}
+
+bool BackendHandlesInputDirectly(bool abiInfoValid, const xrdp_ohos_abi_info& info)
+{
+    return abiInfoValid && (info.feature_flags & XRDP_OHOS_FEATURE_DIRECT_INPUT) != 0U;
+}
+
+bool IsAbsolutePath(const std::string& value)
+{
+    return !value.empty() && value[0] == '/';
+}
+
+std::string TrimTrailingSlash(std::string value)
+{
+    while (value.size() > 1 && value.back() == '/') {
+        value.pop_back();
+    }
+    return value;
+}
+
+std::string DirName(const std::string& path)
+{
+    const size_t slash = path.find_last_of('/');
+    if (slash == std::string::npos) {
+        return "";
+    }
+    if (slash == 0) {
+        return "/";
+    }
+    return path.substr(0, slash);
+}
+
+bool EnsureDirectory(const std::string& path, std::vector<std::string>& logs)
+{
+    if (path.empty() || IsDirectory(path)) {
+        return true;
+    }
+
+    std::string current;
+    size_t index = 0;
+    if (path[0] == '/') {
+        current = "/";
+        index = 1;
+    }
+
+    while (index < path.size()) {
+        const size_t slash = path.find('/', index);
+        const std::string part = path.substr(index, slash == std::string::npos ? std::string::npos : slash - index);
+        if (!part.empty()) {
+            current = current == "/" ? current + part : JoinPath(current, part);
+            if (!IsDirectory(current)) {
+                if (mkdir(current.c_str(), 0700) != 0 && errno != EEXIST) {
+                    logs.push_back("mkdir failed: " + current + " error=" + std::strerror(errno));
+                    return false;
+                }
+            }
+        }
+        if (slash == std::string::npos) {
+            break;
+        }
+        index = slash + 1;
+    }
+    return true;
+}
+
+void AddUnique(std::vector<std::string>& values, const std::string& value)
+{
+    if (value.empty()) {
+        return;
+    }
+    for (const std::string& existing : values) {
+        if (existing == value) {
+            return;
+        }
+    }
+    values.push_back(value);
+}
+
+std::string ResolveNativeLibDir()
+{
+    Dl_info info {};
+    if (dladdr(reinterpret_cast<void*>(&ResolveNativeLibDir), &info) != 0 && info.dli_fname != nullptr) {
+        return DirName(info.dli_fname);
+    }
+    return "";
+}
+
+std::string ResolveRuntimeRoot(const XrdpServerParams& params)
+{
+    if (!params.runtimeRoot.empty()) {
+        return TrimTrailingSlash(params.runtimeRoot);
+    }
+    if (!params.appFilesDir.empty()) {
+        return JoinPath(TrimTrailingSlash(params.appFilesDir), "xrdp");
+    }
+    return kDefaultRuntimeRoot;
+}
+
+std::string ResolveHnpChild(const std::string& hnpRoot, const std::string& child)
+{
+    if (hnpRoot.empty()) {
+        return "";
+    }
+    const std::string root = TrimTrailingSlash(hnpRoot);
+    const std::string direct = JoinPath(root, child);
+    if (PathExists(direct)) {
+        return direct;
+    }
+    return JoinPath(JoinPath(root, "xrdp"), child);
+}
+
+std::vector<std::string> BuildLibraryCandidates(const XrdpServerParams& params, const XrdpResolvedPaths& paths)
+{
+    std::vector<std::string> candidates;
+    AddUnique(candidates, params.libraryPath);
+    AddUnique(candidates, paths.libraryPath);
+    AddUnique(candidates, JoinPath(paths.nativeLibDir, kServerLibraryName));
+    AddUnique(candidates, JoinPath(paths.modulePath, kServerLibraryName));
+    AddUnique(candidates, JoinPath(JoinPath(paths.runtimeRoot, "lib"), kServerLibraryName));
+
+    if (!params.hnpRoot.empty()) {
+        AddUnique(candidates, ResolveHnpChild(params.hnpRoot, "lib/libxrdpserver.so"));
+    }
+
+    AddUnique(candidates, "/data/service/hnp/xrdp.org/xrdp_0.1.0/lib/libxrdpserver.so");
+    AddUnique(candidates, "/data/app/bin/libxrdpserver.so");
+    AddUnique(candidates, kServerLibraryName);
+    return candidates;
+}
+
+std::vector<std::string> BuildBackendCandidates(const XrdpServerParams& params, const XrdpResolvedPaths& paths)
+{
+    std::vector<std::string> candidates;
+    AddUnique(candidates, JoinPath(paths.modulePath, kBackendLibraryName));
+    AddUnique(candidates, JoinPath(paths.nativeLibDir, kBackendLibraryName));
+    AddUnique(candidates, JoinPath(JoinPath(paths.runtimeRoot, "lib"), kBackendLibraryName));
+
+    if (!params.hnpRoot.empty()) {
+        AddUnique(candidates, ResolveHnpChild(params.hnpRoot, "lib/libxrdpohos.so"));
+    }
+
+    AddUnique(candidates, "/data/service/hnp/xrdp.org/xrdp_0.1.0/lib/libxrdpohos.so");
+    AddUnique(candidates, kBackendLibraryName);
+    return candidates;
+}
+
+void SetEnvPath(const char* name, const std::string& value, std::vector<std::string>& logs)
+{
+    if (value.empty()) {
+        return;
+    }
+    if (setenv(name, value.c_str(), 1) != 0) {
+        logs.push_back(std::string("setenv failed: ") + name + " error=" + std::strerror(errno));
+    } else {
+        logs.push_back(std::string(name) + "=" + value);
+    }
+}
+
+} // namespace
+
+std::string JoinPath(const std::string& left, const std::string& right)
+{
+    if (left.empty()) {
+        return right;
+    }
+    if (right.empty()) {
+        return left;
+    }
+    if (IsAbsolutePath(right)) {
+        return right;
+    }
+    if (left.back() == '/') {
+        return left + right;
+    }
+    return left + "/" + right;
+}
+
+bool PathExists(const std::string& path)
+{
+    struct stat st {};
+    return !path.empty() && stat(path.c_str(), &st) == 0;
+}
+
+bool IsDirectory(const std::string& path)
+{
+    struct stat st {};
+    return !path.empty() && stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params)
+{
+    XrdpResolvedPaths paths;
+    paths.runtimeRoot = ResolveRuntimeRoot(params);
+    paths.nativeLibDir = ResolveNativeLibDir();
+    paths.libDir = !params.libDir.empty() ? TrimTrailingSlash(params.libDir) : paths.nativeLibDir;
+
+    const std::string nativeXrdpRoot = JoinPath(paths.nativeLibDir, "xrdp");
+    const std::string hnpLibDir = ResolveHnpChild(params.hnpRoot, "lib");
+    const std::string hnpConfigPath = ResolveHnpChild(params.hnpRoot, "config/xrdp.ini");
+    const std::string hnpSharePath = ResolveHnpChild(params.hnpRoot, "share");
+
+    paths.libraryPath = params.libraryPath;
+    if (paths.libraryPath.empty() && !paths.libDir.empty()) {
+        paths.libraryPath = JoinPath(paths.libDir, kServerLibraryName);
+    }
+
+    paths.modulePath = !params.modulePath.empty() ? TrimTrailingSlash(params.modulePath) : "";
+    if (paths.modulePath.empty() && !paths.libDir.empty() && PathExists(JoinPath(paths.libDir, kBackendLibraryName))) {
+        paths.modulePath = paths.libDir;
+    }
+    if (paths.modulePath.empty() && !hnpLibDir.empty()) {
+        paths.modulePath = hnpLibDir;
+    }
+    if (paths.modulePath.empty()) {
+        paths.modulePath = JoinPath(paths.runtimeRoot, "lib");
+    }
+
+    paths.configPath = params.configPath;
+    if (paths.configPath.empty() && PathExists(JoinPath(nativeXrdpRoot, "config/xrdp.ini"))) {
+        paths.configPath = JoinPath(nativeXrdpRoot, "config/xrdp.ini");
+    }
+    if (paths.configPath.empty() && PathExists(hnpConfigPath)) {
+        paths.configPath = hnpConfigPath;
+    }
+    if (paths.configPath.empty()) {
+        paths.configPath = JoinPath(paths.runtimeRoot, "config/xrdp.ini");
+    }
+
+    paths.sharePath = !params.sharePath.empty() ? TrimTrailingSlash(params.sharePath) : "";
+    if (paths.sharePath.empty() && IsDirectory(JoinPath(nativeXrdpRoot, "share"))) {
+        paths.sharePath = JoinPath(nativeXrdpRoot, "share");
+    }
+    if (paths.sharePath.empty() && IsDirectory(hnpSharePath)) {
+        paths.sharePath = hnpSharePath;
+    }
+    if (paths.sharePath.empty()) {
+        paths.sharePath = JoinPath(paths.runtimeRoot, "share");
+    }
+
+    paths.pidPath = JoinPath(paths.runtimeRoot, "run");
+    paths.logPath = JoinPath(paths.runtimeRoot, "log");
+    return paths;
+}
+
+bool PrepareRuntime(const XrdpResolvedPaths& paths, std::vector<std::string>& logs)
+{
+    bool ok = true;
+    ok = EnsureDirectory(paths.runtimeRoot, logs) && ok;
+    ok = EnsureDirectory(paths.pidPath, logs) && ok;
+    ok = EnsureDirectory(paths.logPath, logs) && ok;
+
+    SetEnvPath("XRDP_CFG_PATH", DirName(paths.configPath), logs);
+    SetEnvPath("XRDP_SHARE_PATH", paths.sharePath, logs);
+    SetEnvPath("XRDP_MODULE_PATH", paths.modulePath, logs);
+    SetEnvPath("XRDP_PID_PATH", paths.pidPath, logs);
+    SetEnvPath("XRDP_LOG_PATH", paths.logPath, logs);
+    return ok;
+}
+
+bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
+    XrdpServerCommandResult& result)
+{
+    XrdpServerState& state = ServerState();
+    if (state.loaded.handle != nullptr && state.loaded.mainFn != nullptr && state.loaded.stopFn != nullptr) {
+        result.libraryPath = state.loaded.libraryPath;
+        result.logs.push_back("xrdp server library already loaded: " + state.loaded.libraryPath);
+        return true;
+    }
+
+    for (const std::string& candidate : BuildLibraryCandidates(params, paths)) {
+        if (candidate != kServerLibraryName && !PathExists(candidate)) {
+            result.logs.push_back("xrdp server library candidate missing: " + candidate);
+            continue;
+        }
+
+        dlerror();
+        void* handle = dlopen(candidate.c_str(), RTLD_NOW | RTLD_GLOBAL);
+        if (handle == nullptr) {
+            const char* error = dlerror();
+            result.logs.push_back("dlopen failed: " + candidate + " error=" + (error == nullptr ? "unknown" : error));
+            continue;
+        }
+
+        auto mainFn = reinterpret_cast<XrdpMainFn>(dlsym(handle, "xrdp_ohos_server_main"));
+        auto stopFn = reinterpret_cast<XrdpStopFn>(dlsym(handle, "xrdp_ohos_server_stop"));
+        if (mainFn == nullptr || stopFn == nullptr) {
+            result.logs.push_back("xrdp embedded symbols missing in: " + candidate);
+            dlclose(handle);
+            continue;
+        }
+
+        state.loaded.handle = handle;
+        state.loaded.mainFn = mainFn;
+        state.loaded.stopFn = stopFn;
+        state.loaded.libraryPath = candidate;
+        result.libraryPath = candidate;
+        result.logs.push_back("xrdp server library loaded: " + candidate);
+        return true;
+    }
+
+    result.logs.push_back("xrdp server library was not found");
+    return false;
+}
+
+bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
+    XrdpServerCommandResult& result)
+{
+    XrdpServerState& state = ServerState();
+    if (state.backend.handle != nullptr && state.backend.submitFrameFn != nullptr) {
+        result.logs.push_back("xrdp OHOS backend already loaded: " + state.backend.libraryPath);
+        if (state.backend.abiInfoValid) {
+            result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(state.backend.abiInfo));
+        } else {
+            result.logs.push_back("xrdp OHOS backend ABI unavailable");
+        }
+        result.logs.push_back(std::string("xrdp OHOS backend audio callback ") +
+            (state.backend.submitAudioFrameFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS backend encoded frame callback ") +
+            (state.backend.submitEncodedFrameFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
+            (BackendHandlesInputDirectly(state.backend.abiInfoValid, state.backend.abiInfo) ?
+                "enabled" : "unavailable"));
+        if (state.backend.setEventCallbackFn != nullptr) {
+            const int rc = state.backend.setEventCallbackFn(OnXrdpBackendEvent, nullptr);
+            result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
+        }
+        return true;
+    }
+
+    for (const std::string& candidate : BuildBackendCandidates(params, paths)) {
+        if (candidate != kBackendLibraryName && !PathExists(candidate)) {
+            result.logs.push_back("xrdp OHOS backend candidate missing: " + candidate);
+            continue;
+        }
+
+        dlerror();
+        void* handle = dlopen(candidate.c_str(), RTLD_NOW | RTLD_GLOBAL);
+        if (handle == nullptr) {
+            const char* error = dlerror();
+            result.logs.push_back("dlopen backend failed: " + candidate + " error=" +
+                (error == nullptr ? "unknown" : error));
+            continue;
+        }
+
+        auto submitFn = reinterpret_cast<XrdpSubmitFrameFn>(
+            dlsym(handle, "xrdp_ohos_backend_submit_frame"));
+        if (submitFn == nullptr) {
+            result.logs.push_back("xrdp OHOS backend frame symbol missing in: " + candidate);
+            dlclose(handle);
+            continue;
+        }
+        auto getAbiInfoFn = reinterpret_cast<XrdpGetAbiInfoFn>(
+            dlsym(handle, "xrdp_ohos_backend_get_abi_info"));
+        auto setEventCallbackFn = reinterpret_cast<XrdpSetBackendEventCallbackFn>(
+            dlsym(handle, "xrdp_ohos_backend_set_event_callback"));
+        auto submitAudioFn = reinterpret_cast<XrdpSubmitAudioFrameFn>(
+            dlsym(handle, "xrdp_ohos_backend_submit_audio_frame"));
+        auto submitEncodedFn = reinterpret_cast<XrdpSubmitEncodedFrameFn>(
+            dlsym(handle, "xrdp_ohos_backend_submit_encoded_frame"));
+
+        xrdp_ohos_abi_info abiInfo {};
+        bool abiInfoValid = false;
+        if (getAbiInfoFn != nullptr) {
+            abiInfo.size = sizeof(abiInfo);
+            const int abiRc = getAbiInfoFn(&abiInfo);
+            if (abiRc != XRDP_OHOS_BACKEND_STATUS_OK ||
+                abiInfo.api_version != XRDP_OHOS_API_VERSION ||
+                abiInfo.mod_version != XRDP_OHOS_MOD_VERSION) {
+                result.logs.push_back("xrdp OHOS backend ABI mismatch in: " + candidate +
+                    " rc=" + std::to_string(abiRc) +
+                    " " + FormatBackendAbi(abiInfo));
+                dlclose(handle);
+                continue;
+            }
+            abiInfoValid = true;
+        }
+
+        state.backend.handle = handle;
+        state.backend.getAbiInfoFn = getAbiInfoFn;
+        state.backend.submitFrameFn = submitFn;
+        state.backend.submitEncodedFrameFn = submitEncodedFn;
+        state.backend.submitAudioFrameFn = submitAudioFn;
+        state.backend.setEventCallbackFn = setEventCallbackFn;
+        state.backend.abiInfo = abiInfo;
+        state.backend.abiInfoValid = abiInfoValid;
+        state.backend.libraryPath = candidate;
+        result.logs.push_back("xrdp OHOS backend loaded: " + candidate);
+        if (abiInfoValid) {
+            result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(abiInfo));
+        } else {
+            result.logs.push_back("xrdp OHOS backend ABI symbol missing in: " + candidate);
+        }
+        if (submitAudioFn != nullptr) {
+            result.logs.push_back("xrdp OHOS backend audio callback loaded");
+        } else {
+            result.logs.push_back("xrdp OHOS backend audio callback symbol missing in: " + candidate);
+        }
+        if (submitEncodedFn != nullptr) {
+            result.logs.push_back("xrdp OHOS backend encoded frame callback loaded");
+        } else {
+            result.logs.push_back("xrdp OHOS backend encoded frame callback symbol missing in: " + candidate);
+        }
+        result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
+            (BackendHandlesInputDirectly(abiInfoValid, abiInfo) ? "enabled" : "unavailable"));
+        if (setEventCallbackFn != nullptr) {
+            const int rc = setEventCallbackFn(OnXrdpBackendEvent, nullptr);
+            result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
+        } else {
+            result.logs.push_back("xrdp OHOS backend event callback symbol missing in: " + candidate);
+        }
+        return true;
+    }
+
+    result.logs.push_back("xrdp OHOS backend was not found");
+    return false;
+}
+
+void FillPathResult(XrdpServerCommandResult& result, const XrdpResolvedPaths& paths)
+{
+    result.runtimeRoot = paths.runtimeRoot;
+    result.configPath = paths.configPath;
+    result.modulePath = paths.modulePath;
+    result.logPath = paths.logPath;
+    result.logs.push_back("nativeLibDir=" + paths.nativeLibDir);
+    result.logs.push_back("runtimeRoot=" + paths.runtimeRoot);
+    result.logs.push_back("configPath=" + paths.configPath);
+    result.logs.push_back("modulePath=" + paths.modulePath);
+    result.logs.push_back("sharePath=" + paths.sharePath);
+    result.logs.push_back("logPath=" + paths.logPath);
+}
+
+} // namespace xrdp_bridge_internal
+} // namespace rdp_bridge

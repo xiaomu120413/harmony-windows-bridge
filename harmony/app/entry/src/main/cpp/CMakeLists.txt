@@ -75,6 +75,7 @@ add_library(entry SHARED
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_h264_payload.cpp
     xrdp/xrdp_audio_capture_bridge.cpp
     xrdp/xrdp_display_geometry.cpp
+    xrdp/xrdp_runtime_loader.cpp
     xrdp/xrdp_screen_capture_bridge.cpp
     xrdp/xrdp_server_bridge.cpp
     xrdp/xrdp_surface_h264_capture.cpp)
