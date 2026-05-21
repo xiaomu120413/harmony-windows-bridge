@@ -66,6 +66,7 @@ add_library(entry SHARED
     common/string_utils.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_audio_capture_bridge.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_common.cpp
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_controller.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_h264.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_h264_encoder.cpp
     ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_raw.cpp
