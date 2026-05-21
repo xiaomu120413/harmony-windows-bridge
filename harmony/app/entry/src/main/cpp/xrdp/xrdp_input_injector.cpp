@@ -739,6 +739,21 @@ private:
         }
     }
 
+    void DropQueuedEventsLocked(const std::string& reason)
+    {
+        const size_t count = queue_.size();
+        if (count == 0) {
+            return;
+        }
+        queue_.clear();
+        dropped_.fetch_add(static_cast<uint32_t>(count));
+        const uint32_t logCount = queueClearLogCount_.fetch_add(1U) + 1U;
+        if (logCount <= 10U || (logCount % 100U) == 0U) {
+            EmitHilogInfo("xrdp input queue cleared: " + reason +
+                " dropped=" + std::to_string(count));
+        }
+    }
+
     void Run()
     {
         while (true) {
@@ -759,6 +774,9 @@ private:
                     lock.unlock();
                     std::string authMessage;
                     if (!EnsureInjectionAuthorized(authMessage)) {
+                        lock.lock();
+                        DropQueuedEventsLocked("injection authorization pending");
+                        lock.unlock();
                         std::this_thread::sleep_for(std::chrono::milliseconds(50));
                         continue;
                     }
@@ -897,6 +915,7 @@ private:
     std::atomic<uint32_t> queued_ { 0 };
     std::atomic<uint32_t> sent_ { 0 };
     std::atomic<uint32_t> dropped_ { 0 };
+    std::atomic<uint32_t> queueClearLogCount_ { 0 };
 };
 
 XrdpInputDispatcher& InputDispatcher()

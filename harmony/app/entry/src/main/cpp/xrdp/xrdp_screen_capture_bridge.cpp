@@ -272,7 +272,8 @@ private:
     static std::string DescribeOptions(const XrdpScreenCaptureOptions& options)
     {
         return std::to_string(options.width) + "x" + std::to_string(options.height) +
-            "@" + std::to_string(options.frameRate) + "fps";
+            "@" + std::to_string(options.frameRate) +
+            "fps cursor=" + (options.showCursor ? "on" : "off");
     }
 
     static void ReleaseFailedCapture(OH_AVScreenCapture* capture)
