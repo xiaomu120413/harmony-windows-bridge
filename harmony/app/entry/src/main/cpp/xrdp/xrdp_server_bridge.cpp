@@ -37,8 +37,120 @@ constexpr int32_t kXrdpWmMouseMove = XRDP_OHOS_WM_MOUSEMOVE;
 using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
 using XrdpSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
+using XrdpSubmitEncodedFrameFn = int (*)(const xrdp_ohos_encoded_frame*);
+using XrdpSubmitAudioFrameFn = int (*)(const xrdp_ohos_audio_frame*);
 using XrdpSetInputCallbackFn = int (*)(xrdp_ohos_input_event_fn, void*);
 using XrdpSetBackendEventCallbackFn = int (*)(xrdp_ohos_backend_event_fn, void*);
+
+uint64_t NowUs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+uint8_t ClipByte(int value)
+{
+    if (value < 0) {
+        return 0;
+    }
+    if (value > 255) {
+        return 255;
+    }
+    return static_cast<uint8_t>(value);
+}
+
+void RgbToYuv709Full(int r, int g, int b, uint8_t& y, uint8_t& u, uint8_t& v)
+{
+    y = ClipByte((54 * r + 183 * g + 19 * b + 128) / 256);
+    u = ClipByte((-29 * r - 99 * g + 128 * b) / 256 + 128);
+    v = ClipByte((128 * r - 116 * g - 12 * b) / 256 + 128);
+}
+
+size_t Nv12Bytes(uint32_t width, uint32_t height)
+{
+    return static_cast<size_t>(width) * static_cast<size_t>(height) * 3U / 2U;
+}
+
+const char* XrdpFrameFormatName(int format)
+{
+    switch (format) {
+        case XRDP_OHOS_FRAME_FORMAT_BGRA_8888:
+            return "bgra";
+        case XRDP_OHOS_FRAME_FORMAT_RGBA_8888:
+            return "rgba";
+        case XRDP_OHOS_FRAME_FORMAT_NV12:
+            return "nv12";
+        default:
+            return "unknown";
+    }
+}
+
+bool ConvertFourByteFrameToNv12(const xrdp_ohos_frame& frame, int32_t sourceStride, uint8_t* target)
+{
+    if (target == nullptr || frame.data == nullptr || (frame.width & 1) != 0 || (frame.height & 1) != 0) {
+        return false;
+    }
+
+    const bool sourceIsBgra = frame.format == XRDP_OHOS_FRAME_FORMAT_BGRA_8888;
+    const auto* sourceBase = static_cast<const uint8_t*>(frame.data);
+    const auto width = static_cast<uint32_t>(frame.width);
+    const auto height = static_cast<uint32_t>(frame.height);
+    auto* yPlane = target;
+    auto* uvPlane = target + static_cast<size_t>(width) * static_cast<size_t>(height);
+
+    for (uint32_t y = 0; y < height; y += 2U) {
+        const auto* src0 = sourceBase + static_cast<size_t>(y) * static_cast<size_t>(sourceStride);
+        const auto* src1 = sourceBase + static_cast<size_t>(y + 1U) * static_cast<size_t>(sourceStride);
+        auto* dstY0 = yPlane + static_cast<size_t>(y) * static_cast<size_t>(width);
+        auto* dstY1 = dstY0 + width;
+        auto* dstUv = uvPlane + static_cast<size_t>(y / 2U) * static_cast<size_t>(width);
+
+        for (uint32_t x = 0; x < width; x += 2U) {
+            int sumU = 0;
+            int sumV = 0;
+            for (uint32_t dy = 0; dy < 2U; ++dy) {
+                const auto* row = dy == 0U ? src0 : src1;
+                auto* dstY = dy == 0U ? dstY0 : dstY1;
+                for (uint32_t dx = 0; dx < 2U; ++dx) {
+                    const auto* px = row + static_cast<size_t>(x + dx) * 4U;
+                    const int r = sourceIsBgra ? px[2] : px[0];
+                    const int g = px[1];
+                    const int b = sourceIsBgra ? px[0] : px[2];
+                    uint8_t yy = 0;
+                    uint8_t uu = 0;
+                    uint8_t vv = 0;
+                    RgbToYuv709Full(r, g, b, yy, uu, vv);
+                    dstY[x + dx] = yy;
+                    sumU += uu;
+                    sumV += vv;
+                }
+            }
+            dstUv[x] = static_cast<uint8_t>((sumU + 2) / 4);
+            dstUv[x + 1U] = static_cast<uint8_t>((sumV + 2) / 4);
+        }
+    }
+    return true;
+}
+
+void CopyNv12Frame(const xrdp_ohos_frame& frame, int32_t sourceStride, uint8_t* target)
+{
+    const auto width = static_cast<uint32_t>(frame.width);
+    const auto height = static_cast<uint32_t>(frame.height);
+    const auto* source = static_cast<const uint8_t*>(frame.data);
+    for (uint32_t y = 0; y < height; ++y) {
+        std::memcpy(target + static_cast<size_t>(y) * width,
+            source + static_cast<size_t>(y) * static_cast<size_t>(sourceStride),
+            width);
+    }
+
+    auto* targetUv = target + static_cast<size_t>(width) * static_cast<size_t>(height);
+    const auto* sourceUv = source + static_cast<size_t>(sourceStride) * static_cast<size_t>(height);
+    for (uint32_t y = 0; y < height / 2U; ++y) {
+        std::memcpy(targetUv + static_cast<size_t>(y) * width,
+            sourceUv + static_cast<size_t>(y) * static_cast<size_t>(sourceStride),
+            width);
+    }
+}
 
 struct XrdpLoadedServer {
     void* handle = nullptr;
@@ -50,6 +162,8 @@ struct XrdpLoadedServer {
 struct XrdpLoadedBackend {
     void* handle = nullptr;
     XrdpSubmitFrameFn submitFrameFn = nullptr;
+    XrdpSubmitEncodedFrameFn submitEncodedFrameFn = nullptr;
+    XrdpSubmitAudioFrameFn submitAudioFrameFn = nullptr;
     XrdpSetInputCallbackFn setInputCallbackFn = nullptr;
     XrdpSetBackendEventCallbackFn setEventCallbackFn = nullptr;
     std::string libraryPath;
@@ -117,23 +231,37 @@ public:
             return false;
         }
 
-        const int32_t sourceStride = frame.stride > 0 ? frame.stride :
-            static_cast<int32_t>(frame.width * 4U);
-        if (frame.data == nullptr || frame.width <= 0 || frame.height <= 0 ||
-            frame.width > kMaxFrameDimension || frame.height > kMaxFrameDimension ||
-            sourceStride < static_cast<int32_t>(frame.width * 4U)) {
-            message = "invalid xrdp video frame";
-            return false;
-        }
-        if (frame.format != XRDP_OHOS_FRAME_FORMAT_BGRA_8888 &&
-            frame.format != XRDP_OHOS_FRAME_FORMAT_RGBA_8888) {
+        const bool inputFourByte = frame.format == XRDP_OHOS_FRAME_FORMAT_BGRA_8888 ||
+            frame.format == XRDP_OHOS_FRAME_FORMAT_RGBA_8888;
+        const bool inputNv12 = frame.format == XRDP_OHOS_FRAME_FORMAT_NV12;
+        if (!inputFourByte && !inputNv12) {
             message = "unsupported xrdp video frame format=" + std::to_string(frame.format);
             return false;
         }
 
-        const size_t rowBytes = static_cast<size_t>(frame.width) * 4U;
-        if (frame.height > std::numeric_limits<size_t>::max() / rowBytes) {
+        const int32_t sourceStride = frame.stride > 0 ? frame.stride :
+            static_cast<int32_t>(frame.width * (inputFourByte ? 4U : 1U));
+        const int32_t minStride = static_cast<int32_t>(frame.width * (inputFourByte ? 4U : 1U));
+        if (frame.data == nullptr || frame.width <= 0 || frame.height <= 0 ||
+            frame.width > kMaxFrameDimension || frame.height > kMaxFrameDimension ||
+            sourceStride < minStride) {
+            message = "invalid xrdp video frame";
+            return false;
+        }
+        if (inputNv12 && ((frame.width & 1) != 0 || (frame.height & 1) != 0)) {
+            message = "invalid xrdp nv12 frame dimensions";
+            return false;
+        }
+
+        const bool useNv12 = inputNv12 ||
+            (inputFourByte && (frame.width & 1) == 0 && (frame.height & 1) == 0);
+        const size_t rowBytes = static_cast<size_t>(frame.width) * (useNv12 ? 1U : 4U);
+        if (frame.height > std::numeric_limits<size_t>::max() / (rowBytes == 0U ? 1U : rowBytes)) {
             message = "xrdp video frame is too large";
+            return false;
+        }
+        if (useNv12 && Nv12Bytes(frame.width, frame.height) < rowBytes * static_cast<size_t>(frame.height)) {
+            message = "xrdp nv12 frame is too large";
             return false;
         }
 
@@ -149,13 +277,19 @@ public:
             }
         }
 
-        const size_t frameBytes = rowBytes * static_cast<size_t>(frame.height);
+        const size_t frameBytes = useNv12 ? Nv12Bytes(frame.width, frame.height) :
+            rowBytes * static_cast<size_t>(frame.height);
         PendingFrame next;
         next.width = frame.width;
         next.height = frame.height;
         next.submitFn = submitFn;
-        next.format = frame.format;
+        next.format = useNv12 ? XRDP_OHOS_FRAME_FORMAT_NV12 : frame.format;
+        next.stride = useNv12 ? frame.width : static_cast<uint32_t>(frame.width * 4U);
         next.sourceSequence = frame.source_sequence;
+        next.captureTimestampUs = frame.capture_timestamp_us;
+        next.captureAcquireUs = frame.capture_acquire_us;
+        next.bridgeQueueUs = frame.bridge_queue_us;
+        next.submitterEnqueueUs = NowUs();
         next.pixelBytes = frameBytes;
         bool reusedBuffer = false;
         next.pixels = TakeReusableBuffer(frameBytes, reusedBuffer);
@@ -172,17 +306,27 @@ public:
         next.reusedBuffer = reusedBuffer;
 
         const auto copyStart = std::chrono::steady_clock::now();
-        for (uint32_t y = 0; y < frame.height; ++y) {
-            const auto* source = static_cast<const uint8_t*>(frame.data) +
-                static_cast<size_t>(y) * static_cast<size_t>(sourceStride);
-            auto* target = next.pixels.get() + static_cast<size_t>(y) * rowBytes;
-            std::memcpy(target, source, rowBytes);
+        if (useNv12 && inputFourByte) {
+            if (!ConvertFourByteFrameToNv12(frame, sourceStride, next.pixels.get())) {
+                message = "xrdp video frame NV12 conversion failed";
+                return false;
+            }
+        } else if (useNv12) {
+            CopyNv12Frame(frame, sourceStride, next.pixels.get());
+        } else {
+            for (uint32_t y = 0; y < frame.height; ++y) {
+                const auto* source = static_cast<const uint8_t*>(frame.data) +
+                    static_cast<size_t>(y) * static_cast<size_t>(sourceStride);
+                auto* target = next.pixels.get() + static_cast<size_t>(y) * rowBytes;
+                std::memcpy(target, source, rowBytes);
+            }
         }
         const auto copyEnd = std::chrono::steady_clock::now();
         next.copyUs = static_cast<uint32_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(copyEnd - copyStart).count());
         const uint32_t copyUs = next.copyUs;
         const bool copiedToReusedBuffer = next.reusedBuffer;
+        const int queuedFormat = next.format;
 
         uint64_t queued = 0;
         uint64_t replaced = 0;
@@ -204,7 +348,8 @@ public:
         condition_.notify_one();
 
         message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-            " xrdp-video queued mode=latest copy=" + std::to_string(copyUs / 1000.0) +
+            " xrdp-video queued mode=latest-" + XrdpFrameFormatName(queuedFormat) +
+            " copy=" + std::to_string(copyUs / 1000.0) +
             "ms queued=" + std::to_string(queued) +
             " replaced=" + std::to_string(replaced) +
             " replacedPending=" + std::string(replacedPending ? "true" : "false") +
@@ -276,9 +421,14 @@ private:
         size_t pixelBytes = 0;
         uint32_t width = 0;
         uint32_t height = 0;
+        uint32_t stride = 0;
         uint32_t copyUs = 0;
         uint64_t sequence = 0;
         uint64_t sourceSequence = 0;
+        uint64_t captureTimestampUs = 0;
+        uint64_t captureAcquireUs = 0;
+        uint64_t bridgeQueueUs = 0;
+        uint64_t submitterEnqueueUs = 0;
         int format = XRDP_OHOS_FRAME_FORMAT_RGBA_8888;
         bool reusedBuffer = false;
         XrdpSubmitFrameFn submitFn = nullptr;
@@ -358,10 +508,16 @@ private:
             submittedFrame.data = frame.pixels.get();
             submittedFrame.width = static_cast<int>(frame.width);
             submittedFrame.height = static_cast<int>(frame.height);
-            submittedFrame.stride = static_cast<int>(frame.width * 4U);
+            submittedFrame.stride = static_cast<int>(frame.stride);
             submittedFrame.format = frame.format;
             submittedFrame.source_sequence = frame.sourceSequence;
+            submittedFrame.capture_timestamp_us = frame.captureTimestampUs;
+            submittedFrame.capture_acquire_us = frame.captureAcquireUs;
+            submittedFrame.bridge_queue_us = frame.bridgeQueueUs;
+            submittedFrame.submitter_enqueue_us = frame.submitterEnqueueUs;
+            submittedFrame.submitter_copy_us = frame.copyUs;
             const auto submitStart = std::chrono::steady_clock::now();
+            submittedFrame.submitter_submit_us = NowUs();
             const int status = frame.pixels != nullptr && frame.pixelBytes != 0U && frame.submitFn != nullptr ?
                 frame.submitFn(&submittedFrame) :
                 XRDP_OHOS_BACKEND_STATUS_INVALID_FRAME;
@@ -391,7 +547,7 @@ private:
                         " size=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
                         " copy=" + std::to_string(frame.copyUs / 1000.0) +
                         "ms submit=" + std::to_string(submitUs / 1000.0) +
-                        "ms pixel=" + std::string(frame.format == XRDP_OHOS_FRAME_FORMAT_BGRA_8888 ? "bgra" : "rgba") +
+                        "ms pixel=" + std::string(XrdpFrameFormatName(frame.format)) +
                         " buffer=" + std::string(frame.reusedBuffer ? "reused" : "new") +
                         " sourceSeq=" + std::to_string(frame.sourceSequence) +
                         " count=" + std::to_string(submitted));
@@ -486,6 +642,10 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
         " ready=" + std::to_string(capture.readyCount) +
         " queued=" + std::to_string(capture.submittedCount) +
         " dropped=" + std::to_string(capture.droppedCount) +
+        " audioReady=" + std::to_string(capture.audioReadyCount) +
+        " audioQueued=" + std::to_string(capture.audioSubmittedCount) +
+        " audioDropped=" + std::to_string(capture.audioDroppedCount) +
+        " audioBytes=" + std::to_string(capture.audioBytes) +
         " errors=" + std::to_string(capture.captureErrorCount));
     diagnostics.logs.push_back("xrdp video running=" + std::string(video.running ? "true" : "false") +
         " pending=" + std::string(video.hasPending ? "true" : "false") +
@@ -683,6 +843,10 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
             " rect=(" + std::to_string(event->left) + "," + std::to_string(event->top) +
             "," + std::to_string(event->right) + "," + std::to_string(event->bottom) + ")" +
             " frameId=" + std::to_string(event->frame_id) +
+            " sourceSeq=" + std::to_string(event->source_sequence) +
+            " ackFromAcquire=" + std::to_string(
+                (event->ack_us > event->capture_acquire_us && event->capture_acquire_us != 0) ?
+                    (event->ack_us - event->capture_acquire_us) / 1000.0 : 0.0) + "ms" +
             " flags=" + std::to_string(event->flags));
     }
 
@@ -1059,6 +1223,10 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
     XrdpServerState& state = ServerState();
     if (state.backend.handle != nullptr && state.backend.submitFrameFn != nullptr) {
         result.logs.push_back("xrdp OHOS backend already loaded: " + state.backend.libraryPath);
+        result.logs.push_back(std::string("xrdp OHOS backend audio callback ") +
+            (state.backend.submitAudioFrameFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS backend encoded frame callback ") +
+            (state.backend.submitEncodedFrameFn != nullptr ? "loaded" : "missing"));
         if (state.backend.setInputCallbackFn != nullptr) {
             const int rc = state.backend.setInputCallbackFn(OnXrdpInputEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
@@ -1096,13 +1264,29 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             dlsym(handle, "xrdp_ohos_backend_set_input_callback"));
         auto setEventCallbackFn = reinterpret_cast<XrdpSetBackendEventCallbackFn>(
             dlsym(handle, "xrdp_ohos_backend_set_event_callback"));
+        auto submitAudioFn = reinterpret_cast<XrdpSubmitAudioFrameFn>(
+            dlsym(handle, "xrdp_ohos_backend_submit_audio_frame"));
+        auto submitEncodedFn = reinterpret_cast<XrdpSubmitEncodedFrameFn>(
+            dlsym(handle, "xrdp_ohos_backend_submit_encoded_frame"));
 
         state.backend.handle = handle;
         state.backend.submitFrameFn = submitFn;
+        state.backend.submitEncodedFrameFn = submitEncodedFn;
+        state.backend.submitAudioFrameFn = submitAudioFn;
         state.backend.setInputCallbackFn = setInputCallbackFn;
         state.backend.setEventCallbackFn = setEventCallbackFn;
         state.backend.libraryPath = candidate;
         result.logs.push_back("xrdp OHOS backend loaded: " + candidate);
+        if (submitAudioFn != nullptr) {
+            result.logs.push_back("xrdp OHOS backend audio callback loaded");
+        } else {
+            result.logs.push_back("xrdp OHOS backend audio callback symbol missing in: " + candidate);
+        }
+        if (submitEncodedFn != nullptr) {
+            result.logs.push_back("xrdp OHOS backend encoded frame callback loaded");
+        } else {
+            result.logs.push_back("xrdp OHOS backend encoded frame callback symbol missing in: " + candidate);
+        }
         if (setInputCallbackFn != nullptr) {
             const int rc = setInputCallbackFn(OnXrdpInputEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
@@ -1272,6 +1456,67 @@ bool QueueXrdpVideoFrame(const xrdp_ohos_frame& frame, std::string& message)
     }
 
     return VideoSubmitter().Enqueue(frame, submitFn, message);
+}
+
+bool QueueXrdpEncodedVideoFrame(const xrdp_ohos_encoded_frame& frame, std::string& message)
+{
+    XrdpSubmitEncodedFrameFn submitFn = nullptr;
+
+    {
+        std::lock_guard<std::mutex> lock(ServerState().mutex);
+        XrdpServerState& state = ServerState();
+        if (!state.running.load()) {
+            message = "xrdp server is not running";
+            return false;
+        }
+        submitFn = state.backend.submitEncodedFrameFn;
+    }
+
+    if (submitFn == nullptr) {
+        message = "xrdp encoded video backend is not loaded";
+        return false;
+    }
+    if (frame.data == nullptr || frame.bytes <= 0 || frame.width <= 0 || frame.height <= 0 ||
+        frame.format != XRDP_OHOS_ENCODED_FRAME_FORMAT_H264_AVC420) {
+        message = "invalid xrdp encoded video frame";
+        return false;
+    }
+
+    const int status = submitFn(&frame);
+    if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
+        message = "xrdp encoded video submit status=" + std::to_string(status);
+        return false;
+    }
+    message = "xrdp encoded video queued bytes=" + std::to_string(frame.bytes);
+    return true;
+}
+
+bool QueueXrdpAudioFrame(const xrdp_ohos_audio_frame& frame, std::string& message)
+{
+    XrdpSubmitAudioFrameFn submitFn = nullptr;
+
+    {
+        std::lock_guard<std::mutex> lock(ServerState().mutex);
+        XrdpServerState& state = ServerState();
+        if (!state.running.load()) {
+            message = "xrdp server is not running";
+            return false;
+        }
+        submitFn = state.backend.submitAudioFrameFn;
+    }
+
+    if (submitFn == nullptr) {
+        message = "xrdp audio backend is not loaded";
+        return false;
+    }
+
+    const int status = submitFn(&frame);
+    if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
+        message = "xrdp audio submit status=" + std::to_string(status);
+        return false;
+    }
+    message = "xrdp audio queued bytes=" + std::to_string(frame.bytes);
+    return true;
 }
 
 bool QueueXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
