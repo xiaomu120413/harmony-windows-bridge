@@ -1,6 +1,7 @@
 #include "xrdp/xrdp_server_bridge.h"
 
 #include "common/bridge_log.h"
+#include "xrdp/xrdp_input_injector.h"
 #include "xrdp/xrdp_screen_capture_bridge.h"
 
 #include <atomic>
@@ -32,19 +33,6 @@ constexpr int32_t kXrdpWmMouseMove = 100;
 using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
 using XrdpSubmitBgraFrameFn = int (*)(const void*, int, int, int);
-
-struct XrdpOhosInputEvent {
-    int32_t version = 0;
-    int32_t msg = 0;
-    long param1 = 0;
-    long param2 = 0;
-    long param3 = 0;
-    long param4 = 0;
-    int32_t width = 0;
-    int32_t height = 0;
-    int32_t bpp = 0;
-    int32_t connected = 0;
-};
 
 using XrdpInputEventCallbackFn = void (*)(const XrdpOhosInputEvent*, void*);
 using XrdpSetInputCallbackFn = int (*)(XrdpInputEventCallbackFn, void*);
@@ -342,6 +330,7 @@ void ResetXrdpClientCaptureState(const std::string& reason)
         ClientCaptureState().height = 0;
     }
     StopXrdpScreenCapture(reason);
+    ResetXrdpInputInjector(reason);
 }
 
 void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
@@ -394,6 +383,7 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
 void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
 {
     static std::atomic<uint32_t> inputEventCount { 0 };
+    static std::atomic<bool> inputAuthorizationPrimed { false };
 
     if (event == nullptr) {
         return;
@@ -401,27 +391,27 @@ void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
 
     const uint32_t count = inputEventCount.fetch_add(1) + 1;
     const bool sampledMove = event->msg == kXrdpWmMouseMove && (count <= 32 || (count % 256U) == 0U);
-    if (event->msg == kXrdpWmMouseMove && !sampledMove) {
-        return;
-    }
 
-    EmitHilogInfo("xrdp input callback: count=" + std::to_string(count) +
-        " version=" + std::to_string(event->version) +
-        " msg=" + std::to_string(event->msg) +
-        " p=(" + std::to_string(event->param1) +
-        "," + std::to_string(event->param2) +
-        "," + std::to_string(event->param3) +
-        "," + std::to_string(event->param4) +
-        ") desktop=" + std::to_string(event->width) +
-        "x" + std::to_string(event->height) +
-        " bpp=" + std::to_string(event->bpp) +
-        " connected=" + std::to_string(event->connected));
+    if (event->msg != kXrdpWmMouseMove || sampledMove) {
+        EmitHilogInfo("xrdp input callback: count=" + std::to_string(count) +
+            " version=" + std::to_string(event->version) +
+            " msg=" + std::to_string(event->msg) +
+            " p=(" + std::to_string(event->param1) +
+            "," + std::to_string(event->param2) +
+            "," + std::to_string(event->param3) +
+            "," + std::to_string(event->param4) +
+            ") desktop=" + std::to_string(event->width) +
+            "x" + std::to_string(event->height) +
+            " bpp=" + std::to_string(event->bpp) +
+            " connected=" + std::to_string(event->connected));
+    }
 
     if (event->width > 0 && event->height > 0) {
         UpdateXrdpScreenCaptureTarget(static_cast<uint32_t>(event->width),
             static_cast<uint32_t>(event->height));
     }
     if (event->connected == 0) {
+        inputAuthorizationPrimed.store(false);
         ResetXrdpClientCaptureState("xrdp client disconnected");
         return;
     }
@@ -429,6 +419,11 @@ void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
         StartXrdpCaptureForClient(static_cast<uint32_t>(event->width),
             static_cast<uint32_t>(event->height));
     }
+    if (!inputAuthorizationPrimed.exchange(true)) {
+        PrimeXrdpInputInjectorAuthorization("xrdp client connected");
+    }
+    std::string inputMessage;
+    DispatchXrdpInputEvent(*event, inputMessage);
 }
 
 bool IsAbsolutePath(const std::string& value)
