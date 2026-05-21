@@ -343,7 +343,7 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
     options.width = width;
     options.height = height;
     options.frameRate = 15;
-    options.showCursor = true;
+    options.showCursor = false;
 
     {
         std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
