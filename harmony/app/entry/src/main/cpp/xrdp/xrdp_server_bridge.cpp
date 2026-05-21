@@ -4,7 +4,6 @@
 #include "ohos/ohos_capture_controller.h"
 #include "ohos/ohos_frame_submitter.h"
 #include "xrdp/xrdp_display_geometry.h"
-#include "xrdp/xrdp_input_injector.h"
 #include "xrdp/xrdp_screen_capture_bridge.h"
 
 #include <atomic>
@@ -28,7 +27,6 @@ constexpr const char* kDefaultRuntimeRoot = "/data/storage/el2/base/files/xrdp";
 constexpr const char* kServerLibraryName = "libxrdpserver.so";
 constexpr const char* kBackendLibraryName = "libxrdpohos.so";
 constexpr uint32_t kDefaultPort = 3390;
-constexpr int32_t kXrdpWmMouseMove = XRDP_OHOS_WM_MOUSEMOVE;
 
 using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
@@ -36,7 +34,6 @@ using XrdpSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
 using XrdpSubmitEncodedFrameFn = int (*)(const xrdp_ohos_encoded_frame*);
 using XrdpSubmitAudioFrameFn = int (*)(const xrdp_ohos_audio_frame*);
 using XrdpGetAbiInfoFn = int (*)(xrdp_ohos_abi_info*);
-using XrdpSetInputCallbackFn = int (*)(xrdp_ohos_input_event_fn, void*);
 using XrdpSetBackendEventCallbackFn = int (*)(xrdp_ohos_backend_event_fn, void*);
 
 struct XrdpLoadedServer {
@@ -52,7 +49,6 @@ struct XrdpLoadedBackend {
     XrdpSubmitFrameFn submitFrameFn = nullptr;
     XrdpSubmitEncodedFrameFn submitEncodedFrameFn = nullptr;
     XrdpSubmitAudioFrameFn submitAudioFrameFn = nullptr;
-    XrdpSetInputCallbackFn setInputCallbackFn = nullptr;
     XrdpSetBackendEventCallbackFn setEventCallbackFn = nullptr;
     xrdp_ohos_abi_info abiInfo {};
     bool abiInfoValid = false;
@@ -243,16 +239,6 @@ void UpdateControllerCaptureTarget(uint32_t width, uint32_t height, void*)
     UpdateXrdpScreenCaptureTarget(width, height);
 }
 
-void PrimeControllerInputAuthorization(const std::string& reason, void*)
-{
-    PrimeXrdpInputInjectorAuthorization(reason);
-}
-
-void ResetControllerInput(const std::string& reason, void*)
-{
-    ResetXrdpInputInjector(reason);
-}
-
 std::string DescribeControllerGeometry(void*)
 {
     return FormatXrdpDisplayGeometry(QueryXrdpDisplayGeometry());
@@ -264,8 +250,8 @@ xrdp_ohos::CaptureController& CaptureController()
         StartControllerCapture,
         StopControllerCapture,
         UpdateControllerCaptureTarget,
-        PrimeControllerInputAuthorization,
-        ResetControllerInput,
+        nullptr,
+        nullptr,
         DescribeControllerGeometry,
         nullptr,
     });
@@ -333,39 +319,6 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
     }
 
     CaptureController().HandleBackendEvent(*event);
-}
-
-void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
-{
-    static std::atomic<uint32_t> inputEventCount { 0 };
-
-    if (event == nullptr) {
-        return;
-    }
-
-    const uint32_t count = inputEventCount.fetch_add(1) + 1;
-    const bool sampledMove = event->msg == kXrdpWmMouseMove && (count <= 32 || (count % 256U) == 0U);
-    {
-        std::lock_guard<std::mutex> lock(ServerState().mutex);
-        ServerState().inputEventCount = count;
-    }
-
-    if (event->msg != kXrdpWmMouseMove || sampledMove) {
-        EmitHilogInfo("xrdp input callback: count=" + std::to_string(count) +
-            " version=" + std::to_string(event->version) +
-            " msg=" + std::to_string(event->msg) +
-            " p=(" + std::to_string(event->param1) +
-            "," + std::to_string(event->param2) +
-            "," + std::to_string(event->param3) +
-            "," + std::to_string(event->param4) +
-            ") desktop=" + std::to_string(event->width) +
-            "x" + std::to_string(event->height) +
-            " bpp=" + std::to_string(event->bpp) +
-            " connected=" + std::to_string(event->connected));
-    }
-
-    std::string inputMessage;
-    DispatchXrdpInputEvent(*event, inputMessage);
 }
 
 bool IsAbsolutePath(const std::string& value)
@@ -678,12 +631,9 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             (state.backend.submitAudioFrameFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS backend encoded frame callback ") +
             (state.backend.submitEncodedFrameFn != nullptr ? "loaded" : "missing"));
-        if (BackendHandlesInputDirectly(state.backend.abiInfoValid, state.backend.abiInfo)) {
-            result.logs.push_back("xrdp OHOS backend input callback skipped: direct native input enabled");
-        } else if (state.backend.setInputCallbackFn != nullptr) {
-            const int rc = state.backend.setInputCallbackFn(OnXrdpInputEvent, nullptr);
-            result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
-        }
+        result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
+            (BackendHandlesInputDirectly(state.backend.abiInfoValid, state.backend.abiInfo) ?
+                "enabled" : "unavailable"));
         if (state.backend.setEventCallbackFn != nullptr) {
             const int rc = state.backend.setEventCallbackFn(OnXrdpBackendEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
@@ -713,8 +663,6 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             dlclose(handle);
             continue;
         }
-        auto setInputCallbackFn = reinterpret_cast<XrdpSetInputCallbackFn>(
-            dlsym(handle, "xrdp_ohos_backend_set_input_callback"));
         auto getAbiInfoFn = reinterpret_cast<XrdpGetAbiInfoFn>(
             dlsym(handle, "xrdp_ohos_backend_get_abi_info"));
         auto setEventCallbackFn = reinterpret_cast<XrdpSetBackendEventCallbackFn>(
@@ -746,7 +694,6 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         state.backend.submitFrameFn = submitFn;
         state.backend.submitEncodedFrameFn = submitEncodedFn;
         state.backend.submitAudioFrameFn = submitAudioFn;
-        state.backend.setInputCallbackFn = setInputCallbackFn;
         state.backend.setEventCallbackFn = setEventCallbackFn;
         state.backend.abiInfo = abiInfo;
         state.backend.abiInfoValid = abiInfoValid;
@@ -767,14 +714,8 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         } else {
             result.logs.push_back("xrdp OHOS backend encoded frame callback symbol missing in: " + candidate);
         }
-        if (BackendHandlesInputDirectly(abiInfoValid, abiInfo)) {
-            result.logs.push_back("xrdp OHOS backend input callback skipped: direct native input enabled");
-        } else if (setInputCallbackFn != nullptr) {
-            const int rc = setInputCallbackFn(OnXrdpInputEvent, nullptr);
-            result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
-        } else {
-            result.logs.push_back("xrdp OHOS backend input callback symbol missing in: " + candidate);
-        }
+        result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
+            (BackendHandlesInputDirectly(abiInfoValid, abiInfo) ? "enabled" : "unavailable"));
         if (setEventCallbackFn != nullptr) {
             const int rc = setEventCallbackFn(OnXrdpBackendEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
