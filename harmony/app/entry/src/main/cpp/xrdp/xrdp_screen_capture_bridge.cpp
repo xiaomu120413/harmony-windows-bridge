@@ -375,19 +375,18 @@ private:
 
         const auto start = std::chrono::steady_clock::now();
         const auto* source = static_cast<const uint8_t*>(mapped);
-        XrdpVideoFrame frame;
+        xrdp_ohos_frame frame {};
         if (config.format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 ||
             config.format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888) {
-            frame.pixelFormat = XrdpVideoPixelFormat::Bgra;
+            frame.format = XRDP_OHOS_FRAME_FORMAT_BGRA_8888;
         } else {
-            frame.pixelFormat = XrdpVideoPixelFormat::Rgba;
+            frame.format = XRDP_OHOS_FRAME_FORMAT_RGBA_8888;
         }
         frame.data = source;
-        frame.strideBytes = rowBytes;
-        frame.width = static_cast<uint32_t>(config.width);
-        frame.height = static_cast<uint32_t>(config.height);
-        frame.label = "ohos screen capture";
-        frame.sourceSequence = readyCount;
+        frame.stride = rowBytes;
+        frame.width = config.width;
+        frame.height = config.height;
+        frame.source_sequence = readyCount;
 
         std::string message;
         const bool queued = QueueXrdpVideoFrame(frame, message);
@@ -403,7 +402,7 @@ private:
                     " target=" + DescribeOptions(target) +
                     " stride=" + std::to_string(rowBytes) +
                     " format=" + std::to_string(config.format) +
-                    " pixel=" + std::string(frame.pixelFormat == XrdpVideoPixelFormat::Bgra ? "bgra" : "rgba") +
+                    " pixel=" + std::string(frame.format == XRDP_OHOS_FRAME_FORMAT_BGRA_8888 ? "bgra" : "rgba") +
                     " ts=" + std::to_string(timestamp) +
                     " region=(" + std::to_string(region.x) + "," + std::to_string(region.y) +
                     "," + std::to_string(region.width) + "," + std::to_string(region.height) + ")" +
