@@ -639,6 +639,11 @@ std::string FormatBackendAbi(const xrdp_ohos_abi_info& info)
         " features=" + HexFlags(info.feature_flags);
 }
 
+bool BackendHandlesInputDirectly(bool abiInfoValid, const xrdp_ohos_abi_info& info)
+{
+    return abiInfoValid && (info.feature_flags & XRDP_OHOS_FEATURE_DIRECT_INPUT) != 0U;
+}
+
 void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
 {
     const XrdpScreenCaptureDiagnostics capture = GetXrdpScreenCaptureDiagnostics();
@@ -1255,7 +1260,9 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             (state.backend.submitAudioFrameFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS backend encoded frame callback ") +
             (state.backend.submitEncodedFrameFn != nullptr ? "loaded" : "missing"));
-        if (state.backend.setInputCallbackFn != nullptr) {
+        if (BackendHandlesInputDirectly(state.backend.abiInfoValid, state.backend.abiInfo)) {
+            result.logs.push_back("xrdp OHOS backend input callback skipped: direct native input enabled");
+        } else if (state.backend.setInputCallbackFn != nullptr) {
             const int rc = state.backend.setInputCallbackFn(OnXrdpInputEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
         }
@@ -1342,7 +1349,9 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         } else {
             result.logs.push_back("xrdp OHOS backend encoded frame callback symbol missing in: " + candidate);
         }
-        if (setInputCallbackFn != nullptr) {
+        if (BackendHandlesInputDirectly(abiInfoValid, abiInfo)) {
+            result.logs.push_back("xrdp OHOS backend input callback skipped: direct native input enabled");
+        } else if (setInputCallbackFn != nullptr) {
             const int rc = setInputCallbackFn(OnXrdpInputEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend input callback register rc=" + std::to_string(rc));
         } else {
