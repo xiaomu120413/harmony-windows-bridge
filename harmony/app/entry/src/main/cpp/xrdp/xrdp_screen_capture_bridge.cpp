@@ -232,6 +232,22 @@ public:
             std::to_string(width) + "x" + std::to_string(height));
     }
 
+    XrdpScreenCaptureDiagnostics Snapshot()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        XrdpScreenCaptureDiagnostics diagnostics;
+        diagnostics.running = running_;
+        diagnostics.width = target_.width;
+        diagnostics.height = target_.height;
+        diagnostics.frameRate = target_.frameRate;
+        diagnostics.showCursor = target_.showCursor;
+        diagnostics.readyCount = readyCount_;
+        diagnostics.submittedCount = submittedCount_.load();
+        diagnostics.droppedCount = droppedCount_.load();
+        diagnostics.captureErrorCount = captureErrorCount_;
+        return diagnostics;
+    }
+
 private:
     static XrdpScreenCaptureOptions NormalizeOptions(XrdpScreenCaptureOptions options)
     {
@@ -475,6 +491,11 @@ void StopXrdpScreenCapture(const std::string& reason)
 void UpdateXrdpScreenCaptureTarget(uint32_t width, uint32_t height)
 {
     ScreenCapture().UpdateTarget(width, height);
+}
+
+XrdpScreenCaptureDiagnostics GetXrdpScreenCaptureDiagnostics()
+{
+    return ScreenCapture().Snapshot();
 }
 
 } // namespace rdp_bridge

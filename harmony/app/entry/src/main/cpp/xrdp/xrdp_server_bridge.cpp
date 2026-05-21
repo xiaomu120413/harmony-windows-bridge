@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
@@ -89,6 +90,23 @@ struct XrdpResolvedPaths {
     std::string logPath;
 };
 
+struct XrdpVideoSubmitterStats {
+    bool running = false;
+    bool hasPending = false;
+    uint64_t queuedCount = 0;
+    uint64_t replacedCount = 0;
+    uint64_t submittedCount = 0;
+    uint64_t failedCount = 0;
+    uint64_t backoffDropCount = 0;
+    uint64_t preCopyDropCount = 0;
+    uint64_t bufferAllocatedCount = 0;
+    uint64_t bufferReusedCount = 0;
+    uint32_t lastCopyUs = 0;
+    uint32_t lastSubmitUs = 0;
+    int lastStatus = 0;
+    size_t freeBufferCount = 0;
+};
+
 class XrdpVideoFrameSubmitter {
 public:
     bool Enqueue(const xrdp_ohos_frame& frame, XrdpSubmitFrameFn submitFn, std::string& message)
@@ -146,11 +164,19 @@ public:
         next.format = frame.format;
         next.sourceSequence = frame.source_sequence;
         next.pixelBytes = frameBytes;
-        next.pixels = AllocateBytes(frameBytes);
+        bool reusedBuffer = false;
+        next.pixels = TakeReusableBuffer(frameBytes, reusedBuffer);
+        if (next.pixels == nullptr) {
+            next.pixels = AllocateBytes(frameBytes);
+            if (next.pixels != nullptr) {
+                NoteAllocatedBuffer();
+            }
+        }
         if (next.pixels == nullptr) {
             message = "xrdp video frame allocation failed";
             return false;
         }
+        next.reusedBuffer = reusedBuffer;
 
         const auto copyStart = std::chrono::steady_clock::now();
         for (uint32_t y = 0; y < frame.height; ++y) {
@@ -162,6 +188,8 @@ public:
         const auto copyEnd = std::chrono::steady_clock::now();
         next.copyUs = static_cast<uint32_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(copyEnd - copyStart).count());
+        const uint32_t copyUs = next.copyUs;
+        const bool copiedToReusedBuffer = next.reusedBuffer;
 
         uint64_t queued = 0;
         uint64_t replaced = 0;
@@ -171,6 +199,7 @@ public:
             next.sequence = ++sequence_;
             if (hasPending_) {
                 ++replacedCount_;
+                RecycleBufferLocked(std::move(pending_.pixels), pending_.pixelBytes);
             }
             pending_ = std::move(next);
             hasPending_ = true;
@@ -180,9 +209,10 @@ public:
         condition_.notify_one();
 
         message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-            " xrdp-video queued copy=" + std::to_string(next.copyUs / 1000.0) +
+            " xrdp-video queued copy=" + std::to_string(copyUs / 1000.0) +
             "ms queued=" + std::to_string(queued) +
-            " replaced=" + std::to_string(replaced);
+            " replaced=" + std::to_string(replaced) +
+            " buffer=" + std::string(copiedToReusedBuffer ? "reused" : "new");
         return true;
     }
 
@@ -196,6 +226,9 @@ public:
                 return;
             }
             running_ = false;
+            if (hasPending_) {
+                RecycleBufferLocked(std::move(pending_.pixels), pending_.pixelBytes);
+            }
             hasPending_ = false;
             pending_ = PendingFrame {};
             worker = std::move(worker_);
@@ -210,9 +243,36 @@ public:
         }
     }
 
+    XrdpVideoSubmitterStats Snapshot()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        XrdpVideoSubmitterStats stats;
+        stats.running = running_;
+        stats.hasPending = hasPending_;
+        stats.queuedCount = queuedCount_;
+        stats.replacedCount = replacedCount_;
+        stats.submittedCount = submittedCount_;
+        stats.failedCount = failedCount_;
+        stats.backoffDropCount = backoffDropCount_;
+        stats.preCopyDropCount = preCopyDropCount_;
+        stats.bufferAllocatedCount = bufferAllocatedCount_;
+        stats.bufferReusedCount = bufferReusedCount_;
+        stats.lastCopyUs = lastCopyUs_;
+        stats.lastSubmitUs = lastSubmitUs_;
+        stats.lastStatus = lastStatus_;
+        stats.freeBufferCount = freeBuffers_.size();
+        return stats;
+    }
+
 private:
     static constexpr uint32_t kMaxFrameDimension = 8192;
+    static constexpr size_t kMaxReusableBuffers = 2;
     using ByteBuffer = std::unique_ptr<uint8_t[]>;
+
+    struct ReusableBuffer {
+        ByteBuffer pixels;
+        size_t bytes = 0;
+    };
 
     struct PendingFrame {
         ByteBuffer pixels;
@@ -223,12 +283,52 @@ private:
         uint64_t sequence = 0;
         uint64_t sourceSequence = 0;
         int format = XRDP_OHOS_FRAME_FORMAT_RGBA_8888;
+        bool reusedBuffer = false;
         XrdpSubmitFrameFn submitFn = nullptr;
     };
 
     static ByteBuffer AllocateBytes(size_t bytes)
     {
         return ByteBuffer(new (std::nothrow) uint8_t[bytes]);
+    }
+
+    ByteBuffer TakeReusableBuffer(size_t bytes, bool& reused)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto iter = freeBuffers_.begin(); iter != freeBuffers_.end(); ++iter) {
+            if (iter->bytes == bytes && iter->pixels != nullptr) {
+                ByteBuffer pixels = std::move(iter->pixels);
+                freeBuffers_.erase(iter);
+                reused = true;
+                ++bufferReusedCount_;
+                return pixels;
+            }
+        }
+        reused = false;
+        return ByteBuffer();
+    }
+
+    void RecycleBuffer(ByteBuffer pixels, size_t bytes)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        RecycleBufferLocked(std::move(pixels), bytes);
+    }
+
+    void RecycleBufferLocked(ByteBuffer pixels, size_t bytes)
+    {
+        if (pixels == nullptr || bytes == 0U) {
+            return;
+        }
+        if (freeBuffers_.size() >= kMaxReusableBuffers) {
+            return;
+        }
+        freeBuffers_.push_back(ReusableBuffer { std::move(pixels), bytes });
+    }
+
+    void NoteAllocatedBuffer()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++bufferAllocatedCount_;
     }
 
     void StartLocked()
@@ -277,6 +377,8 @@ private:
                 std::lock_guard<std::mutex> lock(mutex_);
                 lastStatus_ = status;
                 lastStatusAt_ = std::chrono::steady_clock::now();
+                lastCopyUs_ = frame.copyUs;
+                lastSubmitUs_ = submitUs;
                 if (status == 0) {
                     submitted = ++submittedCount_;
                 } else {
@@ -291,6 +393,7 @@ private:
                         " copy=" + std::to_string(frame.copyUs / 1000.0) +
                         "ms submit=" + std::to_string(submitUs / 1000.0) +
                         "ms pixel=" + std::string(frame.format == XRDP_OHOS_FRAME_FORMAT_BGRA_8888 ? "bgra" : "rgba") +
+                        " buffer=" + std::string(frame.reusedBuffer ? "reused" : "new") +
                         " sourceSeq=" + std::to_string(frame.sourceSequence) +
                         " count=" + std::to_string(submitted));
                 }
@@ -304,6 +407,7 @@ private:
                     " size=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
                     " count=" + std::to_string(failed));
             }
+            RecycleBuffer(std::move(frame.pixels), frame.pixelBytes);
         }
     }
 
@@ -320,8 +424,13 @@ private:
     uint64_t failedCount_ = 0;
     uint64_t backoffDropCount_ = 0;
     uint64_t preCopyDropCount_ = 0;
+    uint64_t bufferAllocatedCount_ = 0;
+    uint64_t bufferReusedCount_ = 0;
+    uint32_t lastCopyUs_ = 0;
+    uint32_t lastSubmitUs_ = 0;
     int lastStatus_ = 0;
     std::chrono::steady_clock::time_point lastStatusAt_;
+    std::vector<ReusableBuffer> freeBuffers_;
 };
 
 XrdpServerState& ServerState()
@@ -354,6 +463,8 @@ std::atomic<bool> g_xrdpInputAuthorizationPrimed { false };
 
 void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
 {
+    const XrdpScreenCaptureDiagnostics capture = GetXrdpScreenCaptureDiagnostics();
+    const XrdpVideoSubmitterStats video = VideoSubmitter().Snapshot();
     diagnostics.logs.push_back("xrdp running=" + std::string(diagnostics.running ? "true" : "false") +
         " activeMstscSession=" + std::string(diagnostics.activeMstscSession ? "true" : "false") +
         " port=" + std::to_string(diagnostics.port));
@@ -368,6 +479,28 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
     diagnostics.logs.push_back("xrdp counters backendEvents=" + std::to_string(diagnostics.backendEventCount) +
         " inputEvents=" + std::to_string(diagnostics.inputEventCount) +
         " lastExitCode=" + std::to_string(diagnostics.lastExitCode));
+    diagnostics.logs.push_back("xrdp capture running=" + std::string(capture.running ? "true" : "false") +
+        " target=" + std::to_string(capture.width) + "x" + std::to_string(capture.height) +
+        "@" + std::to_string(capture.frameRate) + "fps" +
+        " cursor=" + std::string(capture.showCursor ? "on" : "off") +
+        " ready=" + std::to_string(capture.readyCount) +
+        " queued=" + std::to_string(capture.submittedCount) +
+        " dropped=" + std::to_string(capture.droppedCount) +
+        " errors=" + std::to_string(capture.captureErrorCount));
+    diagnostics.logs.push_back("xrdp video running=" + std::string(video.running ? "true" : "false") +
+        " pending=" + std::string(video.hasPending ? "true" : "false") +
+        " queued=" + std::to_string(video.queuedCount) +
+        " submitted=" + std::to_string(video.submittedCount) +
+        " failed=" + std::to_string(video.failedCount) +
+        " replaced=" + std::to_string(video.replacedCount) +
+        " drops preCopy=" + std::to_string(video.preCopyDropCount) +
+        " backoff=" + std::to_string(video.backoffDropCount) +
+        " lastStatus=" + std::to_string(video.lastStatus) +
+        " copy=" + std::to_string(video.lastCopyUs / 1000.0) +
+        "ms submit=" + std::to_string(video.lastSubmitUs / 1000.0) +
+        "ms buffers allocated=" + std::to_string(video.bufferAllocatedCount) +
+        " reused=" + std::to_string(video.bufferReusedCount) +
+        " free=" + std::to_string(video.freeBufferCount));
 }
 
 XrdpServerDiagnostics SnapshotXrdpDiagnosticsLocked(const XrdpServerState& state)
