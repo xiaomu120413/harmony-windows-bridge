@@ -19,6 +19,10 @@
     {
       "name": "microphone_reason",
       "value": "Capture microphone audio so FreeRDP can redirect local voice input to the remote desktop."
+    },
+    {
+      "name": "screen_recording_reason",
+      "value": "Capture the local screen so xrdp can stream the HarmonyOS desktop to a remote desktop client."
     }
   ]
 }
