@@ -54,6 +54,25 @@ export interface NativeCommandResult {
   logs: string[];
 }
 
+export interface NativeXrdpServerParams {
+  appFilesDir?: string;
+  runtimeRoot?: string;
+  hnpRoot?: string;
+  libraryPath?: string;
+  libDir?: string;
+  modulePath?: string;
+  configPath?: string;
+  sharePath?: string;
+  port?: number | string;
+}
+
+export interface NativeXrdpServerResult extends NativeCommandResult {
+  libraryPath: string;
+  runtimeRoot: string;
+  configPath: string;
+  modulePath: string;
+}
+
 export interface NativePointerEventInput {
   action: string;
   button?: string;
@@ -98,6 +117,9 @@ declare const rdpNative: {
   probe(): NativeProbeResult;
   connect(params: Object): NativeCommandResult;
   disconnect(): NativeCommandResult;
+  probeXrdpServer(params?: NativeXrdpServerParams): NativeXrdpServerResult;
+  startXrdpServer(params?: NativeXrdpServerParams): NativeXrdpServerResult;
+  stopXrdpServer(): NativeXrdpServerResult;
   sendPointerEvent(input: Object): NativeCommandResult;
   sendKey(input: Object): NativeCommandResult;
   sendPlatformKey(input: Object): NativeCommandResult;

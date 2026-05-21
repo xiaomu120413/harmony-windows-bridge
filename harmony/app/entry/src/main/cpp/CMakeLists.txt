@@ -57,7 +57,8 @@ add_library(entry SHARED
     surface/native_window_rgba_painter.cpp
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
-    common/string_utils.cpp)
+    common/string_utils.cpp
+    xrdp/xrdp_server_bridge.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so
