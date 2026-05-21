@@ -58,6 +58,7 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
+    xrdp/xrdp_input_injector.cpp
     xrdp/xrdp_screen_capture_bridge.cpp
     xrdp/xrdp_server_bridge.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
@@ -71,6 +72,7 @@ target_link_libraries(entry PUBLIC
     libnative_media_core.so
     libnative_media_vdec.so
     libnative_avscreen_capture.so
+    libohinput.so
     libnative_window.so
     libnative_buffer.so
     libpasteboard.so
