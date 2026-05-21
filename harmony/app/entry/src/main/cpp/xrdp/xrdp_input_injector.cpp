@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <cmath>
 #include <mutex>
 #include <set>
 #include <string>
@@ -15,6 +16,7 @@
 
 #include <multimodalinput/oh_input_manager.h>
 #include <multimodalinput/oh_key_code.h>
+#include <window_manager/oh_display_manager.h>
 
 namespace rdp_bridge {
 namespace {
@@ -44,32 +46,32 @@ constexpr int32_t kXrdpWmXButton2Up = 117;
 constexpr int32_t kXrdpWmXButton2Down = 118;
 constexpr int32_t kXrdpWmTouchVScroll = 140;
 constexpr int32_t kXrdpWmTouchHScroll = 141;
-constexpr long kX11Backspace = 65288;
-constexpr long kX11Tab = 65289;
-constexpr long kX11Return = 65293;
-constexpr long kX11Escape = 65307;
-constexpr long kX11Home = 65360;
-constexpr long kX11Left = 65361;
-constexpr long kX11Up = 65362;
-constexpr long kX11Right = 65363;
-constexpr long kX11Down = 65364;
-constexpr long kX11PageUp = 65365;
-constexpr long kX11PageDown = 65366;
-constexpr long kX11End = 65367;
-constexpr long kX11Insert = 65379;
-constexpr long kX11Delete = 65535;
-constexpr long kX11ShiftLeft = 65505;
-constexpr long kX11ShiftRight = 65506;
-constexpr long kX11CtrlLeft = 65507;
-constexpr long kX11CtrlRight = 65508;
-constexpr long kX11CapsLock = 65509;
-constexpr long kX11AltLeft = 65513;
-constexpr long kX11AltRight = 65514;
-constexpr long kX11MetaLeft = 65511;
-constexpr long kX11MetaRight = 65512;
-constexpr long kX11SuperLeft = 65515;
-constexpr long kX11SuperRight = 65516;
-constexpr long kX11F1 = 65470;
+constexpr long kXrdpKeysymBackspace = 65288;
+constexpr long kXrdpKeysymTab = 65289;
+constexpr long kXrdpKeysymReturn = 65293;
+constexpr long kXrdpKeysymEscape = 65307;
+constexpr long kXrdpKeysymHome = 65360;
+constexpr long kXrdpKeysymLeft = 65361;
+constexpr long kXrdpKeysymUp = 65362;
+constexpr long kXrdpKeysymRight = 65363;
+constexpr long kXrdpKeysymDown = 65364;
+constexpr long kXrdpKeysymPageUp = 65365;
+constexpr long kXrdpKeysymPageDown = 65366;
+constexpr long kXrdpKeysymEnd = 65367;
+constexpr long kXrdpKeysymInsert = 65379;
+constexpr long kXrdpKeysymDelete = 65535;
+constexpr long kXrdpKeysymShiftLeft = 65505;
+constexpr long kXrdpKeysymShiftRight = 65506;
+constexpr long kXrdpKeysymCtrlLeft = 65507;
+constexpr long kXrdpKeysymCtrlRight = 65508;
+constexpr long kXrdpKeysymCapsLock = 65509;
+constexpr long kXrdpKeysymAltLeft = 65513;
+constexpr long kXrdpKeysymAltRight = 65514;
+constexpr long kXrdpKeysymMetaLeft = 65511;
+constexpr long kXrdpKeysymMetaRight = 65512;
+constexpr long kXrdpKeysymSuperLeft = 65515;
+constexpr long kXrdpKeysymSuperRight = 65516;
+constexpr long kXrdpKeysymF1 = 65470;
 constexpr int32_t kMaxInputQueue = 512;
 constexpr int32_t kWheelStep = 120;
 constexpr uint32_t kMouseButtonLeftMask = 1U;
@@ -84,21 +86,143 @@ std::atomic<uint32_t> g_authorizationLogCount { 0 };
 std::mutex g_authorizationMutex;
 std::chrono::steady_clock::time_point g_lastAuthorizationRequest;
 
+struct DisplayGeometry {
+    bool valid = false;
+    uint64_t displayId = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t originX = 0;
+    int32_t originY = 0;
+};
+
+struct MouseCoordinates {
+    int32_t displayId = 0;
+    int32_t displayX = 0;
+    int32_t displayY = 0;
+    int32_t globalX = 0;
+    int32_t globalY = 0;
+    int32_t sourceWidth = 0;
+    int32_t sourceHeight = 0;
+    int32_t targetWidth = 0;
+    int32_t targetHeight = 0;
+    bool scaled = false;
+};
+
+std::mutex g_displayGeometryMutex;
+DisplayGeometry g_displayGeometry;
+std::chrono::steady_clock::time_point g_lastDisplayGeometryQuery;
+
 int64_t NowMs()
 {
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
 }
 
-int32_t ClampCoordinate(long value)
+int32_t ClampToRange(long value, int32_t minValue, int32_t maxValue)
 {
-    if (value < 0) {
-        return 0;
+    if (maxValue < minValue) {
+        return minValue;
     }
-    if (value > 32767) {
-        return 32767;
+    if (value < minValue) {
+        return minValue;
+    }
+    if (value > maxValue) {
+        return maxValue;
     }
     return static_cast<int32_t>(value);
+}
+
+int32_t ScaleCoordinate(long value, int32_t sourceSize, int32_t targetSize)
+{
+    if (targetSize <= 1) {
+        return 0;
+    }
+    if (sourceSize <= 1) {
+        return ClampToRange(value, 0, targetSize - 1);
+    }
+    const int32_t source = ClampToRange(value, 0, sourceSize - 1);
+    const double ratio = static_cast<double>(source) / static_cast<double>(sourceSize - 1);
+    return ClampToRange(static_cast<long>(std::llround(ratio * static_cast<double>(targetSize - 1))),
+        0, targetSize - 1);
+}
+
+DisplayGeometry QueryDisplayGeometry()
+{
+    DisplayGeometry geometry;
+    uint64_t displayId = 0;
+    int32_t width = 0;
+    int32_t height = 0;
+    const NativeDisplayManager_ErrorCode idRc = OH_NativeDisplayManager_GetDefaultDisplayId(&displayId);
+    const NativeDisplayManager_ErrorCode widthRc = OH_NativeDisplayManager_GetDefaultDisplayWidth(&width);
+    const NativeDisplayManager_ErrorCode heightRc = OH_NativeDisplayManager_GetDefaultDisplayHeight(&height);
+    if (idRc == DISPLAY_MANAGER_OK && widthRc == DISPLAY_MANAGER_OK &&
+        heightRc == DISPLAY_MANAGER_OK && width > 0 && height > 0) {
+        geometry.valid = true;
+        geometry.displayId = displayId;
+        geometry.width = width;
+        geometry.height = height;
+        int32_t originX = 0;
+        int32_t originY = 0;
+        const NativeDisplayManager_ErrorCode positionRc =
+            OH_NativeDisplayManager_GetDisplayPosition(displayId, &originX, &originY);
+        if (positionRc == DISPLAY_MANAGER_OK) {
+            geometry.originX = originX;
+            geometry.originY = originY;
+        }
+    }
+    return geometry;
+}
+
+DisplayGeometry GetDisplayGeometry()
+{
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(g_displayGeometryMutex);
+    if (g_displayGeometry.valid &&
+        now - g_lastDisplayGeometryQuery < std::chrono::seconds(1)) {
+        return g_displayGeometry;
+    }
+
+    const DisplayGeometry previous = g_displayGeometry;
+    g_displayGeometry = QueryDisplayGeometry();
+    g_lastDisplayGeometryQuery = now;
+    if (g_displayGeometry.valid &&
+        (!previous.valid || previous.displayId != g_displayGeometry.displayId ||
+            previous.width != g_displayGeometry.width || previous.height != g_displayGeometry.height ||
+            previous.originX != g_displayGeometry.originX || previous.originY != g_displayGeometry.originY)) {
+        EmitHilogInfo("xrdp input display geometry id=" + std::to_string(g_displayGeometry.displayId) +
+            " size=" + std::to_string(g_displayGeometry.width) +
+            "x" + std::to_string(g_displayGeometry.height) +
+            " origin=(" + std::to_string(g_displayGeometry.originX) +
+            "," + std::to_string(g_displayGeometry.originY) + ")");
+    }
+    return g_displayGeometry;
+}
+
+MouseCoordinates ResolveMouseCoordinates(const XrdpOhosInputEvent& event)
+{
+    MouseCoordinates coordinates;
+    const DisplayGeometry geometry = GetDisplayGeometry();
+    if (!geometry.valid) {
+        coordinates.displayX = ClampToRange(event.param1, 0, 32767);
+        coordinates.displayY = ClampToRange(event.param2, 0, 32767);
+        coordinates.globalX = coordinates.displayX;
+        coordinates.globalY = coordinates.displayY;
+        return coordinates;
+    }
+
+    const int32_t sourceWidth = event.width > 0 ? event.width : geometry.width;
+    const int32_t sourceHeight = event.height > 0 ? event.height : geometry.height;
+    coordinates.displayId = static_cast<int32_t>(geometry.displayId);
+    coordinates.displayX = ScaleCoordinate(event.param1, sourceWidth, geometry.width);
+    coordinates.displayY = ScaleCoordinate(event.param2, sourceHeight, geometry.height);
+    coordinates.globalX = geometry.originX + coordinates.displayX;
+    coordinates.globalY = geometry.originY + coordinates.displayY;
+    coordinates.sourceWidth = sourceWidth;
+    coordinates.sourceHeight = sourceHeight;
+    coordinates.targetWidth = geometry.width;
+    coordinates.targetHeight = geometry.height;
+    coordinates.scaled = sourceWidth != geometry.width || sourceHeight != geometry.height;
+    return coordinates;
 }
 
 void OnInjectionAuthorized(Input_InjectionStatus status)
@@ -109,6 +233,10 @@ void OnInjectionAuthorized(Input_InjectionStatus status)
 
 bool EnsureInjectionAuthorized(std::string& message)
 {
+    if (g_authorizedStatus.load() == AUTHORIZED) {
+        return true;
+    }
+
     Input_InjectionStatus status = UNAUTHORIZED;
     const Input_Result queryRc = OH_Input_QueryAuthorizedStatus(&status);
     if (queryRc == INPUT_SUCCESS) {
@@ -275,34 +403,34 @@ int32_t MapKeysymToOhosKeyCode(long keysym)
         case '.': return KEYCODE_PERIOD;
         case '/': return KEYCODE_SLASH;
         case '`': return KEYCODE_GRAVE;
-        case kX11Backspace: return KEYCODE_DEL;
-        case kX11Tab: return KEYCODE_TAB;
-        case kX11Return: return KEYCODE_ENTER;
-        case kX11Escape: return KEYCODE_ESCAPE;
-        case kX11Home: return KEYCODE_MOVE_HOME;
-        case kX11Left: return KEYCODE_DPAD_LEFT;
-        case kX11Up: return KEYCODE_DPAD_UP;
-        case kX11Right: return KEYCODE_DPAD_RIGHT;
-        case kX11Down: return KEYCODE_DPAD_DOWN;
-        case kX11PageUp: return KEYCODE_PAGE_UP;
-        case kX11PageDown: return KEYCODE_PAGE_DOWN;
-        case kX11End: return KEYCODE_MOVE_END;
-        case kX11Insert: return KEYCODE_INSERT;
-        case kX11Delete: return KEYCODE_FORWARD_DEL;
-        case kX11ShiftLeft: return KEYCODE_SHIFT_LEFT;
-        case kX11ShiftRight: return KEYCODE_SHIFT_RIGHT;
-        case kX11CtrlLeft: return KEYCODE_CTRL_LEFT;
-        case kX11CtrlRight: return KEYCODE_CTRL_RIGHT;
-        case kX11CapsLock: return KEYCODE_CAPS_LOCK;
-        case kX11AltLeft: return KEYCODE_ALT_LEFT;
-        case kX11AltRight: return KEYCODE_ALT_RIGHT;
-        case kX11MetaLeft:
-        case kX11SuperLeft: return KEYCODE_META_LEFT;
-        case kX11MetaRight:
-        case kX11SuperRight: return KEYCODE_META_RIGHT;
+        case kXrdpKeysymBackspace: return KEYCODE_DEL;
+        case kXrdpKeysymTab: return KEYCODE_TAB;
+        case kXrdpKeysymReturn: return KEYCODE_ENTER;
+        case kXrdpKeysymEscape: return KEYCODE_ESCAPE;
+        case kXrdpKeysymHome: return KEYCODE_MOVE_HOME;
+        case kXrdpKeysymLeft: return KEYCODE_DPAD_LEFT;
+        case kXrdpKeysymUp: return KEYCODE_DPAD_UP;
+        case kXrdpKeysymRight: return KEYCODE_DPAD_RIGHT;
+        case kXrdpKeysymDown: return KEYCODE_DPAD_DOWN;
+        case kXrdpKeysymPageUp: return KEYCODE_PAGE_UP;
+        case kXrdpKeysymPageDown: return KEYCODE_PAGE_DOWN;
+        case kXrdpKeysymEnd: return KEYCODE_MOVE_END;
+        case kXrdpKeysymInsert: return KEYCODE_INSERT;
+        case kXrdpKeysymDelete: return KEYCODE_FORWARD_DEL;
+        case kXrdpKeysymShiftLeft: return KEYCODE_SHIFT_LEFT;
+        case kXrdpKeysymShiftRight: return KEYCODE_SHIFT_RIGHT;
+        case kXrdpKeysymCtrlLeft: return KEYCODE_CTRL_LEFT;
+        case kXrdpKeysymCtrlRight: return KEYCODE_CTRL_RIGHT;
+        case kXrdpKeysymCapsLock: return KEYCODE_CAPS_LOCK;
+        case kXrdpKeysymAltLeft: return KEYCODE_ALT_LEFT;
+        case kXrdpKeysymAltRight: return KEYCODE_ALT_RIGHT;
+        case kXrdpKeysymMetaLeft:
+        case kXrdpKeysymSuperLeft: return KEYCODE_META_LEFT;
+        case kXrdpKeysymMetaRight:
+        case kXrdpKeysymSuperRight: return KEYCODE_META_RIGHT;
         default:
-            if (keysym >= kX11F1 && keysym < kX11F1 + 12) {
-                return KEYCODE_F1 + static_cast<int32_t>(keysym - kX11F1);
+            if (keysym >= kXrdpKeysymF1 && keysym < kXrdpKeysymF1 + 12) {
+                return KEYCODE_F1 + static_cast<int32_t>(keysym - kXrdpKeysymF1);
             }
             return -1;
     }
@@ -455,7 +583,8 @@ MouseDispatch MapMouseEvent(const XrdpOhosInputEvent& event)
     return dispatch;
 }
 
-bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& dispatch, std::string& message)
+bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& dispatch,
+    const MouseCoordinates& coordinates, std::string& message)
 {
     Input_MouseEvent* mouseEvent = OH_Input_CreateMouseEvent();
     if (mouseEvent == nullptr) {
@@ -463,13 +592,12 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
         return false;
     }
 
-    const int32_t x = ClampCoordinate(event.param1);
-    const int32_t y = ClampCoordinate(event.param2);
     OH_Input_SetMouseEventAction(mouseEvent, dispatch.action);
-    OH_Input_SetMouseEventDisplayX(mouseEvent, x);
-    OH_Input_SetMouseEventDisplayY(mouseEvent, y);
-    OH_Input_SetMouseEventGlobalX(mouseEvent, x);
-    OH_Input_SetMouseEventGlobalY(mouseEvent, y);
+    OH_Input_SetMouseEventDisplayX(mouseEvent, coordinates.displayX);
+    OH_Input_SetMouseEventDisplayY(mouseEvent, coordinates.displayY);
+    OH_Input_SetMouseEventDisplayId(mouseEvent, coordinates.displayId);
+    OH_Input_SetMouseEventGlobalX(mouseEvent, coordinates.globalX);
+    OH_Input_SetMouseEventGlobalY(mouseEvent, coordinates.globalY);
     OH_Input_SetMouseEventButton(mouseEvent, dispatch.button);
     OH_Input_SetMouseEventActionTime(mouseEvent, NowMs());
     if (dispatch.wheel) {
@@ -482,9 +610,19 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
     message = "xrdp mouse inject msg=" + std::to_string(event.msg) +
         " action=" + std::to_string(dispatch.action) +
         " button=" + std::to_string(dispatch.button) +
-        " x=" + std::to_string(x) +
-        " y=" + std::to_string(y) +
+        " remote=(" + std::to_string(event.param1) +
+        "," + std::to_string(event.param2) + ")" +
+        " display=(" + std::to_string(coordinates.displayX) +
+        "," + std::to_string(coordinates.displayY) + ")" +
+        " source=" + std::to_string(coordinates.sourceWidth) +
+        "x" + std::to_string(coordinates.sourceHeight) +
+        " target=" + std::to_string(coordinates.targetWidth) +
+        "x" + std::to_string(coordinates.targetHeight) +
         " rc=" + std::to_string(rc);
+    if (rc == INPUT_PERMISSION_DENIED) {
+        g_authorizedStatus.store(UNAUTHORIZED);
+        g_authorizationRequested.store(false);
+    }
     return rc == INPUT_SUCCESS;
 }
 
@@ -508,6 +646,10 @@ bool InjectKeyEvent(const XrdpOhosInputEvent& event, int32_t keyCode, std::strin
         " scancode=" + std::to_string(event.param3) +
         " keysym=" + std::to_string(event.param2) +
         " rc=" + std::to_string(rc);
+    if (rc == INPUT_PERMISSION_DENIED) {
+        g_authorizedStatus.store(UNAUTHORIZED);
+        g_authorizationRequested.store(false);
+    }
     return rc == INPUT_SUCCESS;
 }
 
@@ -684,7 +826,7 @@ private:
         dispatch.action = MOUSE_ACTION_BUTTON_UP;
         dispatch.button = button;
         std::string message;
-        InjectMouseEvent(event, dispatch, message);
+        InjectMouseEvent(event, dispatch, ResolveMouseCoordinates(event), message);
     }
 
     void ProcessEvent(const XrdpOhosInputEvent& event)
@@ -717,9 +859,10 @@ private:
             if (!dispatch.supported) {
                 return;
             }
-            lastMouseX_ = ClampCoordinate(event.param1);
-            lastMouseY_ = ClampCoordinate(event.param2);
-            ok = InjectMouseEvent(event, dispatch, message);
+            const MouseCoordinates coordinates = ResolveMouseCoordinates(event);
+            lastMouseX_ = coordinates.displayX;
+            lastMouseY_ = coordinates.displayY;
+            ok = InjectMouseEvent(event, dispatch, coordinates, message);
             if (ok && dispatch.buttonMask != 0U) {
                 if (dispatch.buttonDown) {
                     pressedButtons_ |= dispatch.buttonMask;

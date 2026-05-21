@@ -72,6 +72,7 @@ target_link_libraries(entry PUBLIC
     libnative_media_core.so
     libnative_media_vdec.so
     libnative_avscreen_capture.so
+    libnative_display_manager.so
     libohinput.so
     libnative_window.so
     libnative_buffer.so
