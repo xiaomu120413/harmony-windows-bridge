@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
+. (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1")
 $source = Resolve-Path (Join-Path $repoRoot $SourceRoot)
 $deps = Resolve-Path (Join-Path $repoRoot $DepsRoot)
 $targetLib = Join-Path $repoRoot $TargetLibRoot
@@ -121,6 +122,8 @@ Get-ChildItem -LiteralPath $configSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $targetConfig -Force
   Copy-Item -LiteralPath $_.FullName -Destination $targetNativeConfig -Force
 }
+Copy-XrdpRuntimeConfigExtras -RepoRoot $repoRoot -DestinationDir $targetConfig
+Copy-XrdpRuntimeConfigExtras -RepoRoot $repoRoot -DestinationDir $targetNativeConfig
 Get-ChildItem -LiteralPath $shareSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $targetShare -Force
   Copy-Item -LiteralPath $_.FullName -Destination $targetNativeShare -Force
@@ -152,6 +155,8 @@ $requiredRawFiles = @(
   (Join-Path $targetRawLib "libcommon.so.0"),
   (Join-Path $targetRawLib "libssl.so.3"),
   (Join-Path $targetConfig "xrdp.ini"),
+  (Join-Path $targetConfig "rsakeys.ini"),
+  (Join-Path $targetConfig "km-00000409.toml"),
   (Join-Path $targetConfig "xrdp_keyboard.toml"),
   (Join-Path $targetShare "sans-10.fv1")
 )
@@ -159,6 +164,8 @@ $requiredRawFiles = @(
 $requiredNativeRuntimeFiles = @(
   (Join-Path $targetNativeBin "xrdp"),
   (Join-Path $targetNativeConfig "xrdp.ini"),
+  (Join-Path $targetNativeConfig "rsakeys.ini"),
+  (Join-Path $targetNativeConfig "km-00000409.toml"),
   (Join-Path $targetNativeConfig "xrdp_keyboard.toml"),
   (Join-Path $targetNativeShare "sans-10.fv1")
 )
