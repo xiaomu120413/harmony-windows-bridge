@@ -111,7 +111,37 @@ napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& com
     SetString(env, result, "runtimeRoot", command.runtimeRoot);
     SetString(env, result, "configPath", command.configPath);
     SetString(env, result, "modulePath", command.modulePath);
+    SetString(env, result, "logPath", command.logPath);
+    SetBool(env, result, "activeMstscSession", command.activeMstscSession);
+    SetUint32(env, result, "port", command.port);
     SetNamed(env, result, "logs", MakeStringArray(env, command.logs));
+    return result;
+}
+
+napi_value MakeXrdpDiagnosticsResult(napi_env env, const XrdpServerDiagnostics& diagnostics)
+{
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", diagnostics.ok);
+    SetBool(env, result, "running", diagnostics.running);
+    SetBool(env, result, "activeMstscSession", diagnostics.activeMstscSession);
+    SetUint32(env, result, "port", diagnostics.port);
+    SetUint32(env, result, "sessionWidth", diagnostics.sessionWidth);
+    SetUint32(env, result, "sessionHeight", diagnostics.sessionHeight);
+    SetUint32(env, result, "sessionBpp", diagnostics.sessionBpp);
+    SetUint32(env, result, "backendEventCount", diagnostics.backendEventCount);
+    SetUint32(env, result, "inputEventCount", diagnostics.inputEventCount);
+    SetString(env, result, "state", diagnostics.state);
+    SetString(env, result, "message", diagnostics.message);
+    SetString(env, result, "lastBackendEvent", diagnostics.lastBackendEvent);
+    SetString(env, result, "lastDisconnectReason", diagnostics.lastDisconnectReason);
+    SetString(env, result, "libraryPath", diagnostics.libraryPath);
+    SetString(env, result, "backendLibraryPath", diagnostics.backendLibraryPath);
+    SetString(env, result, "runtimeRoot", diagnostics.runtimeRoot);
+    SetString(env, result, "configPath", diagnostics.configPath);
+    SetString(env, result, "modulePath", diagnostics.modulePath);
+    SetString(env, result, "sharePath", diagnostics.sharePath);
+    SetString(env, result, "logPath", diagnostics.logPath);
+    SetNamed(env, result, "logs", MakeStringArray(env, diagnostics.logs));
     return result;
 }
 
@@ -360,6 +390,11 @@ napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
 {
     const XrdpServerParams params = ReadXrdpServerParams(env, info);
     return MakeXrdpServerResult(env, rdp_bridge::StartXrdpServer(params));
+}
+
+napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info)
+{
+    return MakeXrdpDiagnosticsResult(env, rdp_bridge::GetXrdpServerDiagnostics());
 }
 
 napi_value SendPointer(napi_env env, napi_callback_info info)
@@ -720,6 +755,8 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointerEvent", nullptr, SendPointerEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},

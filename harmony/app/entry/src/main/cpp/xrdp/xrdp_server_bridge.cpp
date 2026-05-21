@@ -60,7 +60,21 @@ struct XrdpServerState {
     XrdpLoadedBackend backend;
     std::atomic<bool> running { false };
     std::atomic<int> lastExitCode { 0 };
+    bool activeMstscSession = false;
+    uint32_t port = 0;
+    uint32_t sessionWidth = 0;
+    uint32_t sessionHeight = 0;
+    uint32_t sessionBpp = 0;
+    uint32_t backendEventCount = 0;
+    uint32_t inputEventCount = 0;
     std::string lastMessage;
+    std::string lastBackendEvent;
+    std::string lastDisconnectReason;
+    std::string runtimeRoot;
+    std::string configPath;
+    std::string modulePath;
+    std::string sharePath;
+    std::string logPath;
 };
 
 struct XrdpResolvedPaths {
@@ -329,6 +343,70 @@ XrdpClientCaptureState& ClientCaptureState()
 
 std::atomic<bool> g_xrdpInputAuthorizationPrimed { false };
 
+void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
+{
+    diagnostics.logs.push_back("xrdp running=" + std::string(diagnostics.running ? "true" : "false") +
+        " activeMstscSession=" + std::string(diagnostics.activeMstscSession ? "true" : "false") +
+        " port=" + std::to_string(diagnostics.port));
+    diagnostics.logs.push_back("xrdp session=" + std::to_string(diagnostics.sessionWidth) +
+        "x" + std::to_string(diagnostics.sessionHeight) +
+        " bpp=" + std::to_string(diagnostics.sessionBpp));
+    diagnostics.logs.push_back("xrdp configPath=" + diagnostics.configPath);
+    diagnostics.logs.push_back("xrdp modulePath=" + diagnostics.modulePath);
+    diagnostics.logs.push_back("xrdp logPath=" + diagnostics.logPath);
+    diagnostics.logs.push_back("xrdp lastBackendEvent=" + diagnostics.lastBackendEvent);
+    diagnostics.logs.push_back("xrdp lastDisconnectReason=" + diagnostics.lastDisconnectReason);
+    diagnostics.logs.push_back("xrdp counters backendEvents=" + std::to_string(diagnostics.backendEventCount) +
+        " inputEvents=" + std::to_string(diagnostics.inputEventCount) +
+        " lastExitCode=" + std::to_string(diagnostics.lastExitCode));
+}
+
+XrdpServerDiagnostics SnapshotXrdpDiagnosticsLocked(const XrdpServerState& state)
+{
+    XrdpServerDiagnostics diagnostics;
+    diagnostics.running = state.running.load();
+    diagnostics.activeMstscSession = state.activeMstscSession;
+    diagnostics.port = state.port;
+    diagnostics.sessionWidth = state.sessionWidth;
+    diagnostics.sessionHeight = state.sessionHeight;
+    diagnostics.sessionBpp = state.sessionBpp;
+    diagnostics.backendEventCount = state.backendEventCount;
+    diagnostics.inputEventCount = state.inputEventCount;
+    diagnostics.lastExitCode = state.lastExitCode.load();
+    diagnostics.message = state.lastMessage;
+    diagnostics.lastBackendEvent = state.lastBackendEvent.empty() ? "none" : state.lastBackendEvent;
+    diagnostics.lastDisconnectReason = state.lastDisconnectReason.empty() ? "none" : state.lastDisconnectReason;
+    diagnostics.libraryPath = state.loaded.libraryPath;
+    diagnostics.backendLibraryPath = state.backend.libraryPath;
+    diagnostics.runtimeRoot = state.runtimeRoot;
+    diagnostics.configPath = state.configPath;
+    diagnostics.modulePath = state.modulePath;
+    diagnostics.sharePath = state.sharePath;
+    diagnostics.logPath = state.logPath;
+    if (diagnostics.running) {
+        diagnostics.state = diagnostics.activeMstscSession ? "ActiveSession" : "Listening";
+    } else if (diagnostics.lastExitCode != 0) {
+        diagnostics.state = "Exited";
+    } else {
+        diagnostics.state = "Stopped";
+    }
+    if (diagnostics.message.empty()) {
+        diagnostics.message = "xrdp diagnostics snapshot";
+    }
+    AppendXrdpDiagnosticsLogs(diagnostics);
+    return diagnostics;
+}
+
+void StoreResolvedPathsLocked(XrdpServerState& state, const XrdpResolvedPaths& paths, uint32_t port)
+{
+    state.port = port;
+    state.runtimeRoot = paths.runtimeRoot;
+    state.configPath = paths.configPath;
+    state.modulePath = paths.modulePath;
+    state.sharePath = paths.sharePath;
+    state.logPath = paths.logPath;
+}
+
 void ResetXrdpClientCaptureState(const std::string& reason)
 {
     {
@@ -430,6 +508,20 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
     }
 
     const uint32_t count = backendEventCount.fetch_add(1) + 1;
+    {
+        std::lock_guard<std::mutex> lock(ServerState().mutex);
+        XrdpServerState& state = ServerState();
+        state.backendEventCount = count;
+        state.activeMstscSession = event->connected != 0;
+        state.sessionWidth = event->width > 0 ? static_cast<uint32_t>(event->width) : 0;
+        state.sessionHeight = event->height > 0 ? static_cast<uint32_t>(event->height) : 0;
+        state.sessionBpp = event->bpp > 0 ? static_cast<uint32_t>(event->bpp) : 0;
+        state.lastBackendEvent = XrdpBackendEventTypeName(event->type);
+        state.lastMessage = "xrdp backend event " + state.lastBackendEvent;
+        if (event->type == XRDP_OHOS_BACKEND_EVENT_SESSION_DISCONNECT) {
+            state.lastDisconnectReason = "backend session-disconnect event";
+        }
+    }
     if (count <= 40U || event->type != XRDP_OHOS_BACKEND_EVENT_FRAME_ACK || (count % 200U) == 0U) {
         EmitHilogInfo("xrdp backend callback: count=" + std::to_string(count) +
             " type=" + XrdpBackendEventTypeName(event->type) +
@@ -493,6 +585,10 @@ void OnXrdpInputEvent(const XrdpOhosInputEvent* event, void*)
 
     const uint32_t count = inputEventCount.fetch_add(1) + 1;
     const bool sampledMove = event->msg == kXrdpWmMouseMove && (count <= 32 || (count % 256U) == 0U);
+    {
+        std::lock_guard<std::mutex> lock(ServerState().mutex);
+        ServerState().inputEventCount = count;
+    }
 
     if (event->msg != kXrdpWmMouseMove || sampledMove) {
         EmitHilogInfo("xrdp input callback: count=" + std::to_string(count) +
@@ -881,11 +977,13 @@ void FillPathResult(XrdpServerCommandResult& result, const XrdpResolvedPaths& pa
     result.runtimeRoot = paths.runtimeRoot;
     result.configPath = paths.configPath;
     result.modulePath = paths.modulePath;
+    result.logPath = paths.logPath;
     result.logs.push_back("nativeLibDir=" + paths.nativeLibDir);
     result.logs.push_back("runtimeRoot=" + paths.runtimeRoot);
     result.logs.push_back("configPath=" + paths.configPath);
     result.logs.push_back("modulePath=" + paths.modulePath);
     result.logs.push_back("sharePath=" + paths.sharePath);
+    result.logs.push_back("logPath=" + paths.logPath);
 }
 
 } // namespace
@@ -895,7 +993,9 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     XrdpServerCommandResult result;
     XrdpServerState& state = ServerState();
     const XrdpResolvedPaths paths = ResolvePaths(params);
+    const uint32_t port = params.port == 0 ? kDefaultPort : params.port;
     FillPathResult(result, paths);
+    result.port = port;
 
     if (!PrepareRuntime(paths, result.logs)) {
         result.ok = false;
@@ -916,11 +1016,15 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
 
     {
         std::lock_guard<std::mutex> lock(state.mutex);
+        StoreResolvedPathsLocked(state, paths, port);
         if (state.running.load()) {
             result.ok = true;
             result.state = "Listening";
             result.message = "xrdp server is already running";
             result.libraryPath = state.loaded.libraryPath;
+            result.activeMstscSession = state.activeMstscSession;
+            XrdpServerDiagnostics diagnostics = SnapshotXrdpDiagnosticsLocked(state);
+            result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
             return result;
         }
         if (!LoadServerLocked(params, paths, result)) {
@@ -935,7 +1039,6 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         }
     }
 
-    const uint32_t port = params.port == 0 ? kDefaultPort : params.port;
     std::vector<std::string> argvStorage = {
         "xrdp",
         "-n",
@@ -946,9 +1049,19 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     };
 
     XrdpMainFn mainFn = state.loaded.mainFn;
-    state.running.store(true);
-    state.lastMessage = "xrdp server thread starting";
-    result.libraryPath = state.loaded.libraryPath;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.running.store(true);
+        state.lastExitCode.store(0);
+        state.activeMstscSession = false;
+        state.sessionWidth = 0;
+        state.sessionHeight = 0;
+        state.sessionBpp = 0;
+        state.lastMessage = "xrdp server thread starting";
+        state.lastBackendEvent = "none";
+        state.lastDisconnectReason = "none";
+        result.libraryPath = state.loaded.libraryPath;
+    }
 
     std::thread([mainFn, argvStorage]() mutable {
         std::vector<char*> argv;
@@ -958,12 +1071,19 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         }
         const int code = mainFn(static_cast<int>(argv.size()), argv.data());
         XrdpServerState& threadState = ServerState();
-        threadState.lastExitCode.store(code);
-        threadState.running.store(false);
-        threadState.lastMessage = "xrdp server exited with code " + std::to_string(code);
+        std::string exitMessage;
+        {
+            std::lock_guard<std::mutex> lock(threadState.mutex);
+            threadState.lastExitCode.store(code);
+            threadState.running.store(false);
+            threadState.activeMstscSession = false;
+            threadState.lastMessage = "xrdp server exited with code " + std::to_string(code);
+            threadState.lastDisconnectReason = threadState.lastMessage;
+            exitMessage = threadState.lastMessage;
+        }
         ResetXrdpClientCaptureState("xrdp server exit");
         VideoSubmitter().Stop("xrdp server exit");
-        EmitHilogInfo(threadState.lastMessage);
+        EmitHilogInfo(exitMessage);
     }).detach();
 
     result.ok = true;
@@ -971,8 +1091,20 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     result.message = "xrdp server start requested on port " + std::to_string(port);
     result.logs.push_back(result.message);
     result.logs.push_back("xrdp raw screen capture waits for an active mstsc session");
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        XrdpServerDiagnostics diagnostics = SnapshotXrdpDiagnosticsLocked(state);
+        result.activeMstscSession = diagnostics.activeMstscSession;
+        result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
+    }
     EmitHilogInfo(result.message);
     return result;
+}
+
+XrdpServerDiagnostics GetXrdpServerDiagnostics()
+{
+    std::lock_guard<std::mutex> lock(ServerState().mutex);
+    return SnapshotXrdpDiagnosticsLocked(ServerState());
 }
 
 bool QueueXrdpVideoFrame(const xrdp_ohos_frame& frame, std::string& message)

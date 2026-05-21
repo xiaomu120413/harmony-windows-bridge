@@ -6,7 +6,12 @@ import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import rdpNative, { NativeCommandResult, NativeXrdpServerParams, NativeXrdpServerResult } from 'libentry.so'
+import rdpNative, {
+  NativeCommandResult,
+  NativeXrdpDiagnosticsResult,
+  NativeXrdpServerParams,
+  NativeXrdpServerResult
+} from 'libentry.so'
 
 @Entry
 @Component
@@ -248,12 +253,26 @@ struct Index {
       const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams())
       this.appendLog(`${result.message}: ${trigger}`)
       this.appendNativeLogs(result.logs)
+      this.appendXrdpDiagnostics(`ensure ${trigger}`)
       if (!result.ok) {
         this.xrdpServerStartRequested = false
       }
     } catch (error) {
       this.xrdpServerStartRequested = false
       this.appendLog(`xrdp ensure start failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private appendXrdpDiagnostics(trigger: string): void {
+    try {
+      const diagnostics: NativeXrdpDiagnosticsResult = rdpNative.getXrdpServerDiagnostics()
+      this.appendLog(`xrdp diagnostics: ${trigger} state=${diagnostics.state} running=${diagnostics.running}` +
+        ` activeMstsc=${diagnostics.activeMstscSession} port=${diagnostics.port}` +
+        ` session=${diagnostics.sessionWidth}x${diagnostics.sessionHeight} bpp=${diagnostics.sessionBpp}` +
+        ` lastEvent=${diagnostics.lastBackendEvent} disconnect=${diagnostics.lastDisconnectReason}`)
+      this.appendNativeLogs(diagnostics.logs)
+    } catch (error) {
+      this.appendLog(`xrdp diagnostics failed: ${JSON.stringify(error)}`)
     }
   }
 
