@@ -54,6 +54,17 @@ function Copy-LibraryAliases([string]$SourceDir, [string]$RealName, [string[]]$A
   }
 }
 
+function Get-OpenH264RealName([string]$SourceDir) {
+  $candidate = Get-ChildItem -LiteralPath $SourceDir -File -Filter "libopenh264.so*" |
+    Where-Object { $_.Length -gt 0 } |
+    Sort-Object Name -Descending |
+    Select-Object -First 1
+  if ($null -eq $candidate) {
+    throw "Missing OpenH264 runtime library in dependency sysroot: $SourceDir"
+  }
+  $candidate.Name
+}
+
 if (-not (Test-Path -LiteralPath $HnpCliPath)) {
   throw "hnpcli was not found: $HnpCliPath"
 }
@@ -81,6 +92,7 @@ $stageConfig = Join-Path $stage "config"
 $stageLib = Join-Path $stage "lib"
 $stageShare = Join-Path $stage "share"
 New-Item -ItemType Directory -Force -Path $stageBin, $stageConfig, $stageLib, $stageShare | Out-Null
+$openH264RealName = Get-OpenH264RealName $depsLibSource
 
 Copy-Item -LiteralPath $xrdpExecutable -Destination (Join-Path $stageBin "xrdp") -Force
 Copy-Item -LiteralPath $embeddedServer -Destination (Join-Path $stageLib "libxrdpserver.so") -Force
@@ -94,6 +106,7 @@ Copy-LibraryAliases $xrdpLibSource "libxrdpohos.so" @() $stageLib
 Copy-LibraryAliases $depsLibSource "libssl.so.3" @("libssl.so") $stageLib
 Copy-LibraryAliases $depsLibSource "libcrypto.so.3" @("libcrypto.so") $stageLib
 Copy-LibraryAliases $depsLibSource "libz.so.1.3.1" @("libz.so.1", "libz.so") $stageLib
+Copy-LibraryAliases $depsLibSource $openH264RealName @("libopenh264.so.7", "libopenh264.so") $stageLib
 
 Get-ChildItem -LiteralPath $configSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $stageConfig -Force
@@ -140,6 +153,7 @@ $requiredHnpStageFiles = @(
   (Join-Path $stageLib "libxrdp.so.0"),
   (Join-Path $stageLib "libcommon.so.0"),
   (Join-Path $stageLib "libssl.so.3"),
+  (Join-Path $stageLib "libopenh264.so.7"),
   (Join-Path $stageConfig "xrdp.ini"),
   (Join-Path $stageConfig "rsakeys.ini"),
   (Join-Path $stageConfig "km-00000409.toml"),
