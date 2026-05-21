@@ -157,6 +157,7 @@ $requiredRawFiles = @(
   (Join-Path $targetConfig "xrdp.ini"),
   (Join-Path $targetConfig "rsakeys.ini"),
   (Join-Path $targetConfig "km-00000409.toml"),
+  (Join-Path $targetConfig "km-00000804.toml"),
   (Join-Path $targetConfig "xrdp_keyboard.toml"),
   (Join-Path $targetShare "sans-10.fv1")
 )
@@ -166,6 +167,7 @@ $requiredNativeRuntimeFiles = @(
   (Join-Path $targetNativeConfig "xrdp.ini"),
   (Join-Path $targetNativeConfig "rsakeys.ini"),
   (Join-Path $targetNativeConfig "km-00000409.toml"),
+  (Join-Path $targetNativeConfig "km-00000804.toml"),
   (Join-Path $targetNativeConfig "xrdp_keyboard.toml"),
   (Join-Path $targetNativeShare "sans-10.fv1")
 )

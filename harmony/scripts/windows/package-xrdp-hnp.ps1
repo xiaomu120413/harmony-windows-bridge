@@ -143,6 +143,7 @@ $requiredHnpStageFiles = @(
   (Join-Path $stageConfig "xrdp.ini"),
   (Join-Path $stageConfig "rsakeys.ini"),
   (Join-Path $stageConfig "km-00000409.toml"),
+  (Join-Path $stageConfig "km-00000804.toml"),
   (Join-Path $stageConfig "xrdp_keyboard.toml"),
   (Join-Path $stageShare "sans-10.fv1")
 )
