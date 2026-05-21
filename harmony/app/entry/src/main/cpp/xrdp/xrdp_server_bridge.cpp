@@ -14,13 +14,19 @@
 #include <cstdint>
 #include <dlfcn.h>
 #include <limits>
+#include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <sys/stat.h>
 #include <thread>
 #include <utility>
 #include <unistd.h>
 #include <vector>
+
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 
 namespace rdp_bridge {
 namespace {
@@ -113,13 +119,19 @@ public:
         next.width = frame.width;
         next.height = frame.height;
         next.submitFn = submitFn;
-        next.label = frame.label.empty() ? "rgba frame" : frame.label;
-        next.rgba.resize(frameBytes);
+        next.label = frame.label.empty() ? "video frame" : frame.label;
+        next.pixelFormat = frame.pixelFormat;
+        next.pixelBytes = frameBytes;
+        next.pixels = AllocateBytes(frameBytes);
+        if (next.pixels == nullptr) {
+            message = "xrdp video frame allocation failed";
+            return false;
+        }
 
         const auto copyStart = std::chrono::steady_clock::now();
         for (uint32_t y = 0; y < frame.height; ++y) {
             const auto* source = frame.data + static_cast<size_t>(y) * static_cast<size_t>(sourceStride);
-            auto* target = next.rgba.data() + static_cast<size_t>(y) * rowBytes;
+            auto* target = next.pixels.get() + static_cast<size_t>(y) * rowBytes;
             std::memcpy(target, source, rowBytes);
         }
         const auto copyEnd = std::chrono::steady_clock::now();
@@ -175,16 +187,24 @@ public:
 
 private:
     static constexpr uint32_t kMaxFrameDimension = 8192;
+    using ByteBuffer = std::unique_ptr<uint8_t[]>;
 
     struct PendingFrame {
-        std::vector<uint8_t> rgba;
+        ByteBuffer pixels;
+        size_t pixelBytes = 0;
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t copyUs = 0;
         uint64_t sequence = 0;
         std::string label;
+        FramePixelFormat pixelFormat = FramePixelFormat::Rgba;
         XrdpSubmitBgraFrameFn submitFn = nullptr;
     };
+
+    static ByteBuffer AllocateBytes(size_t bytes)
+    {
+        return ByteBuffer(new (std::nothrow) uint8_t[bytes]);
+    }
 
     void StartLocked()
     {
@@ -197,25 +217,45 @@ private:
         EmitHilogInfo("xrdp video submitter started");
     }
 
-    static bool ConvertRgbaToBgra(const PendingFrame& frame, std::vector<uint8_t>& bgra)
+    static bool ConvertRgbaToBgra(const PendingFrame& frame, ByteBuffer& bgra)
     {
         const size_t rowBytes = static_cast<size_t>(frame.width) * 4U;
         const size_t frameBytes = rowBytes * static_cast<size_t>(frame.height);
-        if (frame.rgba.size() != frameBytes || frame.width == 0 || frame.height == 0) {
+        if (frame.pixels == nullptr || frame.pixelBytes != frameBytes || frame.width == 0 || frame.height == 0) {
             return false;
         }
 
-        bgra.resize(frameBytes);
+        bgra = AllocateBytes(frameBytes);
+        if (bgra == nullptr) {
+            return false;
+        }
         for (uint32_t y = 0; y < frame.height; ++y) {
-            const uint8_t* source = frame.rgba.data() + static_cast<size_t>(y) * rowBytes;
-            uint8_t* target = bgra.data() + static_cast<size_t>(y) * rowBytes;
+            const uint8_t* source = frame.pixels.get() + static_cast<size_t>(y) * rowBytes;
+            uint8_t* target = bgra.get() + static_cast<size_t>(y) * rowBytes;
+#if defined(__aarch64__)
+            size_t x = 0;
+            const uint8x16_t shuffle = { 2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15 };
+            for (; x + 16U <= rowBytes; x += 16U) {
+                const uint8x16_t rgba = vld1q_u8(source + x);
+                const uint8x16_t converted = vqtbl1q_u8(rgba, shuffle);
+                vst1q_u8(target + x, converted);
+            }
+            for (; x < rowBytes; x += 4U) {
+                target[x + 0U] = source[x + 2U];
+                target[x + 1U] = source[x + 1U];
+                target[x + 2U] = source[x + 0U];
+                target[x + 3U] = source[x + 3U];
+            }
+#else
             for (uint32_t x = 0; x < frame.width; ++x) {
                 const size_t offset = static_cast<size_t>(x) * 4U;
-                target[offset + 0] = source[offset + 2];
-                target[offset + 1] = source[offset + 1];
-                target[offset + 2] = source[offset + 0];
-                target[offset + 3] = source[offset + 3];
+                uint32_t pixel = 0;
+                std::memcpy(&pixel, source + offset, sizeof(pixel));
+                pixel = (pixel & 0xFF00FF00U) | ((pixel & 0x000000FFU) << 16U) |
+                    ((pixel & 0x00FF0000U) >> 16U);
+                std::memcpy(target + offset, &pixel, sizeof(pixel));
             }
+#endif
         }
         return true;
     }
@@ -234,14 +274,22 @@ private:
                 hasPending_ = false;
             }
 
-            std::vector<uint8_t> bgra;
+            ByteBuffer bgra;
             const auto convertStart = std::chrono::steady_clock::now();
-            const bool converted = ConvertRgbaToBgra(frame, bgra);
+            const uint8_t* bgraData = nullptr;
+            bool converted = false;
+            if (frame.pixelFormat == FramePixelFormat::Bgra) {
+                converted = frame.pixels != nullptr && frame.pixelBytes != 0U;
+                bgraData = frame.pixels.get();
+            } else {
+                converted = ConvertRgbaToBgra(frame, bgra);
+                bgraData = bgra.get();
+            }
             const auto convertEnd = std::chrono::steady_clock::now();
             const uint32_t convertUs = static_cast<uint32_t>(
                 std::chrono::duration_cast<std::chrono::microseconds>(convertEnd - convertStart).count());
             const int status = converted && frame.submitFn != nullptr ?
-                frame.submitFn(bgra.data(), static_cast<int>(frame.width), static_cast<int>(frame.height),
+                frame.submitFn(bgraData, static_cast<int>(frame.width), static_cast<int>(frame.height),
                     static_cast<int>(frame.width * 4U)) :
                 -1;
 
@@ -264,7 +312,8 @@ private:
                         " size=" + std::to_string(frame.width) + "x" + std::to_string(frame.height) +
                         " copy=" + std::to_string(frame.copyUs / 1000.0) +
                         "ms convert=" + std::to_string(convertUs / 1000.0) +
-                        "ms count=" + std::to_string(submitted) +
+                        "ms pixel=" + std::string(frame.pixelFormat == FramePixelFormat::Bgra ? "bgra" : "rgba") +
+                        " count=" + std::to_string(submitted) +
                         " label=" + frame.label);
                 }
             } else if (status == -4) {
