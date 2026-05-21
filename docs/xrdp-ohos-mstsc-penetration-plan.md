@@ -186,6 +186,39 @@ Phase 2 可能需要：
 - 文本、图片、文件双向复制不阻塞主链路。
 - 非授权连接被拒绝并记录日志。
 
+## Phase 2 取舍和优先级
+
+优先做：
+
+- xrdp 运行诊断：补齐启动路径、配置路径、监听端口、active mstsc session、断连原因、frame/input counters 和 HiLog 关键日志。这些只涉及 xrdp/HAP bridge，不受 OHOS 系统接口限制。
+- 屏幕采集链路：继续基于 `AVScreenCapture`，补帧率控制、分辨率同步、脏区/region 更新、队列背压、丢帧策略、cursor 策略和采集异常日志。`OH_NativeDisplayManager_CaptureScreenPixelmap` 只适合截图兜底，不适合作为高帧率远控主链路。
+- 图像输出链路：先稳定 BGRA/RGBA + bitmap update + dirty rect，再评估 `rfxcodec`、OpenH264/x264 或 OHOS `AVCodec`。当前 build 关闭了 `rfxcodec/openh264/x264`，恢复这些属于编解码和包依赖工作，不是 OHOS 缺接口。
+- 输入稳定性：继续完善 keysym/scancode、组合键、修饰键、滚轮、鼠标按键、移动合并、队列背压、失败重试和断连释放按键。输入注入的系统授权弹框不在这一项内解决。
+- 剪贴板文本通道：xrdp 协议层能收发 channel data，OHOS 有 Pasteboard NDK；先做 `cliprdr` 文本双向同步，再扩展 HTML、图片、URI。
+- 安全控制：补访问 token、一次性码、IP allowlist、会话确认、TLS cert/key 管理和调试/生产配置隔离。
+
+可以做但暂缓：
+
+- RDPGFX/H264：OHOS 有视频编码接口，但 xrdp server 侧要补 RDPGFX/H264 packetization 和编码器适配，投入高，等基础帧链路稳定后再做。
+- 音频：OHOS 有 OHAudio，Windows 播放设备声音、远端声音在设备播放都可以设计，但 xrdp server 侧 `rdpsnd/audin` 需要 OHOS backend，不能直接复用 FreeRDP client backend 或 xrdp 原生 Linux sound/chansrv 逻辑。
+- 文件/磁盘重定向：xrdp 原生 devredir/FUSE 路线依赖 Linux FUSE，不适合 OHOS app 环境；如需要，只做 app sandbox 内的虚拟文件通道。
+- 多显示器：DisplayManager 能查询显示信息，但采集、坐标注入和 RDP multimon 映射都要单独适配，先保持单显示器稳定。
+
+当前不做：
+
+- 不接原生 `chansrv`。`chansrv` 依赖 sesman、X11、PulseAudio/Unix socket、FUSE 等 Linux 桌面会话环境；OHOS 需要按 `cliprdr`、`rdpsnd/audin`、`rdpdr` 分别写 backend。
+- 不承诺键鼠注入免远程协助弹框。`OH_Input_RequestInjection` 属于系统授权链路，当前按系统策略处理。
+- 不绕过屏幕采集隐私策略，也不捕获隐私窗口内容。`AVScreenCapture` 相关 picker/strategy 只能按系统允许范围配置。
+- 不复用 Xorg/Xvnc/PAM/systemd/PulseAudio/CUPS/FUSE 这类 Linux 桌面能力。
+
+建议执行顺序：
+
+1. 运行诊断、日志和配置一致性。
+2. 屏幕采集帧链路和 dirty rect。
+3. 输入映射稳定性，不处理免弹框。
+4. `cliprdr` 文本双向剪贴板。
+5. 视产品需要再评估 RDPGFX/H264、音频、文件重定向和多显示器。
+
 ## 当前状态
 
 - 本地 base 已更新到 `origin/main`。
