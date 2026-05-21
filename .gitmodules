@@ -2,3 +2,7 @@
 	path = harmony/third_party/FreeRDP
 	url = https://github.com/xiaomu120413/FreeRDP.git
 	branch = ohos-port
+[submodule "harmony/third_party/xrdp"]
+	path = harmony/third_party/xrdp
+	url = https://github.com/neutrinolabs/xrdp.git
+	branch = ohos-port

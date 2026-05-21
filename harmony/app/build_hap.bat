@@ -45,11 +45,36 @@ if exist "%PROJECT_DIR%\..\out\ohos-arm64\runtime-libs\libfreerdp-client3.so" (
   )
 )
 
+if exist "%PROJECT_DIR%\..\out\xrdp-ohos-arm64\sysroot\lib\libxrdpserver.so" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\sync-xrdp-runtime.ps1"
+  if errorlevel 1 (
+    echo sync-xrdp-runtime failed with exit code %ERRORLEVEL%.
+    endlocal
+    exit /b %ERRORLEVEL%
+  )
+
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\package-xrdp-hnp.ps1"
+  if errorlevel 1 (
+    echo package-xrdp-hnp failed with exit code %ERRORLEVEL%.
+    endlocal
+    exit /b %ERRORLEVEL%
+  )
+)
+
 call "%HVIGORW_CMD%" --no-daemon assembleHap --mode module -p product=default -p module=entry@default
 if errorlevel 1 (
   echo hvigor assembleHap failed with exit code %ERRORLEVEL%.
   endlocal
   exit /b %ERRORLEVEL%
+)
+
+if exist "%PROJECT_DIR%\entry\hnp\arm64-v8a\xrdp.hnp" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\repack-hap-with-hnp.ps1"
+  if errorlevel 1 (
+    echo repack-hap-with-hnp failed with exit code %ERRORLEVEL%.
+    endlocal
+    exit /b %ERRORLEVEL%
+  )
 )
 
 if not exist "entry\build\default\outputs\default\entry-default-signed.hap" (

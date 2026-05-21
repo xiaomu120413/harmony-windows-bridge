@@ -13,8 +13,10 @@
 #include "napi/napi_utils.h"
 #include "common/probe_utils.h"
 #include "common/string_utils.h"
+#include "xrdp/xrdp_server_bridge.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -55,6 +57,62 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     }
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
+}
+
+uint32_t ParseUint32String(const std::string& value, uint32_t fallback)
+{
+    if (value.empty()) {
+        return fallback;
+    }
+
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
+    if (end == value.c_str() || parsed > 0xFFFFFFFFUL) {
+        return fallback;
+    }
+    return static_cast<uint32_t>(parsed);
+}
+
+XrdpServerParams ReadXrdpServerParams(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    XrdpServerParams params;
+    if (arg == nullptr || type != napi_object) {
+        return params;
+    }
+
+    params.appFilesDir = GetStringProperty(env, arg, "appFilesDir");
+    params.runtimeRoot = GetStringProperty(env, arg, "runtimeRoot");
+    params.hnpRoot = GetStringProperty(env, arg, "hnpRoot");
+    params.libraryPath = GetStringProperty(env, arg, "libraryPath");
+    params.libDir = GetStringProperty(env, arg, "libDir");
+    params.modulePath = GetStringProperty(env, arg, "modulePath");
+    params.configPath = GetStringProperty(env, arg, "configPath");
+    params.sharePath = GetStringProperty(env, arg, "sharePath");
+    params.port = GetUint32Property(env, arg, "port", 0);
+    if (params.port == 0) {
+        params.port = ParseUint32String(GetStringProperty(env, arg, "port"), 0);
+    }
+    return params;
+}
+
+napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& command)
+{
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", command.ok);
+    SetString(env, result, "state", command.state);
+    SetString(env, result, "message", command.message);
+    SetString(env, result, "libraryPath", command.libraryPath);
+    SetString(env, result, "runtimeRoot", command.runtimeRoot);
+    SetString(env, result, "configPath", command.configPath);
+    SetString(env, result, "modulePath", command.modulePath);
+    SetNamed(env, result, "logs", MakeStringArray(env, command.logs));
+    return result;
 }
 
 std::u16string GetUtf16StringProperty(napi_env env, napi_value object, const char* name)
@@ -296,6 +354,24 @@ napi_value Disconnect(napi_env env, napi_callback_info info)
         closing ? "native worker stopping asynchronously" : "native worker was not running"
     }));
     return result;
+}
+
+napi_value ProbeXrdpServer(napi_env env, napi_callback_info info)
+{
+    const XrdpServerParams params = ReadXrdpServerParams(env, info);
+    return MakeXrdpServerResult(env, rdp_bridge::ProbeXrdpServer(params));
+}
+
+napi_value StartXrdpServer(napi_env env, napi_callback_info info)
+{
+    const XrdpServerParams params = ReadXrdpServerParams(env, info);
+    return MakeXrdpServerResult(env, rdp_bridge::StartXrdpServer(params));
+}
+
+napi_value StopXrdpServer(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return MakeXrdpServerResult(env, rdp_bridge::StopXrdpServer());
 }
 
 napi_value SendPointer(napi_env env, napi_callback_info info)
@@ -655,6 +731,9 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"probe", nullptr, Probe, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"probeXrdpServer", nullptr, ProbeXrdpServer, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"startXrdpServer", nullptr, StartXrdpServer, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"stopXrdpServer", nullptr, StopXrdpServer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointer", nullptr, SendPointer, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendPointerEvent", nullptr, SendPointerEvent, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"sendKey", nullptr, SendKey, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -6,7 +6,7 @@ import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import rdpNative, { NativeCommandResult } from 'libentry.so'
+import rdpNative, { NativeCommandResult, NativeXrdpServerParams, NativeXrdpServerResult } from 'libentry.so'
 
 @Entry
 @Component
@@ -228,6 +228,44 @@ struct Index {
     }
   }
 
+  private xrdpParams(): NativeXrdpServerParams {
+    const appFilesDir = this.getAppFilesDir()
+    return {
+      appFilesDir: appFilesDir,
+      port: 3390
+    }
+  }
+
+  private probeXrdpNative(): void {
+    try {
+      const result: NativeXrdpServerResult = rdpNative.probeXrdpServer(this.xrdpParams())
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+    } catch (error) {
+      this.appendLog(`xrdp probe failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private startXrdpNative(): void {
+    try {
+      const result: NativeXrdpServerResult = rdpNative.startXrdpServer(this.xrdpParams())
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+    } catch (error) {
+      this.appendLog(`xrdp start failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private stopXrdpNative(): void {
+    try {
+      const result: NativeXrdpServerResult = rdpNative.stopXrdpServer()
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+    } catch (error) {
+      this.appendLog(`xrdp stop failed: ${JSON.stringify(error)}`)
+    }
+  }
+
   @Builder
   private buildConnectPage() {
     Scroll() {
@@ -273,6 +311,39 @@ struct Index {
           .onClick(() => {
             this.connectNative()
           })
+
+        Row() {
+          Button('Probe xrdp')
+            .height(40)
+            .layoutWeight(1)
+            .fontSize(13)
+            .backgroundColor('#E8EEF7')
+            .fontColor('#1D2433')
+            .onClick(() => {
+              this.probeXrdpNative()
+            })
+          Button('Start xrdp')
+            .height(40)
+            .layoutWeight(1)
+            .fontSize(13)
+            .backgroundColor('#0A84FF')
+            .fontColor(Color.White)
+            .onClick(() => {
+              this.startXrdpNative()
+            })
+          Button('Stop xrdp')
+            .height(40)
+            .layoutWeight(1)
+            .fontSize(13)
+            .backgroundColor('#E8EEF7')
+            .fontColor('#1D2433')
+            .onClick(() => {
+              this.stopXrdpNative()
+            })
+        }
+        .height(42)
+        .width('100%')
+        .margin({ top: 12 })
       }
       .padding(20)
     }
