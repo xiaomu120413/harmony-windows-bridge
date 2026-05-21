@@ -300,7 +300,7 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
             state.lastDisconnectReason = "backend session-disconnect event";
         }
     }
-    if (count <= 40U || event->type != XRDP_OHOS_BACKEND_EVENT_FRAME_ACK || (count % 200U) == 0U) {
+    if (event->type != XRDP_OHOS_BACKEND_EVENT_FRAME_ACK) {
         EmitHilogInfo("xrdp backend callback: count=" + std::to_string(count) +
             " type=" + XrdpBackendEventTypeName(event->type) +
             " version=" + std::to_string(event->version) +
