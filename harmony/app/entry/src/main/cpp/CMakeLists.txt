@@ -14,6 +14,8 @@ set(FREERDP_OHOS_SYSROOT_INCLUDE
     ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/include)
 set(FREERDP_OHOS_SOURCE_ROOT
     ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/FreeRDP)
+set(XRDP_OHOS_SOURCE_ROOT
+    ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/xrdp)
 if(EXISTS ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/freerdp.h)
     include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3
                         ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3)
@@ -22,6 +24,10 @@ endif()
 if(EXISTS ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h)
     include_directories(${FREERDP_OHOS_SOURCE_ROOT})
     add_compile_definitions(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE=1)
+endif()
+if(EXISTS ${XRDP_OHOS_SOURCE_ROOT}/ohos/xrdp_ohos.h)
+    include_directories(${XRDP_OHOS_SOURCE_ROOT})
+    add_compile_definitions(HARMONY_HAS_XRDP_OHOS_SOURCE=1)
 endif()
 
 add_library(entry SHARED
