@@ -1,6 +1,7 @@
 #include "xrdp/xrdp_server_bridge.h"
 
 #include "common/bridge_log.h"
+#include "xrdp/xrdp_display_geometry.h"
 #include "xrdp/xrdp_input_injector.h"
 #include "xrdp/xrdp_screen_capture_bridge.h"
 
@@ -344,6 +345,7 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
     options.height = height;
     options.frameRate = 15;
     options.showCursor = false;
+    const XrdpDisplayGeometry geometry = QueryXrdpDisplayGeometry();
 
     {
         std::lock_guard<std::mutex> lock(ClientCaptureState().mutex);
@@ -361,8 +363,10 @@ void StartXrdpCaptureForClient(uint32_t width, uint32_t height)
         state.height = height;
     }
 
-    EmitHilogInfo("xrdp active mstsc session detected; scheduling screen capture " +
-        std::to_string(width) + "x" + std::to_string(height));
+    EmitHilogInfo("xrdp active mstsc session detected; scheduling screen capture desktop=" +
+        std::to_string(width) + "x" + std::to_string(height) + " " +
+        FormatXrdpDisplayGeometry(geometry) +
+        " inputMapping=desktop-to-full-display");
 
     std::thread([options]() {
         std::string message;

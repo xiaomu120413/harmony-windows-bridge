@@ -1,6 +1,7 @@
 #include "xrdp/xrdp_input_injector.h"
 
 #include "common/bridge_log.h"
+#include "xrdp/xrdp_display_geometry.h"
 
 #include <algorithm>
 #include <atomic>
@@ -16,7 +17,6 @@
 
 #include <multimodalinput/oh_input_manager.h>
 #include <multimodalinput/oh_key_code.h>
-#include <window_manager/oh_display_manager.h>
 
 namespace rdp_bridge {
 namespace {
@@ -86,15 +86,6 @@ std::atomic<uint32_t> g_authorizationLogCount { 0 };
 std::mutex g_authorizationMutex;
 std::chrono::steady_clock::time_point g_lastAuthorizationRequest;
 
-struct DisplayGeometry {
-    bool valid = false;
-    uint64_t displayId = 0;
-    int32_t width = 0;
-    int32_t height = 0;
-    int32_t originX = 0;
-    int32_t originY = 0;
-};
-
 struct MouseCoordinates {
     int32_t displayId = 0;
     int32_t displayX = 0;
@@ -106,10 +97,17 @@ struct MouseCoordinates {
     int32_t targetWidth = 0;
     int32_t targetHeight = 0;
     bool scaled = false;
+    bool availableValid = false;
+    int32_t availableLeft = 0;
+    int32_t availableTop = 0;
+    uint32_t availableWidth = 0;
+    uint32_t availableHeight = 0;
+    bool virtualPixelRatioValid = false;
+    float virtualPixelRatio = 0.0F;
 };
 
 std::mutex g_displayGeometryMutex;
-DisplayGeometry g_displayGeometry;
+XrdpDisplayGeometry g_displayGeometry;
 std::chrono::steady_clock::time_point g_lastDisplayGeometryQuery;
 
 int64_t NowMs()
@@ -146,34 +144,7 @@ int32_t ScaleCoordinate(long value, int32_t sourceSize, int32_t targetSize)
         0, targetSize - 1);
 }
 
-DisplayGeometry QueryDisplayGeometry()
-{
-    DisplayGeometry geometry;
-    uint64_t displayId = 0;
-    int32_t width = 0;
-    int32_t height = 0;
-    const NativeDisplayManager_ErrorCode idRc = OH_NativeDisplayManager_GetDefaultDisplayId(&displayId);
-    const NativeDisplayManager_ErrorCode widthRc = OH_NativeDisplayManager_GetDefaultDisplayWidth(&width);
-    const NativeDisplayManager_ErrorCode heightRc = OH_NativeDisplayManager_GetDefaultDisplayHeight(&height);
-    if (idRc == DISPLAY_MANAGER_OK && widthRc == DISPLAY_MANAGER_OK &&
-        heightRc == DISPLAY_MANAGER_OK && width > 0 && height > 0) {
-        geometry.valid = true;
-        geometry.displayId = displayId;
-        geometry.width = width;
-        geometry.height = height;
-        int32_t originX = 0;
-        int32_t originY = 0;
-        const NativeDisplayManager_ErrorCode positionRc =
-            OH_NativeDisplayManager_GetDisplayPosition(displayId, &originX, &originY);
-        if (positionRc == DISPLAY_MANAGER_OK) {
-            geometry.originX = originX;
-            geometry.originY = originY;
-        }
-    }
-    return geometry;
-}
-
-DisplayGeometry GetDisplayGeometry()
+XrdpDisplayGeometry GetDisplayGeometry()
 {
     const auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(g_displayGeometryMutex);
@@ -182,18 +153,23 @@ DisplayGeometry GetDisplayGeometry()
         return g_displayGeometry;
     }
 
-    const DisplayGeometry previous = g_displayGeometry;
-    g_displayGeometry = QueryDisplayGeometry();
+    const XrdpDisplayGeometry previous = g_displayGeometry;
+    g_displayGeometry = QueryXrdpDisplayGeometry();
     g_lastDisplayGeometryQuery = now;
     if (g_displayGeometry.valid &&
         (!previous.valid || previous.displayId != g_displayGeometry.displayId ||
             previous.width != g_displayGeometry.width || previous.height != g_displayGeometry.height ||
-            previous.originX != g_displayGeometry.originX || previous.originY != g_displayGeometry.originY)) {
-        EmitHilogInfo("xrdp input display geometry id=" + std::to_string(g_displayGeometry.displayId) +
-            " size=" + std::to_string(g_displayGeometry.width) +
-            "x" + std::to_string(g_displayGeometry.height) +
-            " origin=(" + std::to_string(g_displayGeometry.originX) +
-            "," + std::to_string(g_displayGeometry.originY) + ")");
+            previous.originX != g_displayGeometry.originX || previous.originY != g_displayGeometry.originY ||
+            previous.availableValid != g_displayGeometry.availableValid ||
+            previous.availableLeft != g_displayGeometry.availableLeft ||
+            previous.availableTop != g_displayGeometry.availableTop ||
+            previous.availableWidth != g_displayGeometry.availableWidth ||
+            previous.availableHeight != g_displayGeometry.availableHeight ||
+            previous.virtualPixelRatioValid != g_displayGeometry.virtualPixelRatioValid ||
+            previous.virtualPixelRatio != g_displayGeometry.virtualPixelRatio ||
+            previous.sourceModeValid != g_displayGeometry.sourceModeValid ||
+            previous.sourceMode != g_displayGeometry.sourceMode)) {
+        EmitHilogInfo("xrdp input " + FormatXrdpDisplayGeometry(g_displayGeometry));
     }
     return g_displayGeometry;
 }
@@ -201,7 +177,7 @@ DisplayGeometry GetDisplayGeometry()
 MouseCoordinates ResolveMouseCoordinates(const XrdpOhosInputEvent& event)
 {
     MouseCoordinates coordinates;
-    const DisplayGeometry geometry = GetDisplayGeometry();
+    const XrdpDisplayGeometry geometry = GetDisplayGeometry();
     if (!geometry.valid) {
         coordinates.displayX = ClampToRange(event.param1, 0, 32767);
         coordinates.displayY = ClampToRange(event.param2, 0, 32767);
@@ -222,6 +198,13 @@ MouseCoordinates ResolveMouseCoordinates(const XrdpOhosInputEvent& event)
     coordinates.targetWidth = geometry.width;
     coordinates.targetHeight = geometry.height;
     coordinates.scaled = sourceWidth != geometry.width || sourceHeight != geometry.height;
+    coordinates.availableValid = geometry.availableValid;
+    coordinates.availableLeft = geometry.availableLeft;
+    coordinates.availableTop = geometry.availableTop;
+    coordinates.availableWidth = geometry.availableWidth;
+    coordinates.availableHeight = geometry.availableHeight;
+    coordinates.virtualPixelRatioValid = geometry.virtualPixelRatioValid;
+    coordinates.virtualPixelRatio = geometry.virtualPixelRatio;
     return coordinates;
 }
 
@@ -617,8 +600,17 @@ bool InjectMouseEvent(const XrdpOhosInputEvent& event, const MouseDispatch& disp
         " source=" + std::to_string(coordinates.sourceWidth) +
         "x" + std::to_string(coordinates.sourceHeight) +
         " target=" + std::to_string(coordinates.targetWidth) +
-        "x" + std::to_string(coordinates.targetHeight) +
-        " rc=" + std::to_string(rc);
+        "x" + std::to_string(coordinates.targetHeight);
+    if (coordinates.availableValid) {
+        message += " available=(" + std::to_string(coordinates.availableLeft) +
+            "," + std::to_string(coordinates.availableTop) +
+            "," + std::to_string(coordinates.availableWidth) +
+            "," + std::to_string(coordinates.availableHeight) + ")";
+    }
+    if (coordinates.virtualPixelRatioValid) {
+        message += " vpr=" + std::to_string(coordinates.virtualPixelRatio);
+    }
+    message += " rc=" + std::to_string(rc);
     if (rc == INPUT_PERMISSION_DENIED) {
         g_authorizedStatus.store(UNAUTHORIZED);
         g_authorizationRequested.store(false);

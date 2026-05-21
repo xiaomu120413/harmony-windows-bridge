@@ -373,6 +373,12 @@ private:
     void QueueMappedFrame(OH_AVScreenCapture*, OH_NativeBuffer*, void* mapped,
         const OH_NativeBuffer_Config& config, int64_t timestamp, const OH_Rect& region, uint64_t readyCount)
     {
+        XrdpScreenCaptureOptions target;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            target = target_;
+        }
+
         if (config.width <= 0 || config.height <= 0 ||
             static_cast<uint32_t>(config.width) > kMaxCaptureDimension ||
             static_cast<uint32_t>(config.height) > kMaxCaptureDimension ||
@@ -425,6 +431,7 @@ private:
             if (submitted <= 3 || (submitted % 60U) == 0U) {
                 EmitHilogInfo("xrdp screen capture frame queued: seq=" + std::to_string(readyCount) +
                     " size=" + std::to_string(config.width) + "x" + std::to_string(config.height) +
+                    " target=" + DescribeOptions(target) +
                     " stride=" + std::to_string(rowBytes) +
                     " format=" + std::to_string(config.format) +
                     " ts=" + std::to_string(timestamp) +
