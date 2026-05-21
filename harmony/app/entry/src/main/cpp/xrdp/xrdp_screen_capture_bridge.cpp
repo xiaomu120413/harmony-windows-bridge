@@ -78,31 +78,6 @@ int32_t ResolveCaptureRowBytes(const OH_NativeBuffer_Config& config)
     return static_cast<int32_t>(tightRowBytes);
 }
 
-bool CopyBgraLikeToRgba(const uint8_t* source, int32_t sourceStride,
-    uint32_t width, uint32_t height, std::vector<uint8_t>& rgba)
-{
-    const size_t rowBytes = static_cast<size_t>(width) * 4U;
-    if (width == 0 || height == 0 || source == nullptr ||
-        sourceStride < static_cast<int32_t>(rowBytes) ||
-        height > std::numeric_limits<size_t>::max() / rowBytes) {
-        return false;
-    }
-
-    rgba.resize(rowBytes * static_cast<size_t>(height));
-    for (uint32_t y = 0; y < height; ++y) {
-        const uint8_t* sourceRow = source + static_cast<size_t>(sourceStride) * y;
-        uint8_t* targetRow = rgba.data() + rowBytes * y;
-        for (uint32_t x = 0; x < width; ++x) {
-            const size_t offset = static_cast<size_t>(x) * 4U;
-            targetRow[offset + 0] = sourceRow[offset + 2];
-            targetRow[offset + 1] = sourceRow[offset + 1];
-            targetRow[offset + 2] = sourceRow[offset + 0];
-            targetRow[offset + 3] = 0xFFU;
-        }
-    }
-    return true;
-}
-
 OH_AVScreenCaptureConfig BuildRawScreenCaptureConfig(const XrdpScreenCaptureOptions& options)
 {
     OH_AVScreenCaptureConfig config {};
@@ -400,21 +375,15 @@ private:
 
         const auto start = std::chrono::steady_clock::now();
         const auto* source = static_cast<const uint8_t*>(mapped);
-        std::vector<uint8_t> rgba;
         RgbaFrame frame;
         if (config.format == NATIVEBUFFER_PIXEL_FMT_BGRA_8888 ||
             config.format == NATIVEBUFFER_PIXEL_FMT_BGRX_8888) {
-            if (!CopyBgraLikeToRgba(source, rowBytes,
-                    static_cast<uint32_t>(config.width), static_cast<uint32_t>(config.height), rgba)) {
-                LogSampledError("xrdp screen capture BGRA to RGBA conversion failed", readyCount);
-                return;
-            }
-            frame.data = rgba.data();
-            frame.strideBytes = static_cast<int32_t>(config.width * 4);
+            frame.pixelFormat = FramePixelFormat::Bgra;
         } else {
-            frame.data = source;
-            frame.strideBytes = rowBytes;
+            frame.pixelFormat = FramePixelFormat::Rgba;
         }
+        frame.data = source;
+        frame.strideBytes = rowBytes;
         frame.width = static_cast<uint32_t>(config.width);
         frame.height = static_cast<uint32_t>(config.height);
         frame.label = "ohos screen capture";
@@ -434,6 +403,7 @@ private:
                     " target=" + DescribeOptions(target) +
                     " stride=" + std::to_string(rowBytes) +
                     " format=" + std::to_string(config.format) +
+                    " pixel=" + std::string(frame.pixelFormat == FramePixelFormat::Bgra ? "bgra" : "rgba") +
                     " ts=" + std::to_string(timestamp) +
                     " region=(" + std::to_string(region.x) + "," + std::to_string(region.y) +
                     "," + std::to_string(region.width) + "," + std::to_string(region.height) + ")" +
