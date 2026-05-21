@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "HarmonyOS and Windows connection tool"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "MuHub entry"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "MuHub"
+    },
+    {
+      "name": "read_pasteboard_reason",
+      "value": "Read the local clipboard to sync text, files, and image paste operations in remote desktop sessions."
+    },
+    {
+      "name": "microphone_reason",
+      "value": "Capture microphone audio for remote desktop audio input redirection."
+    }
+  ]
+}
