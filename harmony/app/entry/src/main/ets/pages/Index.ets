@@ -266,6 +266,22 @@ struct Index {
     }
   }
 
+  private pushXrdpTestFrame(): void {
+    try {
+      const params = this.xrdpParams()
+      const result: NativeXrdpServerResult = rdpNative.pushXrdpTestFrame({
+        appFilesDir: params.appFilesDir,
+        port: params.port,
+        width: 960,
+        height: 540
+      })
+      this.appendLog(result.message)
+      this.appendNativeLogs(result.logs)
+    } catch (error) {
+      this.appendLog(`xrdp frame push failed: ${JSON.stringify(error)}`)
+    }
+  }
+
   @Builder
   private buildConnectPage() {
     Scroll() {
@@ -344,6 +360,17 @@ struct Index {
         .height(42)
         .width('100%')
         .margin({ top: 12 })
+
+        Button('Push xrdp frame')
+          .height(40)
+          .width('100%')
+          .fontSize(13)
+          .backgroundColor('#E8EEF7')
+          .fontColor('#1D2433')
+          .margin({ top: 8 })
+          .onClick(() => {
+            this.pushXrdpTestFrame()
+          })
       }
       .padding(20)
     }

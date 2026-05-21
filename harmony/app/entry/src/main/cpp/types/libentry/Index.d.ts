@@ -73,6 +73,11 @@ export interface NativeXrdpServerResult extends NativeCommandResult {
   modulePath: string;
 }
 
+export interface NativeXrdpFrameParams extends NativeXrdpServerParams {
+  width?: number | string;
+  height?: number | string;
+}
+
 export interface NativePointerEventInput {
   action: string;
   button?: string;
@@ -120,6 +125,7 @@ declare const rdpNative: {
   probeXrdpServer(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   startXrdpServer(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   stopXrdpServer(): NativeXrdpServerResult;
+  pushXrdpTestFrame(params?: NativeXrdpFrameParams): NativeXrdpServerResult;
   sendPointerEvent(input: Object): NativeCommandResult;
   sendKey(input: Object): NativeCommandResult;
   sendPlatformKey(input: Object): NativeCommandResult;

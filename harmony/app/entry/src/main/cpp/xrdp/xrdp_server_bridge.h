@@ -32,5 +32,6 @@ struct XrdpServerCommandResult {
 XrdpServerCommandResult ProbeXrdpServer(const XrdpServerParams& params);
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
 XrdpServerCommandResult StopXrdpServer();
+XrdpServerCommandResult PushXrdpTestFrame(const XrdpServerParams& params, uint32_t width, uint32_t height);
 
 } // namespace rdp_bridge
