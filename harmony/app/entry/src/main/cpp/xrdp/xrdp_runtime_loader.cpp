@@ -34,6 +34,13 @@ bool BackendHandlesInputDirectly(bool abiInfoValid, const xrdp_ohos_abi_info& in
     return abiInfoValid && (info.feature_flags & XRDP_OHOS_FEATURE_DIRECT_INPUT) != 0U;
 }
 
+bool BackendOwnsCaptureDirectly(bool abiInfoValid, const xrdp_ohos_abi_info& info)
+{
+    constexpr uint32_t requiredFlags =
+        XRDP_OHOS_FEATURE_INTERNAL_CAPTURE | XRDP_OHOS_FEATURE_CAPTURE_DIAGNOSTICS;
+    return abiInfoValid && (info.feature_flags & requiredFlags) == requiredFlags;
+}
+
 bool IsAbsolutePath(const std::string& value)
 {
     return !value.empty() && value[0] == '/';
@@ -335,19 +342,22 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
     XrdpServerCommandResult& result)
 {
     XrdpServerState& state = ServerState();
-    if (state.backend.handle != nullptr && state.backend.submitFrameFn != nullptr) {
+    if (state.backend.handle != nullptr && state.backend.getAbiInfoFn != nullptr) {
         result.logs.push_back("xrdp OHOS backend already loaded: " + state.backend.libraryPath);
         if (state.backend.abiInfoValid) {
             result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(state.backend.abiInfo));
         } else {
             result.logs.push_back("xrdp OHOS backend ABI unavailable");
         }
-        result.logs.push_back(std::string("xrdp OHOS backend audio callback ") +
-            (state.backend.submitAudioFrameFn != nullptr ? "loaded" : "missing"));
-        result.logs.push_back(std::string("xrdp OHOS backend encoded frame callback ") +
-            (state.backend.submitEncodedFrameFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS capture diagnostics ") +
+            (state.backend.captureDiagnosticsFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS capture frame submit ") +
+            (state.backend.captureSubmitFrameFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
             (BackendHandlesInputDirectly(state.backend.abiInfoValid, state.backend.abiInfo) ?
+                "enabled" : "unavailable"));
+        result.logs.push_back(std::string("xrdp OHOS internal capture ") +
+            (BackendOwnsCaptureDirectly(state.backend.abiInfoValid, state.backend.abiInfo) ?
                 "enabled" : "unavailable"));
         if (state.backend.setEventCallbackFn != nullptr) {
             const int rc = state.backend.setEventCallbackFn(OnXrdpBackendEvent, nullptr);
@@ -371,66 +381,68 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             continue;
         }
 
-        auto submitFn = reinterpret_cast<XrdpSubmitFrameFn>(
-            dlsym(handle, "xrdp_ohos_backend_submit_frame"));
-        if (submitFn == nullptr) {
-            result.logs.push_back("xrdp OHOS backend frame symbol missing in: " + candidate);
+        auto getAbiInfoFn = reinterpret_cast<XrdpGetAbiInfoFn>(
+            dlsym(handle, "xrdp_ohos_backend_get_abi_info"));
+        if (getAbiInfoFn == nullptr) {
+            result.logs.push_back("xrdp OHOS backend ABI symbol missing in: " + candidate);
             dlclose(handle);
             continue;
         }
-        auto getAbiInfoFn = reinterpret_cast<XrdpGetAbiInfoFn>(
-            dlsym(handle, "xrdp_ohos_backend_get_abi_info"));
         auto setEventCallbackFn = reinterpret_cast<XrdpSetBackendEventCallbackFn>(
             dlsym(handle, "xrdp_ohos_backend_set_event_callback"));
-        auto submitAudioFn = reinterpret_cast<XrdpSubmitAudioFrameFn>(
-            dlsym(handle, "xrdp_ohos_backend_submit_audio_frame"));
-        auto submitEncodedFn = reinterpret_cast<XrdpSubmitEncodedFrameFn>(
-            dlsym(handle, "xrdp_ohos_backend_submit_encoded_frame"));
+        auto captureDiagnosticsFn = reinterpret_cast<XrdpCaptureGetDiagnosticsFn>(
+            dlsym(handle, "xrdp_ohos_capture_get_diagnostics"));
+        auto captureSubmitFrameFn = reinterpret_cast<XrdpCaptureSubmitFrameFn>(
+            dlsym(handle, "xrdp_ohos_capture_submit_frame"));
+        auto captureResetFn = reinterpret_cast<XrdpCaptureResetFn>(
+            dlsym(handle, "xrdp_ohos_capture_reset"));
 
         xrdp_ohos_abi_info abiInfo {};
         bool abiInfoValid = false;
-        if (getAbiInfoFn != nullptr) {
-            abiInfo.size = sizeof(abiInfo);
-            const int abiRc = getAbiInfoFn(&abiInfo);
-            if (abiRc != XRDP_OHOS_BACKEND_STATUS_OK ||
-                abiInfo.api_version != XRDP_OHOS_API_VERSION ||
-                abiInfo.mod_version != XRDP_OHOS_MOD_VERSION) {
-                result.logs.push_back("xrdp OHOS backend ABI mismatch in: " + candidate +
-                    " rc=" + std::to_string(abiRc) +
-                    " " + FormatBackendAbi(abiInfo));
-                dlclose(handle);
-                continue;
-            }
-            abiInfoValid = true;
+        abiInfo.size = sizeof(abiInfo);
+        const int abiRc = getAbiInfoFn(&abiInfo);
+        if (abiRc != XRDP_OHOS_BACKEND_STATUS_OK ||
+            abiInfo.api_version != XRDP_OHOS_API_VERSION ||
+            abiInfo.mod_version != XRDP_OHOS_MOD_VERSION) {
+            result.logs.push_back("xrdp OHOS backend ABI mismatch in: " + candidate +
+                " rc=" + std::to_string(abiRc) +
+                " " + FormatBackendAbi(abiInfo));
+            dlclose(handle);
+            continue;
+        }
+        abiInfoValid = true;
+        if (!BackendOwnsCaptureDirectly(abiInfoValid, abiInfo) ||
+            captureDiagnosticsFn == nullptr || captureSubmitFrameFn == nullptr || captureResetFn == nullptr) {
+            result.logs.push_back("xrdp OHOS backend capture facade unavailable in: " + candidate +
+                " " + FormatBackendAbi(abiInfo) +
+                " diagnostics=" + std::to_string(captureDiagnosticsFn != nullptr) +
+                " submit=" + std::to_string(captureSubmitFrameFn != nullptr) +
+                " reset=" + std::to_string(captureResetFn != nullptr));
+            dlclose(handle);
+            continue;
         }
 
         state.backend.handle = handle;
         state.backend.getAbiInfoFn = getAbiInfoFn;
-        state.backend.submitFrameFn = submitFn;
-        state.backend.submitEncodedFrameFn = submitEncodedFn;
-        state.backend.submitAudioFrameFn = submitAudioFn;
         state.backend.setEventCallbackFn = setEventCallbackFn;
+        state.backend.captureDiagnosticsFn = captureDiagnosticsFn;
+        state.backend.captureSubmitFrameFn = captureSubmitFrameFn;
+        state.backend.captureResetFn = captureResetFn;
         state.backend.abiInfo = abiInfo;
         state.backend.abiInfoValid = abiInfoValid;
         state.backend.libraryPath = candidate;
         result.logs.push_back("xrdp OHOS backend loaded: " + candidate);
-        if (abiInfoValid) {
-            result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(abiInfo));
-        } else {
-            result.logs.push_back("xrdp OHOS backend ABI symbol missing in: " + candidate);
-        }
-        if (submitAudioFn != nullptr) {
-            result.logs.push_back("xrdp OHOS backend audio callback loaded");
-        } else {
-            result.logs.push_back("xrdp OHOS backend audio callback symbol missing in: " + candidate);
-        }
-        if (submitEncodedFn != nullptr) {
-            result.logs.push_back("xrdp OHOS backend encoded frame callback loaded");
-        } else {
-            result.logs.push_back("xrdp OHOS backend encoded frame callback symbol missing in: " + candidate);
-        }
+        result.logs.push_back("xrdp OHOS backend ABI: " + FormatBackendAbi(abiInfo));
+        result.logs.push_back(std::string("xrdp OHOS capture diagnostics ") +
+            (captureDiagnosticsFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS capture frame submit ") +
+            (captureSubmitFrameFn != nullptr ? "loaded" : "missing"));
+        result.logs.push_back(std::string("xrdp OHOS capture reset ") +
+            (captureResetFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
             (BackendHandlesInputDirectly(abiInfoValid, abiInfo) ? "enabled" : "unavailable"));
+        result.logs.push_back(std::string("xrdp OHOS internal capture ") +
+            (BackendOwnsCaptureDirectly(abiInfoValid, abiInfo) ? "enabled" : "unavailable"));
         if (setEventCallbackFn != nullptr) {
             const int rc = setEventCallbackFn(OnXrdpBackendEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));

@@ -62,9 +62,6 @@ struct XrdpServerDiagnostics {
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
 XrdpServerDiagnostics GetXrdpServerDiagnostics();
-bool QueueXrdpVideoFrame(const xrdp_ohos_frame& frame, std::string& message);
-bool QueueXrdpEncodedVideoFrame(const xrdp_ohos_encoded_frame& frame, std::string& message);
-bool QueueXrdpAudioFrame(const xrdp_ohos_audio_frame& frame, std::string& message);
-bool QueueXrdpRgbaFrame(const RgbaFrame& frame, std::string& message);
+bool SubmitXrdpRgbaFrame(const RgbaFrame& frame, std::string& message);
 
 } // namespace rdp_bridge
