@@ -357,12 +357,18 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
             (BackendHandlesInputDirectly(state.backend.abiInfoValid, state.backend.abiInfo) ?
                 "enabled" : "unavailable"));
+        result.logs.push_back(std::string("xrdp OHOS input authorization prime ") +
+            (state.backend.primeInputAuthorizationFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS internal capture ") +
             (BackendOwnsCaptureDirectly(state.backend.abiInfoValid, state.backend.abiInfo) ?
                 "enabled" : "unavailable"));
         if (state.backend.setEventCallbackFn != nullptr) {
             const int rc = state.backend.setEventCallbackFn(OnXrdpBackendEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
+        }
+        if (state.backend.primeInputAuthorizationFn != nullptr) {
+            const int rc = state.backend.primeInputAuthorizationFn("xrdp server ensure");
+            result.logs.push_back("xrdp OHOS input authorization prime rc=" + std::to_string(rc));
         }
         return true;
     }
@@ -397,6 +403,8 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             dlsym(handle, "xrdp_ohos_capture_submit_frame"));
         auto captureResetFn = reinterpret_cast<XrdpCaptureResetFn>(
             dlsym(handle, "xrdp_ohos_capture_reset"));
+        auto primeInputAuthorizationFn = reinterpret_cast<XrdpPrimeInputAuthorizationFn>(
+            dlsym(handle, "xrdp_ohos_backend_prime_input_authorization"));
 
         xrdp_ohos_abi_info abiInfo {};
         bool abiInfoValid = false;
@@ -429,6 +437,7 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         state.backend.captureDiagnosticsFn = captureDiagnosticsFn;
         state.backend.captureSubmitFrameFn = captureSubmitFrameFn;
         state.backend.captureResetFn = captureResetFn;
+        state.backend.primeInputAuthorizationFn = primeInputAuthorizationFn;
         state.backend.abiInfo = abiInfo;
         state.backend.abiInfoValid = abiInfoValid;
         state.backend.libraryPath = candidate;
@@ -442,6 +451,8 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             (captureResetFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS backend direct input ") +
             (BackendHandlesInputDirectly(abiInfoValid, abiInfo) ? "enabled" : "unavailable"));
+        result.logs.push_back(std::string("xrdp OHOS input authorization prime ") +
+            (primeInputAuthorizationFn != nullptr ? "loaded" : "missing"));
         result.logs.push_back(std::string("xrdp OHOS internal capture ") +
             (BackendOwnsCaptureDirectly(abiInfoValid, abiInfo) ? "enabled" : "unavailable"));
         if (setEventCallbackFn != nullptr) {
@@ -449,6 +460,10 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
         } else {
             result.logs.push_back("xrdp OHOS backend event callback symbol missing in: " + candidate);
+        }
+        if (primeInputAuthorizationFn != nullptr) {
+            const int rc = primeInputAuthorizationFn("xrdp server start");
+            result.logs.push_back("xrdp OHOS input authorization prime rc=" + std::to_string(rc));
         }
         return true;
     }

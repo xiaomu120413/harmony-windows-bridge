@@ -23,6 +23,7 @@ using XrdpSetBackendEventCallbackFn = int (*)(xrdp_ohos_backend_event_fn, void*)
 using XrdpCaptureGetDiagnosticsFn = int (*)(xrdp_ohos_capture_diagnostics*);
 using XrdpCaptureSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
 using XrdpCaptureResetFn = void (*)(const char*);
+using XrdpPrimeInputAuthorizationFn = int (*)(const char*);
 
 struct XrdpLoadedServer {
     void* handle = nullptr;
@@ -38,6 +39,7 @@ struct XrdpLoadedBackend {
     XrdpCaptureGetDiagnosticsFn captureDiagnosticsFn = nullptr;
     XrdpCaptureSubmitFrameFn captureSubmitFrameFn = nullptr;
     XrdpCaptureResetFn captureResetFn = nullptr;
+    XrdpPrimeInputAuthorizationFn primeInputAuthorizationFn = nullptr;
     xrdp_ohos_abi_info abiInfo {};
     bool abiInfoValid = false;
     std::string libraryPath;
