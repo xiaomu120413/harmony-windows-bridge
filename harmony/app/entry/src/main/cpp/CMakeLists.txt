@@ -12,6 +12,8 @@ include_directories(${NATIVERENDER_ROOT_PATH}
 
 set(FREERDP_OHOS_SYSROOT_INCLUDE
     ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/include)
+set(FREERDP_OHOS_SYSROOT_LIB
+    ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/lib)
 set(FREERDP_OHOS_SOURCE_ROOT
     ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/FreeRDP)
 set(XRDP_OHOS_SOURCE_ROOT
@@ -28,6 +30,12 @@ endif()
 if(EXISTS ${XRDP_OHOS_SOURCE_ROOT}/ohos/xrdp_ohos.h)
     include_directories(${XRDP_OHOS_SOURCE_ROOT})
     add_compile_definitions(HARMONY_HAS_XRDP_OHOS_SOURCE=1)
+endif()
+if(EXISTS ${FREERDP_OHOS_SYSROOT_INCLUDE}/openssl/x509.h AND
+   EXISTS ${FREERDP_OHOS_SYSROOT_LIB}/libcrypto.so.3)
+    include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE})
+    add_compile_definitions(HARMONY_HAS_OPENSSL_CRYPTO=1)
+    set(OHOS_OPENSSL_CRYPTO_LIBRARY ${FREERDP_OHOS_SYSROOT_LIB}/libcrypto.so.3)
 endif()
 
 add_library(entry SHARED
@@ -64,6 +72,7 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
+    xrdp/xrdp_runtime_config.cpp
     xrdp/xrdp_runtime_loader.cpp
     xrdp/xrdp_server_bridge.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
@@ -83,3 +92,6 @@ target_link_libraries(entry PUBLIC
     libohaudio.so
     libhilog_ndk.z.so
     libdl.so)
+if(OHOS_OPENSSL_CRYPTO_LIBRARY)
+    target_link_libraries(entry PUBLIC ${OHOS_OPENSSL_CRYPTO_LIBRARY})
+endif()

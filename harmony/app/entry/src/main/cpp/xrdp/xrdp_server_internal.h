@@ -73,6 +73,9 @@ struct XrdpResolvedPaths {
     std::string libDir;
     std::string modulePath;
     std::string configPath;
+    std::string packagedConfigPath;
+    std::string tlsCertificatePath;
+    std::string tlsKeyPath;
     std::string sharePath;
     std::string pidPath;
     std::string logPath;
@@ -87,6 +90,8 @@ bool PathExists(const std::string& path);
 bool IsDirectory(const std::string& path);
 XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params);
 bool PrepareRuntime(const XrdpResolvedPaths& paths, std::vector<std::string>& logs);
+bool PrepareSecureRuntimeConfig(const XrdpResolvedPaths& paths, uint32_t port,
+    std::vector<std::string>& logs);
 bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
     XrdpServerCommandResult& result);
 bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,

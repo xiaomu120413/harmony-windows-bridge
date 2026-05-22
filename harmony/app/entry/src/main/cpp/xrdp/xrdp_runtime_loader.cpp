@@ -251,16 +251,16 @@ XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params)
         paths.modulePath = JoinPath(paths.runtimeRoot, "lib");
     }
 
-    paths.configPath = params.configPath;
-    if (paths.configPath.empty() && PathExists(JoinPath(nativeXrdpRoot, "config/xrdp.ini"))) {
-        paths.configPath = JoinPath(nativeXrdpRoot, "config/xrdp.ini");
+    paths.packagedConfigPath = params.configPath;
+    if (paths.packagedConfigPath.empty() && PathExists(JoinPath(nativeXrdpRoot, "config/xrdp.ini"))) {
+        paths.packagedConfigPath = JoinPath(nativeXrdpRoot, "config/xrdp.ini");
     }
-    if (paths.configPath.empty() && PathExists(hnpConfigPath)) {
-        paths.configPath = hnpConfigPath;
+    if (paths.packagedConfigPath.empty() && PathExists(hnpConfigPath)) {
+        paths.packagedConfigPath = hnpConfigPath;
     }
-    if (paths.configPath.empty()) {
-        paths.configPath = JoinPath(paths.runtimeRoot, "config/xrdp.ini");
-    }
+    paths.configPath = JoinPath(paths.runtimeRoot, "config/xrdp.ini");
+    paths.tlsCertificatePath = JoinPath(paths.runtimeRoot, "config/cert.pem");
+    paths.tlsKeyPath = JoinPath(paths.runtimeRoot, "config/key.pem");
 
     paths.sharePath = !params.sharePath.empty() ? TrimTrailingSlash(params.sharePath) : "";
     if (paths.sharePath.empty() && IsDirectory(JoinPath(nativeXrdpRoot, "share"))) {
@@ -282,6 +282,7 @@ bool PrepareRuntime(const XrdpResolvedPaths& paths, std::vector<std::string>& lo
 {
     bool ok = true;
     ok = EnsureDirectory(paths.runtimeRoot, logs) && ok;
+    ok = EnsureDirectory(DirName(paths.configPath), logs) && ok;
     ok = EnsureDirectory(paths.pidPath, logs) && ok;
     ok = EnsureDirectory(paths.logPath, logs) && ok;
 
@@ -465,6 +466,10 @@ void FillPathResult(XrdpServerCommandResult& result, const XrdpResolvedPaths& pa
     result.logs.push_back("nativeLibDir=" + paths.nativeLibDir);
     result.logs.push_back("runtimeRoot=" + paths.runtimeRoot);
     result.logs.push_back("configPath=" + paths.configPath);
+    if (!paths.packagedConfigPath.empty()) {
+        result.logs.push_back("packagedConfigPath=" + paths.packagedConfigPath);
+    }
+    result.logs.push_back("tlsCertificatePath=" + paths.tlsCertificatePath);
     result.logs.push_back("modulePath=" + paths.modulePath);
     result.logs.push_back("sharePath=" + paths.sharePath);
     result.logs.push_back("logPath=" + paths.logPath);

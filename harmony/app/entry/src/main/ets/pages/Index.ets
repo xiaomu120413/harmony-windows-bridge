@@ -20,7 +20,7 @@ struct Index {
   @State private port: string = '3389'
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
-  @State private certPolicy: string = 'ignore'
+  @State private certPolicy: string = 'tofu'
   @State private showSession: boolean = false
   private connected: boolean = false
   private callbacksRegistered: boolean = false
