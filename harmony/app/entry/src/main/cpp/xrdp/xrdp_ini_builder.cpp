@@ -33,32 +33,6 @@ bool IsAccessCodeValid(const std::string& code)
     return true;
 }
 
-bool IsAccessUsernameChar(char c)
-{
-    const unsigned char ch = static_cast<unsigned char>(c);
-    return std::isalnum(ch) != 0 || c == '_' || c == '-' || c == '.';
-}
-
-std::string NormalizeAccessUsername(const std::string& value,
-    std::vector<std::string>& logs)
-{
-    const std::string trimmed = TrimAscii(value);
-    if (trimmed.empty()) {
-        return "ohos";
-    }
-    if (trimmed.size() > 32) {
-        logs.push_back("xrdp access username is too long; using default user");
-        return "ohos";
-    }
-    for (char c : trimmed) {
-        if (!IsAccessUsernameChar(c)) {
-            logs.push_back("xrdp access username has unsupported characters; using default user");
-            return "ohos";
-        }
-    }
-    return trimmed;
-}
-
 } // namespace
 
 bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& params,
@@ -69,7 +43,6 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         logs.push_back("xrdp access code missing or invalid; refusing to start");
         return false;
     }
-    const std::string accessUsername = NormalizeAccessUsername(params.accessUsername, logs);
 
     std::ostringstream ini;
     ini << "[Globals]\n"
@@ -112,16 +85,14 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         << "[OHOS]\n"
         << "name=HarmonyOS remote assistance\n"
         << "lib=" << kBackendLibraryName << "\n"
-        << "username=ask" << accessUsername << "\n"
+        << "username=ohos\n"
         << "password=ask\n"
-        << "access_username=" << accessUsername << "\n"
         << "access_code=" << accessCode << "\n"
         << "port=0\n"
         << "code=0\n";
 
     iniText = ini.str();
-    logs.push_back("xrdp access control enabled user=" + accessUsername +
-        " code_length=" + std::to_string(accessCode.size()));
+    logs.push_back("xrdp access code enabled code_length=" + std::to_string(accessCode.size()));
     return true;
 }
 
