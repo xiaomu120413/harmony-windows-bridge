@@ -90,8 +90,10 @@ bool PathExists(const std::string& path);
 bool IsDirectory(const std::string& path);
 XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params);
 bool PrepareRuntime(const XrdpResolvedPaths& paths, std::vector<std::string>& logs);
-bool PrepareSecureRuntimeConfig(const XrdpResolvedPaths& paths, uint32_t port,
-    std::vector<std::string>& logs);
+bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& params,
+    uint32_t port, std::string& ini, std::vector<std::string>& logs);
+bool PrepareSecureRuntimeConfig(const XrdpServerParams& params,
+    const XrdpResolvedPaths& paths, uint32_t port, std::vector<std::string>& logs);
 bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
     XrdpServerCommandResult& result);
 bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,

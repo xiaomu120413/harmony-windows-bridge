@@ -169,55 +169,6 @@ bool WriteTextFile(const std::string& path, const std::string& text,
     return true;
 }
 
-std::string BuildSecureXrdpIni(const XrdpResolvedPaths& paths, uint32_t port)
-{
-    std::ostringstream ini;
-    ini << "[Globals]\n"
-        << "ini_version=1\n"
-        << "fork=false\n"
-        << "port=" << port << "\n"
-        << "tcp_nodelay=true\n"
-        << "tcp_keepalive=true\n"
-        << "security_layer=tls\n"
-        << "crypt_level=high\n"
-        << "certificate=" << paths.tlsCertificatePath << "\n"
-        << "key_file=" << paths.tlsKeyPath << "\n"
-        << "ssl_protocols=TLSv1.2, TLSv1.3\n"
-        << "tls_ciphers=HIGH:!aNULL:!eNULL:!EXPORT:!RC4:!DES:!3DES:!MD5:!PSK:!SRP:!DSS\n"
-        << "autorun=OHOS\n"
-        << "allow_channels=true\n"
-        << "allow_multimon=true\n"
-        << "bitmap_cache=true\n"
-        << "bitmap_compression=true\n"
-        << "bulk_compression=true\n"
-        << "max_bpp=32\n"
-        << "new_cursors=true\n"
-        << "use_fastpath=both\n\n"
-        << "[Logging]\n"
-        << "LogFile=xrdp.log\n"
-        << "LogLevel=INFO\n"
-        << "EnableSyslog=false\n"
-        << "EnableConsole=true\n"
-        << "ConsoleLevel=INFO\n"
-        << "EnableProcessId=true\n\n"
-        << "[LoggingPerLogger]\n\n"
-        << "[Channels]\n"
-        << "rdpdr=false\n"
-        << "rdpsnd=true\n"
-        << "drdynvc=true\n"
-        << "cliprdr=true\n"
-        << "rail=false\n"
-        << "xrdpvr=false\n\n"
-        << "[OHOS]\n"
-        << "name=HarmonyOS dummy\n"
-        << "lib=" << kBackendLibraryName << "\n"
-        << "username=na\n"
-        << "password=na\n"
-        << "port=0\n"
-        << "code=0\n";
-    return ini.str();
-}
-
 #if defined(HARMONY_HAS_OPENSSL_CRYPTO)
 std::string OpenSslErrors()
 {
@@ -454,8 +405,8 @@ bool EnsureTlsMaterial(const std::string& certPath, const std::string& keyPath,
 
 } // namespace
 
-bool PrepareSecureRuntimeConfig(const XrdpResolvedPaths& paths, uint32_t port,
-    std::vector<std::string>& logs)
+bool PrepareSecureRuntimeConfig(const XrdpServerParams& params,
+    const XrdpResolvedPaths& paths, uint32_t port, std::vector<std::string>& logs)
 {
     const std::string runtimeConfigDir = ParentDir(paths.configPath);
     std::string fingerprint;
@@ -471,7 +422,11 @@ bool PrepareSecureRuntimeConfig(const XrdpResolvedPaths& paths, uint32_t port,
         return false;
     }
 
-    if (!WriteTextFile(paths.configPath, BuildSecureXrdpIni(paths, port), 0644, logs)) {
+    std::string ini;
+    if (!BuildSecureXrdpIni(paths, params, port, ini, logs)) {
+        return false;
+    }
+    if (!WriteTextFile(paths.configPath, ini, 0600, logs)) {
         return false;
     }
 

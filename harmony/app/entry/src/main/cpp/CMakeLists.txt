@@ -72,6 +72,7 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
+    xrdp/xrdp_ini_builder.cpp
     xrdp/xrdp_runtime_config.cpp
     xrdp/xrdp_runtime_loader.cpp
     xrdp/xrdp_server_bridge.cpp)
