@@ -18,6 +18,8 @@ struct XrdpServerParams {
     std::string modulePath;
     std::string configPath;
     std::string sharePath;
+    std::string accessUsername;
+    std::string accessCode;
     uint32_t port = 3390;
 };
 

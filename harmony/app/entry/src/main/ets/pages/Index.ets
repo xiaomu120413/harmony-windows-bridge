@@ -21,10 +21,13 @@ struct Index {
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
   @State private certPolicy: string = 'tofu'
+  @State private remoteAccessCode: string = '000000'
   @State private showSession: boolean = false
   private connected: boolean = false
   private callbacksRegistered: boolean = false
   private xrdpServerStartRequested: boolean = false
+  private remoteAccessCodeInitialized: boolean = false
+  private remoteAccessUsername: string = 'ohos'
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
 
@@ -45,6 +48,7 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    this.ensureRemoteAccessCode()
     this.registerNativeCallbacks()
     this.getPermissionManager().ensurePasteboardReadPermission('page appear')
     this.getPermissionManager().ensureFullDiskAccessPermission('page appear')
@@ -149,6 +153,19 @@ struct Index {
     return context.filesDir
   }
 
+  private generateRemoteAccessCode(): string {
+    const value = Math.floor(100000 + Math.random() * 900000)
+    return `${value}`
+  }
+
+  private ensureRemoteAccessCode(): string {
+    if (!this.remoteAccessCodeInitialized || this.remoteAccessCode === '000000') {
+      this.remoteAccessCode = this.generateRemoteAccessCode()
+      this.remoteAccessCodeInitialized = true
+    }
+    return this.remoteAccessCode
+  }
+
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connected = false
@@ -241,6 +258,8 @@ struct Index {
     const appFilesDir = this.getAppFilesDir()
     return {
       appFilesDir: appFilesDir,
+      accessUsername: this.remoteAccessUsername,
+      accessCode: this.ensureRemoteAccessCode(),
       port: 3390
     }
   }
@@ -287,6 +306,16 @@ struct Index {
           .fontColor('#101828')
           .width('100%')
           .margin({ bottom: 18 })
+
+        Row() {
+          Text(`xrdp ${this.remoteAccessUsername} / ${this.remoteAccessCode}`)
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#101828')
+        }
+        .height(36)
+        .width('100%')
+        .margin({ bottom: 12 })
 
         this.inputField('Windows host', this.host, (value: string) => {
           this.host = value

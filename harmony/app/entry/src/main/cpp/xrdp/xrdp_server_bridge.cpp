@@ -219,7 +219,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         EmitHilogError(result.message);
         return result;
     }
-    if (!PrepareSecureRuntimeConfig(paths, port, result.logs)) {
+    if (!PrepareSecureRuntimeConfig(params, paths, port, result.logs)) {
         result.ok = false;
         result.state = "Failed";
         result.message = "xrdp TLS runtime config could not be prepared";
