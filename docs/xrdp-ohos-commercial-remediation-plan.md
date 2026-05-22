@@ -485,11 +485,11 @@ xrdp session summary:
 
 ## 11. 商用分支 checklist
 
-- [ ] app native xrdp 逻辑缩减为 loader/start/stop/diagnostics。
-- [ ] OHOS input injection 下沉到 xrdp 源码。
-- [ ] OHOS display geometry 下沉到 xrdp 源码。
-- [ ] OHOS playback audio capture 下沉到 xrdp 源码。
-- [ ] OHOS screen/H264 capture 下沉到 xrdp 源码。
+- [x] app native xrdp 逻辑缩减为 loader/start/stop/diagnostics。
+- [x] OHOS input injection 下沉到 xrdp 源码。
+- [x] OHOS display geometry 下沉到 xrdp 源码。
+- [x] OHOS playback audio capture 下沉到 xrdp 源码。
+- [x] OHOS screen/H264 capture 下沉到 xrdp 源码。
 - [ ] `ohos.c` 按职责拆分。
 - [ ] `xrdp_ohos.h` ABI version / struct size / feature flags 落地。
 - [ ] 生产日志策略落地。
@@ -587,3 +587,32 @@ xrdp session summary:
 - `Test-NetConnection 127.0.0.1 -Port 13390` 通过，设备侧 `3390` 处于 LISTEN。
 - Windows `mstsc /v:127.0.0.1:13390` 已连接；日志中出现 `xrdp active mstsc session detected; scheduling screen capture ...`、`xrdp client screen capture active ...`、`xrdp surface H264 frame queued ...`。
 - 音频链路仍正常，日志中出现 rdpsnd `client formats`、`training`、`audio queued`、`sent wave chunk`、`wave confirm`。
+
+## 17. 2026-05-22 Phase 4 app bridge 收口执行记录
+
+本阶段继续处理 app 侧 xrdp bridge 还不够薄的问题：
+
+- `libxrdpohos.so` 新增 capture facade API，由 xrdp 源码侧直接拥有 backend event
+  到 capture controller 的分发、raw/H264/audio capture 生命周期、frame submitter
+  和 backpressure 统计。
+- app 侧 `xrdp_server_bridge.cpp` 删除 capture controller 回调适配、backend event
+  到 capture 的二次分发、encoded/audio/raw 队列提交入口，只保留 server 启动、
+  backend 加载、event 状态记录、diagnostics 和可选 RGBA frame submit。
+- app 侧 `CMakeLists.txt` 不再直接编译
+  `third_party/xrdp/ohos/ohos_capture_*`、`ohos_audio_capture_bridge.cpp`、
+  `ohos_frame_submitter.cpp`、`ohos_h264_payload.cpp`、`ohos_display_geometry.c`。
+  这些实现统一进入 `libxrdpohos.so`。
+- 删除 app native 中不再需要的 `xrdp_screen_capture_bridge.*`、
+  `xrdp_surface_h264_capture.*`、`xrdp_audio_capture_bridge.*`、
+  `xrdp_display_geometry.*`。
+- app loader 现在要求 backend ABI 暴露 `XRDP_OHOS_FEATURE_INTERNAL_CAPTURE` 和
+  `XRDP_OHOS_FEATURE_CAPTURE_DIAGNOSTICS`，避免旧 backend 静默启动后没有画面。
+
+权限和系统弹框边界同步确认：
+
+- 远程协助、输入注入、屏幕录制、Pasteboard、全盘访问等系统确认框受 OHOS
+  系统策略控制，代码和 ACL/签名权限只能满足能力资格，不能承诺免弹框。
+- `ohos.permission.INJECT_INPUT_EVENT` 即使随签名 ACL 申请，也不等价于可以跳过
+  远程协助确认 UI；产品说明和验收用例需要按“可能出现系统确认”设计。
+- full-disk access 只用于用户授权后的文件类剪贴板/URI 长期访问，不作为绕过
+  系统确认框的手段。

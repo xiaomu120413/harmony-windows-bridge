@@ -64,21 +64,8 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_audio_capture_bridge.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_common.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_controller.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_h264.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_h264_encoder.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_capture_raw.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_display_geometry.c
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_frame_submitter.cpp
-    ${XRDP_OHOS_SOURCE_ROOT}/ohos/ohos_h264_payload.cpp
-    xrdp/xrdp_audio_capture_bridge.cpp
-    xrdp/xrdp_display_geometry.cpp
     xrdp/xrdp_runtime_loader.cpp
-    xrdp/xrdp_screen_capture_bridge.cpp
-    xrdp/xrdp_server_bridge.cpp
-    xrdp/xrdp_surface_h264_capture.cpp)
+    xrdp/xrdp_server_bridge.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so
@@ -88,11 +75,7 @@ target_link_libraries(entry PUBLIC
     libnative_image.so
     libnative_media_codecbase.so
     libnative_media_core.so
-    libnative_media_venc.so
     libnative_media_vdec.so
-    libnative_avscreen_capture.so
-    libnative_display_manager.so
-    libohinput.so
     libnative_window.so
     libnative_buffer.so
     libpasteboard.so

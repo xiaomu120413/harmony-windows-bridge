@@ -1,10 +1,6 @@
 #include "xrdp/xrdp_server_internal.h"
 
 #include "common/bridge_log.h"
-#include "ohos/ohos_capture_controller.h"
-#include "ohos/ohos_frame_submitter.h"
-#include "xrdp/xrdp_display_geometry.h"
-#include "xrdp/xrdp_screen_capture_bridge.h"
 
 #include <atomic>
 #include <cstdint>
@@ -26,18 +22,24 @@ XrdpServerState& ServerState()
 
 namespace {
 
-xrdp_ohos::FrameSubmitter& VideoSubmitter()
+std::string BoolText(bool value)
 {
-    static xrdp_ohos::FrameSubmitter submitter;
-    return submitter;
+    return value ? "true" : "false";
 }
 
-std::atomic<uint64_t> g_xrdpEncodedBackpressureCount { 0 };
-
-void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
+std::string BoolText(uint32_t value)
 {
-    const XrdpScreenCaptureDiagnostics capture = GetXrdpScreenCaptureDiagnostics();
-    const xrdp_ohos::FrameSubmitterStats video = VideoSubmitter().Snapshot();
+    return value != 0U ? "true" : "false";
+}
+
+void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics, const XrdpLoadedBackend& backend)
+{
+    xrdp_ohos_capture_diagnostics capture {};
+    int captureStatus = XRDP_OHOS_BACKEND_STATUS_UNSUPPORTED_FORMAT;
+    if (backend.captureDiagnosticsFn != nullptr) {
+        capture.size = sizeof(capture);
+        captureStatus = backend.captureDiagnosticsFn(&capture);
+    }
     diagnostics.logs.push_back("xrdp running=" + std::string(diagnostics.running ? "true" : "false") +
         " activeMstscSession=" + std::string(diagnostics.activeMstscSession ? "true" : "false") +
         " port=" + std::to_string(diagnostics.port));
@@ -51,35 +53,40 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics)
     diagnostics.logs.push_back("xrdp lastDisconnectReason=" + diagnostics.lastDisconnectReason);
     diagnostics.logs.push_back("xrdp counters backendEvents=" + std::to_string(diagnostics.backendEventCount) +
         " inputEvents=" + std::to_string(diagnostics.inputEventCount) +
-        " encodedBackpressure=" + std::to_string(g_xrdpEncodedBackpressureCount.load()) +
+        " encodedBackpressure=" + std::to_string(capture.encoded_backpressure_count) +
         " lastExitCode=" + std::to_string(diagnostics.lastExitCode));
-    diagnostics.logs.push_back("xrdp capture running=" + std::string(capture.running ? "true" : "false") +
+    if (captureStatus != XRDP_OHOS_BACKEND_STATUS_OK) {
+        diagnostics.logs.push_back("xrdp capture diagnostics unavailable status=" +
+            std::to_string(captureStatus));
+        return;
+    }
+    diagnostics.logs.push_back("xrdp capture running=" + BoolText(capture.running) +
         " target=" + std::to_string(capture.width) + "x" + std::to_string(capture.height) +
-        "@" + std::to_string(capture.frameRate) + "fps" +
-        " cursor=" + std::string(capture.showCursor ? "on" : "off") +
-        " ready=" + std::to_string(capture.readyCount) +
-        " queued=" + std::to_string(capture.submittedCount) +
-        " dropped=" + std::to_string(capture.droppedCount) +
-        " audioReady=" + std::to_string(capture.audioReadyCount) +
-        " audioQueued=" + std::to_string(capture.audioSubmittedCount) +
-        " audioDropped=" + std::to_string(capture.audioDroppedCount) +
-        " audioBytes=" + std::to_string(capture.audioBytes) +
-        " errors=" + std::to_string(capture.captureErrorCount));
-    diagnostics.logs.push_back("xrdp video running=" + std::string(video.running ? "true" : "false") +
-        " pending=" + std::string(video.hasPending ? "true" : "false") +
-        " submitting=" + std::string(video.submitting ? "true" : "false") +
-        " queued=" + std::to_string(video.queuedCount) +
-        " submitted=" + std::to_string(video.submittedCount) +
-        " failed=" + std::to_string(video.failedCount) +
-        " replaced=" + std::to_string(video.replacedCount) +
-        " drops preCopy=" + std::to_string(video.preCopyDropCount) +
-        " backoff=" + std::to_string(video.backoffDropCount) +
-        " lastStatus=" + std::to_string(video.lastStatus) +
-        " copy=" + std::to_string(video.lastCopyUs / 1000.0) +
-        "ms submit=" + std::to_string(video.lastSubmitUs / 1000.0) +
-        "ms buffers allocated=" + std::to_string(video.bufferAllocatedCount) +
-        " reused=" + std::to_string(video.bufferReusedCount) +
-        " free=" + std::to_string(video.freeBufferCount));
+        "@" + std::to_string(capture.frame_rate) + "fps" +
+        " cursor=" + std::string(capture.show_cursor != 0U ? "on" : "off") +
+        " ready=" + std::to_string(capture.ready_count) +
+        " queued=" + std::to_string(capture.submitted_count) +
+        " dropped=" + std::to_string(capture.dropped_count) +
+        " audioReady=" + std::to_string(capture.audio_ready_count) +
+        " audioQueued=" + std::to_string(capture.audio_submitted_count) +
+        " audioDropped=" + std::to_string(capture.audio_dropped_count) +
+        " audioBytes=" + std::to_string(capture.audio_bytes) +
+        " errors=" + std::to_string(capture.capture_error_count));
+    diagnostics.logs.push_back("xrdp video running=" + BoolText(capture.video_submitter_running) +
+        " pending=" + BoolText(capture.video_submitter_has_pending) +
+        " submitting=" + BoolText(capture.video_submitter_submitting) +
+        " queued=" + std::to_string(capture.video_queued_count) +
+        " submitted=" + std::to_string(capture.video_submitted_count) +
+        " failed=" + std::to_string(capture.video_failed_count) +
+        " replaced=" + std::to_string(capture.video_replaced_count) +
+        " drops preCopy=" + std::to_string(capture.video_precopy_drop_count) +
+        " backoff=" + std::to_string(capture.video_backoff_drop_count) +
+        " lastStatus=" + std::to_string(capture.video_last_status) +
+        " copy=" + std::to_string(capture.video_last_copy_us / 1000.0) +
+        "ms submit=" + std::to_string(capture.video_last_submit_us / 1000.0) +
+        "ms buffers allocated=" + std::to_string(capture.video_buffer_allocated_count) +
+        " reused=" + std::to_string(capture.video_buffer_reused_count) +
+        " free=" + std::to_string(capture.video_free_buffer_count));
 }
 
 XrdpServerDiagnostics SnapshotXrdpDiagnosticsLocked(const XrdpServerState& state)
@@ -114,7 +121,7 @@ XrdpServerDiagnostics SnapshotXrdpDiagnosticsLocked(const XrdpServerState& state
     if (diagnostics.message.empty()) {
         diagnostics.message = "xrdp diagnostics snapshot";
     }
-    AppendXrdpDiagnosticsLogs(diagnostics);
+    AppendXrdpDiagnosticsLogs(diagnostics, state.backend);
     return diagnostics;
 }
 
@@ -126,45 +133,6 @@ void StoreResolvedPathsLocked(XrdpServerState& state, const XrdpResolvedPaths& p
     state.modulePath = paths.modulePath;
     state.sharePath = paths.sharePath;
     state.logPath = paths.logPath;
-}
-
-bool StartControllerCapture(const xrdp_ohos::CaptureOptions& options, std::string& message, void*)
-{
-    XrdpScreenCaptureOptions bridgeOptions;
-    bridgeOptions.width = options.width;
-    bridgeOptions.height = options.height;
-    bridgeOptions.frameRate = options.frameRate;
-    bridgeOptions.showCursor = options.showCursor;
-    return StartXrdpScreenCapture(bridgeOptions, message);
-}
-
-void StopControllerCapture(const std::string& reason, void*)
-{
-    StopXrdpScreenCapture(reason);
-}
-
-void UpdateControllerCaptureTarget(uint32_t width, uint32_t height, void*)
-{
-    UpdateXrdpScreenCaptureTarget(width, height);
-}
-
-std::string DescribeControllerGeometry(void*)
-{
-    return FormatXrdpDisplayGeometry(QueryXrdpDisplayGeometry());
-}
-
-xrdp_ohos::CaptureController& CaptureController()
-{
-    static xrdp_ohos::CaptureController controller({
-        StartControllerCapture,
-        StopControllerCapture,
-        UpdateControllerCaptureTarget,
-        nullptr,
-        nullptr,
-        DescribeControllerGeometry,
-        nullptr,
-    });
-    return controller;
 }
 
 } // namespace
@@ -231,7 +199,6 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
             " flags=" + std::to_string(event->flags));
     }
 
-    CaptureController().HandleBackendEvent(*event);
 }
 
 } // namespace xrdp_bridge_internal
@@ -283,7 +250,11 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             return result;
         }
         if (!LoadBackendLocked(params, paths, result)) {
-            result.logs.push_back("xrdp server can still start, but external frame push is unavailable");
+            result.ok = false;
+            result.state = "Failed";
+            result.message = "xrdp OHOS backend could not be loaded";
+            EmitHilogError(result.message);
+            return result;
         }
     }
 
@@ -329,8 +300,14 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             threadState.lastDisconnectReason = threadState.lastMessage;
             exitMessage = threadState.lastMessage;
         }
-        CaptureController().Reset("xrdp server exit");
-        VideoSubmitter().Stop("xrdp server exit");
+        XrdpCaptureResetFn resetFn = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(threadState.mutex);
+            resetFn = threadState.backend.captureResetFn;
+        }
+        if (resetFn != nullptr) {
+            resetFn("xrdp server exit");
+        }
         EmitHilogInfo(exitMessage);
     }).detach();
 
@@ -355,9 +332,9 @@ XrdpServerDiagnostics GetXrdpServerDiagnostics()
     return SnapshotXrdpDiagnosticsLocked(ServerState());
 }
 
-bool QueueXrdpVideoFrame(const xrdp_ohos_frame& frame, std::string& message)
+bool SubmitXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
 {
-    XrdpSubmitFrameFn submitFn = nullptr;
+    XrdpCaptureSubmitFrameFn submitFn = nullptr;
 
     {
         std::lock_guard<std::mutex> lock(ServerState().mutex);
@@ -366,83 +343,14 @@ bool QueueXrdpVideoFrame(const xrdp_ohos_frame& frame, std::string& message)
             message = "xrdp server is not running";
             return false;
         }
-        submitFn = state.backend.submitFrameFn;
-    }
-
-    return VideoSubmitter().Enqueue(frame, submitFn, message);
-}
-
-bool QueueXrdpEncodedVideoFrame(const xrdp_ohos_encoded_frame& frame, std::string& message)
-{
-    XrdpSubmitEncodedFrameFn submitFn = nullptr;
-
-    {
-        std::lock_guard<std::mutex> lock(ServerState().mutex);
-        XrdpServerState& state = ServerState();
-        if (!state.running.load()) {
-            message = "xrdp server is not running";
-            return false;
-        }
-        submitFn = state.backend.submitEncodedFrameFn;
+        submitFn = state.backend.captureSubmitFrameFn;
     }
 
     if (submitFn == nullptr) {
-        message = "xrdp encoded video backend is not loaded";
-        return false;
-    }
-    if (frame.data == nullptr || frame.bytes <= 0 || frame.width <= 0 || frame.height <= 0 ||
-        frame.format != XRDP_OHOS_ENCODED_FRAME_FORMAT_H264_AVC420) {
-        message = "invalid xrdp encoded video frame";
+        message = "xrdp capture frame submit API is not loaded";
         return false;
     }
 
-    const int status = submitFn(&frame);
-    if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
-        if (status == XRDP_OHOS_BACKEND_STATUS_BACKPRESSURE) {
-            const uint64_t count = g_xrdpEncodedBackpressureCount.fetch_add(1) + 1;
-            message = "xrdp encoded video backpressure count=" + std::to_string(count);
-            if (count <= 3 || (count % 60U) == 0U) {
-                EmitHilogInfo(message);
-            }
-            return false;
-        }
-        message = "xrdp encoded video submit status=" + std::to_string(status);
-        return false;
-    }
-    message = "xrdp encoded video queued bytes=" + std::to_string(frame.bytes);
-    return true;
-}
-
-bool QueueXrdpAudioFrame(const xrdp_ohos_audio_frame& frame, std::string& message)
-{
-    XrdpSubmitAudioFrameFn submitFn = nullptr;
-
-    {
-        std::lock_guard<std::mutex> lock(ServerState().mutex);
-        XrdpServerState& state = ServerState();
-        if (!state.running.load()) {
-            message = "xrdp server is not running";
-            return false;
-        }
-        submitFn = state.backend.submitAudioFrameFn;
-    }
-
-    if (submitFn == nullptr) {
-        message = "xrdp audio backend is not loaded";
-        return false;
-    }
-
-    const int status = submitFn(&frame);
-    if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
-        message = "xrdp audio submit status=" + std::to_string(status);
-        return false;
-    }
-    message = "xrdp audio queued bytes=" + std::to_string(frame.bytes);
-    return true;
-}
-
-bool QueueXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
-{
     xrdp_ohos_frame xrdpFrame {};
     xrdpFrame.data = frame.data;
     xrdpFrame.width = frame.width;
@@ -450,7 +358,14 @@ bool QueueXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
     xrdpFrame.stride = frame.strideBytes;
     xrdpFrame.format = XRDP_OHOS_FRAME_FORMAT_RGBA_8888;
     xrdpFrame.source_sequence = frame.sequence;
-    return QueueXrdpVideoFrame(xrdpFrame, message);
+
+    const int status = submitFn(&xrdpFrame);
+    if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
+        message = "xrdp capture frame submit status=" + std::to_string(status);
+        return false;
+    }
+    message = "xrdp capture frame submitted";
+    return true;
 }
 
 } // namespace rdp_bridge

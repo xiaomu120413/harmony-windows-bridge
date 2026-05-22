@@ -18,11 +18,11 @@ constexpr uint32_t kDefaultPort = 3390;
 
 using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
-using XrdpSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
-using XrdpSubmitEncodedFrameFn = int (*)(const xrdp_ohos_encoded_frame*);
-using XrdpSubmitAudioFrameFn = int (*)(const xrdp_ohos_audio_frame*);
 using XrdpGetAbiInfoFn = int (*)(xrdp_ohos_abi_info*);
 using XrdpSetBackendEventCallbackFn = int (*)(xrdp_ohos_backend_event_fn, void*);
+using XrdpCaptureGetDiagnosticsFn = int (*)(xrdp_ohos_capture_diagnostics*);
+using XrdpCaptureSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
+using XrdpCaptureResetFn = void (*)(const char*);
 
 struct XrdpLoadedServer {
     void* handle = nullptr;
@@ -34,10 +34,10 @@ struct XrdpLoadedServer {
 struct XrdpLoadedBackend {
     void* handle = nullptr;
     XrdpGetAbiInfoFn getAbiInfoFn = nullptr;
-    XrdpSubmitFrameFn submitFrameFn = nullptr;
-    XrdpSubmitEncodedFrameFn submitEncodedFrameFn = nullptr;
-    XrdpSubmitAudioFrameFn submitAudioFrameFn = nullptr;
     XrdpSetBackendEventCallbackFn setEventCallbackFn = nullptr;
+    XrdpCaptureGetDiagnosticsFn captureDiagnosticsFn = nullptr;
+    XrdpCaptureSubmitFrameFn captureSubmitFrameFn = nullptr;
+    XrdpCaptureResetFn captureResetFn = nullptr;
     xrdp_ohos_abi_info abiInfo {};
     bool abiInfoValid = false;
     std::string libraryPath;
