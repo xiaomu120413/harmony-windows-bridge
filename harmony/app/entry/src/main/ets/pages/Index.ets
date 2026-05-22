@@ -27,7 +27,6 @@ struct Index {
   private callbacksRegistered: boolean = false
   private xrdpServerStartRequested: boolean = false
   private remoteAccessCodeInitialized: boolean = false
-  private remoteAccessUsername: string = 'ohos'
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
 
@@ -258,7 +257,6 @@ struct Index {
     const appFilesDir = this.getAppFilesDir()
     return {
       appFilesDir: appFilesDir,
-      accessUsername: this.remoteAccessUsername,
       accessCode: this.ensureRemoteAccessCode(),
       port: 3390
     }
@@ -308,7 +306,7 @@ struct Index {
           .margin({ bottom: 18 })
 
         Row() {
-          Text(`xrdp ${this.remoteAccessUsername} / ${this.remoteAccessCode}`)
+          Text(`xrdp 验证码 ${this.remoteAccessCode}`)
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor('#101828')

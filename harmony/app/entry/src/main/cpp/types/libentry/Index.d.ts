@@ -63,7 +63,6 @@ export interface NativeXrdpServerParams {
   modulePath?: string;
   configPath?: string;
   sharePath?: string;
-  accessUsername?: string;
   accessCode?: string;
   port?: number | string;
 }
