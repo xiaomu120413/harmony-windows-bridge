@@ -38,8 +38,8 @@ bool IsAccessCodeValid(const std::string& code)
 bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& params,
     uint32_t port, std::string& iniText, std::vector<std::string>& logs)
 {
-    const std::string accessCode = TrimAscii(params.accessCode);
-    if (!IsAccessCodeValid(accessCode)) {
+    const std::string accessCode = params.accessCodeGateEnabled ? TrimAscii(params.accessCode) : "";
+    if (params.accessCodeGateEnabled && !IsAccessCodeValid(accessCode)) {
         logs.push_back("xrdp access code missing or invalid; refusing to start");
         return false;
     }
@@ -57,7 +57,7 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         << "key_file=" << paths.tlsKeyPath << "\n"
         << "ssl_protocols=TLSv1.2, TLSv1.3\n"
         << "tls_ciphers=HIGH:!aNULL:!eNULL:!EXPORT:!RC4:!DES:!3DES:!MD5:!PSK:!SRP:!DSS\n"
-        << "require_credentials=true\n"
+        << "require_credentials=" << (params.accessCodeGateEnabled ? "true" : "false") << "\n"
         << "autorun=OHOS\n"
         << "allow_channels=true\n"
         << "allow_multimon=true\n"
@@ -92,7 +92,11 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         << "code=0\n";
 
     iniText = ini.str();
-    logs.push_back("xrdp access code enabled code_length=" + std::to_string(accessCode.size()));
+    if (params.accessCodeGateEnabled) {
+        logs.push_back("xrdp access code gate enabled code_length=" + std::to_string(accessCode.size()));
+    } else {
+        logs.push_back("xrdp access code gate disabled");
+    }
     return true;
 }
 

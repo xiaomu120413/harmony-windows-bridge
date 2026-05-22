@@ -95,6 +95,8 @@ XrdpServerParams ReadXrdpServerParams(napi_env env, napi_callback_info info)
     params.configPath = GetStringProperty(env, arg, "configPath");
     params.sharePath = GetStringProperty(env, arg, "sharePath");
     params.accessCode = GetStringProperty(env, arg, "accessCode");
+    params.accessCodeGateEnabled = GetBoolProperty(env, arg, "accessCodeGateEnabled");
+    params.restartIfRunning = GetBoolProperty(env, arg, "restartIfRunning");
     params.port = GetUint32Property(env, arg, "port", 0);
     if (params.port == 0) {
         params.port = ParseUint32String(GetStringProperty(env, arg, "port"), 0);
