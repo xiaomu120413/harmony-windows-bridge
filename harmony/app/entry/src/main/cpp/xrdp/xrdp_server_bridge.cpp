@@ -3,6 +3,7 @@
 #include "common/bridge_log.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -135,6 +136,48 @@ void StoreResolvedPathsLocked(XrdpServerState& state, const XrdpResolvedPaths& p
     state.logPath = paths.logPath;
 }
 
+bool RestartXrdpServerIfRequested(XrdpServerState& state, const XrdpServerParams& params,
+    const XrdpResolvedPaths& paths, uint32_t port, XrdpServerCommandResult& result)
+{
+    if (!params.restartIfRunning) {
+        return true;
+    }
+
+    XrdpStopFn stopFn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        StoreResolvedPathsLocked(state, paths, port);
+        if (!state.running.load()) {
+            return true;
+        }
+        stopFn = state.loaded.stopFn;
+        state.lastMessage = "xrdp server restart requested";
+    }
+
+    if (stopFn == nullptr) {
+        result.ok = false;
+        result.state = "Failed";
+        result.message = "xrdp server restart requested but stop API is unavailable";
+        EmitHilogError(result.message);
+        return false;
+    }
+
+    result.logs.push_back("xrdp server restart requested to apply configuration");
+    const int stopCode = stopFn();
+    result.logs.push_back("xrdp server stop requested rc=" + std::to_string(stopCode));
+    for (int attempt = 0; attempt < 30 && state.running.load(); attempt++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (state.running.load()) {
+        result.ok = false;
+        result.state = "Stopping";
+        result.message = "xrdp server is still stopping";
+        EmitHilogError(result.message);
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 namespace xrdp_bridge_internal {
@@ -234,6 +277,10 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     }
     if (!PathExists(JoinPath(paths.modulePath, kBackendLibraryName))) {
         result.logs.push_back("xrdp OHOS backend missing: " + JoinPath(paths.modulePath, kBackendLibraryName));
+    }
+
+    if (!RestartXrdpServerIfRequested(state, params, paths, port, result)) {
+        return result;
     }
 
     {

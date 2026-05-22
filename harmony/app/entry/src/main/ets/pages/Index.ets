@@ -22,6 +22,7 @@ struct Index {
   @State private password: string = 'aaaa'
   @State private certPolicy: string = 'tofu'
   @State private remoteAccessCode: string = '000000'
+  @State private remoteAccessCodeGateEnabled: boolean = false
   @State private showSession: boolean = false
   private connected: boolean = false
   private callbacksRegistered: boolean = false
@@ -47,7 +48,6 @@ struct Index {
   }
 
   aboutToAppear(): void {
-    this.ensureRemoteAccessCode()
     this.registerNativeCallbacks()
     this.getPermissionManager().ensurePasteboardReadPermission('page appear')
     this.getPermissionManager().ensureFullDiskAccessPermission('page appear')
@@ -253,22 +253,24 @@ struct Index {
     }
   }
 
-  private xrdpParams(): NativeXrdpServerParams {
+  private xrdpParams(restartIfRunning: boolean = false): NativeXrdpServerParams {
     const appFilesDir = this.getAppFilesDir()
     return {
       appFilesDir: appFilesDir,
-      accessCode: this.ensureRemoteAccessCode(),
+      accessCode: this.remoteAccessCodeGateEnabled ? this.ensureRemoteAccessCode() : '',
+      accessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+      restartIfRunning: restartIfRunning,
       port: 3390
     }
   }
 
-  private ensureXrdpServerStarted(trigger: string): void {
-    if (this.xrdpServerStartRequested) {
+  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false): void {
+    if (this.xrdpServerStartRequested && !restartIfRunning) {
       return
     }
     this.xrdpServerStartRequested = true
     try {
-      const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams())
+      const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams(restartIfRunning))
       this.appendLog(`${result.message}: ${trigger}`)
       this.appendNativeLogs(result.logs)
       this.appendXrdpDiagnostics(`ensure ${trigger}`)
@@ -279,6 +281,17 @@ struct Index {
       this.xrdpServerStartRequested = false
       this.appendLog(`xrdp ensure start failed: ${JSON.stringify(error)}`)
     }
+  }
+
+  private setRemoteAccessCodeGateEnabled(enabled: boolean): void {
+    if (this.remoteAccessCodeGateEnabled === enabled) {
+      return
+    }
+    this.remoteAccessCodeGateEnabled = enabled
+    if (enabled) {
+      this.ensureRemoteAccessCode()
+    }
+    this.ensureXrdpServerStarted(enabled ? 'access code gate enabled' : 'access code gate disabled', true)
   }
 
   private appendXrdpDiagnostics(trigger: string): void {
@@ -306,12 +319,23 @@ struct Index {
           .margin({ bottom: 18 })
 
         Row() {
-          Text(`xrdp 验证码 ${this.remoteAccessCode}`)
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor('#101828')
+          Column() {
+            Text('xrdp 验证码门禁')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#101828')
+            Text(this.remoteAccessCodeGateEnabled ? `验证码 ${this.remoteAccessCode}` : '默认关闭')
+              .fontSize(12)
+              .fontColor('#667085')
+          }
+          .layoutWeight(1)
+
+          Toggle({ type: ToggleType.Switch, isOn: this.remoteAccessCodeGateEnabled })
+            .onChange((enabled: boolean) => {
+              this.setRemoteAccessCodeGateEnabled(enabled)
+            })
         }
-        .height(36)
+        .height(48)
         .width('100%')
         .margin({ bottom: 12 })
 

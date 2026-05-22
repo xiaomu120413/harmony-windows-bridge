@@ -19,6 +19,8 @@ struct XrdpServerParams {
     std::string configPath;
     std::string sharePath;
     std::string accessCode;
+    bool accessCodeGateEnabled = false;
+    bool restartIfRunning = false;
     uint32_t port = 3390;
 };
 

@@ -64,6 +64,8 @@ export interface NativeXrdpServerParams {
   configPath?: string;
   sharePath?: string;
   accessCode?: string;
+  accessCodeGateEnabled?: boolean;
+  restartIfRunning?: boolean;
   port?: number | string;
 }
 
