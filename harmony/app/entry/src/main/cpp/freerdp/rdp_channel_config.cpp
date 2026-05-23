@@ -143,7 +143,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     } else {
         log("FreeRDP graphics pipeline disabled at runtime; using stable software GDI frame rendering");
     }
-    log("FreeRDP rdpdr base settings remain enabled; drive/printer/smartcard runtime toggles are disabled by the OHOS helper");
+    log("FreeRDP rdpdr base settings remain enabled; drive/printer runtime toggles are disabled by the OHOS helper; smartcard is not compiled in the delivery profile");
     return true;
 }
 

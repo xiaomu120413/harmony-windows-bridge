@@ -33,8 +33,9 @@ ENABLE_OHOS_AVCODEC="${ENABLE_OHOS_AVCODEC:-1}"
 ENABLE_OHOS_PASTEBOARD="${ENABLE_OHOS_PASTEBOARD:-1}"
 ENABLE_OPENSLES="${ENABLE_OPENSLES:-0}"
 ENABLE_CUPS="${ENABLE_CUPS:-0}"
-ENABLE_PCSC="${ENABLE_PCSC:-0}"
-ENABLE_SMARTCARD_PCSC="${ENABLE_SMARTCARD_PCSC:-1}"
+ENABLE_SMARTCARD=0
+ENABLE_PCSC=0
+ENABLE_SMARTCARD_PCSC=0
 ENABLE_FUSE="${ENABLE_FUSE:-0}"
 ENABLE_CCACHE="${ENABLE_CCACHE:-auto}"
 CCACHE_PROGRAM="${CCACHE_PROGRAM:-ccache}"
@@ -44,7 +45,7 @@ WITH_OHOS_AVCODEC=OFF
 WITH_OHOS_PASTEBOARD=OFF
 WITH_OPENSLES=OFF
 CCACHE_LAUNCHER=""
-FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-v1"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-no-smartcard-tsmf-v2"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -257,8 +258,8 @@ detect_optional_backends() {
   fi
 
   log "optional backends"
-  printf 'OHAudio=%s OHOS_AVCodec=%s OHOS_Pasteboard=%s OpenSLES=%s CUPS=%s PCSC=%s FUSE=%s\n' \
-    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OHOS_PASTEBOARD" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
+  printf 'OHAudio=%s OHOS_AVCodec=%s OHOS_Pasteboard=%s OpenSLES=%s CUPS=%s Smartcard=%s PCSC=%s FUSE=%s\n' \
+    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OHOS_PASTEBOARD" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_SMARTCARD")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
 }
 
 install_ohos_opensles_android_shim() {
@@ -589,6 +590,7 @@ freerdp_feature_profile() {
     printf 'ohos_pasteboard=%s\n' "$WITH_OHOS_PASTEBOARD"
     printf 'opensles=%s\n' "$WITH_OPENSLES"
     printf 'cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
+    printf 'smartcard=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD")"
     printf 'pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
     printf 'smartcard_pcsc=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD_PCSC")"
     printf 'fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"
@@ -676,11 +678,12 @@ build_freerdp() {
     -DWITH_GSSAPI=OFF \
     -DWITH_KRB5=OFF \
     -DWITH_PKCS11=OFF \
-    -DWITH_PCSC="$(cmake_bool "$ENABLE_PCSC")" \
-    -DWITH_PCSC_WINPR="$(cmake_bool "$ENABLE_PCSC")" \
-    -DWITH_SMARTCARD_EMULATE=ON \
-    -DWITH_SMARTCARD_INSPECT=ON \
-    -DWITH_SMARTCARD_PCSC="$(cmake_bool "$ENABLE_SMARTCARD_PCSC")" \
+    -DWITH_SMARTCARD=OFF \
+    -DWITH_PCSC=OFF \
+    -DWITH_PCSC_WINPR=OFF \
+    -DWITH_SMARTCARD_EMULATE=OFF \
+    -DWITH_SMARTCARD_INSPECT=OFF \
+    -DWITH_SMARTCARD_PCSC=OFF \
     -DWITH_WINPR_TOOLS=OFF \
     -DWITH_URIPARSER="$(cmake_bool "$ENABLE_URIPARSER")" \
     -DWITH_UNICODE_BUILTIN=ON \
@@ -704,10 +707,10 @@ build_freerdp() {
     -DCHANNEL_DRIVE_CLIENT=ON \
     -DCHANNEL_PRINTER=ON \
     -DCHANNEL_PRINTER_CLIENT=ON \
-    -DCHANNEL_SMARTCARD=ON \
-    -DCHANNEL_SMARTCARD_CLIENT=ON \
-    -DCHANNEL_TSMF=ON \
-    -DCHANNEL_TSMF_CLIENT=ON \
+    -DCHANNEL_SMARTCARD=OFF \
+    -DCHANNEL_SMARTCARD_CLIENT=OFF \
+    -DCHANNEL_TSMF=OFF \
+    -DCHANNEL_TSMF_CLIENT=OFF \
     -DCHANNEL_AINPUT=OFF \
     -DCHANNEL_ECHO=OFF \
     -DCHANNEL_ENCOMSP=OFF \
@@ -932,6 +935,7 @@ write_manifest() {
     printf 'with_ohos_pasteboard=%s\n' "$WITH_OHOS_PASTEBOARD"
     printf 'with_opensles=%s\n' "$WITH_OPENSLES"
     printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
+    printf 'with_smartcard=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD")"
     printf 'with_pcsc=%s\n' "$(cmake_bool "$ENABLE_PCSC")"
     printf 'with_smartcard_pcsc=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD_PCSC")"
     printf 'with_fuse=%s\n' "$(cmake_bool "$ENABLE_FUSE")"

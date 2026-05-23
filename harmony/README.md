@@ -29,8 +29,8 @@ Current milestone:
 - M6.8 maps two-finger horizontal drags on the remote surface to RDP horizontal wheel events.
 - M6.9 adds the `resize(width, height)` N-API surface and reports that dynamic resize is blocked by the current no-channel FreeRDP build.
 - M6.10 queues pointer/key/Unicode input on the FreeRDP worker thread, adds TOFU/strict/ignore certificate policies, and reports the disabled channel/codec feature set through `probe()`.
-- M6.11 switches the WSL FreeRDP build to the enhanced channel/codec profile: client channels, cliprdr, rdpdr, drive, printer, smartcard, rdpsnd, audin, disp, rdpgfx, TSMF, uriparser, OpenSLES, FFmpeg, and OpenH264 are compiled and packaged.
-- M6.12 adds a FreeRDP OHOS feature matrix check and compiles the WinPR smartcard PCSC backend into the enhanced runtime; CUPS and FUSE remain disabled because the current OHOS sysroot does not provide those backends.
+- M6.11 switches the WSL FreeRDP build to the enhanced channel/codec profile: client channels, cliprdr, rdpdr, drive, printer, rdpsnd, audin, disp, rdpgfx, uriparser, OpenSLES, FFmpeg, and OpenH264 are compiled and packaged.
+- M6.12 adds a FreeRDP OHOS feature matrix check. CUPS, FUSE, smartcard source/channel/PCSC, and TSMF remain out of the delivery build because the current OHOS product path has no closed runtime/permission model for them.
 - M6.13 keeps the enhanced runtime packaged but disables optional channel and rdpgfx/H.264 negotiation by default so the current NativeWindow renderer receives stable software GDI frames again.
 - M6.14 enables remote audio playback through a static `rdpsnd` channel using the packaged OpenSLES backend while keeping dynamic channels, microphone capture, and graphics pipeline negotiation off.
 - M6.14 also pre-fills the local debug host, account, password, and ignore-certificate policy in the connection form to reduce repeated device input during validation. This must be replaced by saved profiles or empty defaults before a production-style build.
@@ -62,7 +62,7 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- FreeRDP channels and H.264/FFmpeg/OpenH264 are now compiled into the enhanced WSL build. Remote audio playback now requests static `rdpsnd` with `sys:opensles`, but the rest of optional channel and rdpgfx/H.264 runtime negotiation is kept off until the matching native bridge is wired. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, smartcard PCSC backend, RD Gateway UI/settings, and display-control resize PDUs.
+- FreeRDP channels and H.264/FFmpeg/OpenH264 are now compiled into the enhanced WSL build. Remote audio playback now requests static `rdpsnd` with `sys:opensles`, but the rest of optional channel and rdpgfx/H.264 runtime negotiation is kept off until the matching native bridge is wired. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, RD Gateway UI/settings, and display-control resize PDUs. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
 - IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
 - Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 
@@ -198,15 +198,15 @@ M6.11 notes:
 
 - `harmony/scripts/wsl/build-freerdp-ohos.sh` now builds uriparser, OpenH264, and FFmpeg before FreeRDP, then configures FreeRDP with `WITH_CHANNELS=ON`, `WITH_CLIENT_CHANNELS=ON`, `WITH_FFMPEG=ON`, `WITH_OPENH264=ON`, `WITH_URIPARSER=ON`, and OpenSLES when the OHOS NDK provides it.
 - FreeRDP source adaptations are tracked in the `harmony/third_party/FreeRDP` submodule on the `ohos-port` branch; the current submodule commit disables WinPR `pthread_cancel` on `__OHOS__`.
-- The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, `printer`, `smartcard`, and `tsmf`.
+- The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, and `printer`; `WITH_SMARTCARD=OFF`, `smartcard`, and `tsmf` are not compiled into the delivery profile.
 - `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264, display-control, and rdpsnd at session start.
 - Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser/OpenSLES/`libc++_shared.so` shared libraries, instead of a fixed minimal list. Use a clean HAP build after changing the native library set so hvigor does not reuse stale package metadata.
-- Remaining risk: CUPS, PCSC, and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer, physical smartcard, and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable.
+- Remaining risk: CUPS and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable. Smartcard source/channel/PCSC and TSMF are cut from the first delivery profile.
 
 M6.12 notes:
 
-- `harmony/scripts/wsl/check-freerdp-ohos-feature-matrix.sh` records compile/configure status for CUPS, PCSC, FUSE, and the current enhanced runtime without modifying the main build output.
-- `WITH_SMARTCARD_PCSC=ON` is now part of the default enhanced FreeRDP build. The WinPR PCSC code compiles into `libwinpr3.so` and loads `libpcsclite.so.1`/`libpcsclite.so` at runtime when smartcard is used.
+- `harmony/scripts/wsl/check-freerdp-ohos-feature-matrix.sh` records compile/configure status for CUPS, FUSE, skipped smartcard source/channel/PCSC, skipped TSMF, and the current enhanced runtime without modifying the main build output.
+- `WITH_SMARTCARD=OFF`, `WITH_SMARTCARD_PCSC=OFF`, `CHANNEL_SMARTCARD=OFF`, and `CHANNEL_TSMF=OFF` are now part of the default delivery FreeRDP build. The package should not include smartcard or TSMF addins.
 - `WITH_CUPS=ON` still fails at configure time because the OHOS sysroot does not provide CUPS headers/libraries.
 - `WITH_FUSE=ON` still fails at configure time because `fuse3` is not available in the OHOS cross sysroot.
 - The detailed matrix and true-device checklist are in `docs/freerdp-ohos-feature-matrix.md`.
