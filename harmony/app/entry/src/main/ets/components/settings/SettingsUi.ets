@@ -257,16 +257,6 @@ export class SettingsTheme {
     return isDark ? '#1D2128' : '#F2F4F7'
   }
 
-  static primaryButton(hovered: boolean, pressed: boolean): string {
-    if (pressed) {
-      return '#0067D6'
-    }
-    if (hovered) {
-      return '#1D8DFF'
-    }
-    return '#0A84FF'
-  }
-
   static shadow(isDark: boolean, hovered: boolean): ShadowOptions {
     return {
       radius: hovered ? 28 : 10,
