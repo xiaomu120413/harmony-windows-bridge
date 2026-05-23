@@ -14,10 +14,10 @@ import rdpNative, { NativeCommandResult } from 'libentry.so'
 @Entry
 @Component
 struct Index {
-  @State private host: string = '192.168.43.28'
+  @State private host: string = ''
   @State private port: string = '3389'
-  @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
-  @State private password: string = 'aaaa'
+  @State private username: string = ''
+  @State private password: string = ''
   @State private certPolicy: string = 'tofu'
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
