@@ -20,13 +20,13 @@ std::string ClipHilogLine(const std::string& line)
 void EmitHilogInfo(const std::string& line)
 {
     const std::string clipped = ClipHilogLine(line);
-    OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
+    OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, kLogTag, "%{private}s", clipped.c_str());
 }
 
 void EmitHilogError(const std::string& line)
 {
     const std::string clipped = ClipHilogLine(line);
-    OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, kLogTag, "%{public}s", clipped.c_str());
+    OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, kLogTag, "%{private}s", clipped.c_str());
 }
 
 } // namespace rdp_bridge

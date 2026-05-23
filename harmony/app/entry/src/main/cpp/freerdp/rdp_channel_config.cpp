@@ -11,7 +11,7 @@ namespace rdp_bridge {
 namespace {
 
 bool BuildOhosSessionConfig(FreerdpRuntimeApi& api, const GraphicsPipelineConfig& graphicsConfig,
-    FREERDP_OHOS_SESSION_CONFIG& config, std::string& error)
+    const ConnectParams& params, FREERDP_OHOS_SESSION_CONFIG& config, std::string& error)
 {
     if (api.ohosSessionConfigDefault == nullptr) {
         error = "FreeRDP OHOS session config symbol is not loaded";
@@ -105,7 +105,7 @@ bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
 }
 
 bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const GraphicsPipelineConfig& graphicsConfig,
+    const GraphicsPipelineConfig& graphicsConfig, const ConnectParams& params,
     const std::function<void(const std::string&)>& log, std::string& error)
 {
     if (api.ohosSessionApplySettings == nullptr) {
@@ -114,7 +114,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
     }
 
     FREERDP_OHOS_SESSION_CONFIG config = {};
-    if (!BuildOhosSessionConfig(api, graphicsConfig, config, error)) {
+    if (!BuildOhosSessionConfig(api, graphicsConfig, params, config, error)) {
         return false;
     }
 
@@ -148,7 +148,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
 }
 
 bool ConfigureOhosStandardChannels(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const GraphicsPipelineConfig& graphicsConfig,
+    const GraphicsPipelineConfig& graphicsConfig, const ConnectParams& params,
     const std::function<void(const std::string&)>& log, std::string& error)
 {
     if (api.ohosSessionAddStandardChannels == nullptr) {
@@ -157,7 +157,7 @@ bool ConfigureOhosStandardChannels(FreerdpRuntimeApi& api, rdpSettings* settings
     }
 
     FREERDP_OHOS_SESSION_CONFIG config = {};
-    if (!BuildOhosSessionConfig(api, graphicsConfig, config, error)) {
+    if (!BuildOhosSessionConfig(api, graphicsConfig, params, config, error)) {
         return false;
     }
 
@@ -168,7 +168,7 @@ bool ConfigureOhosStandardChannels(FreerdpRuntimeApi& api, rdpSettings* settings
     }
 
     log(detail[0] == '\0' ? "OHOS FreeRDP standard channels added" : detail.data());
-    log("FreeRDP clipboard/display/graphics/audio channel parameters are owned by client/OHOS session helper");
+    log("FreeRDP clipboard/display/graphics/audio channel parameters are owned by client/OHOS session helper; clipboard and microphone permissions are requested on use");
     return true;
 }
 #endif

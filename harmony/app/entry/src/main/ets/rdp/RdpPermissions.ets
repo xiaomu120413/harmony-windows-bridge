@@ -34,6 +34,7 @@ export class RdpPermissionManager {
   private delegate: RdpPermissionDelegate
   private pasteboardPermissionRequested: boolean = false
   private pasteboardPermissionInFlight: boolean = false
+  private pasteboardPermissionRequest: Promise<boolean> | null = null
   private microphonePermissionInFlight: boolean = false
   private microphonePermissionRequest: Promise<boolean> | null = null
 
@@ -41,38 +42,45 @@ export class RdpPermissionManager {
     this.delegate = delegate
   }
 
-  ensurePasteboardReadPermission(trigger: string): void {
+  ensurePasteboardReadPermission(trigger: string): Promise<boolean> {
     if (this.hasPermission(READ_PASTEBOARD_PERMISSION, 'Pasteboard')) {
       this.appendPasteboardPermissionLog(`Pasteboard read permission granted: ${trigger}`)
-      return
+      return Promise.resolve(true)
+    }
+    if (this.pasteboardPermissionRequest !== null) {
+      return this.pasteboardPermissionRequest
     }
     if (this.pasteboardPermissionRequested || this.pasteboardPermissionInFlight) {
-      return
+      return Promise.resolve(false)
     }
 
     const context = this.delegate.getContext()
     if (context === null) {
       this.appendPasteboardPermissionLog('Pasteboard permission request skipped: no UIAbilityContext')
-      return
+      return Promise.resolve(false)
     }
 
     this.pasteboardPermissionRequested = true
     this.pasteboardPermissionInFlight = true
     const atManager = abilityAccessCtrl.createAtManager()
-    atManager.requestPermissionsFromUser(context, [READ_PASTEBOARD_PERMISSION])
+    this.pasteboardPermissionRequest = atManager.requestPermissionsFromUser(context, [READ_PASTEBOARD_PERMISSION])
       .then((result) => {
         const authResult = Array.isArray(result.authResults) && result.authResults.length > 0 ?
           result.authResults[0] : abilityAccessCtrl.GrantStatus.PERMISSION_DENIED
         const granted = authResult === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED ||
           this.hasPermission(READ_PASTEBOARD_PERMISSION, 'Pasteboard')
         this.appendPasteboardPermissionLog(`Pasteboard read permission request result: granted=${granted} auth=${authResult}`)
+        return granted
       })
       .catch((error: Error) => {
         this.appendPasteboardPermissionLog(`Pasteboard read permission request failed: ${JSON.stringify(error)}`)
+        return false
       })
       .finally(() => {
         this.pasteboardPermissionInFlight = false
+        this.pasteboardPermissionRequest = null
       })
+    return this.pasteboardPermissionRequest
   }
 
   ensureMicrophonePermission(trigger: string): Promise<boolean> {
@@ -114,7 +122,7 @@ export class RdpPermissionManager {
 
   private appendPasteboardPermissionLog(line: string): void {
     this.delegate.log(line)
-    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
+    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
   }
 
   private getSelfAccessTokenId(): number {

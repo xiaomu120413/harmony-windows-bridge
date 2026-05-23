@@ -34,6 +34,7 @@ add_library(entry SHARED
     common/frame_utils.cpp
     input/ohos_keyboard_adapter.cpp
     input/xcomponent_input_bridge.cpp
+    napi/clipboard_permission_bridge.cpp
     session/freerdp_session_runner.cpp
     freerdp/freerdp_gdi_bridge.cpp
     freerdp/freerdp_runtime.cpp

@@ -60,6 +60,14 @@ void EmitCertificatePolicyLog(const std::string& line)
     }
 }
 
+std::string CertificatePolicyDecisionLog(CertificatePolicy policy, bool changed, DWORD rc, UINT16 port)
+{
+    const char* action = rc == 0 ? "rejected" : "accepted";
+    return std::string(changed ? "Changed certificate " : "Certificate ") + action +
+        " by " + CertificatePolicyName(policy) + " policy: target=<redacted>:" +
+        std::to_string(port);
+}
+
 uint32_t ToOhosCertificatePolicy(CertificatePolicy policy)
 {
     switch (policy) {
@@ -108,7 +116,7 @@ bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
         !SetFreerdpString(api, settings, FreeRDP_ConfigPath, configPath, "ConfigPath", error)) {
         return false;
     }
-    log("FreeRDP storage path configured: " + configPath);
+    log("FreeRDP storage path configured");
     return true;
 }
 
@@ -177,24 +185,21 @@ DWORD HarmonyVerifyCertificateEx(freerdp* instance, const char* host, UINT16 por
         const DWORD rc = api.ohosCertificateVerify(
             ToOhosCertificatePolicy(policy), &info, message.data(), message.size());
         if (message[0] != '\0') {
-            EmitCertificatePolicyLog(message.data());
+            EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, false, rc, port));
         }
         return rc;
     }
 
-    const std::string target = SafeCString(host) + ":" + std::to_string(port);
     if (policy == CertificatePolicy::Ignore) {
-        EmitCertificatePolicyLog("Certificate accepted for current session by ignore policy: " + target);
+        EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, false, 2, port));
         return 2;
     }
     if (policy == CertificatePolicy::Tofu) {
-        EmitCertificatePolicyLog("Certificate accepted by TOFU policy and requested for FreeRDP store: " + target +
-            " cn=" + SafeCString(commonName));
+        EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, false, 1, port));
         return 1;
     }
 
-    EmitCertificatePolicyLog("Certificate rejected by strict policy: " + target +
-        " cn=" + SafeCString(commonName) + " issuer=" + SafeCString(issuer));
+    EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, false, 0, port));
     if (fingerprint != nullptr && fingerprint[0] != '\0') {
         EmitCertificatePolicyLog("Rejected certificate fingerprint/pem is available in native callback");
     }
@@ -223,26 +228,22 @@ DWORD HarmonyVerifyChangedCertificateEx(freerdp* instance, const char* host, UIN
         const DWORD rc = api.ohosCertificateVerify(
             ToOhosCertificatePolicy(policy), &info, message.data(), message.size());
         if (message[0] != '\0') {
-            EmitCertificatePolicyLog(message.data());
+            EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, true, rc, port));
         }
         return rc;
     }
 
-    const std::string target = SafeCString(host) + ":" + std::to_string(port);
     if (policy == CertificatePolicy::Ignore) {
-        EmitCertificatePolicyLog("Changed certificate accepted for current session by ignore policy: " + target);
+        EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, true, 2, port));
         return 2;
     }
 
-    EmitCertificatePolicyLog("Changed certificate rejected by " + std::string(CertificatePolicyName(policy)) +
-        " policy: " + target + " cn=" + SafeCString(commonName));
+    EmitCertificatePolicyLog(CertificatePolicyDecisionLog(policy, true, 0, port));
     if ((subject != nullptr && subject[0] != '\0') || (oldSubject != nullptr && oldSubject[0] != '\0')) {
-        EmitCertificatePolicyLog("Certificate subject changed from [" + SafeCString(oldSubject) + "] to [" +
-            SafeCString(subject) + "]");
+        EmitCertificatePolicyLog("Certificate subject changed; values are redacted");
     }
     if ((issuer != nullptr && issuer[0] != '\0') || (oldIssuer != nullptr && oldIssuer[0] != '\0')) {
-        EmitCertificatePolicyLog("Certificate issuer changed from [" + SafeCString(oldIssuer) + "] to [" +
-            SafeCString(issuer) + "]");
+        EmitCertificatePolicyLog("Certificate issuer changed; values are redacted");
     }
     if ((fingerprint != nullptr && fingerprint[0] != '\0') ||
         (oldFingerprint != nullptr && oldFingerprint[0] != '\0')) {

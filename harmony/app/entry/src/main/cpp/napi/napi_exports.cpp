@@ -8,6 +8,7 @@
 #include "channels/audio_diagnostics.h"
 #include "channels/rdpgfx_diagnostics.h"
 #include "input/ohos_keyboard_adapter.h"
+#include "napi/clipboard_permission_bridge.h"
 #include "napi/microphone_permission_bridge.h"
 #include "napi/napi_event_sink.h"
 #include "napi/napi_utils.h"
@@ -55,6 +56,16 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     }
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
+}
+
+std::string RedactedEndpointLog(const ConnectParams& params)
+{
+    return params.port.empty() ? "target=<redacted>" : "target=<redacted>:" + params.port;
+}
+
+std::string RedactedValueLog(const char* name, const std::string& value)
+{
+    return std::string(name) + "=" + (value.empty() ? "<empty>" : "<redacted>");
 }
 
 std::u16string GetUtf16StringProperty(napi_env env, napi_value object, const char* name)
@@ -140,7 +151,8 @@ napi_value Probe(napi_env env, napi_callback_info info)
         "core RDP/TLS/NLA + queued software GDI renderer; client channels on; "
         "cliprdr/rdpdr/drive/printer/rdpsnd/audin/rdpgfx/disp compiled; smartcard/TSMF excluded; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
-        "static cliprdr text bridge, disp dynamic resolution, rdpsnd/OHAudio playback requested, "
+        "static cliprdr text bridge with pasteboard permission requested on first read, "
+        "disp dynamic resolution, rdpsnd/OHAudio playback requested, "
         "and audin microphone permission requested on remote capture open; "
         "rdpgfx runtime defaults to rdpgfx-h264; AVC444 GPU compositor defaults on with GDI fallback; "
         "other optional channel negotiation off";
@@ -255,12 +267,12 @@ napi_value Connect(napi_env env, napi_callback_info info)
         return result;
     }
 
-    logs.push_back("target=" + params.host + ":" + params.port);
-    logs.push_back("username=" + params.username);
+    logs.push_back(RedactedEndpointLog(params));
+    logs.push_back(RedactedValueLog("username", params.username));
     logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
     logs.push_back("graphicsMode=" + params.graphicsMode);
-    logs.push_back("appFilesDir=" + params.appFilesDir);
+    logs.push_back(RedactedValueLog("appFilesDir", params.appFilesDir));
     logs.push_back("starting native worker");
 
     std::string message;
@@ -615,6 +627,44 @@ napi_value OnMicrophonePermissionRequest(napi_env env, napi_callback_info info)
         "rdpMicrophonePermissionRequestCallback", true);
 }
 
+napi_value OnClipboardPermissionRequest(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, ClipboardPermissionRequestSink(),
+        "rdpClipboardPermissionRequestCallback", true);
+}
+
+napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "clipboard permission completion requires an object argument");
+        SetNamed(env, result, "logs", MakeStringArray(env, {"parameter validation failed"}));
+        return result;
+    }
+
+    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
+    const bool granted = GetBoolProperty(env, arg, "granted");
+    const bool ok = CompleteClipboardPermissionRequestFromUi(requestId, granted);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Updated" : "Failed");
+    SetString(env, result, "message", ok ? "clipboard permission result accepted" :
+        "clipboard permission request is not pending");
+    SetNamed(env, result, "logs", MakeStringArray(env, {
+        "requestId=" + std::to_string(requestId) +
+            " granted=" + std::string(granted ? "true" : "false")
+    }));
+    return result;
+}
+
 napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
@@ -668,6 +718,10 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
+        {"onClipboardPermissionRequest", nullptr, OnClipboardPermissionRequest, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
+        {"completeClipboardPermissionRequest", nullptr, CompleteClipboardPermissionRequest, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
         {"completeMicrophonePermissionRequest", nullptr, CompleteMicrophonePermissionRequest, nullptr, nullptr,
             nullptr, napi_default, nullptr},
     };

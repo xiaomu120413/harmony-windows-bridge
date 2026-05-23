@@ -6,6 +6,7 @@ import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
+import { SettingsPage } from '../components/SettingsPage'
 import rdpNative, { NativeCommandResult } from 'libentry.so'
 
 @Entry
@@ -15,8 +16,9 @@ struct Index {
   @State private port: string = '3389'
   @State private username: string = 'DESKTOP-UH7T7O1\\aoqiduan'
   @State private password: string = 'aaaa'
-  @State private certPolicy: string = 'ignore'
+  @State private certPolicy: string = 'tofu'
   @State private showSession: boolean = false
+  @State private showSettings: boolean = false
   private connected: boolean = false
   private callbacksRegistered: boolean = false
   private surfaceController: XComponentController = new XComponentController()
@@ -29,7 +31,7 @@ struct Index {
   }
 
   private appendLog(line: string): void {
-    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{public}s', line)
+    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
   }
 
   private appendNativeLogs(lines: string[]): void {
@@ -40,7 +42,6 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerNativeCallbacks()
-    this.getPermissionManager().ensurePasteboardReadPermission('page appear')
   }
 
   aboutToDisappear(): void {
@@ -115,6 +116,21 @@ struct Index {
             })
         })
       })
+      rdpNative.onClipboardPermissionRequest((requestIdText: string) => {
+        this.deferUiUpdate(() => {
+          const requestId = Number(requestIdText)
+          this.appendLog(`Clipboard sync requested pasteboard permission: requestId=${requestIdText}`)
+          this.getPermissionManager().ensurePasteboardReadPermission('clipboard read')
+            .then((granted: boolean) => {
+              const result: NativeCommandResult = rdpNative.completeClipboardPermissionRequest({
+                requestId: isNaN(requestId) ? 0 : requestId,
+                granted: granted
+              })
+              this.appendLog(`${result.message}: granted=${granted}`)
+              this.appendNativeLogs(result.logs)
+            })
+        })
+      })
       this.callbacksRegistered = true
     } catch (error) {
       this.appendLog(`Native callback registration failed: ${JSON.stringify(error)}`)
@@ -156,7 +172,12 @@ struct Index {
     this.certPolicy = policy
     this.connected = false
     this.setSessionVisible(true)
-    this.appendLog(`Opening session surface for ${host}:${port}`)
+    this.appendLog('Opening session surface')
+    this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
+  }
+
+  private queueNativeConnect(host: string, port: string, username: string, password: string, policy: string,
+    appFilesDir: string): void {
     setTimeout((): void => {
       this.startNativeConnect(host, port, username, password, policy, appFilesDir)
     }, 0)
@@ -165,7 +186,7 @@ struct Index {
   private startNativeConnect(host: string, port: string, username: string, password: string,
     policy: string, appFilesDir: string): void {
     try {
-      this.appendLog(`Calling native connect for ${host}:${port}`)
+      this.appendLog('Calling native connect')
       const result: NativeCommandResult = rdpNative.connect({
         host: host,
         port: port,
@@ -232,10 +253,24 @@ struct Index {
   private buildConnectPage() {
     Scroll() {
       Column() {
-        Text('HarmonyOS 和 Windows 互联工具')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#101828')
+        Row() {
+          Text('木枢远程桌面')
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#101828')
+            .layoutWeight(1)
+
+          Button('设置')
+            .height(36)
+            .width(78)
+            .fontSize(14)
+            .backgroundColor('#E8EEF7')
+            .fontColor('#1D2433')
+            .onClick(() => {
+              this.showSettings = true
+            })
+        }
+          .alignItems(VerticalAlign.Center)
           .width('100%')
           .margin({ bottom: 18 })
 
@@ -259,7 +294,6 @@ struct Index {
         Row() {
           this.certPolicyButton('tofu', 'TOFU')
           this.certPolicyButton('strict', 'Strict')
-          this.certPolicyButton('ignore', 'Ignore')
         }
         .height(40)
         .width('100%')
@@ -339,6 +373,12 @@ struct Index {
     Column() {
       if (this.showSession) {
         this.buildSessionPage()
+      } else if (this.showSettings) {
+        SettingsPage({
+          onClose: () => {
+            this.showSettings = false
+          }
+        })
       } else {
         this.buildConnectPage()
       }
