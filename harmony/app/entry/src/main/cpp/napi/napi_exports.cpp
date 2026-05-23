@@ -138,7 +138,7 @@ napi_value Probe(napi_env env, napi_callback_info info)
     SurfaceSnapshot surface = BridgeSurfaceSnapshot();
     const std::string featureSummary =
         "core RDP/TLS/NLA + queued software GDI renderer; client channels on; "
-        "cliprdr/rdpdr/drive/printer/smartcard/rdpsnd/audin/rdpgfx/disp compiled; "
+        "cliprdr/rdpdr/drive/printer/rdpsnd/audin/rdpgfx/disp compiled; smartcard/TSMF excluded; "
         "H264 + FFmpeg + OpenH264 enabled; RD Gateway core enabled; "
         "static cliprdr text bridge, disp dynamic resolution, rdpsnd/OHAudio playback requested, "
         "and audin microphone permission requested on remote capture open; "

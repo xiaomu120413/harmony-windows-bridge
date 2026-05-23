@@ -136,9 +136,10 @@ prepare_cmake_args() {
     -DWITH_GSSAPI=OFF
     -DWITH_KRB5=OFF
     -DWITH_PKCS11=OFF
-    -DWITH_SMARTCARD_EMULATE=ON
-    -DWITH_SMARTCARD_INSPECT=ON
-    -DWITH_SMARTCARD_PCSC=ON
+    -DWITH_SMARTCARD=OFF
+    -DWITH_SMARTCARD_EMULATE=OFF
+    -DWITH_SMARTCARD_INSPECT=OFF
+    -DWITH_SMARTCARD_PCSC=OFF
     -DWITH_WINPR_TOOLS=OFF
     -DWITH_URIPARSER=ON
     -DWITH_UNICODE_BUILTIN=ON
@@ -162,10 +163,10 @@ prepare_cmake_args() {
     -DCHANNEL_DRIVE_CLIENT=ON
     -DCHANNEL_PRINTER=ON
     -DCHANNEL_PRINTER_CLIENT=ON
-    -DCHANNEL_SMARTCARD=ON
-    -DCHANNEL_SMARTCARD_CLIENT=ON
-    -DCHANNEL_TSMF=ON
-    -DCHANNEL_TSMF_CLIENT=ON
+    -DCHANNEL_SMARTCARD=OFF
+    -DCHANNEL_SMARTCARD_CLIENT=OFF
+    -DCHANNEL_TSMF=OFF
+    -DCHANNEL_TSMF_CLIENT=OFF
     -DCHANNEL_AINPUT=OFF
     -DCHANNEL_ECHO=OFF
     -DCHANNEL_ENCOMSP=OFF
@@ -261,20 +262,16 @@ main() {
     printf '%s\n\n' "- Matrix build: \`$MATRIX_BUILD\`"
     printf '| Case | Status | Scope | Reason |\n'
     printf '| --- | --- | --- | --- |\n'
-    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel, smartcard channel, WinPR smartcard PCSC backend, TSMF, FFmpeg, OpenH264 | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
+    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
+    printf '| `smartcard-pcsc` | skipped | Smartcard source, channel, and WinPR PCSC backend are excluded from the delivery build | Do not compile for prelaunch package |\n'
+    printf '| `tsmf` | skipped | TSMF channel is excluded from the delivery build | Do not compile for prelaunch package |\n'
   } > "$MATRIX_DIR/report.md"
 
   run_case "cups" "Enable CUPS printer backend in addition to printer channel" \
     -DWITH_CUPS=ON -DWITH_FUSE=OFF -DWITH_PCSC=OFF -DWITH_PCSC_WINPR=OFF
 
-  run_case "pcsc" "Enable PCSC discovery in addition to the WinPR smartcard PCSC backend" \
-    -DWITH_CUPS=OFF -DWITH_FUSE=OFF -DWITH_PCSC=ON -DWITH_PCSC_WINPR=ON -DWITH_SMARTCARD_PCSC=ON
-
   run_case "fuse" "Enable FUSE clipboard file-copy backend" \
     -DWITH_CUPS=OFF -DWITH_FUSE=ON -DWITH_PCSC=OFF -DWITH_PCSC_WINPR=OFF
-
-  run_case "all-native-backends" "Enable CUPS, PCSC, and FUSE together" \
-    -DWITH_CUPS=ON -DWITH_FUSE=ON -DWITH_PCSC=ON -DWITH_PCSC_WINPR=ON -DWITH_SMARTCARD_PCSC=ON
 
   log "matrix report"
   cat "$MATRIX_DIR/report.md"
