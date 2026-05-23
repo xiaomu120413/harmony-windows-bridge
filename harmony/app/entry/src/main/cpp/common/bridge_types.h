@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstdint>
 #include <string>
@@ -72,7 +72,7 @@ struct GraphicsPipelineConfig {
     bool valid = true;
     bool enabled = false;
     bool h264 = false;
-    bool avc444GpuExperimental = false;
+    bool avc444GpuCompositor = false;
     std::string mode = "gdi";
 };
 

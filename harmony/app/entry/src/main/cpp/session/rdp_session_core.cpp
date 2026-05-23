@@ -1,4 +1,4 @@
-#include "session/rdp_session_core.h"
+﻿#include "session/rdp_session_core.h"
 
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_gdi_bridge.h"
@@ -384,7 +384,7 @@ struct RdpSession::Impl {
         EmitLog("target=" + params.host + ":" + params.port);
         EmitLog("graphicsMode=" + graphicsConfig.mode);
         EmitLog("avc444GpuCompositor=" +
-            std::string(graphicsConfig.avc444GpuExperimental ? "auto-on" : "off"));
+            std::string(graphicsConfig.avc444GpuCompositor ? "auto-on" : "off"));
 
         if (!running.load()) {
             EmitState("Disconnected");

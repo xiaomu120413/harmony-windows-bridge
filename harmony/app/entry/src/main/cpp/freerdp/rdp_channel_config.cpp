@@ -1,4 +1,4 @@
-#include "freerdp/rdp_channel_config.h"
+﻿#include "freerdp/rdp_channel_config.h"
 
 #include "common/string_utils.h"
 
@@ -134,7 +134,7 @@ bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
         log("FreeRDP graphics pipeline requested: mode=" + graphicsConfig.mode +
             " h264=" + std::string(h264Requested ? "surface-avc420-preferred" : "off") +
             " avc444=" +
-            std::string(graphicsConfig.avc444GpuExperimental ? "gpu-auto+native-fallback" :
+            std::string(graphicsConfig.avc444GpuCompositor ? "gpu-auto+native-fallback" :
                 (h264Requested ? "freerdp-native-yuv444" : "off")) +
             " capsFilter=" + Hex32(0) +
             " requestedCodec=" + std::string(h264Requested ? "avc420+avc444" : "none") +

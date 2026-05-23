@@ -162,7 +162,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 | 输入 | Windows/X11/Android 各自把本地键鼠转 FreeRDP input | 需要重写 | ArkUI touch/key -> N-API -> native event queue -> `freerdp_input_send_mouse_event/keyboard_event/unicode_keyboard_event` |
 | 剪贴板 | `cliprdr` + 平台 clipboard | 首版可不需要，后续需要 | `CHANNEL_CLIPRDR_CLIENT` 已编译；下一步接 Harmony clipboard API，先做文本，再评估文件 |
 | 音频 | ALSA/Pulse/OSS/OpenSLES | 首个可交互版本可不做，产品化通常需要 | 继续关闭到 M6；后续打开 `rdpsnd/audin`，用 Harmony AudioRenderer/AudioCapturer 写 OHOS backend，不能直接用 ALSA/Pulse/OpenSLES |
-| 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是性能增强；独立视频通道按需 | 首版先用基础 GDI/bitmap 到 `NativeWindow`；性能不足再打开 `rdpgfx` 和软件 H.264；硬件解码需新增 OHOS AVCodec backend，不要直接套 Android MediaCodec |
+| 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是商用默认性能路径；独立视频通道按需 | 当前商用默认 `rdpgfx-h264`，AVC444 走 OHOS AVCodec-backed GPU compositor，并保留 per-command FreeRDP native GDI fallback；不要直接套 Android MediaCodec |
 | 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | `drive`/`rdpdr` 已编译；后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径。FUSE 文件复制仍是可选专项 |
 | 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | printer channel 已编译；smartcard source/channel/PCSC 已裁剪，恢复时必须先完成 PC/SC 服务、权限和真机读卡验收；真实打印仍需 CUPS 端口或 Harmony Print 后端 |
 | 证书校验 | Windows 可用系统证书；Linux/Android 用 OpenSSL/known_hosts/回调 | 需要 | 实现 `VerifyCertificateEx/VerifyChangedCertificateEx` 回调到 ArkTS；做 TOFU 指纹存储；生产默认不使用 ignore |
@@ -379,9 +379,9 @@ WindowStage
 | 鼠标/触摸 | 必须 | ArkTS `onTouch/onMouse/onAxisEvent`、坐标映射和 N-API `sendPointer` 已有骨架 | 继续验证触摸手势、右键、滚轮、viewport 外点击丢弃、窗口 resize 后坐标正确 |
 | 音频播放 | 产品化通常需要，首个闭环可延后 | `rdpsnd` 已编译，OHOS NDK 有 OpenSLES 时启用 FreeRDP OpenSLES backend，并用兼容 shim 处理 Android simple buffer queue 头文件差异 | 先实机验证 OpenSLES 播放；如果稳定性不足，再新增 OHOS AudioRenderer backend；处理采样率、通道数、缓冲、静音和后台生命周期 |
 | 麦克风 | 可选，取决于会议/语音场景 | `audin` 已编译，但还没有 OHOS AudioCapturer 采集后端和权限/UI 闭环 | 接 `audin-client-ohos` backend，用 Harmony AudioCapturer 采集 PCM，再按 FreeRDP audin 协议送给服务端；需要麦克风权限和隐私提示 |
-| 桌面图形 | 必须 | `PostConnect/gdi_init/EndPaint` 到 `NativeWindow` CPU copy 已有骨架 | 继续做真机验证、dirty rect 优化、掉帧策略、surface destroy/resize 稳定性和高分辨率性能测试 |
-| RDPGFX/H.264 | 性能增强 | `rdpgfx`、FFmpeg、OpenH264 已编译并打包 | 先用软件解码验证协议和稳定性，再考虑 OHOS AVCodec 硬件解码 |
-| 硬件视频解码 | 非首版，性能专项 | FreeRDP 现有硬件路径是 MediaFoundation/MediaCodec/VAAPI/VideoToolbox 等，不覆盖 OHOS | 需要新增 OHOS 专用 `H264_CONTEXT_SUBSYSTEM`，用 AVCodec `OH_VideoDecoder`；输出到 YUV/RGBA buffer 再合成到桌面 surface，或谨慎走 decoder surface。不能直接启用 Android `WITH_MEDIACODEC` |
+| 桌面图形 | 必须 | `PostConnect/gdi_init/EndPaint` 到 `NativeWindow` CPU copy 已有骨架 | 作为 GDI fallback 和非 RDPGFX 兜底继续保留 |
+| RDPGFX/H.264 | 商用默认 | `rdpgfx`、FFmpeg、OpenH264、OHOS AVCodec-backed AVC444 GPU compositor 已编译并打包 | 默认走 `rdpgfx-h264`；高分辨率依赖 AVC444 GPU compositor 降低卡顿 |
+| 硬件视频解码 | 已进入默认性能路径 | FreeRDP 现有硬件路径是 MediaFoundation/MediaCodec/VAAPI/VideoToolbox 等，不覆盖 OHOS | OHOS 侧使用 AVCodec-backed AVC444 GPU compositor；单条 command 失败时回到 FreeRDP native GDI，不直接启用 Android `WITH_MEDIACODEC` |
 | 硬件视频编码 | RDP 客户端显示远端桌面通常不需要 | 当前无需求 | 只有做 RDP server、摄像头重定向、视频上行等场景才评估；普通 client 主要是解码，不是编码 |
 
 键鼠输入不依赖 FreeRDP channel，属于 core input，必须和渲染一起做，否则只能“连上但不能操作”。音频和视频增强依赖 channel/codec，应该等 M5/M6 稳定后独立开里程碑。
@@ -434,15 +434,15 @@ FreeRDP 音频不是“系统自动播放”，需要启用并接平台后端：
 
 这里要区分三类“视频”：
 
-1. **远端桌面图形**：这是必须能力。首版用 bitmap/GDI 更新就能看到桌面，不需要 H.264。
-2. **RDPGFX + H.264/AVC444**：这是现代 RDP 的图形性能路径。FreeRDP 里 H.264 可由 OpenH264、FFmpeg、MediaFoundation、MediaCodec、VAAPI、VideoToolbox 等 subsystem 支撑。OHOS 目前没有现成 subsystem，需要新增。
+1. **远端桌面图形**：这是必须能力。GDI/bitmap 更新作为兜底保留，但不再作为高分辨率商用默认路径。
+2. **RDPGFX + H.264/AVC444**：这是现代 RDP 的图形性能路径。当前 HarmonyOS 交付默认请求 `rdpgfx-h264`，AVC444 走 OHOS AVCodec-backed GPU compositor；FreeRDP native GDI 只作为 per-command fallback。
 3. **独立视频重定向通道**：`video`、`tsmf` 等用于视频优化或旧式多媒体重定向。`tsmf` 在 FreeRDP 里默认关闭且标注 deprecated，不建议作为 Harmony 首选路线。
 
 硬件解码推荐路线：
 
-1. 先不启用硬解，完成 `NativeWindow` 渲染和输入。
-2. 打开 `rdpgfx`，用软件 H.264 路径验证服务端协商、AVC420/AVC444 解码和桌面合成正确。
-3. 新增 `libfreerdp/codec/h264_ohos.c` 或同等模块，实现 FreeRDP `H264_CONTEXT_SUBSYSTEM`：
+1. 保留 `NativeWindow` 软件 GDI 渲染作为 fallback。
+2. 默认打开 `rdpgfx-h264`，用 AVC444 GPU compositor 承接高分辨率图形性能。
+3. 持续收敛 OHOS AVCodec-backed compositor：
    - 初始化 `OH_VideoDecoder`，配置 H.264/AVC 格式。
    - 输入 RDPGFX 提供的 H.264 bitstream。
    - 输出 YUV/RGBA buffer，交给 FreeRDP 图形合成或自有 compositor。
@@ -461,7 +461,7 @@ FreeRDP 音频不是“系统自动播放”，需要启用并接平台后端：
 3. 自动重连和网络抖动处理。
 4. 剪贴板文本同步。
 5. dirty rect、双缓冲、减少全帧 copy。
-6. 高分辨率性能测试后再评估 RDPGFX、GPU texture 或平台硬件视频解码。
+6. 高分辨率性能测试默认覆盖 RDPGFX/H.264、AVC444 GPU compositor 和 per-command GDI fallback。
 7. 音频播放、麦克风、文件、打印、智能卡、RD Gateway 等作为单独里程碑。
 
 ## 当前脚本配置建议
@@ -528,7 +528,7 @@ WITH_OPENSLES=ON when available
 
 FreeRDP 现有 OpenSLES backend 是 Android 风格实现，当前脚本通过 `OpenSLES_Android.h` 兼容 shim 让它在 OHOS NDK 下编译。它可以作为短期验证路径；产品化仍建议新增 `rdpsnd/client/ohos` 和 `audin/client/ohos`，直接链接 Harmony AudioRenderer/AudioCapturer。
 
-后续做 H.264/硬件解码时建议分两步：
+后续继续收敛 H.264/硬件解码时建议分两步：
 
 ```text
 # Step 1: software validation
