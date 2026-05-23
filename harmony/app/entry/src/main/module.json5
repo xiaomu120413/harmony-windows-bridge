@@ -1,70 +1,76 @@
-﻿{
-    "module":  {
-                   "name":  "entry",
-                   "type":  "entry",
-                   "description":  "$string:module_desc",
-                   "mainElement":  "EntryAbility",
-                   "deviceTypes":  [
-                                       "2in1"
-                                   ],
-                   "deliveryWithInstall":  true,
-                   "installationFree":  false,
-                   "requestPermissions":  [
-                                             {
-                                                 "name":  "ohos.permission.INTERNET"
-                                             },
-                                             {
-                                                 "name":  "ohos.permission.GET_NETWORK_INFO"
-                                             },
-                                             {
-                                                 "name":  "ohos.permission.READ_PASTEBOARD",
-                                                 "reason": "$string:read_pasteboard_reason",
-                                                 "usedScene": {
-                                                     "abilities": [
-                                                         "EntryAbility"
-                                                     ],
-                                                     "when": "inuse"
-                                                 }
-                                             },
-                                             {
-                                                 "name":  "ohos.permission.MICROPHONE",
-                                                 "reason": "$string:microphone_reason",
-                                                 "usedScene": {
-                                                     "abilities": [
-                                                         "EntryAbility"
-                                                     ],
-                                                     "when": "inuse"
-                                                 }
-                                             }
-                                         ],
-                   "pages":  "$profile:main_pages",
-                   "abilities":  [
-                                     {
-                                         "name":  "EntryAbility",
-                                         "srcEntry":  "./ets/entryability/EntryAbility.ets",
-                                         "description":  "$string:EntryAbility_desc",
-                                         "icon":  "$media:layered_image",
-                                         "label":  "$string:EntryAbility_label",
-                                         "startWindowIcon":  "$media:startIcon",
-                                         "startWindowBackground":  "$color:start_window_background",
-                                         "minWindowWidth":  1280,
-                                         "minWindowHeight":  760,
-                                         "supportWindowMode":  [
-                                                                   "fullscreen",
-                                                                   "floating"
-                                                               ],
-                                         "exported":  true,
-                                         "skills":  [
-                                                        {
-                                                            "entities":  [
-                                                                             "entity.system.home"
-                                                                         ],
-                                                            "actions":  [
-                                                                            "ohos.want.action.home"
-                                                                        ]
-                                                        }
-                                                    ]
-                                     }
-                                 ]
-               }
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": [
+      "2in1"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "metadata": [
+      {
+        "name": "appgallery_privacy_hosted",
+        "value": "1"
+      },
+      {
+        "name": "appgallery_privacy_link_privacy_statement",
+        "value": "https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=1956638518541311168"
+      }
+    ],
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
+      },
+      {
+        "name": "ohos.permission.READ_PASTEBOARD",
+        "reason": "$string:read_pasteboard_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.MICROPHONE",
+        "reason": "$string:microphone_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ],
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:transparent_start_icon",
+        "startWindowBackground": "$color:start_window_background",
+        "minWindowWidth": 960,
+        "minWindowHeight": 600,
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "ohos.want.action.home"
+            ]
+          }
+        ]
+      }
+    ]
+  }
 }
