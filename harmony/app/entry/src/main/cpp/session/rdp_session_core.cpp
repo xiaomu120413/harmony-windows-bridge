@@ -31,6 +31,11 @@ SurfaceSnapshot EmptySurfaceSnapshot()
     return {};
 }
 
+std::string RedactedEndpointLog(const ConnectParams& params)
+{
+    return params.port.empty() ? "target=<redacted>" : "target=<redacted>:" + params.port;
+}
+
 } // namespace
 
 struct RdpSession::Impl {
@@ -381,7 +386,7 @@ struct RdpSession::Impl {
     {
         const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
         EmitLog("native worker accepted params");
-        EmitLog("target=" + params.host + ":" + params.port);
+        EmitLog(RedactedEndpointLog(params));
         EmitLog("graphicsMode=" + graphicsConfig.mode);
         EmitLog("avc444GpuCompositor=" +
             std::string(graphicsConfig.avc444GpuCompositor ? "auto-on" : "off"));

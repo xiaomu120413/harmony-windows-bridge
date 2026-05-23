@@ -3,6 +3,7 @@
 #include <functional>
 #include <string>
 
+#include "common/bridge_types.h"
 #include "freerdp/freerdp_runtime.h"
 #include "freerdp/graphics_config.h"
 
@@ -17,10 +18,10 @@ namespace rdp_bridge {
 bool EnableFreerdpClientChannels(FreerdpRuntimeApi& api, freerdp* instance,
     const std::function<void(const std::string&)>& log, std::string& error);
 bool ConfigureEnhancedRdpSettings(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const GraphicsPipelineConfig& graphicsConfig,
+    const GraphicsPipelineConfig& graphicsConfig, const ConnectParams& params,
     const std::function<void(const std::string&)>& log, std::string& error);
 bool ConfigureOhosStandardChannels(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const GraphicsPipelineConfig& graphicsConfig,
+    const GraphicsPipelineConfig& graphicsConfig, const ConnectParams& params,
     const std::function<void(const std::string&)>& log, std::string& error);
 #endif
 

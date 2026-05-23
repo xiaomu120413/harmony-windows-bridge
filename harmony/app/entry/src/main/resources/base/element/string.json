@@ -2,11 +2,11 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "HarmonyOS 和 Windows 互联工具"
+      "value": "木枢远程桌面"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "木枢入口"
+      "value": "木枢远程桌面入口"
     },
     {
       "name": "EntryAbility_label",

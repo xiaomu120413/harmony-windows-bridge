@@ -109,6 +109,8 @@ declare const rdpNative: {
   onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
   onMicrophonePermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
+  onClipboardPermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
+  completeClipboardPermissionRequest(result: Object): NativeCommandResult;
   completeMicrophonePermissionRequest(result: Object): NativeCommandResult;
 };
 

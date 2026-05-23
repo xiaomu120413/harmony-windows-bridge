@@ -2,11 +2,11 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "HarmonyOS and Windows connection tool"
+      "value": "MuHub remote desktop"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "MuHub entry"
+      "value": "MuHub remote desktop entry"
     },
     {
       "name": "EntryAbility_label",

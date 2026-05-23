@@ -1,6 +1,7 @@
 #include "channels/clipboard_bridge.h"
 
 #include "common/bridge_log.h"
+#include "napi/clipboard_permission_bridge.h"
 
 #include <memory>
 #include <string>
@@ -47,6 +48,8 @@ public:
         config.PubSubUnsubscribe = api.pubSubUnsubscribe;
         config.Log = LogThunk;
         config.logUserData = this;
+        config.RequestReadPermission = RequestClipboardPermissionForPasteboard;
+        config.permissionUserData = nullptr;
 
         char errorBuffer[256] = {};
         if (!api_->ohosClipboardRegister(

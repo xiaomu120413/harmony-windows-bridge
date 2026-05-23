@@ -120,7 +120,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
 
     std::string modulesPath = EnsureOpenSslModulesPath();
     if (!modulesPath.empty()) {
-        log("OPENSSL_MODULES=" + modulesPath);
+        log("OPENSSL_MODULES configured");
     }
 
     uint32_t port = 0;
@@ -234,15 +234,13 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         cleanup();
         return result;
     }
-    log(connectionDetail[0] == '\0'
-            ? "OHOS FreeRDP connection settings applied"
-            : connectionDetail.data());
+    log("OHOS FreeRDP connection settings applied");
 
     if (!ConfigureFreerdpStoragePaths(api, settings, params, log, error) ||
-        !ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, log, error) ||
+        !ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, params, log, error) ||
         !ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
         !ConfigureGraphicsPipelineChannel(api, settings, graphicsConfig, log, error) ||
-        !ConfigureOhosStandardChannels(api, settings, graphicsConfig, log, error)) {
+        !ConfigureOhosStandardChannels(api, settings, graphicsConfig, params, log, error)) {
         result.message = error;
         result.failed = true;
         cleanup();
