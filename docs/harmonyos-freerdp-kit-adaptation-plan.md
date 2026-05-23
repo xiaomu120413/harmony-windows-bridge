@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP Kit Adaptation Plan
 
-更新日期：2026-05-15
+更新日期：2026-05-23
 
 本文档记录当前 HarmonyOS FreeRDP App 的四个核心问题、原因分析、代码归属建议、可执行实施计划、每一步修改点、验收标准、遗留风险和影响。
 
@@ -9,7 +9,7 @@
 - 音频、剪贴板、图形加速和整体性能不能只靠把 FreeRDP channel 编译进 HAP。它们需要对接 HarmonyOS 运行时 Kit。
 - 协议核心和平台设备 backend 应尽量放在 FreeRDP 适配层中，不应继续堆在 `napi_init.cpp`。
 - ArkTS / N-API 层只负责 UI、生命周期、配置、权限、状态和日志，不负责实现 RDP 协议细节。
-- 性能问题需要分阶段处理。先做 GDI 路径减负，再接 `rdpgfx` / H.264；不能直接打开增强管线，因为此前打开后出现过黑屏回退。
+- 性能问题已经从早期 GDI 减负阶段推进到 `rdpgfx-h264` 默认阶段；当前商用默认启用 AVC444 GPU compositor，并保留 GDI fallback。
 
 ## 当前代码状态
 
@@ -24,12 +24,12 @@
 
 当前实现状态：
 
-- RDP 连接、认证、GDI 画面渲染、鼠标键盘输入已经打通。
-- FreeRDP 增强依赖已经编译并打包，包括 `cliprdr`、`rdpsnd`、`audin`、`rdpgfx`、FFmpeg、OpenH264、OpenSLES 等。
-- 运行时为避免黑屏，`rdpgfx/H.264/AVC444` 仍关闭，使用软件 GDI framebuffer。
-- 音频目前只是请求静态 `rdpsnd` + `sys:opensles`，没有真正接 HarmonyOS `OH_AudioRenderer`。
-- 剪贴板通道已编译，但没有对接 HarmonyOS Pasteboard，也没有注册完整 `cliprdr` callback。
-- 当前渲染路径是 CPU 拷贝整帧到 `NativeWindow`，未做 dirty rect、帧队列、限帧、GPU texture 或硬解。
+- RDP 连接、认证、鼠标键盘输入、软件 GDI fallback 已经打通。
+- FreeRDP 增强依赖已经编译并打包，包括 `cliprdr`、`rdpsnd`、`audin`、`rdpgfx`、FFmpeg、OpenH264、OpenSLES、OHOS AVCodec-backed AVC444 GPU compositor 等。
+- 运行时默认 `graphicsMode=rdpgfx-h264`，AVC444 command 默认先走 GPU compositor；失败时保留 per-command FreeRDP native GDI fallback。
+- 音频目前请求静态 `rdpsnd` + `sys:opensles`，产品化仍建议新增 HarmonyOS `OH_AudioRenderer` backend。
+- 剪贴板通道已编译并有 Pasteboard 文本桥接，文件/复杂格式仍需要继续收敛权限和生命周期。
+- 当前渲染路径包含 GDI fallback、RDPGFX/H.264 和 AVC444 GPU compositor；后续重点是稳定性、dirty rect、surface 生命周期和高分辨率性能验收。
 
 ## 问题 1：音频没声音
 
@@ -381,7 +381,7 @@ void RenderDirtyRects(const Frame& frame, const DirtyRegion& dirty)
 
 修改范围：
 
-- `napi_init.cpp` 中恢复 `rdpgfx` settings，但必须受 runtime 开关控制。
+- `napi_init.cpp` 中恢复 `rdpgfx` settings；当前交付默认 `rdpgfx-h264`，不暴露用户开关。
 - FreeRDP `client/ohos/ohos_gfx.*`
 - `docs/freerdp-ohos-feature-matrix.md`
 
@@ -389,12 +389,12 @@ void RenderDirtyRects(const Frame& frame, const DirtyRegion& dirty)
 
 - 开启 `rdpgfx` 后不黑屏。
 - Windows 视频播放比 GDI 路径更流畅。
-- 关闭开关可回退 GDI。
+- 图形协商或单条 command 失败时可自动回退 GDI。
 
 风险和影响：
 
-- 此前已经出现过打开增强图形管线黑屏，因此必须做独立分支和回退开关。
-- AVC444/H.264 格式处理复杂，首版建议只开软件解码。
+- 此前已经出现过打开增强图形管线黑屏，因此必须保留自动 fallback 和真机回归。
+- AVC444/H.264 格式处理复杂，当前默认走 AVC444 GPU compositor，并保留 FreeRDP native GDI fallback。
 
 #### V5：评估 OHOS AVCodec 硬解
 
@@ -980,7 +980,7 @@ OnChannelDisconnected(name, pInterface):
 遗留问题和影响：
 
 - 这一阶段不默认启用 `rdpgfx`，所以视频卡顿不会立刻根治。
-- 启用 `rdpgfx` 后仍可能遇到 surface lifetime、frame ack、H.264 解码 CPU 压力，需要 S5-2 真机开关验证。
+- 启用 `rdpgfx` 后仍可能遇到 surface lifetime、frame ack、H.264 解码 CPU 压力，需要真机回归验证。
 - 当前 fallback 是手动回到 `graphicsMode=gdi`，不是会话内自动降级。
 
 #### S5-2：默认启用 `rdpgfx` 软件 GDI pipeline，不启用 H.264

@@ -1,4 +1,4 @@
-#include "freerdp/graphics_config.h"
+﻿#include "freerdp/graphics_config.h"
 
 #include "freerdp/freerdp_runtime.h"
 #include "common/string_utils.h"
@@ -23,7 +23,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = false;
         config.h264 = false;
-        config.avc444GpuExperimental = false;
+        config.avc444GpuCompositor = false;
         config.mode = "gdi";
         return config;
     }
@@ -31,7 +31,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = true;
         config.h264 = false;
-        config.avc444GpuExperimental = false;
+        config.avc444GpuCompositor = false;
         config.mode = "rdpgfx";
         return config;
     }
@@ -39,7 +39,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
         config.valid = true;
         config.enabled = true;
         config.h264 = true;
-        config.avc444GpuExperimental = true;
+        config.avc444GpuCompositor = true;
         config.mode = "rdpgfx-h264";
         return config;
     }
@@ -47,7 +47,7 @@ GraphicsPipelineConfig ParseGraphicsModeStrict(const std::string& value)
     config.valid = false;
     config.enabled = false;
     config.h264 = false;
-    config.avc444GpuExperimental = false;
+    config.avc444GpuCompositor = false;
     config.mode = mode.empty() ? "missing" : "invalid";
     return config;
 }
@@ -70,7 +70,7 @@ GraphicsPipelineConfig FromNativeGraphicsConfig(const FREERDP_OHOS_GRAPHICS_CONF
     config.valid = nativeConfig.mode != FREERDP_OHOS_GRAPHICS_MODE_INVALID;
     config.enabled = nativeConfig.enabled;
     config.h264 = nativeConfig.h264;
-    config.avc444GpuExperimental = nativeConfig.enabled && nativeConfig.h264;
+    config.avc444GpuCompositor = nativeConfig.enabled && nativeConfig.h264;
     if (config.valid) {
         config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
     } else {
@@ -99,7 +99,7 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
     }
 
     GraphicsPipelineConfig config = strictConfig;
-    config.avc444GpuExperimental = config.enabled && config.h264;
+    config.avc444GpuCompositor = config.enabled && config.h264;
     return config;
 }
 

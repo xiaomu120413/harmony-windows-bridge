@@ -8,7 +8,7 @@
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
 - client channels：`cliprdr`、`drdynvc`、`disp`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。
-- 软件编解码：FFmpeg、OpenH264、SWSCALE。
+- 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - 首版交付不编译 FreeRDP smartcard source/channel、WinPR smartcard PCSC backend、TSMF，避免把未闭环的平台服务和 deprecated 视频路径带进包。
 
@@ -45,7 +45,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 智能卡 source/channel `smartcard` | 关闭 | 未进 HAP | 首版不交付；恢复时需要独立开关、PC/SC 服务/权限模型和真机读卡验收 |
 | WinPR smartcard PCSC backend | 关闭 | 未进 HAP | 产品构建硬关 OFF，避免运行时 `dlopen` PCSC 和合规能力不闭环 |
 | RD Gateway core | 通过 | 依赖已进 HAP | 需要 UI 参数、settings 映射、证书/代理错误提示和服务器验证 |
-| RDPGFX/H.264 | 通过 | FFmpeg/OpenH264 已进 HAP | 先软件验证稳定性；硬解要新增 OHOS AVCodec subsystem |
+| RDPGFX/H.264 + AVC444 GPU compositor | 通过 | FFmpeg/OpenH264/OHOS AVCodec 已进 HAP | 商用默认 `rdpgfx-h264` 并默认启用 AVC444 GPU compositor；单条 command 失败时保留 FreeRDP native GDI fallback |
 | TSMF | 关闭 | 未进 HAP | FreeRDP 标注 deprecated，首版裁剪；视频路线优先 RDPGFX/H.264 或 OHOS AVCodec |
 
 ## 本轮验证命令
@@ -71,7 +71,7 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 
 1. 启动 App，确认 `probe()` 能看到 FreeRDP runtime、client channel loader、FFmpeg/OpenH264/OpenSLES，并显示 smartcard/TSMF excluded。
 2. 连接 Windows，确认基础画面、鼠标、键盘仍正常。
-3. 观察 RDPGFX/H.264 是否被协商；如果没有，记录服务端能力和 FreeRDP 日志。
+3. 观察 RDPGFX/H.264 是否被协商，并确认 AVC444 GPU compositor 日志为默认开启；如果没有，记录服务端能力和 FreeRDP 日志。
 4. 远端复制文本，本机读取；本机复制文本，远端粘贴，验证 `cliprdr` 接线缺口。
 5. 播放 Windows 系统声音，观察 `rdpsnd` 日志、延迟、断连和后台行为。
 6. 如果设备允许麦克风权限，验证 `audin` 是否需要新增采集后端。
@@ -81,6 +81,6 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 
 ## 影响
 
-- 当前 signed HAP 为 33,320,476 bytes，约 31.78 MiB；相对裁剪前工作区基线 88.27 MiB 减少约 56.49 MiB。
+- 当前 signed HAP 为 33,320,512 bytes，约 31.78 MiB；相对裁剪前工作区基线 88.27 MiB 减少约 56.49 MiB。
 - smartcard source/channel/PCSC 和 TSMF 不进入包，减少未闭环平台服务和 deprecated 通道带来的商业验收风险。
 - CUPS/FUSE 不进入包，避免把当前无法闭合的 Linux 服务模型带进普通 HarmonyOS 应用。

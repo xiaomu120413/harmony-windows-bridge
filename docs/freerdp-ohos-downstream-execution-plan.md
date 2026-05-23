@@ -41,7 +41,7 @@
 | T09 | HAP XComponent 输入文件拆分 | P2 | T08 | HAP 手势代码可维护 |
 | T10 | display-control resize 管理下沉 | P2 | T02 | resize 逻辑可复用 |
 | T11 | RDPGFX bridge 拆分 | P1 | T07 | caps/surface/diagnostics 分离 |
-| T12 | AVC444 policy 下沉并默认关闭 GPU path | P1 | T11 | FreeRDP 统一决定 GDI suppress |
+| T12 | AVC444 policy 下沉并保持 GPU path 默认开启 | P1 | T11 | FreeRDP 统一决定 GDI suppress |
 | T13 | AVC420 surface fallback 收敛 | P2 | T11 | fallback 走向可解释 |
 | T14 | 剪贴板按职责拆分 | P1 | T06 | 单文件不超过 600 行 |
 | T15 | H.264 OHOS AVCodec 拆分 | P2 | T13 | decoder/surface/fallback 分离 |
@@ -198,7 +198,7 @@
 
 - 删除或收缩 `harmony/app/entry/src/main/cpp/freerdp/graphics_config.cpp` 的本地解析逻辑。
 - 所有图形模式解析、fallback ladder、retry 判断统一调用 `client/OHOS/ohos_graphics.c`。
-- 商用默认 `gdi`，`rdpgfx` 和 `rdpgfx-h264` 通过显式配置开启。
+- 商用默认 `rdpgfx-h264`，并默认启用 AVC444 GPU compositor；`gdi` 只作为图形协商失败后的 fallback。
 - fallback 只对图形失败触发，不对认证、网络、证书失败触发。
 
 验收点：
@@ -304,7 +304,7 @@
 - 回调注册顺序改动会导致 RDPGFX 不工作。
 - registry/context 查找如果拆错，会出现多 session 混淆。
 
-## T12：AVC444 policy 下沉并默认关闭 GPU path
+## T12：AVC444 policy 下沉并保持 GPU path 默认开启
 
 修改点：
 
@@ -314,14 +314,14 @@
   - upload texture
   - compose
   - present
-- 商用默认 `avc444GpuExperimental=false`。
+- 商用默认 `avc444GpuCompositor=true`，不暴露用户开关；失败时按 per-command 策略保留 FreeRDP native GDI fallback。
 
 验收点：
 
 - FreeRDP OHOS 层是唯一决定是否 suppress GDI 的地方。
 - HAP compositor 不再引用 frame policy 或决定 authoritative。
-- 默认商用包不走 AVC444 GPU path。
-- 显式打开实验路径时，失败能回到 FreeRDP native GDI。
+- 默认商用包走 AVC444 GPU path，避免高分辨率场景卡顿。
+- GPU path 单条 command 失败时能回到 FreeRDP native GDI。
 
 验收风险：
 
@@ -492,6 +492,6 @@
 - HAP 不直接持有 FreeRDP settings、channels、RDPGFX policy、input queue 的核心逻辑。
 - 第三方应用只依赖 FreeRDP OHOS public headers 和 runtime libs 即可接入。
 - 新增或拆分后的适配文件单文件不超过 600 行。
-- 商用默认不打开实验图形路径、剪贴板、麦克风。
+- 商用默认打开 `rdpgfx-h264` 和 AVC444 GPU compositor；剪贴板、麦克风仍按产品权限策略显式启用。
 - 所有 fallback 都有明确触发条件和恢复路径；不可达或无价值的 fallback 删除。
 - 文档记录每个 feature 的默认状态、权限、包体影响和真机验证结论。

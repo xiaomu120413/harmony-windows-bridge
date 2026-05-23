@@ -37,7 +37,7 @@ RDP 语义，放到 `harmony/third_party/FreeRDP/client/OHOS` 或对应 FreeRDP
 | --- | --- |
 | `RemotePointerInput.ets` 拼 RDP pointer flags/wheel delta | 已改为语义事件；flags/wheel 由 `ohos_pointer.*` 生成 |
 | `PointerMapper.ets` 重算 desktop 坐标 | 已删除；native 根据真实 surface viewport 映射 |
-| Debug host/user/password/ignore cert 默认值 | 已清空账号信息，默认 `certPolicy=tofu`、`graphicsMode=gdi` |
+| Debug host/user/password/ignore cert 默认值 | 已清空账号信息，默认 `certPolicy=tofu`、`graphicsMode=rdpgfx-h264`，并默认启用 AVC444 GPU compositor |
 | `certificate_policy.*` 证书 callback 行为 | 策略解析和 callback 决策已委托 `ohos_certificate.*` |
 | `freerdp_session_runner.cpp` 连接 settings 默认值 | 已委托 `freerdp_ohos_session_apply_connection_settings` |
 | channel 默认参数 | 已由 `ohos_session_config.*` 负责 |

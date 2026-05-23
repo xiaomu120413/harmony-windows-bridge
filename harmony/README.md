@@ -31,7 +31,7 @@ Current milestone:
 - M6.10 queues pointer/key/Unicode input on the FreeRDP worker thread, adds TOFU/strict/ignore certificate policies, and reports the disabled channel/codec feature set through `probe()`.
 - M6.11 switches the WSL FreeRDP build to the enhanced channel/codec profile: client channels, cliprdr, rdpdr, drive, printer, rdpsnd, audin, disp, rdpgfx, uriparser, OpenSLES, FFmpeg, and OpenH264 are compiled and packaged.
 - M6.12 adds a FreeRDP OHOS feature matrix check. CUPS, FUSE, smartcard source/channel/PCSC, and TSMF remain out of the delivery build because the current OHOS product path has no closed runtime/permission model for them.
-- M6.13 keeps the enhanced runtime packaged but disables optional channel and rdpgfx/H.264 negotiation by default so the current NativeWindow renderer receives stable software GDI frames again.
+- M6.13 keeps the enhanced runtime packaged and retains software GDI as fallback while later builds default to rdpgfx/H.264 for performance.
 - M6.14 enables remote audio playback through a static `rdpsnd` channel using the packaged OpenSLES backend while keeping dynamic channels, microphone capture, and graphics pipeline negotiation off.
 - M6.14 also pre-fills the local debug host, account, password, and ignore-certificate policy in the connection form to reduce repeated device input during validation. This must be replaced by saved profiles or empty defaults before a production-style build.
 - A live Windows desktop frame has been verified on device; current follow-up validation is focused on reliable remote operation and lifecycle stress.
@@ -62,7 +62,7 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- FreeRDP channels and H.264/FFmpeg/OpenH264 are now compiled into the enhanced WSL build. Remote audio playback now requests static `rdpsnd` with `sys:opensles`, but the rest of optional channel and rdpgfx/H.264 runtime negotiation is kept off until the matching native bridge is wired. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, RD Gateway UI/settings, and display-control resize PDUs. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
+- FreeRDP channels and H.264/FFmpeg/OpenH264/OHOS AVCodec-backed AVC444 GPU compositor are now compiled into the enhanced WSL build. Remote audio playback requests static `rdpsnd` with `sys:opensles`, and graphics default to `rdpgfx-h264` with per-command GDI fallback. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, RD Gateway UI/settings, and display-control resize PDUs. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
 - IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
 - Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 
@@ -199,7 +199,7 @@ M6.11 notes:
 - `harmony/scripts/wsl/build-freerdp-ohos.sh` now builds uriparser, OpenH264, and FFmpeg before FreeRDP, then configures FreeRDP with `WITH_CHANNELS=ON`, `WITH_CLIENT_CHANNELS=ON`, `WITH_FFMPEG=ON`, `WITH_OPENH264=ON`, `WITH_URIPARSER=ON`, and OpenSLES when the OHOS NDK provides it.
 - FreeRDP source adaptations are tracked in the `harmony/third_party/FreeRDP` submodule on the `ohos-port` branch; the current submodule commit disables WinPR `pthread_cancel` on `__OHOS__`.
 - The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, and `printer`; `WITH_SMARTCARD=OFF`, `smartcard`, and `tsmf` are not compiled into the delivery profile.
-- `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264, display-control, and rdpsnd at session start.
+- `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264 with default AVC444 GPU compositor, display-control, and rdpsnd at session start.
 - Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser/OpenSLES/`libc++_shared.so` shared libraries, instead of a fixed minimal list. Use a clean HAP build after changing the native library set so hvigor does not reuse stale package metadata.
 - Remaining risk: CUPS and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable. Smartcard source/channel/PCSC and TSMF are cut from the first delivery profile.
 
