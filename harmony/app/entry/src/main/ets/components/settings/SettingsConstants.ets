@@ -49,8 +49,6 @@ export class SettingsText {
   static readonly LIGHT_MODE_DESC: string = '始终使用浅色界面。'
   static readonly DARK_MODE_TITLE: string = '深色模式'
   static readonly DARK_MODE_DESC: string = '始终使用深色界面。'
-  static readonly SELECTED: string = '已选'
-  static readonly APPEARANCE_APPLY_FAILED: string = '外观模式切换失败'
 
   static readonly USAGE_TITLE: string = '使用说明'
   static readonly USAGE_SUBTITLE: string = '按当前代码路径整理的连接和排查说明'
@@ -97,7 +95,6 @@ export class SettingsText {
   static readonly PRODUCT_NAME: string = '木枢'
   static readonly PRODUCT_DESC: string = '基于 FreeRDP 的 HarmonyOS 远程桌面客户端'
   static readonly ABOUT_VERSION_LABEL: string = '版本'
-  static readonly ABOUT_VERSION_VALUE: string = '1.0.0'
   static readonly ABOUT_BUNDLE_LABEL: string = 'Bundle ID'
   static readonly ABOUT_BUNDLE_VALUE: string = 'com.muhub.desktop'
   static readonly ABOUT_GITHUB_LABEL: string = 'GitHub'
@@ -115,13 +112,4 @@ export class SettingsText {
     return '系统'
   }
 
-  static appearanceStatus(mode: SettingsAppearanceMode): string {
-    if (mode === 'dark') {
-      return '已切换为深色模式'
-    }
-    if (mode === 'light') {
-      return '已切换为浅色模式'
-    }
-    return '跟随系统外观'
-  }
 }
