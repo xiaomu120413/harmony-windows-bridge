@@ -7,6 +7,8 @@ import {
 } from '../rdp/RdpConstants'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
 import { SettingsPage } from '../components/SettingsPage'
+import { SettingsText } from '../components/settings/SettingsConstants'
+import { SettingsAccent, SettingsAppearanceMode, SettingsResources, SettingsTheme } from '../components/settings/SettingsUi'
 import rdpNative, { NativeCommandResult } from 'libentry.so'
 
 @Entry
@@ -19,6 +21,10 @@ struct Index {
   @State private certPolicy: string = 'tofu'
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
+  @State private settingsButtonHovered: boolean = false
+  @State private settingsButtonPressed: boolean = false
+  @StorageLink('settingsSystemDark') private systemDark: boolean = false
+  @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
   private callbacksRegistered: boolean = false
   private surfaceController: XComponentController = new XComponentController()
@@ -249,24 +255,84 @@ struct Index {
     }
   }
 
+  private setSettingsButtonHovered(hovered: boolean): void {
+    SettingsTheme.animate(this.getUIContext(), () => {
+      this.settingsButtonHovered = hovered
+    })
+  }
+
+  private getAppearanceMode(): SettingsAppearanceMode {
+    return SettingsTheme.normalizeAppearanceMode(this.appearanceMode)
+  }
+
+  private isAppDark(): boolean {
+    const mode = this.getAppearanceMode()
+    if (mode === 'dark') {
+      return true
+    }
+    if (mode === 'light') {
+      return false
+    }
+    return this.systemDark
+  }
+
   @Builder
   private buildConnectPage() {
     Scroll() {
       Column() {
         Row() {
-          Text('木枢远程桌面')
-            .fontSize(24)
+          Text(SettingsText.HOME_TITLE)
+            .fontSize(20)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#101828')
+            .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+            .lineHeight(26)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
 
-          Button('设置')
-            .height(36)
-            .width(78)
-            .fontSize(14)
-            .backgroundColor('#E8EEF7')
-            .fontColor('#1D2433')
+          Row({ space: 6 }) {
+            Image(SettingsResources.SETTINGS_ICON)
+              .width(18)
+              .height(18)
+              .fillColor(SettingsTheme.accentColor(this.isAppDark(), SettingsAccent.BLUE))
+              .draggable(false)
+
+            Text(SettingsText.SETTINGS_BUTTON)
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+              .maxLines(1)
+          }
+            .width(86)
+            .height(40)
+            .alignItems(VerticalAlign.Center)
+            .justifyContent(FlexAlign.Center)
+            .borderRadius(SettingsTheme.CARD_RADIUS)
+            .backgroundColor(SettingsTheme.subtleButton(this.isAppDark(), this.settingsButtonHovered,
+              this.settingsButtonPressed))
+            .border({
+              width: 1,
+              color: SettingsTheme.borderColor(this.isAppDark())
+            })
+            .margin({ left: 12 })
+            .scale({
+              x: this.settingsButtonPressed ? 0.98 : 1,
+              y: this.settingsButtonPressed ? 0.98 : 1
+            })
+            .onHover((isHover: boolean) => {
+              this.setSettingsButtonHovered(isHover)
+            })
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+                this.settingsButtonPressed = true
+                return
+              }
+              if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                this.settingsButtonPressed = false
+              }
+            })
             .onClick(() => {
+              this.settingsButtonPressed = false
               this.showSettings = true
             })
         }
@@ -274,36 +340,49 @@ struct Index {
           .width('100%')
           .margin({ bottom: 18 })
 
-        this.inputField('Windows host', this.host, (value: string) => {
+        this.inputField(SettingsText.HOME_HOST_PLACEHOLDER, this.host, (value: string) => {
           this.host = value
         })
-        this.inputField('Port', this.port, (value: string) => {
+        this.inputField(SettingsText.HOME_PORT_PLACEHOLDER, this.port, (value: string) => {
           this.port = value
         })
-        this.inputField('Username', this.username, (value: string) => {
+        this.inputField(SettingsText.HOME_USERNAME_PLACEHOLDER, this.username, (value: string) => {
           this.username = value
         })
-        TextInput({ placeholder: 'Password', text: this.password })
+        TextInput({ placeholder: SettingsText.HOME_PASSWORD_PLACEHOLDER, text: this.password })
           .type(InputType.Password)
           .height(44)
           .width('100%')
           .margin({ bottom: 12 })
+          .fontSize(14)
+          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+          .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
+          .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+          .borderRadius(SettingsTheme.CARD_RADIUS)
+          .border({
+            width: 1,
+            color: SettingsTheme.borderColor(this.isAppDark()),
+            style: BorderStyle.Solid
+          })
           .onChange((value: string) => {
             this.password = value
           })
-        Row() {
-          this.certPolicyButton('tofu', 'TOFU')
-          this.certPolicyButton('strict', 'Strict')
+        Row({ space: 10 }) {
+          this.certPolicyButton('tofu', SettingsText.HOME_CERT_TOFU)
+          this.certPolicyButton('strict', SettingsText.HOME_CERT_STRICT)
         }
         .height(40)
         .width('100%')
         .margin({ bottom: 12 })
 
-        Button('Connect')
+        Button(SettingsText.HOME_CONNECT_BUTTON)
+          .type(ButtonType.Normal)
           .height(44)
           .width('100%')
+          .borderRadius(SettingsTheme.BUTTON_RADIUS)
           .backgroundColor('#0A84FF')
           .fontColor(Color.White)
+          .stateEffect(false)
           .onClick(() => {
             this.connectNative()
           })
@@ -319,17 +398,34 @@ struct Index {
       .height(44)
       .width('100%')
       .margin({ bottom: 12 })
+      .fontSize(14)
+      .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+      .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
+      .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+      .borderRadius(SettingsTheme.CARD_RADIUS)
+      .border({
+        width: 1,
+        color: SettingsTheme.borderColor(this.isAppDark()),
+        style: BorderStyle.Solid
+      })
       .onChange(onChange)
   }
 
   @Builder
   private certPolicyButton(value: string, label: string) {
     Button(label)
+      .type(ButtonType.Normal)
       .height(36)
       .layoutWeight(1)
       .fontSize(13)
-      .backgroundColor(this.certPolicy === value ? '#0A84FF' : '#E8EEF7')
-      .fontColor(this.certPolicy === value ? Color.White : '#1D2433')
+      .borderRadius(SettingsTheme.BUTTON_RADIUS)
+      .backgroundColor(this.certPolicy === value ? '#0A84FF' : SettingsTheme.subtleButton(this.isAppDark(), false,
+        false))
+      .fontColor(this.certPolicy === value ? Color.White : SettingsTheme.primaryText(this.isAppDark()))
+      .border({
+        width: 1,
+        color: this.certPolicy === value ? '#0A84FF' : SettingsTheme.borderColor(this.isAppDark())
+      })
       .onClick(() => {
         this.certPolicy = value
       })
@@ -385,6 +481,6 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#F2F4F7')
+    .backgroundColor(SettingsTheme.pageBackground(this.isAppDark()))
   }
 }
