@@ -1,142 +1,113 @@
-# FreeRDP remote-control demo
+# 木枢
 
-这个仓库是统一仓库：包含 FreeRDP/RDP 控制端 demo、FreeRDP library/native bridge 骨架、Windows RDP 环境排查文档，以及可复用的 Codex troubleshooting skill。
+基于 FreeRDP 的 HarmonyOS 远程桌面客户端 Demo。仓库同时保留了本地 Web/Node 验证工具、Windows RDP 环境排查脚本，以及 HarmonyOS App 的 native bridge 接入代码。
 
-## 目录
+GitHub: https://github.com/xiaomu120413/freerdp-control-demo
 
-- `app/`: 本地应用，浏览器界面 + Node 后端。
-- `native/freerdp-bridge/`: 链接 FreeRDP 三方库的 native bridge 骨架。
-- `harmony/`: 鸿蒙 App 工程入口，先用于构建普通权限 HAP。
-- `docs/harmonyos-porting.md`: 后续迁移到鸿蒙应用的结构说明。
-- `docs/windows-rdp-environment-setup.md`: Windows 远程桌面服务端、用户、网络、VPN/Guest Wi-Fi 排查文档。
-- `skills/windows-rdp-troubleshooting/`: 可复用的 Codex skill 草稿，用于以后排查 RDP/FreeRDP 连接问题。
-- `config.example.json`: 连接配置模板，不放密码。
-- `scripts/Test-FreeRdpDemo.ps1`: 检查 FreeRDP 是否可用、目标机 3389 端口是否通。
-- `scripts/Connect-FreeRdpDemo.ps1`: 调用 `wfreerdp`/`xfreerdp` 发起远程桌面连接。
-- `scripts/Enable-WindowsRdpTarget.ps1`: 在目标 Windows 机器上开启远程桌面和防火墙规则。
+## 功能概览
 
-## 应用方式运行
+- HarmonyOS HAP 客户端：填写 Windows host、端口、用户名、密码后发起 RDP 连接。
+- FreeRDP native bridge：ArkTS 通过 NAPI 调用 native 层，远程画面通过 `XComponent` surface 显示。
+- 证书策略：支持 `TOFU` 和 `Strict`，用于测试和更严格的证书校验。
+- 权限回调：远程会话请求剪贴板或麦克风时，由应用侧触发系统权限处理。
+- 设置页：包含深色模式、浅色模式、跟随系统、使用说明、本机 IP、关于项目和第三方开源组件信息。
+- 本地 Web Demo：用于在桌面侧先验证 RDP 网络、账号和 FreeRDP 可用性。
+- Windows 排查脚本：辅助开启目标机远程桌面、防火墙规则和连接测试。
 
-启动本地应用：
+## 目录结构
+
+- `harmony/app/`: HarmonyOS 应用工程，HAP 构建入口。
+- `harmony/third_party/FreeRDP/`: HarmonyOS 侧使用的 FreeRDP 三方源码和许可证文件。
+- `native/freerdp-bridge/`: 桌面侧 FreeRDP library/native bridge 骨架。
+- `app/`: 本地浏览器界面和 Node 后端 Demo。
+- `scripts/`: FreeRDP 构建、连接测试、目标 Windows RDP 配置脚本。
+- `docs/harmonyos-porting.md`: HarmonyOS 迁移和结构说明。
+- `docs/windows-rdp-environment-setup.md`: Windows RDP 服务端和网络排查说明。
+- `docs/release-third-party-notices.md`: 第三方组件 NOTICE 和许可证履约材料。
+- `config.example.json`: 桌面 Demo 连接配置模板，不提交真实密码。
+
+## HarmonyOS 构建
+
+准备：
+
+- DevEco Studio / HarmonyOS SDK。
+- 可用的 `hdc` 设备连接。
+- 目标 Windows 机器已开启远程桌面，并且当前设备能访问目标机 TCP `3389` 端口。
+- 目标账号允许远程登录，且不能使用空密码。
+
+构建 HAP：
+
+```powershell
+cd harmony\app
+.\build_hap.bat
+```
+
+构建产物默认位于：
+
+```text
+harmony\app\entry\build\default\outputs\default\entry-default-signed.hap
+```
+
+安装到设备：
+
+```powershell
+hdc list targets
+hdc install -r harmony\app\entry\build\default\outputs\default\entry-default-signed.hap
+```
+
+## HarmonyOS 使用说明
+
+1. 在主界面填写 `Windows host`、`Port`、`Username` 和 `Password`。
+2. 选择证书策略。内网测试可用 `TOFU`，更严格环境使用 `Strict`。
+3. 点击 `Connect` 后，应用会调用 native FreeRDP 会话并打开远程桌面 surface。
+4. 进入 `设置` 可以查看使用说明、本机 IP、关于信息，或切换深色/浅色/跟随系统。
+
+常见排查：
+
+- 连接失败时优先检查目标 IP、同一网络、Windows 防火墙、远程桌面开关、账号权限和端口 `3389`。
+- Windows Home 通常不能作为标准远程桌面主机。
+- 生产环境不要忽略证书风险，也不要把 RDP 密码写入脚本、配置文件或命令行。
+
+## 本地 Web Demo
+
+安装依赖后启动：
 
 ```powershell
 npm start
 ```
 
-然后打开：
+然后访问：
 
 ```text
 http://127.0.0.1:5173
 ```
 
-在页面里填写目标 Windows 机器 IP、用户名、端口等信息，点击“测试端口”确认 `3389` 可访问，再点击“连接”。
+页面里可以填写目标 Windows 机器 IP、用户名、端口等信息，先点击测试端口确认 `3389` 可访问，再尝试连接。
 
 连接引擎有两种：
 
-- `FreeRDP library / native bridge`: 推荐方向，适合后续迁到鸿蒙。需要先构建 `native/freerdp-bridge`。
+- `FreeRDP library / native bridge`: 推荐方向，适合后续迁到 HarmonyOS。
 - `wfreerdp executable / 兼容模式`: 调用现成 `wfreerdp.exe`，适合先验证 Windows RDP 网络和账号。
 
-如果没有构建 native bridge，可以先切到兼容模式。仓库的 `tools/freerdp/wfreerdp.exe` 会被应用自动识别；如果你换成自己的 FreeRDP 构建，在页面的“高级选项”里填写 `wfreerdp.exe` 完整路径。
+如果没有构建 native bridge，可以先切到兼容模式。仓库的 `tools/freerdp/wfreerdp.exe` 会被应用自动识别；如果你换成自己的 FreeRDP 构建，在页面高级选项里填写 `wfreerdp.exe` 完整路径。
 
-## 构建 FreeRDP library bridge
+## Windows 目标机准备
 
-如果已经有 vcpkg 和 VS C++ Build Tools，可以直接运行：
+如果目标机器是 Windows，建议用管理员 PowerShell 在目标机器上执行：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Build-NativeBridge.ps1
+.\scripts\Enable-WindowsRdpTarget.ps1
 ```
 
-或者手动准备 FreeRDP 开发库，然后设置 `FREERDP_ROOT` 指向安装目录：
-
-```powershell
-$env:FREERDP_ROOT = "C:\path\to\freerdp-install"
-cmake -S native\freerdp-bridge -B native\freerdp-bridge\build
-cmake --build native\freerdp-bridge\build --config Release
-```
-
-构建完成后，在应用高级选项里填写生成的 `freerdp_bridge.exe` 路径，或把它放到：
-
-```text
-native\freerdp-bridge\build\Release\freerdp_bridge.exe
-```
-
-当前 bridge 已经链接并调用 FreeRDP 库做探测；真正的应用内画面渲染和输入回调是下一阶段 native 工作。
-
-## 鸿蒙 HAP 构建
-
-当前先按 M1 做普通权限 HAP。鸿蒙工程放在 `harmony/app/`，签名材料已写入 `build-profile.json5`，通过 HarmonyOS MCP 的 `build_app` / `install_app` 构建和安装。
-
-本地构建产物和最终 `.hap` 不提交。
-
-## 你需要准备什么
-
-1. 控制端安装 FreeRDP。
-
-   这台机器当前没有检测到 `wfreerdp` 或 `xfreerdp`。Windows 上可以从 FreeRDP 官方预构建页面下载安装包或静态构建版本，然后把 `wfreerdp.exe` 所在目录加入 `PATH`，也可以运行脚本时用 `-FreeRdpPath` 指定完整路径。
-
-   官方入口：
-   - [FreeRDP 项目](https://github.com/FreeRDP/FreeRDP)
-   - [FreeRDP Prebuilds](https://github.com/FreeRDP/FreeRDP/wiki/Prebuilds)
-
-2. 目标机器开启 RDP。
-
-   如果目标机器是 Windows，建议用管理员 PowerShell 在目标机器上执行：
-
-   ```powershell
-   Set-ExecutionPolicy -Scope Process Bypass
-   .\scripts\Enable-WindowsRdpTarget.ps1
-   ```
-
-   目标 Windows 机器需要支持作为 RDP 主机。Windows Home 通常不能作为标准远程桌面主机。
-
-3. 两台机器网络互通。
-
-   控制端需要能访问目标机的 TCP `3389` 端口。目标机 IP 可以在目标机上运行 `ipconfig` 查看。
-
-4. 目标账号必须有密码。
-
-   Windows RDP 默认不接受空密码登录。目标账号也需要被允许远程登录，管理员账号通常可以，普通账号需要加入 `Remote Desktop Users` 组。
-
-## 快速运行
-
-复制配置模板：
-
-```powershell
-Copy-Item .\config.example.json .\config.local.json
-notepad .\config.local.json
-```
-
-把 `host` 和 `user` 改成你的目标机器信息，例如：
-
-```json
-{
-  "host": "192.168.1.20",
-  "port": 3389,
-  "user": "TARGET-PC\\demo",
-  "domain": "",
-  "certMode": "tofu",
-  "size": "1400x900",
-  "fullscreen": false,
-  "clipboard": true,
-  "sharePath": ""
-}
-```
-
-先检查环境和连通性：
+也可以在控制端检查连通性：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\Test-FreeRdpDemo.ps1
 ```
 
-发起连接：
-
-```powershell
-.\scripts\Connect-FreeRdpDemo.ps1
-```
-
-也可以不写配置，直接传参：
+发起桌面侧 FreeRDP 连接：
 
 ```powershell
 .\scripts\Connect-FreeRdpDemo.ps1 -TargetHost 192.168.1.20 -User "TARGET-PC\demo" -CertMode tofu
@@ -148,15 +119,28 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\Connect-FreeRdpDemo.ps1 -TargetHost 192.168.1.20 -User "TARGET-PC\demo" -FreeRdpPath "C:\tools\freerdp\wfreerdp.exe"
 ```
 
-脚本不会把密码写进配置文件，也不会默认把密码拼进命令行。FreeRDP 会在连接时提示你输入密码。
+## 第三方开源组件
 
-## 常见问题
+完整 NOTICE 以 `docs/release-third-party-notices.md` 为准。当前关于页展示的主要组件包括：
 
-- `FreeRDP executable was not found`: 安装 FreeRDP，或用 `-FreeRdpPath` 指向 `wfreerdp.exe`。
-- `TcpTestSucceeded: False`: 目标机没有开 RDP、防火墙未放行、IP 写错、两台机器不在同一网络，或端口不是 `3389`。
-- 登录后提示凭据错误：确认用户名格式。常用格式是 `目标机器名\用户名`、`域名\用户名` 或 `用户名@域名`。
-- 证书提示：demo 可以用 `certMode: "tofu"` 首次信任；只在临时测试时使用 `ignore`。
+- FreeRDP / WinPR: Apache-2.0
+- OpenSSL: Apache-2.0
+- FFmpeg: LGPL 组件，最终以构建配置为准
+- OpenH264: BSD-2-Clause
+- zlib: zlib License
+- cJSON: MIT
+- uriparser: BSD-3-Clause
+- LLVM libc++ runtime: Apache-2.0 WITH LLVM-exception
+
+## 许可证状态
+
+项目代码采用 MIT License，见仓库根目录 `LICENSE`。
+
+第三方组件按各自许可证履约，发布包需要同步归档对应 LICENSE、NOTICE 和构建配置说明。
 
 ## 安全边界
 
-不要把 RDP `3389` 端口直接暴露到公网。跨网络控制建议走 VPN、内网穿透的受控隧道或 RD Gateway。生产环境不要用 `certMode: "ignore"`，也不要把密码放到命令行、脚本或配置文件里。
+- 不要把 RDP `3389` 端口直接暴露到公网。
+- 跨网络控制建议使用 VPN、受控隧道或 RD Gateway。
+- 生产环境不要使用忽略证书校验的策略。
+- 不要提交真实账号、密码、证书、签名材料或设备私有配置。
