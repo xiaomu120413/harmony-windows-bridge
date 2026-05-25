@@ -46,20 +46,9 @@ public:
 
     bool Load(std::string& error);
 
-    using FreerdpNewFn = freerdp* (*)();
-    using FreerdpFreeFn = void (*)(freerdp*);
-    using RegisterAddinProviderFn = int (*)(FREERDP_LOAD_CHANNEL_ADDIN_ENTRY_FN, DWORD);
-    using ContextNewFn = BOOL (*)(freerdp*);
-    using ContextFreeFn = void (*)(freerdp*);
-    using ConnectFn = BOOL (*)(freerdp*);
-    using DisconnectFn = BOOL (*)(freerdp*);
     using AbortConnectContextFn = BOOL (*)(rdpContext*);
-    using ShallDisconnectContextFn = BOOL (*)(const rdpContext*);
-    using GetEventHandlesFn = DWORD (*)(rdpContext*, HANDLE*, DWORD);
-    using CheckEventHandlesFn = BOOL (*)(rdpContext*);
     using GetLastErrorFn = UINT32 (*)(const rdpContext*);
     using GetLastErrorTextFn = const char* (*)(UINT32);
-    using SettingsGetBoolFn = BOOL (*)(const rdpSettings*, FreeRDP_Settings_Keys_Bool);
     using SettingsGetUint32Fn = UINT32 (*)(const rdpSettings*, FreeRDP_Settings_Keys_UInt32);
     using SettingsSetStringFn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_String, const char*);
     using SettingsSetUint32Fn = BOOL (*)(rdpSettings*, FreeRDP_Settings_Keys_UInt32, UINT32);
@@ -72,10 +61,6 @@ public:
     using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
     using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
     using InputSendFocusInEventFn = BOOL (*)(rdpInput*, UINT16);
-    using ChannelsLoadStaticAddinEntryFn = PVIRTUALCHANNELENTRY (*)(LPCSTR, LPCSTR, LPCSTR, DWORD);
-    using ClientLoadChannelsFn = BOOL (*)(freerdp*);
-    using ClientAddStaticChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
-    using ClientAddDynamicChannelFn = BOOL (*)(rdpSettings*, size_t, const char* const*);
     using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
     using GdiGraphicsPipelineInitFn = BOOL (*)(rdpGdi*, RdpgfxClientContext*);
@@ -144,12 +129,6 @@ public:
     using OhosRdpgfxAvc444ChromaV1RequiredYHeightFn =
         UINT32 (*)(const RECTANGLE_16*, UINT32);
     using OhosSessionConfigDefaultFn = FREERDP_OHOS_SESSION_CONFIG (*)();
-    using OhosSessionApplySettingsFn = BOOL (*)(rdpSettings*,
-        const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
-    using OhosSessionApplyConnectionSettingsFn = BOOL (*)(
-        rdpSettings*, const FREERDP_OHOS_CONNECTION_CONFIG*, char*, size_t);
-    using OhosSessionAddStandardChannelsFn = BOOL (*)(rdpSettings*,
-        const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
     using OhosSessionNewFn = freerdpOhosSession* (*)();
     using OhosSessionFreeFn = void (*)(freerdpOhosSession*);
     using OhosSessionConnectFn = BOOL (*)(freerdpOhosSession*,
@@ -172,23 +151,10 @@ public:
     using OhosAvc420RouteBeginSurfaceFn = BOOL (*)(freerdpOhosAvc420Route*, char*, size_t);
     using OhosAvc420RouteEndSurfaceFn = void (*)(freerdpOhosAvc420Route*);
     using OhosAvc420RouteGetDiagnosticsFn = const char* (*)(freerdpOhosAvc420Route*);
-    using WaitForMultipleObjectsFn = DWORD (*)(DWORD, const HANDLE*, BOOL, DWORD);
-
-    FreerdpNewFn freerdpNew = nullptr;
-    FreerdpFreeFn freerdpFree = nullptr;
-    RegisterAddinProviderFn registerAddinProvider = nullptr;
-    ContextNewFn contextNew = nullptr;
-    ContextFreeFn contextFree = nullptr;
-    ConnectFn connect = nullptr;
-    DisconnectFn disconnect = nullptr;
     AbortConnectContextFn abortConnectContext = nullptr;
-    ShallDisconnectContextFn shallDisconnectContext = nullptr;
-    GetEventHandlesFn getEventHandles = nullptr;
-    CheckEventHandlesFn checkEventHandles = nullptr;
     GetLastErrorFn getLastError = nullptr;
     GetLastErrorTextFn getLastErrorName = nullptr;
     GetLastErrorTextFn getLastErrorString = nullptr;
-    SettingsGetBoolFn settingsGetBool = nullptr;
     SettingsGetUint32Fn settingsGetUint32 = nullptr;
     SettingsSetStringFn settingsSetString = nullptr;
     SettingsSetUint32Fn settingsSetUint32 = nullptr;
@@ -201,10 +167,6 @@ public:
     InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
     InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
     InputSendFocusInEventFn inputSendFocusInEvent = nullptr;
-    ChannelsLoadStaticAddinEntryFn channelsLoadStaticAddinEntry = nullptr;
-    ClientLoadChannelsFn clientLoadChannels = nullptr;
-    ClientAddStaticChannelFn clientAddStaticChannel = nullptr;
-    ClientAddDynamicChannelFn clientAddDynamicChannel = nullptr;
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     GdiGraphicsPipelineInitFn gdiGraphicsPipelineInit = nullptr;
@@ -257,9 +219,6 @@ public:
     OhosRdpgfxAvc444ChromaV1RequiredYHeightFn
         ohosRdpgfxAvc444ChromaV1RequiredYHeight = nullptr;
     OhosSessionConfigDefaultFn ohosSessionConfigDefault = nullptr;
-    OhosSessionApplySettingsFn ohosSessionApplySettings = nullptr;
-    OhosSessionApplyConnectionSettingsFn ohosSessionApplyConnectionSettings = nullptr;
-    OhosSessionAddStandardChannelsFn ohosSessionAddStandardChannels = nullptr;
     OhosSessionNewFn ohosSessionNew = nullptr;
     OhosSessionFreeFn ohosSessionFree = nullptr;
     OhosSessionConnectFn ohosSessionConnect = nullptr;
@@ -277,7 +236,6 @@ public:
     OhosAvc420RouteBeginSurfaceFn ohosAvc420RouteBeginSurface = nullptr;
     OhosAvc420RouteEndSurfaceFn ohosAvc420RouteEndSurface = nullptr;
     OhosAvc420RouteGetDiagnosticsFn ohosAvc420RouteGetDiagnostics = nullptr;
-    WaitForMultipleObjectsFn waitForMultipleObjects = nullptr;
 
 private:
     template <typename Fn>

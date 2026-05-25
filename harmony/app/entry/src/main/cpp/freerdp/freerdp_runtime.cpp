@@ -79,21 +79,10 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         }
     }
 
-    loaded_ = LoadFreerdpSymbol("freerdp_new", freerdpNew, error) &&
-        LoadFreerdpSymbol("freerdp_free", freerdpFree, error) &&
-        LoadFreerdpSymbol("freerdp_register_addin_provider", registerAddinProvider, error) &&
-        LoadFreerdpSymbol("freerdp_context_new", contextNew, error) &&
-        LoadFreerdpSymbol("freerdp_context_free", contextFree, error) &&
-        LoadFreerdpSymbol("freerdp_connect", connect, error) &&
-        LoadFreerdpSymbol("freerdp_disconnect", disconnect, error) &&
-        LoadFreerdpSymbol("freerdp_abort_connect_context", abortConnectContext, error) &&
-        LoadFreerdpSymbol("freerdp_shall_disconnect_context", shallDisconnectContext, error) &&
-        LoadFreerdpSymbol("freerdp_get_event_handles", getEventHandles, error) &&
-        LoadFreerdpSymbol("freerdp_check_event_handles", checkEventHandles, error) &&
+    loaded_ = LoadFreerdpSymbol("freerdp_abort_connect_context", abortConnectContext, error) &&
         LoadFreerdpSymbol("freerdp_get_last_error", getLastError, error) &&
         LoadFreerdpSymbol("freerdp_get_last_error_name", getLastErrorName, error) &&
         LoadFreerdpSymbol("freerdp_get_last_error_string", getLastErrorString, error) &&
-        LoadFreerdpSymbol("freerdp_settings_get_bool", settingsGetBool, error) &&
         LoadFreerdpSymbol("freerdp_settings_get_uint32", settingsGetUint32, error) &&
         LoadFreerdpSymbol("freerdp_settings_set_string", settingsSetString, error) &&
         LoadFreerdpSymbol("freerdp_settings_set_uint32", settingsSetUint32, error) &&
@@ -106,13 +95,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
         LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
         LoadFreerdpSymbol("freerdp_input_send_focus_in_event", inputSendFocusInEvent, error) &&
-        LoadClientSymbol("freerdp_channels_load_static_addin_entry", channelsLoadStaticAddinEntry, error) &&
-        LoadClientSymbol("freerdp_client_load_channels", clientLoadChannels, error) &&
-        LoadClientSymbol("freerdp_client_add_static_channel", clientAddStaticChannel, error) &&
-        LoadClientSymbol("freerdp_client_add_dynamic_channel", clientAddDynamicChannel, error) &&
         LoadWinprSymbol("PubSub_Subscribe", pubSubSubscribe, error) &&
-        LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error) &&
-        LoadWinprSymbol("WaitForMultipleObjects", waitForMultipleObjects, error);
+        LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error);
     if (loaded_) {
         LoadOptionalFreerdpSymbol("gdi_graphics_pipeline_init", gdiGraphicsPipelineInit);
         LoadOptionalFreerdpSymbol("gdi_graphics_pipeline_uninit", gdiGraphicsPipelineUninit);
@@ -194,12 +178,6 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosRdpgfxAvc444ChromaV1RequiredYHeight);
         LoadOptionalClientSymbol("freerdp_ohos_session_config_default",
             ohosSessionConfigDefault);
-        LoadOptionalClientSymbol("freerdp_ohos_session_apply_settings",
-            ohosSessionApplySettings);
-        LoadOptionalClientSymbol("freerdp_ohos_session_apply_connection_settings",
-            ohosSessionApplyConnectionSettings);
-        LoadOptionalClientSymbol("freerdp_ohos_session_add_standard_channels",
-            ohosSessionAddStandardChannels);
         LoadOptionalClientSymbol("freerdp_ohos_session_new",
             ohosSessionNew);
         LoadOptionalClientSymbol("freerdp_ohos_session_free",
