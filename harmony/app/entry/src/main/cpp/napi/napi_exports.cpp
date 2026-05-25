@@ -3,8 +3,7 @@
 #include "napi/native_api.h"
 #include "napi/native_bridge_context.h"
 #include "common/bridge_types.h"
-#include "freerdp/freerdp_gdi_bridge.h"
-#include "freerdp/graphics_config.h"
+#include "common/bridge_log.h"
 #include "napi/clipboard_permission_bridge.h"
 #include "napi/microphone_permission_bridge.h"
 #include "napi/napi_event_sink.h"
@@ -39,15 +38,7 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.port = GetStringProperty(env, args[0], "port");
     params.username = GetStringProperty(env, args[0], "username");
     params.password = GetStringProperty(env, args[0], "password");
-    const std::string resolution = GetStringProperty(env, args[0], "resolution");
-    if (!resolution.empty()) {
-        params.resolution = resolution;
-    }
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
-    const std::string graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
-    if (!graphicsMode.empty()) {
-        params.graphicsMode = graphicsMode;
-    }
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
 }
@@ -76,22 +67,10 @@ napi_value Connect(napi_env env, napi_callback_info info)
         SetNamed(env, result, "logs", MakeStringArray(env, logs));
         return result;
     }
-    const std::string graphicsModeError = GraphicsModeValidationError(params.graphicsMode);
-    if (!graphicsModeError.empty()) {
-        SetBool(env, result, "ok", false);
-        SetString(env, result, "state", "Failed");
-        SetString(env, result, "message", graphicsModeError);
-        logs.push_back("graphics mode validation failed");
-        logs.push_back(graphicsModeError);
-        SetNamed(env, result, "logs", MakeStringArray(env, logs));
-        return result;
-    }
 
     logs.push_back(RedactedEndpointLog(params));
     logs.push_back(RedactedValueLog("username", params.username));
-    logs.push_back("resolution=" + params.resolution);
     logs.push_back("certPolicy=" + params.certPolicy);
-    logs.push_back("graphicsMode=" + params.graphicsMode);
     logs.push_back(RedactedValueLog("appFilesDir", params.appFilesDir));
     logs.push_back("starting native worker");
 
@@ -119,7 +98,7 @@ napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
     std::vector<std::string> logs = {"native release all keys invoked"};
     std::string message;
     const bool ok = BridgeSession().ReleaseAllKeys(message);
-    BridgeEvents().log.Emit(message);
+    EmitHilogInfo(message);
 
     napi_value result = MakeObject(env);
     SetBool(env, result, "ok", ok);
@@ -149,11 +128,6 @@ napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& si
 napi_value OnState(napi_env env, napi_callback_info info)
 {
     return RegisterCallback(env, info, BridgeEvents().state, "rdpStateCallback");
-}
-
-napi_value OnLog(napi_env env, napi_callback_info info)
-{
-    return RegisterCallback(env, info, BridgeEvents().log, "rdpLogCallback", true);
 }
 
 napi_value OnError(napi_env env, napi_callback_info info)
@@ -245,7 +219,6 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"onLog", nullptr, OnLog, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},

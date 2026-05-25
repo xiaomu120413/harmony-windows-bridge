@@ -46,7 +46,6 @@ add_library(entry SHARED
     napi/napi_event_sink.cpp
     napi/napi_exports.cpp
     napi/napi_utils.cpp
-    common/probe_utils.cpp
     freerdp/rdp_channel_config.cpp
     session/rdp_session_core.cpp
     session/rdp_session_channels.cpp

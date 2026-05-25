@@ -25,7 +25,7 @@ RdpSession g_session;
 
 void EmitNativeLog(const std::string& line)
 {
-    g_events.log.Emit(line);
+    EmitHilogInfo(line);
 }
 
 class ResizeCoordinator {
@@ -246,7 +246,7 @@ void ConfigureRdpSessionCallbacks()
             g_events.state.Emit(state);
         },
         [](const std::string& line) {
-            g_events.log.Emit(line);
+            EmitNativeLog(line);
         },
         [](const std::string& message) {
             g_events.error.Emit(message);
@@ -306,16 +306,6 @@ RdpSession& BridgeSession()
     return g_session;
 }
 
-SurfaceSnapshot BridgeSurfaceSnapshot()
-{
-    return g_surface.Snapshot();
-}
-
-std::string BridgeRenderStatsLog()
-{
-    return g_frameRenderer.BuildStatsLog();
-}
-
 void InitializeNativeBridgeContext()
 {
     ConfigureRdpgfxPipelineCallbacks();
@@ -351,7 +341,7 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
     const XComponentInputRegisterResult inputRc = RegisterXComponentInputCallbacks(component);
     g_surface.Register(component, ok);
     if (ok) {
-        g_events.log.Emit("XComponent callback registered: " + g_surface.Snapshot().id +
+        EmitNativeLog("XComponent callback registered: " + g_surface.Snapshot().id +
             " mouseRc=" + std::to_string(inputRc.mouseRc) +
             " focusRc=" + std::to_string(inputRc.focusRc) +
             " blurRc=" + std::to_string(inputRc.blurRc) +
@@ -360,21 +350,6 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
             " axisRc=" + std::to_string(inputRc.axisRc));
     }
     return ok;
-}
-
-bool NotifyBridgeSurfaceLayout(uint32_t width, uint32_t height, std::string& message)
-{
-    const bool changed = g_surface.OnSurfaceLayout(width, height, message);
-    EmitNativeLog(message);
-    if (changed) {
-        UpdateRdpgfxSurfaceTargetIfReady("surface layout changed");
-        UpdateAvc420SurfaceOutputIfActive("surface layout changed");
-        const SurfaceSnapshot snapshot = g_surface.Snapshot();
-        g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface layout changed");
-        DropPendingRenderFrame("surface layout changed");
-        RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface layout changed");
-    }
-    return changed;
 }
 
 } // namespace rdp_bridge
