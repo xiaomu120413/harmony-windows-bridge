@@ -29,7 +29,6 @@
 connect
 releaseAllKeys
 onState
-onLog
 onError
 onMicrophonePermissionRequest
 onClipboardPermissionRequest

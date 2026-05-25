@@ -99,8 +99,6 @@ struct Index {
           }
         })
       })
-      rdpNative.onLog((_line: string) => {
-      })
       rdpNative.onError((message: string) => {
         this.deferUiUpdate(() => {
           this.setSessionVisible(false)

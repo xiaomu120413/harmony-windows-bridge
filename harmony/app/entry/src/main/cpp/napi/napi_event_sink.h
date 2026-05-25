@@ -25,7 +25,6 @@ private:
 
 struct SessionEventHub {
     EventSink state;
-    EventSink log;
     EventSink error;
 };
 

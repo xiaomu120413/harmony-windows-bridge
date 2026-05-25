@@ -18,7 +18,6 @@ declare const rdpNative: {
   connect(params: NativeConnectParams): NativeCommandResult;
   releaseAllKeys(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
-  onLog(callback: (line: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
   onMicrophonePermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
   onClipboardPermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
