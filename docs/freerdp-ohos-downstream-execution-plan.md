@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T06 按需权限路径已恢复本地构建验证，等待真机回归
+状态：T08 输入队列下沉已本地构建并安装真机，等待真机输入回归
 目标分支：本地 `main`，获确认后仅推送远端 `codex/prelaunch-main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
@@ -275,6 +275,14 @@
 - 如果判断过宽，会掩盖认证/网络错误，导致用户看到错误的失败原因。
 
 ## T08：输入队列和 worker dispatch 下沉
+
+实施状态：已完成本地构建和真机安装，2026-05-25。该任务切换输入队列和 dispatch 归属，需要真机回归后再推远端。
+本次实现记录：
+- 新增 FreeRDP OHOS `ohos_input_queue.h/.c`，由 FreeRDP 侧负责 pointer coalescing、队列上限/backpressure、key repeat、release-all、worker-thread dispatch 和 diagnostics counters。
+- `freerdp_ohos_session_send_pointer/send_key/send_text` 改为入队，session event loop 每轮 drain 自有 input queue；新增 `send_focus_in` 和 `release_all_keys` session API。
+- HAP `rdp_session_input.cpp` 缩为薄适配，只把 XComponent/local event 转成 `FREERDP_OHOS_POINTER_EVENT`、`FREERDP_OHOS_KEY_EVENT` 或 UTF-16 text，再调用 `freerdp_ohos_input_queue_*`。
+- 删除 HAP 侧旧 keyboard adapter、旧 `std::deque` 输入队列、旧 repeat collection、旧 dispatch/backpressure 实现和直接 `freerdp_input_send_*` 符号加载。
+- 已验证 FreeRDP OHOS build、runtime sync、新 `freerdp_ohos_input_queue_*` 符号导出、HAP build，并安装到设备 `3QC0124C11000711`；FreeRDP 子模块提交 `92b49ffe7`，HAP 产物大小 `33487901` bytes。
 
 修改点：
 

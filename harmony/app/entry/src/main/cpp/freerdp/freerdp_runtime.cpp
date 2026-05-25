@@ -90,11 +90,6 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadFreerdpSymbol("gdi_init", gdiInit, error) &&
         LoadFreerdpSymbol("gdi_free", gdiFree, error) &&
         LoadFreerdpSymbol("gdi_resize", gdiResize, error) &&
-        LoadFreerdpSymbol("freerdp_input_send_mouse_event", inputSendMouseEvent, error) &&
-        LoadFreerdpSymbol("freerdp_input_send_keyboard_event", inputSendKeyboardEvent, error) &&
-        LoadFreerdpSymbol("freerdp_input_send_keyboard_event_ex", inputSendKeyboardEventEx, error) &&
-        LoadFreerdpSymbol("freerdp_input_send_unicode_keyboard_event", inputSendUnicodeKeyboardEvent, error) &&
-        LoadFreerdpSymbol("freerdp_input_send_focus_in_event", inputSendFocusInEvent, error) &&
         LoadWinprSymbol("PubSub_Subscribe", pubSubSubscribe, error) &&
         LoadWinprSymbol("PubSub_Unsubscribe", pubSubUnsubscribe, error);
     if (loaded_) {
@@ -113,25 +108,29 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("freerdp_ohos_clipboard_free", ohosClipboardFree);
         LoadOptionalClientSymbol("freerdp_ohos_clipboard_get_diagnostics",
             ohosClipboardGetDiagnostics);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_map_keycode_to_windows_vk",
-            ohosKeyboardMapKeyCodeToWindowsVk);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_keycode_requires_extended_scancode",
-            ohosKeyboardKeyCodeRequiresExtendedScancode);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_format_event", ohosKeyboardFormatEvent);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_new", ohosKeyboardStateNew);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_free", ohosKeyboardStateFree);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_reset", ohosKeyboardStateReset);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_handle_event",
-            ohosKeyboardStateHandleEvent);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_collect_due_repeats",
-            ohosKeyboardStateCollectDueRepeats);
-        LoadOptionalClientSymbol("freerdp_ohos_keyboard_state_release_all",
-            ohosKeyboardStateReleaseAll);
-        LoadOptionalClientSymbol("freerdp_ohos_ime_build_committed_text_packets",
-            ohosImeBuildCommittedTextPackets);
-        LoadOptionalClientSymbol("freerdp_ohos_ime_format_committed_text_result",
-            ohosImeFormatCommittedTextResult);
-        LoadOptionalClientSymbol("freerdp_ohos_pointer_build_event", ohosPointerBuildEvent);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_new", ohosInputQueueNew);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_free", ohosInputQueueFree);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_clear", ohosInputQueueClear);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_reset", ohosInputQueueReset);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_pointer",
+            ohosInputQueueEnqueuePointer);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_pointer_packet",
+            ohosInputQueueEnqueuePointerPacket);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_key_scancode",
+            ohosInputQueueEnqueueKeyScancode);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_key",
+            ohosInputQueueEnqueueKey);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_unicode",
+            ohosInputQueueEnqueueUnicode);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_text",
+            ohosInputQueueEnqueueText);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_focus_in",
+            ohosInputQueueEnqueueFocusIn);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_enqueue_release_all_keys",
+            ohosInputQueueEnqueueReleaseAllKeys);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_drain", ohosInputQueueDrain);
+        LoadOptionalClientSymbol("freerdp_ohos_input_queue_get_diagnostics",
+            ohosInputQueueGetDiagnostics);
         LoadOptionalClientSymbol("freerdp_ohos_display_normalize_size",
             ohosDisplayNormalizeSize);
         LoadOptionalClientSymbol("freerdp_ohos_display_send_monitor_layout",
