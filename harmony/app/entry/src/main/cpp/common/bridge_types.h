@@ -17,10 +17,6 @@ struct ConnectParams {
     std::string certPolicy;
     std::string graphicsMode = "rdpgfx-h264";
     std::string appFilesDir;
-    bool enableClipboard = false;
-    bool enableDisplayControl = true;
-    bool enableAudioPlayback = true;
-    bool enableAudioCapture = false;
 };
 
 struct SurfacePaintResult {

@@ -61,8 +61,6 @@ struct OhosSessionAdapter {
     const FreerdpInputPumpFn& pumpInput;
     std::atomic_bool& running;
     HarmonyClipboardBridge clipboardBridge;
-    bool clipboardEnabled = false;
-    bool audioDiagnosticsEnabled = false;
     bool activeSet = false;
     bool connected = false;
     std::chrono::steady_clock::time_point nextAudioDiagnosticsLog =
@@ -75,22 +73,15 @@ struct OhosSessionAdapter {
         }
     }
 
-    bool Configure(freerdp* instance, rdpContext* context,
-        const FREERDP_OHOS_SESSION_OPTIONS* options, char* message, size_t messageSize)
+    bool Configure(freerdp* instance, rdpContext* context, char* message, size_t messageSize)
     {
         if (instance == nullptr || context == nullptr || context->settings == nullptr) {
             CopyCallbackMessage(message, messageSize, "FreeRDP session configure context is unavailable");
             return false;
         }
-        if (options == nullptr) {
-            CopyCallbackMessage(message, messageSize, "FreeRDP session options are unavailable");
-            return false;
-        }
 
         setActive(&api, instance, context);
         activeSet = true;
-        clipboardEnabled = options->session.clipboard;
-        audioDiagnosticsEnabled = options->session.audioPlayback || options->session.audioCapture;
 
         std::string error;
         if (!ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
@@ -99,12 +90,9 @@ struct OhosSessionAdapter {
             return false;
         }
 
-        if (clipboardEnabled && !clipboardBridge.Initialize(context, api, log, error)) {
+        if (!clipboardBridge.Initialize(context, api, log, error)) {
             CopyCallbackMessage(message, messageSize, error);
             return false;
-        }
-        if (!clipboardEnabled) {
-            EmitLog("FreeRDP cliprdr bridge disabled by session config");
         }
 
         instance->PostConnect = HarmonyPostConnect;
@@ -134,7 +122,7 @@ struct OhosSessionAdapter {
     {
         pumpInput(&api, context);
         const auto now = std::chrono::steady_clock::now();
-        if (audioDiagnosticsEnabled && now >= nextAudioDiagnosticsLog) {
+        if (now >= nextAudioDiagnosticsLog) {
             EmitHilogInfo("FreeRDP audio diagnostics: " + BuildOHAudioStatsLog());
             nextAudioDiagnosticsLog = now + std::chrono::seconds(10);
         }
@@ -183,11 +171,10 @@ struct OhosSessionAdapter {
     }
 
     static BOOL ConfigureCallback(freerdp* instance, rdpContext* context,
-        const FREERDP_OHOS_SESSION_OPTIONS* options, char* message, size_t messageSize,
-        void* userData)
+        const FREERDP_OHOS_SESSION_OPTIONS*, char* message, size_t messageSize, void* userData)
     {
         auto* adapter = static_cast<OhosSessionAdapter*>(userData);
-        return adapter != nullptr && adapter->Configure(instance, context, options, message, messageSize)
+        return adapter != nullptr && adapter->Configure(instance, context, message, messageSize)
             ? TRUE
             : FALSE;
     }
@@ -247,6 +234,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
     log("FreeRDP runtime symbols loaded");
+    RegisterMicrophonePermissionBridge(api, log);
 
     if (api.ohosSessionPrepareOptions == nullptr || api.ohosSessionNew == nullptr ||
         api.ohosSessionFree == nullptr || api.ohosSessionConnect == nullptr ||
@@ -270,13 +258,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     input.graphicsMode = params.graphicsMode.c_str();
     input.appDataDir = params.appFilesDir.c_str();
     input.certificatePolicy = params.certPolicy.c_str();
-    input.clipboard = params.enableClipboard ? TRUE : FALSE;
-    input.displayControl = params.enableDisplayControl ? TRUE : FALSE;
-    input.audioPlayback = params.enableAudioPlayback ? TRUE : FALSE;
-    input.audioCapture = params.enableAudioCapture ? TRUE : FALSE;
-    input.audioPlaybackRate = 44100;
-    input.audioPlaybackChannels = 2;
-    input.audioPlaybackLatencyMs = 100;
     input.colorDepth = 32;
     input.tcpConnectTimeoutMs = 5000;
 
@@ -289,9 +270,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
     if (detail[0] != '\0') {
         log(detail.data());
-    }
-    if (prepared.options.session.audioCapture) {
-        RegisterMicrophonePermissionBridge(api, log);
     }
 
     const GraphicsPipelineConfig graphicsConfig = ToGraphicsPipelineConfig(prepared.graphics);

@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T06 已完成本地构建验证，等待真机回归
+状态：T06 按需权限路径已恢复本地构建验证，等待真机回归
 目标分支：本地 `main`，获确认后仅推送远端 `codex/prelaunch-main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
@@ -218,33 +218,32 @@
 
 ## T06：通道默认开关改成显式配置
 
-实施状态：已完成本地构建验证，2026-05-25。该任务切换了默认通道开关，需要真机验证。
+实施状态：已完成本地构建验证，2026-05-25。当前不引入用户可见通道开关，优先保持原有按需权限申请路径。
 
 本次实现记录：
 
-- `FREERDP_OHOS_SESSION_INPUT` 新增 clipboard、display-control、audio playback、audio capture 和音频参数字段，HAP/N-API 显式传入通道选择。
-- `freerdp_ohos_session_config_default` 默认关闭 clipboard 和 audio capture，保留 display-control 和 audio playback 默认开启；`DeviceRedirection` 默认关闭。
-- HAP 主界面新增声音、剪贴板、麦克风开关；剪贴板和麦克风默认关闭，关闭时不会注册 cliprdr bridge 或 audin 权限桥。
+- 已撤回 HAP 主界面的声音、剪贴板、麦克风开关方案。
+- 保持 cliprdr/audin 会话能力默认接入，Pasteboard 和麦克风权限继续由现有 callback 在实际读取或采集时按需申请。
+- 后续如果做 SDK 级显式通道配置，必须保证旧调用方默认行为兼容，不能把“权限申请时机”和“通道是否加载”混成同一个用户开关。
 - 已验证 FreeRDP OHOS build、runtime sync 和 HAP build。
 
 修改点：
 
-- 修改 `FREERDP_OHOS_SESSION_CONFIG`，新增或明确 `clipboard/audioPlayback/audioCapture/displayControl/graphicsPipeline` 均由调用方传入。
-- 修改 `freerdp_ohos_session_config_default`，商用默认关闭 clipboard 和 audioCapture。
-- 修改 HAP UI/参数传递，让用户启用剪贴板、麦克风时才打开对应通道。
+- 保持 `freerdp_ohos_session_config_default` 的现有默认通道行为，不通过 HAP UI 增加声音、剪贴板、麦克风开关。
+- 确认 Pasteboard 和麦克风权限仍由 clipboard/audin backend callback 按需触发，而不是连接开始时主动申请。
+- 后续如需 SDK 级通道裁剪，必须新增兼容旧调用方的配置语义，不能用零初始化 BOOL 改变默认行为。
 - smartcard source/channel/PCSC 和 TSMF 从交付 runtime 构建中裁剪；drive/printer 保留编译但默认关闭，等权限、UI 和后端验收闭环后再对外开放。
 
 验收点：
 
 - 默认连接不申请剪贴板权限，不申请麦克风权限。
-- 关闭 clipboard 时不会加载 cliprdr。
-- 关闭 audioCapture 时 audin 不请求权限。
-- feature matrix 标明每个通道默认状态。
+- 触发剪贴板读取时才申请 Pasteboard 权限。
+- 远端实际请求音频采集时才申请麦克风权限。
+- HAP 主界面不出现通道开关。
 
 验收风险：
 
-- 服务端策略可能依赖某些通道，裁剪后需要确认不会影响基本桌面连接。
-- 剪贴板从默认开改为显式开，原测试用例要更新。
+- 如果后续要把通道默认关闭，需要重新设计产品语义和 SDK 兼容策略。
 
 ## T07：graphicsMode 和 fallback 单一来源
 

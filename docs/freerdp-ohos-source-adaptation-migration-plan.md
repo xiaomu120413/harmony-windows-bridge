@@ -524,8 +524,9 @@ Modification scope:
 
 - Remove feature logic that duplicates FreeRDP source behavior.
 - Keep diagnostics that help validate source backends.
-- Keep user options that FreeRDP backends need, such as `graphicsMode`,
-  microphone enabled, clipboard enabled and requested resolution.
+- Keep user options that FreeRDP backends need, such as `graphicsMode` and
+  requested resolution. Clipboard and microphone permissions remain callback-
+  driven and are requested only when the backend actually needs access.
 
 Pseudo code:
 
@@ -535,9 +536,6 @@ native.connect({
   username,
   password,
   graphicsMode,
-  enableClipboard,
-  enableAudioPlayback,
-  enableMicrophone,
   surfaceHandle
 })
 ```
