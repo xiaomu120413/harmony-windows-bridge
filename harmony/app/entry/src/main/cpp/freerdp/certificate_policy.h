@@ -8,7 +8,6 @@
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/freerdp.h>
-#include <freerdp/settings.h>
 #endif
 
 namespace rdp_bridge {
@@ -26,9 +25,7 @@ const char* CertificatePolicyName(CertificatePolicy policy);
 void SetCertificatePolicyLogSink(CertificatePolicyLogFn log);
 void ClearCertificatePolicyLogSink();
 
-bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const ConnectParams& params, const CertificatePolicyLogFn& log, std::string& error);
-CertificatePolicy ParseCertificatePolicy(const std::string& value);
+CertificatePolicy FromOhosCertificatePolicy(uint32_t policy);
 void RegisterCertificatePolicy(freerdp* instance, CertificatePolicy policy);
 void UnregisterCertificatePolicy(freerdp* instance);
 
