@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：待执行  
+状态：T00 基线已建立，T01 待执行
 目标分支：`codex/prelaunch-main`  
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
