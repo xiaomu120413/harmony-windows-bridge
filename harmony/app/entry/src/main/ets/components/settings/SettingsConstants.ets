@@ -15,8 +15,6 @@ export class SettingsText {
   static readonly HOME_PORT_PLACEHOLDER: string = 'Port'
   static readonly HOME_USERNAME_PLACEHOLDER: string = 'Username'
   static readonly HOME_PASSWORD_PLACEHOLDER: string = 'Password'
-  static readonly HOME_CERT_TOFU: string = 'TOFU'
-  static readonly HOME_CERT_STRICT: string = 'Strict'
   static readonly HOME_CONNECT_BUTTON: string = 'Connect'
 
   static readonly SETTINGS_TITLE: string = '设置'
@@ -31,7 +29,7 @@ export class SettingsText {
   static readonly APPEARANCE_ENTRY_TITLE: string = '深色模式'
   static readonly APPEARANCE_ENTRY_DESC: string = '深色模式、浅色模式以及跟随系统'
   static readonly USAGE_ENTRY_TITLE: string = '使用说明'
-  static readonly USAGE_ENTRY_DESC: string = '连接准备、参数填写、证书策略和常见排查'
+  static readonly USAGE_ENTRY_DESC: string = '连接准备、参数填写、默认 TOFU 证书策略和常见排查'
   static readonly NETWORK_ENTRY_TITLE: string = '查看本机 IP'
   static readonly NETWORK_ENTRY_DESC: string = '显示当前默认网络的本机 IP 地址'
   static readonly ABOUT_ENTRY_TITLE: string = '关于'
@@ -53,7 +51,7 @@ export class SettingsText {
   static readonly USAGE_TITLE: string = '使用说明'
   static readonly USAGE_SUBTITLE: string = '按当前代码路径整理的连接和排查说明'
   static readonly USAGE_OVERVIEW_TITLE: string = '连接检查清单'
-  static readonly USAGE_OVERVIEW_BODY: string = '按连接前、参数填写、证书策略和故障排查组织关键步骤。'
+  static readonly USAGE_OVERVIEW_BODY: string = '按连接前、参数填写、当前默认 TOFU 证书策略和故障排查组织关键步骤。'
   static readonly USAGE_OVERVIEW_META: string = 'RDP 连接准备'
   static readonly USAGE_SECTION_PREP: string = '连接流程'
   static readonly USAGE_SECTION_PREP_DESC: string = '先确认目标机和网络，再填写连接信息。'
@@ -67,7 +65,7 @@ export class SettingsText {
     '在主界面填写 Windows host、Port、Username 和 Password。host 可以是目标电脑 IP 或主机名，默认端口是 3389。'
   static readonly USAGE_CERT_TITLE: string = '证书策略'
   static readonly USAGE_CERT_BODY: string =
-    'TOFU 适合测试和内网首次连接，会在首次连接时信任目标证书；Strict 用于更严格的证书校验。生产环境不要随意忽略证书风险。'
+    '当前版本暂时固定使用 TOFU 证书策略，适合测试和内网首次连接，会在首次连接时信任目标证书。后续需要更严格校验时再开放策略选择入口。'
   static readonly USAGE_TROUBLESHOOT_TITLE: string = '常见排查'
   static readonly USAGE_TROUBLESHOOT_BODY: string =
     '连不上时优先确认本机 IP、目标 IP、同一网络、Windows 防火墙、远程桌面开关、账号权限和端口 3389 是否可达。'

@@ -18,7 +18,8 @@ struct Index {
   @State private port: string = '3389'
   @State private username: string = ''
   @State private password: string = ''
-  @State private certPolicy: string = 'tofu'
+  // 暂时固定使用 TOFU 证书策略，后续需要严格校验时再恢复策略选择入口。
+  private certPolicy: string = 'tofu'
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
   @State private settingsButtonHovered: boolean = false
@@ -143,17 +144,6 @@ struct Index {
     }
   }
 
-  private normalizeCertPolicy(value: string): string {
-    const normalized = value.trim().toLowerCase()
-    if (normalized === 'strict') {
-      return 'strict'
-    }
-    if (normalized === 'ignore') {
-      return 'ignore'
-    }
-    return 'tofu'
-  }
-
   private getAppFilesDir(): string {
     const context = this.getUiAbilityContext()
     if (context === null) {
@@ -169,13 +159,12 @@ struct Index {
       return
     }
 
-    const policy = this.normalizeCertPolicy(this.certPolicy)
+    const policy = this.certPolicy
     const host = this.host
     const port = this.port
     const username = this.username
     const password = this.password
     const appFilesDir = this.getAppFilesDir()
-    this.certPolicy = policy
     this.connected = false
     this.setSessionVisible(true)
     this.appendLog('Opening session surface')
@@ -367,14 +356,6 @@ struct Index {
           .onChange((value: string) => {
             this.password = value
           })
-        Row({ space: 10 }) {
-          this.certPolicyButton('tofu', SettingsText.HOME_CERT_TOFU)
-          this.certPolicyButton('strict', SettingsText.HOME_CERT_STRICT)
-        }
-        .height(40)
-        .width('100%')
-        .margin({ bottom: 12 })
-
         Button(SettingsText.HOME_CONNECT_BUTTON)
           .type(ButtonType.Normal)
           .height(44)
@@ -409,26 +390,6 @@ struct Index {
         style: BorderStyle.Solid
       })
       .onChange(onChange)
-  }
-
-  @Builder
-  private certPolicyButton(value: string, label: string) {
-    Button(label)
-      .type(ButtonType.Normal)
-      .height(36)
-      .layoutWeight(1)
-      .fontSize(13)
-      .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(this.certPolicy === value ? '#0A84FF' : SettingsTheme.subtleButton(this.isAppDark(), false,
-        false))
-      .fontColor(this.certPolicy === value ? Color.White : SettingsTheme.primaryText(this.isAppDark()))
-      .border({
-        width: 1,
-        color: this.certPolicy === value ? '#0A84FF' : SettingsTheme.borderColor(this.isAppDark())
-      })
-      .onClick(() => {
-        this.certPolicy = value
-      })
   }
 
   @Builder
