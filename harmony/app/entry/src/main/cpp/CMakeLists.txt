@@ -35,6 +35,7 @@ set(FREERDP_OHOS_REQUIRED_HEADERS
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_graphics.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_input_queue.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_pointer.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_rdpgfx.h
@@ -84,7 +85,6 @@ add_library(entry SHARED
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
     common/frame_utils.cpp
-    input/ohos_keyboard_adapter.cpp
     input/xcomponent_input_bridge.cpp
     napi/clipboard_permission_bridge.cpp
     session/freerdp_session_runner.cpp

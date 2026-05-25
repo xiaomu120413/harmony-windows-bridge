@@ -2,19 +2,16 @@
 
 #include <atomic>
 #include <cstdint>
-#include <deque>
 #include <functional>
-#include <mutex>
 #include <string>
 
 #include "input/ohos_keyboard_adapter.h"
-#include "client/OHOS/ohos_ime.h"
-#include "client/OHOS/ohos_keyboard.h"
-#include "client/OHOS/ohos_pointer.h"
 #include "surface/surface_bridge.h"
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include "freerdp/freerdp_runtime.h"
+#include "client/OHOS/ohos_input_queue.h"
+#include "client/OHOS/ohos_pointer.h"
 #endif
 
 namespace rdp_bridge {
@@ -39,7 +36,8 @@ public:
         const std::function<void(const std::string&)>& log);
     bool EnqueueFocusIn(uint16_t toggleStates, std::string& message,
         const std::function<void(const std::string&)>& log);
-    bool EnqueueReleaseAllKeys(std::string& message, const std::function<void(const std::string&)>& log);
+    bool EnqueueReleaseAllKeys(std::string& message,
+        const std::function<void(const std::string&)>& log);
 
     void Clear();
     void Reset();
@@ -56,73 +54,17 @@ public:
 
 private:
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    enum class QueuedInputType {
-        Pointer,
-        Key,
-        PlatformKey,
-        PlatformKeyPacket,
-        Unicode,
-        FocusIn,
-    };
+    bool EnsureQueue(std::string& message, const std::function<void(const std::string&)>& log);
+    FREERDP_OHOS_INPUT_QUEUE_DIAGNOSTICS Diagnostics() const;
 
-    struct QueuedInputEvent {
-        QueuedInputType type = QueuedInputType::Pointer;
-        uint16_t flags = 0;
-        uint16_t x = 0;
-        uint16_t y = 0;
-        uint32_t scancode = 0;
-        uint32_t keyCode = 0;
-        uint32_t vk = 0;
-        uint32_t code = 0;
-        bool ctrl = false;
-        bool shift = false;
-        bool alt = false;
-        bool meta = false;
-        bool down = false;
-        bool repeat = false;
-        bool extended = false;
-        bool synthetic = false;
-    };
-
-    const char* InputTypeName(const QueuedInputEvent& event) const;
-    bool IsPointerWheelEvent(const QueuedInputEvent& event) const;
-    bool IsPointerMotionEvent(const QueuedInputEvent& event) const;
-    bool HasSamePointerMotionClass(const QueuedInputEvent& lhs, const QueuedInputEvent& rhs) const;
-    bool IsDroppablePointerEvent(const QueuedInputEvent& event) const;
-    bool DropOldestDroppablePointerEventLocked();
-    bool EnsureKeyboardBackendLocked(FreerdpRuntimeApi* api,
-        const std::function<void(const std::string&)>& log);
-    void AppendPlatformKeyPacketLocked(const FREERDP_OHOS_KEY_PACKET& packet,
-        std::deque<QueuedInputEvent>& pending);
-    bool AppendPlatformKeyPacketsLocked(FreerdpRuntimeApi* api, const QueuedInputEvent& event,
-        std::deque<QueuedInputEvent>& pending, const std::function<void(const std::string&)>& log);
-    void AppendDueRepeatPacketsLocked(FreerdpRuntimeApi* api, std::deque<QueuedInputEvent>& pending,
-        const std::function<void(const std::string&)>& log);
-    bool EnqueueInput(const QueuedInputEvent& event, const char* okMessage, std::string& message,
-        const std::function<void(const std::string&)>& log);
-    bool EnqueueInputLocked(const QueuedInputEvent& event, const char* okMessage, std::string& message,
-        bool& droppedOldPointer, bool& droppedNewEvent);
-    void LogInputFailure(const std::string& message, const std::function<void(const std::string&)>& log);
-    void LogInputBackpressure(const std::string& message, const std::function<void(const std::string&)>& log);
-    void LogKeyDispatch(const QueuedInputEvent& event, uint16_t flags, bool ok,
-        const std::function<void(const std::string&)>& log);
-    void LogPlatformKeyDispatch(const QueuedInputEvent& event, uint32_t scancode, bool ok,
-        const std::function<void(const std::string&)>& log);
-
-    std::mutex inputMutex_;
-    std::deque<QueuedInputEvent> inputQueue_;
-    FreerdpRuntimeApi* keyboardApi_ = nullptr;
-    FREERDP_OHOS_KEYBOARD_STATE* keyboardState_ = nullptr;
+    FreerdpRuntimeApi* queueApi_ = nullptr;
+    freerdpOhosInputQueue* queue_ = nullptr;
 #endif
 
-    std::atomic_uint32_t inputQueueDepth_{0};
-    std::atomic_uint32_t inputQueuedCount_{0};
-    std::atomic_uint32_t inputSentCount_{0};
-    std::atomic_uint32_t inputDroppedCount_{0};
-    std::atomic_uint32_t inputDispatchLogCount_{0};
-    std::atomic_uint32_t inputKeyDispatchLogCount_{0};
+    void LogInputFailure(const std::string& message,
+        const std::function<void(const std::string&)>& log);
+
     std::atomic_uint32_t inputFailureLogCount_{0};
-    std::atomic_uint32_t inputBackpressureLogCount_{0};
 };
 
 } // namespace rdp_bridge

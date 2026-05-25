@@ -11,7 +11,6 @@
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
-#include <freerdp/input.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
 #include <winpr/synch.h>
@@ -23,6 +22,7 @@
 #include <client/OHOS/ohos_display.h>
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
+#include <client/OHOS/ohos_input_queue.h>
 #include <client/OHOS/ohos_keyboard.h>
 #include <client/OHOS/ohos_pointer.h>
 #include <client/OHOS/ohos_rdpgfx.h>
@@ -55,11 +55,6 @@ public:
     using GdiInitFn = BOOL (*)(freerdp*, UINT32);
     using GdiFreeFn = void (*)(freerdp*);
     using GdiResizeFn = BOOL (*)(rdpGdi*, UINT32, UINT32);
-    using InputSendMouseEventFn = BOOL (*)(rdpInput*, UINT16, UINT16, UINT16);
-    using InputSendKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT8);
-    using InputSendKeyboardEventExFn = BOOL (*)(rdpInput*, BOOL, BOOL, UINT32);
-    using InputSendUnicodeKeyboardEventFn = BOOL (*)(rdpInput*, UINT16, UINT16);
-    using InputSendFocusInEventFn = BOOL (*)(rdpInput*, UINT16);
     using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
     using GdiGraphicsPipelineInitFn = BOOL (*)(rdpGdi*, RdpgfxClientContext*);
@@ -78,23 +73,30 @@ public:
         const FREERDP_OHOS_CLIPBOARD_CONFIG*, char*, size_t);
     using OhosClipboardFreeFn = void (*)(freerdpOhosClipboard*);
     using OhosClipboardGetDiagnosticsFn = const char* (*)(freerdpOhosClipboard*);
-    using OhosKeyboardMapKeyCodeToWindowsVkFn = uint32_t (*)(uint32_t);
-    using OhosKeyboardKeyCodeRequiresExtendedScancodeFn = int (*)(uint32_t);
-    using OhosKeyboardFormatEventFn = int (*)(const FREERDP_OHOS_KEY_EVENT*, char*, size_t);
-    using OhosKeyboardStateNewFn = FREERDP_OHOS_KEYBOARD_STATE* (*)();
-    using OhosKeyboardStateFreeFn = void (*)(FREERDP_OHOS_KEYBOARD_STATE*);
-    using OhosKeyboardStateResetFn = void (*)(FREERDP_OHOS_KEYBOARD_STATE*);
-    using OhosKeyboardStateHandleEventFn = int (*)(FREERDP_OHOS_KEYBOARD_STATE*,
-        const FREERDP_OHOS_KEY_EVENT*, FREERDP_OHOS_KEY_PACKET*, size_t, size_t*);
-    using OhosKeyboardStateCollectDueRepeatsFn = int (*)(FREERDP_OHOS_KEYBOARD_STATE*,
-        FREERDP_OHOS_KEY_PACKET*, size_t, size_t*);
-    using OhosKeyboardStateReleaseAllFn = int (*)(FREERDP_OHOS_KEYBOARD_STATE*,
-        FREERDP_OHOS_KEY_PACKET*, size_t, size_t*);
-    using OhosImeBuildCommittedTextPacketsFn = int (*)(const uint16_t*, size_t,
-        FREERDP_OHOS_IME_PACKET*, size_t, size_t*, size_t*);
-    using OhosImeFormatCommittedTextResultFn = int (*)(size_t, size_t, size_t, char*, size_t);
-    using OhosPointerBuildEventFn = BOOL (*)(const FREERDP_OHOS_POINTER_VIEWPORT*,
-        const FREERDP_OHOS_POINTER_EVENT*, FREERDP_OHOS_POINTER_PACKET*, char*, size_t);
+    using OhosInputQueueNewFn = freerdpOhosInputQueue* (*)();
+    using OhosInputQueueFreeFn = void (*)(freerdpOhosInputQueue*);
+    using OhosInputQueueClearFn = void (*)(freerdpOhosInputQueue*);
+    using OhosInputQueueResetFn = void (*)(freerdpOhosInputQueue*);
+    using OhosInputQueueEnqueuePointerFn = BOOL (*)(
+        freerdpOhosInputQueue*, const FREERDP_OHOS_POINTER_VIEWPORT*,
+        const FREERDP_OHOS_POINTER_EVENT*, char*, size_t);
+    using OhosInputQueueEnqueuePointerPacketFn = BOOL (*)(
+        freerdpOhosInputQueue*, UINT16, UINT16, UINT16, char*, size_t);
+    using OhosInputQueueEnqueueKeyScancodeFn = BOOL (*)(
+        freerdpOhosInputQueue*, UINT32, BOOL, BOOL, char*, size_t);
+    using OhosInputQueueEnqueueKeyFn = BOOL (*)(
+        freerdpOhosInputQueue*, const FREERDP_OHOS_KEY_EVENT*, char*, size_t);
+    using OhosInputQueueEnqueueUnicodeFn = BOOL (*)(
+        freerdpOhosInputQueue*, UINT32, BOOL, char*, size_t);
+    using OhosInputQueueEnqueueTextFn = BOOL (*)(
+        freerdpOhosInputQueue*, const uint16_t*, size_t, char*, size_t);
+    using OhosInputQueueEnqueueFocusInFn = BOOL (*)(
+        freerdpOhosInputQueue*, UINT16, char*, size_t);
+    using OhosInputQueueEnqueueReleaseAllKeysFn = BOOL (*)(
+        freerdpOhosInputQueue*, char*, size_t);
+    using OhosInputQueueDrainFn = BOOL (*)(freerdpOhosInputQueue*, rdpContext*, char*, size_t);
+    using OhosInputQueueGetDiagnosticsFn = BOOL (*)(
+        freerdpOhosInputQueue*, FREERDP_OHOS_INPUT_QUEUE_DIAGNOSTICS*);
     using OhosDisplayNormalizeSizeFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t*,
         uint32_t*);
     using OhosDisplaySendMonitorLayoutFn = int (*)(DispClientContext*, uint32_t, uint32_t,
@@ -160,11 +162,6 @@ public:
     GdiInitFn gdiInit = nullptr;
     GdiFreeFn gdiFree = nullptr;
     GdiResizeFn gdiResize = nullptr;
-    InputSendMouseEventFn inputSendMouseEvent = nullptr;
-    InputSendKeyboardEventFn inputSendKeyboardEvent = nullptr;
-    InputSendKeyboardEventExFn inputSendKeyboardEventEx = nullptr;
-    InputSendUnicodeKeyboardEventFn inputSendUnicodeKeyboardEvent = nullptr;
-    InputSendFocusInEventFn inputSendFocusInEvent = nullptr;
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     GdiGraphicsPipelineInitFn gdiGraphicsPipelineInit = nullptr;
@@ -180,19 +177,20 @@ public:
     OhosClipboardRegisterFn ohosClipboardRegister = nullptr;
     OhosClipboardFreeFn ohosClipboardFree = nullptr;
     OhosClipboardGetDiagnosticsFn ohosClipboardGetDiagnostics = nullptr;
-    OhosKeyboardMapKeyCodeToWindowsVkFn ohosKeyboardMapKeyCodeToWindowsVk = nullptr;
-    OhosKeyboardKeyCodeRequiresExtendedScancodeFn ohosKeyboardKeyCodeRequiresExtendedScancode =
-        nullptr;
-    OhosKeyboardFormatEventFn ohosKeyboardFormatEvent = nullptr;
-    OhosKeyboardStateNewFn ohosKeyboardStateNew = nullptr;
-    OhosKeyboardStateFreeFn ohosKeyboardStateFree = nullptr;
-    OhosKeyboardStateResetFn ohosKeyboardStateReset = nullptr;
-    OhosKeyboardStateHandleEventFn ohosKeyboardStateHandleEvent = nullptr;
-    OhosKeyboardStateCollectDueRepeatsFn ohosKeyboardStateCollectDueRepeats = nullptr;
-    OhosKeyboardStateReleaseAllFn ohosKeyboardStateReleaseAll = nullptr;
-    OhosImeBuildCommittedTextPacketsFn ohosImeBuildCommittedTextPackets = nullptr;
-    OhosImeFormatCommittedTextResultFn ohosImeFormatCommittedTextResult = nullptr;
-    OhosPointerBuildEventFn ohosPointerBuildEvent = nullptr;
+    OhosInputQueueNewFn ohosInputQueueNew = nullptr;
+    OhosInputQueueFreeFn ohosInputQueueFree = nullptr;
+    OhosInputQueueClearFn ohosInputQueueClear = nullptr;
+    OhosInputQueueResetFn ohosInputQueueReset = nullptr;
+    OhosInputQueueEnqueuePointerFn ohosInputQueueEnqueuePointer = nullptr;
+    OhosInputQueueEnqueuePointerPacketFn ohosInputQueueEnqueuePointerPacket = nullptr;
+    OhosInputQueueEnqueueKeyScancodeFn ohosInputQueueEnqueueKeyScancode = nullptr;
+    OhosInputQueueEnqueueKeyFn ohosInputQueueEnqueueKey = nullptr;
+    OhosInputQueueEnqueueUnicodeFn ohosInputQueueEnqueueUnicode = nullptr;
+    OhosInputQueueEnqueueTextFn ohosInputQueueEnqueueText = nullptr;
+    OhosInputQueueEnqueueFocusInFn ohosInputQueueEnqueueFocusIn = nullptr;
+    OhosInputQueueEnqueueReleaseAllKeysFn ohosInputQueueEnqueueReleaseAllKeys = nullptr;
+    OhosInputQueueDrainFn ohosInputQueueDrain = nullptr;
+    OhosInputQueueGetDiagnosticsFn ohosInputQueueGetDiagnostics = nullptr;
     OhosDisplayNormalizeSizeFn ohosDisplayNormalizeSize = nullptr;
     OhosDisplaySendMonitorLayoutFn ohosDisplaySendMonitorLayout = nullptr;
     OhosGraphicsConfigFromModeFn ohosGraphicsConfigFromMode = nullptr;
