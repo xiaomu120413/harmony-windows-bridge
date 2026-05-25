@@ -4,7 +4,13 @@ export interface NativeConnectParams {
   username: string;
   password: string;
   certPolicy: string;
+  resolution?: string;
+  graphicsMode?: string;
   appFilesDir: string;
+  enableClipboard?: boolean;
+  enableDisplayControl?: boolean;
+  enableAudioPlayback?: boolean;
+  enableAudioCapture?: boolean;
 }
 
 export interface NativeCommandResult {

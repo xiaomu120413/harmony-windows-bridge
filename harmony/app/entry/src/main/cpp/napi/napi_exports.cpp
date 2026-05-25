@@ -40,6 +40,18 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.password = GetStringProperty(env, args[0], "password");
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
+    const std::string resolution = GetStringProperty(env, args[0], "resolution");
+    const std::string graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
+    if (!resolution.empty()) {
+        params.resolution = resolution;
+    }
+    if (!graphicsMode.empty()) {
+        params.graphicsMode = graphicsMode;
+    }
+    params.enableClipboard = GetBoolProperty(env, args[0], "enableClipboard", false);
+    params.enableDisplayControl = GetBoolProperty(env, args[0], "enableDisplayControl", true);
+    params.enableAudioPlayback = GetBoolProperty(env, args[0], "enableAudioPlayback", true);
+    params.enableAudioCapture = GetBoolProperty(env, args[0], "enableAudioCapture", false);
     return params;
 }
 
@@ -71,6 +83,12 @@ napi_value Connect(napi_env env, napi_callback_info info)
     logs.push_back(RedactedEndpointLog(params));
     logs.push_back(RedactedValueLog("username", params.username));
     logs.push_back("certPolicy=" + params.certPolicy);
+    logs.push_back("graphicsMode=" + params.graphicsMode);
+    logs.push_back(
+        "channels=cliprdr:" + std::string(params.enableClipboard ? "1" : "0") +
+        " disp:" + std::string(params.enableDisplayControl ? "1" : "0") +
+        " rdpsnd:" + std::string(params.enableAudioPlayback ? "1" : "0") +
+        " audin:" + std::string(params.enableAudioCapture ? "1" : "0"));
     logs.push_back(RedactedValueLog("appFilesDir", params.appFilesDir));
     logs.push_back("starting native worker");
 
