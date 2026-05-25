@@ -19,7 +19,10 @@ $outputs = Join-Path $moduleRootPath "build/default/outputs/default"
 $intermediates = Join-Path $moduleRootPath "build/default/intermediates"
 $nativeOut = Join-Path $outputs "native"
 $nativeRuntimeSource = Join-Path $moduleRootPath "libs/arm64-v8a/xrdp"
-$nativeRuntimeTarget = Join-Path $intermediates "libs/default/arm64-v8a/xrdp"
+$defaultLibPath = Join-Path $intermediates "libs/default"
+$strippedLibPath = Join-Path $intermediates "stripped_native_libs/default"
+$libPath = if (Test-Path -LiteralPath $strippedLibPath) { $strippedLibPath } else { $defaultLibPath }
+$nativeRuntimeTarget = Join-Path $libPath "arm64-v8a/xrdp"
 
 $unsignedHnp = Join-Path $outputs "entry-default-unsigned-hnp.hap"
 $signedHnp = Join-Path $outputs "entry-default-signed-hnp.hap"
@@ -60,7 +63,7 @@ $requiredInputs = @(
   (Join-Path $intermediates "package/default/module.json"),
   (Join-Path $intermediates "res/default/resources"),
   (Join-Path $intermediates "loader_out/default/ets"),
-  (Join-Path $intermediates "libs/default"),
+  $libPath,
   (Join-Path $intermediates "res/default/resources.index"),
   (Join-Path $intermediates "loader/default/pkgContextInfo.json"),
   (Join-Path $outputs "pack.info")
@@ -91,7 +94,7 @@ if (Test-Path -LiteralPath $nativeRuntimeSource) {
   --ets-path (Join-Path $intermediates "loader_out/default/ets") `
   --out-path $unsignedHnp `
   --hnp-path $nativeOut `
-  --lib-path (Join-Path $intermediates "libs/default") `
+  --lib-path $libPath `
   --index-path (Join-Path $intermediates "res/default/resources.index") `
   --pack-info-path (Join-Path $outputs "pack.info") `
   --pkg-context-path (Join-Path $intermediates "loader/default/pkgContextInfo.json") `
