@@ -38,6 +38,7 @@ set(FREERDP_OHOS_REQUIRED_HEADERS
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_pointer.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_rdpgfx.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session_config.h)
 set(FREERDP_REQUIRED_RUNTIME_LIBS
     ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libcjson.so.1

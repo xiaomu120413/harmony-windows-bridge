@@ -1,7 +1,7 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T01 已完成，T02 待执行
-目标分支：`codex/prelaunch-main`  
+状态：T02 已完成 API/ABI 骨架，T03 待执行
+目标分支：`main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
 ## 执行原则
@@ -97,6 +97,15 @@
 - 过早删除 fallback 会暴露 CI/DevEco 环境路径问题，需要先固化构建路径。
 
 ## T02：新增 FreeRDP OHOS Session 公共 API
+
+实施状态：已完成 API/ABI 骨架，2026-05-25。HAP 运行路径未切换，T03 前需要真机回归。
+
+实施记录：
+
+- 新增 `ohos_session.h/.c`，暴露 opaque `freerdpOhosSession`、连接 options、状态/日志/错误 callbacks 和最小 session API。
+- 当前 API 只做输入校验、状态诊断和 pointer/key/text/resize 入口预留；FreeRDP connect/event loop/dispatch 仍由 HAP 旧路径负责，避免在 T02 改运行逻辑。
+- `client/common/CMakeLists.txt` 已把 `ohos_session.c` 编入 `libfreerdp-client3.so`；HAP 商用 CMake 也把 `ohos_session.h` 纳入必备 OHOS public header。
+- 已验证 FreeRDP OHOS arm64 构建、`libfreerdp-client3.so` 导出 `freerdp_ohos_session_*` 符号、runtime sync 和本地 HAP build。
 
 修改点：
 
