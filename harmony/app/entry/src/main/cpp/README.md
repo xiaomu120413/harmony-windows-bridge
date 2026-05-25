@@ -29,8 +29,6 @@ Good candidates for future FreeRDP-side cleanup:
 
 - graphics mode parsing, fallback policy, and capability diagnostics currently
   wrapped by `freerdp/graphics_config.*`;
-- more of the certificate policy callback return-code handling currently wrapped
-  by `freerdp/certificate_policy.*`;
 - any RDPGFX AVC444 suppression/present policy that is still app-side and does
   not require XComponent or GL objects.
 

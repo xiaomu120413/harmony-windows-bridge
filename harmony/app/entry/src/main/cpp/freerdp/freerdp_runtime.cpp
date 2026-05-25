@@ -132,12 +132,6 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("freerdp_ohos_ime_format_committed_text_result",
             ohosImeFormatCommittedTextResult);
         LoadOptionalClientSymbol("freerdp_ohos_pointer_build_event", ohosPointerBuildEvent);
-        LoadOptionalClientSymbol("freerdp_ohos_certificate_policy_from_string",
-            ohosCertificatePolicyFromString);
-        LoadOptionalClientSymbol("freerdp_ohos_certificate_policy_name",
-            ohosCertificatePolicyName);
-        LoadOptionalClientSymbol("freerdp_ohos_certificate_verify",
-            ohosCertificateVerify);
         LoadOptionalClientSymbol("freerdp_ohos_display_normalize_size",
             ohosDisplayNormalizeSize);
         LoadOptionalClientSymbol("freerdp_ohos_display_send_monitor_layout",

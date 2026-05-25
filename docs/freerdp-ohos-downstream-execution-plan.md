@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T04 已完成本地构建验证，等待真机回归
+状态：T05 已完成本地构建验证，等待真机回归
 目标分支：本地 `main`，获确认后仅推送远端 `codex/prelaunch-main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
@@ -161,7 +161,7 @@
 
 ## T04：会话参数和存储路径下沉
 
-实施状态：已完成本地构建验证，2026-05-25。该任务切换了会话参数归一化和存储路径归属，需要真机验证。
+实施状态：已完成本地构建和真机验证，2026-05-25。
 
 本次实现记录：
 
@@ -189,6 +189,15 @@
 - 用户名解析如果改变，域账号登录可能回归，要用域账号和本地账号分别验收。
 
 ## T05：证书策略彻底下沉
+
+实施状态：已完成本地构建验证，2026-05-25。该任务切换了证书回调归属，需要真机验证。
+
+本次实现记录：
+
+- FreeRDP OHOS 层新增 certificate callback 注册/反注册接口，由 session API 绑定 `VerifyCertificateEx` 和 `VerifyChangedCertificateEx`。
+- HAP 删除本地 certificate policy map、证书回调返回码处理和对应动态符号加载，只保留 session 日志展示。
+- 证书日志中的目标 host 已脱敏，strict/tofu/ignore 的返回码语义统一由 `client/OHOS/ohos_certificate.c` 决定。
+- 已验证 FreeRDP OHOS build、runtime sync、HAP build 和新导出符号。
 
 修改点：
 
