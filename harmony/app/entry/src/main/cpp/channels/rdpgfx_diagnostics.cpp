@@ -95,7 +95,7 @@ std::string BuildGraphicsPipelineStatsLog()
     }
     return out.str();
 #else
-    return "rdpgfx stats unavailable: FreeRDP headers not found at build time";
+    return "rdpgfx stats unavailable: explicit FreeRDP demo build has no headers";
 #endif
 }
 

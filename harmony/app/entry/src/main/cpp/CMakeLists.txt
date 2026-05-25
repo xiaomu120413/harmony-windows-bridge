@@ -10,17 +10,69 @@ endif()
 include_directories(${NATIVERENDER_ROOT_PATH}
                     ${NATIVERENDER_ROOT_PATH}/include)
 
+option(HARMONY_ALLOW_FREERDP_DEMO_BUILD
+    "Allow an explicit demo build without synced FreeRDP OHOS headers/runtime" OFF)
+
 set(FREERDP_OHOS_SYSROOT_INCLUDE
-    ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/include)
+    ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/include
+    CACHE PATH "FreeRDP OHOS sysroot include directory")
 set(FREERDP_OHOS_SOURCE_ROOT
-    ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/FreeRDP)
-if(EXISTS ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/freerdp.h)
+    ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/FreeRDP
+    CACHE PATH "FreeRDP source checkout with OHOS client headers")
+set(FREERDP_OHOS_RUNTIME_LIB_DIR
+    ${NATIVERENDER_ROOT_PATH}/../../../libs/arm64-v8a
+    CACHE PATH "Synced FreeRDP OHOS runtime library directory")
+
+set(FREERDP_REQUIRED_HEADERS
+    ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/freerdp.h
+    ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/client.h
+    ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/settings.h
+    ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3/winpr/synch.h)
+set(FREERDP_OHOS_REQUIRED_HEADERS
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_avc420_route.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_certificate.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_clipboard.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_graphics.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_pointer.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_rdpgfx.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session_config.h)
+set(FREERDP_REQUIRED_RUNTIME_LIBS
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libcjson.so.1
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libcrypto.so.3
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libfreerdp-client3.so
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libfreerdp3.so
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libssl.so.3
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libwinpr3.so
+    ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libz.so.1)
+
+set(FREERDP_MISSING_PATHS)
+foreach(required_path IN LISTS FREERDP_REQUIRED_HEADERS FREERDP_OHOS_REQUIRED_HEADERS FREERDP_REQUIRED_RUNTIME_LIBS)
+    if(NOT EXISTS ${required_path})
+        list(APPEND FREERDP_MISSING_PATHS ${required_path})
+    endif()
+endforeach()
+
+if(FREERDP_MISSING_PATHS)
+    if(HARMONY_ALLOW_FREERDP_DEMO_BUILD)
+        add_compile_definitions(HARMONY_FREERDP_DEMO_BUILD=1)
+        message(WARNING
+            "Building explicit FreeRDP demo mode with missing OHOS artifacts: ${FREERDP_MISSING_PATHS}")
+    else()
+        message(FATAL_ERROR
+            "FreeRDP OHOS artifacts are required for the commercial HAP build. "
+            "Run harmony/scripts/wsl/build-freerdp-ohos.sh and "
+            "harmony/scripts/windows/sync-freerdp-runtime.ps1 first. "
+            "Missing: ${FREERDP_MISSING_PATHS}. "
+            "Set -DHARMONY_ALLOW_FREERDP_DEMO_BUILD=ON only for explicit mock/demo builds.")
+    endif()
+else()
     include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3
-                        ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3)
+                        ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3
+                        ${FREERDP_OHOS_SOURCE_ROOT})
     add_compile_definitions(HARMONY_HAS_FREERDP_HEADERS=1)
-endif()
-if(EXISTS ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h)
-    include_directories(${FREERDP_OHOS_SOURCE_ROOT})
     add_compile_definitions(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE=1)
 endif()
 

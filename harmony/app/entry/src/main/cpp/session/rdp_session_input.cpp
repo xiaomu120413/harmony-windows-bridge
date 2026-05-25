@@ -109,7 +109,7 @@ bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y, std
     (void)x;
     (void)y;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -159,7 +159,7 @@ bool RdpSessionInput::EnqueueLocalPointer(const LocalPointerEvent& pointer,
     (void)desktopWidth;
     (void)desktopHeight;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -180,7 +180,7 @@ bool RdpSessionInput::EnqueueKey(uint32_t rdpScancode, bool down, bool repeat, s
     (void)down;
     (void)repeat;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -212,7 +212,7 @@ bool RdpSessionInput::EnqueuePlatformKey(const OhosKeyEvent& key, std::string& m
 #else
     (void)key;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -235,7 +235,7 @@ bool RdpSessionInput::EnqueueUnicode(uint32_t code, bool down, std::string& mess
     (void)code;
     (void)down;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -325,7 +325,7 @@ bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::stri
 #else
     (void)text;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -341,7 +341,7 @@ bool RdpSessionInput::EnqueueFocusIn(uint16_t toggleStates, std::string& message
 #else
     (void)toggleStates;
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -357,7 +357,7 @@ bool RdpSessionInput::EnqueueReleaseAllKeys(std::string& message,
     return EnqueueInput(event, "platform key release-all queued", message, log);
 #else
     (void)log;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }

@@ -72,7 +72,7 @@ std::string BuildOHAudioStatsLog()
         << "bit latency=" << lastLatencyMs << "ms";
     return out.str() + rdpsndClientDiagnostics + audinDiagnostics;
 #else
-    return "OHAudio stats unavailable: FreeRDP headers not found at build time";
+    return "OHAudio stats unavailable: explicit FreeRDP demo build has no headers";
 #endif
 }
 
