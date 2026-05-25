@@ -129,6 +129,9 @@ public:
     using OhosRdpgfxAvc444ChromaV1RequiredYHeightFn =
         UINT32 (*)(const RECTANGLE_16*, UINT32);
     using OhosSessionConfigDefaultFn = FREERDP_OHOS_SESSION_CONFIG (*)();
+    using OhosSessionPrepareOptionsFn = BOOL (*)(
+        const FREERDP_OHOS_SESSION_INPUT*, FREERDP_OHOS_SESSION_PREPARED_OPTIONS*, char*,
+        size_t);
     using OhosSessionNewFn = freerdpOhosSession* (*)();
     using OhosSessionFreeFn = void (*)(freerdpOhosSession*);
     using OhosSessionConnectFn = BOOL (*)(freerdpOhosSession*,
@@ -219,6 +222,7 @@ public:
     OhosRdpgfxAvc444ChromaV1RequiredYHeightFn
         ohosRdpgfxAvc444ChromaV1RequiredYHeight = nullptr;
     OhosSessionConfigDefaultFn ohosSessionConfigDefault = nullptr;
+    OhosSessionPrepareOptionsFn ohosSessionPrepareOptions = nullptr;
     OhosSessionNewFn ohosSessionNew = nullptr;
     OhosSessionFreeFn ohosSessionFree = nullptr;
     OhosSessionConnectFn ohosSessionConnect = nullptr;

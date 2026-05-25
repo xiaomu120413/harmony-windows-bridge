@@ -1,17 +1,11 @@
 #include "freerdp/certificate_policy.h"
 
 #include "common/bridge_log.h"
-#include "common/string_utils.h"
 
 #include <array>
-#include <cstdlib>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
-
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-#include <freerdp/settings_keys.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -92,54 +86,6 @@ CertificatePolicy FromOhosCertificatePolicy(uint32_t policy)
         default:
             return CertificatePolicy::Tofu;
     }
-}
-
-bool ConfigureFreerdpStoragePaths(FreerdpRuntimeApi& api, rdpSettings* settings,
-    const ConnectParams& params, const CertificatePolicyLogFn& log, std::string& error)
-{
-    std::string filesDir = TrimTrailingSlashes(TrimAscii(params.appFilesDir));
-    if (filesDir.empty()) {
-        error = "appFilesDir is required for FreeRDP certificate storage";
-        return false;
-    }
-
-    const std::string configPath = JoinPath(filesDir, "freerdp");
-    if (!EnsureDirectory(configPath, error) ||
-        !EnsureDirectory(JoinPath(configPath, "certs"), error) ||
-        !EnsureDirectory(JoinPath(configPath, "server"), error)) {
-        return false;
-    }
-
-    setenv("HOME", filesDir.c_str(), 1);
-    setenv("XDG_CONFIG_HOME", filesDir.c_str(), 1);
-    if (!SetFreerdpString(api, settings, FreeRDP_HomePath, filesDir, "HomePath", error) ||
-        !SetFreerdpString(api, settings, FreeRDP_ConfigPath, configPath, "ConfigPath", error)) {
-        return false;
-    }
-    log("FreeRDP storage path configured");
-    return true;
-}
-
-CertificatePolicy ParseCertificatePolicy(const std::string& value)
-{
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    std::string loadError;
-    if (EnsureFreerdpRuntimeLoaded(api, loadError) &&
-        api.ohosCertificatePolicyFromString != nullptr) {
-        return FromOhosCertificatePolicy(api.ohosCertificatePolicyFromString(value.c_str()));
-    }
-
-    const std::string normalized = ToLowerAscii(TrimAscii(value));
-    if (normalized == "strict" || normalized == "verify" || normalized == "valid-ca") {
-        return CertificatePolicy::Strict;
-    }
-    if (normalized == "ignore" || normalized == "accept" || normalized == "insecure") {
-        return CertificatePolicy::Ignore;
-    }
-    if (normalized == "deny" || normalized == "reject") {
-        return CertificatePolicy::Strict;
-    }
-    return CertificatePolicy::Tofu;
 }
 
 void RegisterCertificatePolicy(freerdp* instance, CertificatePolicy policy)

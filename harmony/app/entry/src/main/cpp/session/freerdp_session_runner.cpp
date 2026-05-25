@@ -24,51 +24,7 @@
 namespace rdp_bridge {
 namespace {
 
-struct UserParts {
-    std::string domain;
-    std::string username;
-};
-
-UserParts SplitDomainUsername(const std::string& value)
-{
-    size_t separator = value.find('\\');
-    size_t separatorLength = 1;
-    const size_t ideographicSeparator = value.find("\xE3\x80\x81");
-    if (separator == std::string::npos ||
-        (ideographicSeparator != std::string::npos && ideographicSeparator < separator)) {
-        separator = ideographicSeparator;
-        separatorLength = 3;
-    }
-
-    if (separator == std::string::npos || separator == 0 || separator + separatorLength >= value.size()) {
-        return {"", TrimAscii(value)};
-    }
-
-    std::string domain = TrimAscii(value.substr(0, separator));
-    std::string username = TrimAscii(value.substr(separator + separatorLength));
-    if (domain.empty() || username.empty()) {
-        return {"", TrimAscii(value)};
-    }
-    return {domain, username};
-}
-
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-uint32_t AlignDownToMultiple(uint32_t value, uint32_t alignment, uint32_t minimum)
-{
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    std::string error;
-    if (EnsureFreerdpRuntimeLoaded(api, error) &&
-        api.ohosGraphicsAlignDownToMultiple != nullptr) {
-        return api.ohosGraphicsAlignDownToMultiple(value, alignment, minimum);
-    }
-
-    value -= value % alignment;
-    if (value >= minimum) {
-        return value;
-    }
-    return minimum + ((alignment - (minimum % alignment)) % alignment);
-}
-
 void StopRenderPipeline(const RdpSessionCallbacks& callbacks)
 {
     if (callbacks.stopRenderPipeline != nullptr) {
@@ -76,17 +32,15 @@ void StopRenderPipeline(const RdpSessionCallbacks& callbacks)
     }
 }
 
-uint32_t ToNativeCertificatePolicy(CertificatePolicy policy)
+GraphicsPipelineConfig ToGraphicsPipelineConfig(const FREERDP_OHOS_GRAPHICS_CONFIG& nativeConfig)
 {
-    switch (policy) {
-        case CertificatePolicy::Strict:
-            return FREERDP_OHOS_CERTIFICATE_POLICY_STRICT;
-        case CertificatePolicy::Ignore:
-            return FREERDP_OHOS_CERTIFICATE_POLICY_IGNORE;
-        case CertificatePolicy::Tofu:
-        default:
-            return FREERDP_OHOS_CERTIFICATE_POLICY_TOFU;
-    }
+    GraphicsPipelineConfig config;
+    config.valid = nativeConfig.mode != FREERDP_OHOS_GRAPHICS_MODE_INVALID;
+    config.enabled = nativeConfig.enabled;
+    config.h264 = nativeConfig.h264;
+    config.avc444GpuCompositor = nativeConfig.enabled && nativeConfig.h264;
+    config.mode = nativeConfig.modeName == nullptr ? "gdi" : nativeConfig.modeName;
+    return config;
 }
 
 void CopyCallbackMessage(char* message, size_t messageSize, const std::string& value)
@@ -97,39 +51,8 @@ void CopyCallbackMessage(char* message, size_t messageSize, const std::string& v
     std::snprintf(message, messageSize, "%s", value.c_str());
 }
 
-void AlignH264DesktopSize(const GraphicsPipelineConfig& graphicsConfig, uint32_t& width,
-    uint32_t& height, const std::function<void(const std::string&)>& log)
-{
-    if (!graphicsConfig.enabled || !graphicsConfig.h264) {
-        return;
-    }
-
-    const uint32_t requestedWidth = width;
-    const uint32_t requestedHeight = height;
-    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
-    std::string error;
-    if (EnsureFreerdpRuntimeLoaded(api, error) &&
-        api.ohosGraphicsAlignH264DesktopSize != nullptr) {
-        FREERDP_OHOS_GRAPHICS_CONFIG nativeConfig = {};
-        nativeConfig.enabled = graphicsConfig.enabled;
-        nativeConfig.h264 = graphicsConfig.h264;
-        api.ohosGraphicsAlignH264DesktopSize(&nativeConfig, &width, &height);
-    } else {
-        constexpr uint32_t kH264DesktopAlignment = 16;
-        width = AlignDownToMultiple(width, kH264DesktopAlignment, 320U);
-        height = AlignDownToMultiple(height, kH264DesktopAlignment, 240U);
-    }
-
-    if ((width != requestedWidth || height != requestedHeight) && log) {
-        log("FreeRDP H264 desktop size aligned to 16px dimensions: " +
-            std::to_string(requestedWidth) + "x" + std::to_string(requestedHeight) +
-            " -> " + std::to_string(width) + "x" + std::to_string(height));
-    }
-}
-
 struct OhosSessionAdapter {
     FreerdpRuntimeApi& api;
-    const ConnectParams& params;
     const GraphicsPipelineConfig& graphicsConfig;
     CertificatePolicy certificatePolicy;
     const RdpSessionCallbacks& callbacks;
@@ -165,8 +88,7 @@ struct OhosSessionAdapter {
 
         std::string error;
         SetCertificatePolicyLogSink(log);
-        if (!ConfigureFreerdpStoragePaths(api, context->settings, params, log, error) ||
-            !ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
+        if (!ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
             !ConfigureGraphicsPipelineChannel(api, context->settings, graphicsConfig, log, error)) {
             CopyCallbackMessage(message, messageSize, error);
             return false;
@@ -317,23 +239,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         log("OPENSSL_MODULES configured");
     }
 
-    uint32_t port = 0;
-    if (!ParsePort(params.port, port)) {
-        result.message = "invalid RDP port: " + params.port;
-        result.failed = true;
-        return result;
-    }
-
-    uint32_t width = 0;
-    uint32_t height = 0;
-    if (!ParseResolution(params.resolution, width, height)) {
-        result.message = "invalid RDP desktop resolution: " + params.resolution;
-        result.failed = true;
-        return result;
-    }
-    const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
-    AlignH264DesktopSize(graphicsConfig, width, height, log);
-
     std::string error;
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (!EnsureFreerdpRuntimeLoaded(api, error)) {
@@ -345,8 +250,9 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     log("FreeRDP runtime symbols loaded");
     RegisterMicrophonePermissionBridge(api, log);
 
-    if (api.ohosSessionNew == nullptr || api.ohosSessionFree == nullptr ||
-        api.ohosSessionConnect == nullptr || api.ohosSessionGetDiagnostics == nullptr) {
+    if (api.ohosSessionPrepareOptions == nullptr || api.ohosSessionNew == nullptr ||
+        api.ohosSessionFree == nullptr || api.ohosSessionConnect == nullptr ||
+        api.ohosSessionGetDiagnostics == nullptr) {
         result.message = "FreeRDP OHOS session API symbols are not loaded";
         result.failed = true;
         return result;
@@ -357,32 +263,32 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         return result;
     }
 
-    UserParts user = SplitDomainUsername(params.username);
-    const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);
-    const bool ignoreCertificate = certificatePolicy == CertificatePolicy::Ignore;
+    FREERDP_OHOS_SESSION_INPUT input = {};
+    input.serverHostname = params.host.c_str();
+    input.serverPort = params.port.c_str();
+    input.username = params.username.c_str();
+    input.password = params.password.c_str();
+    input.desktopSize = params.resolution.c_str();
+    input.graphicsMode = params.graphicsMode.c_str();
+    input.appDataDir = params.appFilesDir.c_str();
+    input.certificatePolicy = params.certPolicy.c_str();
+    input.colorDepth = 32;
+    input.tcpConnectTimeoutMs = 5000;
 
-    if (!user.domain.empty()) {
-        log("FreeRDP domain parsed from username");
+    FREERDP_OHOS_SESSION_PREPARED_OPTIONS prepared = {};
+    std::array<char, 512> detail {};
+    if (!api.ohosSessionPrepareOptions(&input, &prepared, detail.data(), detail.size())) {
+        result.message = detail[0] == '\0' ? "FreeRDP OHOS session option preparation failed" : detail.data();
+        result.failed = true;
+        return result;
+    }
+    if (detail[0] != '\0') {
+        log(detail.data());
     }
 
-    FREERDP_OHOS_SESSION_CONFIG sessionConfig = api.ohosSessionConfigDefault();
-    sessionConfig.graphicsPipeline = graphicsConfig.enabled ? TRUE : FALSE;
-    sessionConfig.h264 = graphicsConfig.enabled && graphicsConfig.h264 ? TRUE : FALSE;
-
-    FREERDP_OHOS_SESSION_OPTIONS options = {};
-    options.connection.serverHostname = params.host.c_str();
-    options.connection.serverPort = port;
-    options.connection.username = user.username.c_str();
-    options.connection.password = params.password.c_str();
-    options.connection.domain = user.domain.empty() ? nullptr : user.domain.c_str();
-    options.connection.desktopWidth = width;
-    options.connection.desktopHeight = height;
-    options.connection.colorDepth = 32;
-    options.connection.tcpConnectTimeoutMs = 5000;
-    options.connection.ignoreCertificate = ignoreCertificate ? TRUE : FALSE;
-    options.session = sessionConfig;
-    options.appDataDir = params.appFilesDir.empty() ? nullptr : params.appFilesDir.c_str();
-    options.certificatePolicy = ToNativeCertificatePolicy(certificatePolicy);
+    const GraphicsPipelineConfig graphicsConfig = ToGraphicsPipelineConfig(prepared.graphics);
+    const CertificatePolicy certificatePolicy =
+        FromOhosCertificatePolicy(prepared.options.certificatePolicy);
 
     freerdpOhosSession* session = api.ohosSessionNew();
     if (session == nullptr) {
@@ -393,7 +299,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
 
     OhosSessionAdapter adapter {
         api,
-        params,
         graphicsConfig,
         certificatePolicy,
         callbacks,
@@ -415,9 +320,9 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     sessionCallbacks.Teardown = OhosSessionAdapter::TeardownCallback;
     sessionCallbacks.userData = &adapter;
 
-    std::array<char, 512> detail {};
+    detail.fill('\0');
     const BOOL ok = api.ohosSessionConnect(
-        session, &options, &sessionCallbacks, detail.data(), detail.size());
+        session, &prepared.options, &sessionCallbacks, detail.data(), detail.size());
     result.connected = adapter.connected;
     result.message = detail[0] == '\0' ? SafeCString(api.ohosSessionGetDiagnostics(session)) : detail.data();
     api.ohosSessionFree(session);

@@ -178,6 +178,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosRdpgfxAvc444ChromaV1RequiredYHeight);
         LoadOptionalClientSymbol("freerdp_ohos_session_config_default",
             ohosSessionConfigDefault);
+        LoadOptionalClientSymbol("freerdp_ohos_session_prepare_options",
+            ohosSessionPrepareOptions);
         LoadOptionalClientSymbol("freerdp_ohos_session_new",
             ohosSessionNew);
         LoadOptionalClientSymbol("freerdp_ohos_session_free",

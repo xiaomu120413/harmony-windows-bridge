@@ -1,7 +1,7 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T03 已完成本地构建验证，等待真机回归
-目标分支：`main`
+状态：T04 已完成本地构建验证，等待真机回归
+目标分支：本地 `main`，获确认后仅推送远端 `codex/prelaunch-main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
 ## 执行原则
@@ -160,6 +160,15 @@
 - 旧 HAP 的 `running`、`connected` 状态和新 session 状态可能短期重复，需要明确唯一来源。
 
 ## T04：会话参数和存储路径下沉
+
+实施状态：已完成本地构建验证，2026-05-25。该任务切换了会话参数归一化和存储路径归属，需要真机验证。
+
+本次实现记录：
+
+- 新增 `client/OHOS/ohos_session_options.*`，由 FreeRDP OHOS 层解析 host、port、`DOMAIN\\user`、desktop size、graphicsMode、certificatePolicy 和 appDataDir。
+- 新增 `freerdp_ohos_session_apply_storage_settings`，FreeRDP OHOS session 在应用 settings 时设置 `HOME`、`XDG_CONFIG_HOME`、`FreeRDP_HomePath` 和 `FreeRDP_ConfigPath`。
+- HAP runner 改为调用 `freerdp_ohos_session_prepare_options`，不再保留本地 username/domain 拆分、端口/分辨率解析、证书策略字符串解析和 FreeRDP storage settings 设置路径。
+- `ohos_session_input.*` 拆出 pointer/key/text/resize 入口，避免继续把 session 主文件堆大。
 
 修改点：
 
