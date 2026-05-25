@@ -200,6 +200,16 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionApplyConnectionSettings);
         LoadOptionalClientSymbol("freerdp_ohos_session_add_standard_channels",
             ohosSessionAddStandardChannels);
+        LoadOptionalClientSymbol("freerdp_ohos_session_new",
+            ohosSessionNew);
+        LoadOptionalClientSymbol("freerdp_ohos_session_free",
+            ohosSessionFree);
+        LoadOptionalClientSymbol("freerdp_ohos_session_connect",
+            ohosSessionConnect);
+        LoadOptionalClientSymbol("freerdp_ohos_session_disconnect",
+            ohosSessionDisconnect);
+        LoadOptionalClientSymbol("freerdp_ohos_session_get_diagnostics",
+            ohosSessionGetDiagnostics);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
             ohosAvcodecSetOutputSurface);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_fallback_callback",

@@ -27,6 +27,7 @@
 #include <client/OHOS/ohos_keyboard.h>
 #include <client/OHOS/ohos_pointer.h>
 #include <client/OHOS/ohos_rdpgfx.h>
+#include <client/OHOS/ohos_session.h>
 #include <client/OHOS/ohos_session_config.h>
 #endif
 
@@ -149,6 +150,13 @@ public:
         rdpSettings*, const FREERDP_OHOS_CONNECTION_CONFIG*, char*, size_t);
     using OhosSessionAddStandardChannelsFn = BOOL (*)(rdpSettings*,
         const FREERDP_OHOS_SESSION_CONFIG*, char*, size_t);
+    using OhosSessionNewFn = freerdpOhosSession* (*)();
+    using OhosSessionFreeFn = void (*)(freerdpOhosSession*);
+    using OhosSessionConnectFn = BOOL (*)(freerdpOhosSession*,
+        const FREERDP_OHOS_SESSION_OPTIONS*, const FREERDP_OHOS_SESSION_CALLBACKS*, char*,
+        size_t);
+    using OhosSessionDisconnectFn = void (*)(freerdpOhosSession*);
+    using OhosSessionGetDiagnosticsFn = const char* (*)(freerdpOhosSession*);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecFallbackCallbackFn = void (*)(const char*, void*);
     using OhosAvcodecSetFallbackCallbackFn = BOOL (*)(OhosAvcodecFallbackCallbackFn, void*);
@@ -252,6 +260,11 @@ public:
     OhosSessionApplySettingsFn ohosSessionApplySettings = nullptr;
     OhosSessionApplyConnectionSettingsFn ohosSessionApplyConnectionSettings = nullptr;
     OhosSessionAddStandardChannelsFn ohosSessionAddStandardChannels = nullptr;
+    OhosSessionNewFn ohosSessionNew = nullptr;
+    OhosSessionFreeFn ohosSessionFree = nullptr;
+    OhosSessionConnectFn ohosSessionConnect = nullptr;
+    OhosSessionDisconnectFn ohosSessionDisconnect = nullptr;
+    OhosSessionGetDiagnosticsFn ohosSessionGetDiagnostics = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetFallbackCallbackFn ohosAvcodecSetFallbackCallback = nullptr;
     OhosAvcodecGetDiagnosticsFn ohosAvcodecGetDiagnostics = nullptr;
