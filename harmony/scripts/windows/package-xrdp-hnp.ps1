@@ -4,7 +4,8 @@ param(
   [string]$TargetHnpRoot = "harmony/app/entry/hnp",
   [string]$HnpName = "xrdp",
   [string]$HnpVersion = "0.1.0",
-  [string]$HnpCliPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\hnpcli.exe"
+  [string]$HnpCliPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\hnpcli.exe",
+  [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe"
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,16 +43,13 @@ function Reset-Directory([string]$Path) {
   New-Item -ItemType Directory -Force -Path $Path | Out-Null
 }
 
-function Copy-LibraryAliases([string]$SourceDir, [string]$RealName, [string[]]$Aliases, [string]$DestinationDir) {
+function Copy-LibraryAs([string]$SourceDir, [string]$RealName, [string]$TargetName, [string]$DestinationDir) {
   $sourcePath = Join-Path $SourceDir $RealName
   if (-not (Test-Path -LiteralPath $sourcePath)) {
     throw "Missing xrdp runtime library: $sourcePath"
   }
 
-  $names = @($RealName) + $Aliases
-  foreach ($name in ($names | Select-Object -Unique)) {
-    Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $DestinationDir $name) -Force
-  }
+  Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $DestinationDir $TargetName) -Force
 }
 
 function Get-OpenH264RealName([string]$SourceDir) {
@@ -63,6 +61,20 @@ function Get-OpenH264RealName([string]$SourceDir) {
     throw "Missing OpenH264 runtime library in dependency sysroot: $SourceDir"
   }
   $candidate.Name
+}
+
+function Strip-FileIfPossible([string]$Path) {
+  if (-not (Test-Path -LiteralPath $StripToolPath)) {
+    return
+  }
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return
+  }
+
+  & $StripToolPath --strip-unneeded $Path
+  if ($LASTEXITCODE -ne 0) {
+    throw "llvm-strip failed for $Path with exit code $LASTEXITCODE"
+  }
 }
 
 if (-not (Test-Path -LiteralPath $HnpCliPath)) {
@@ -97,16 +109,16 @@ $openH264RealName = Get-OpenH264RealName $depsLibSource
 Copy-Item -LiteralPath $xrdpExecutable -Destination (Join-Path $stageBin "xrdp") -Force
 Copy-Item -LiteralPath $embeddedServer -Destination (Join-Path $stageLib "libxrdpserver.so") -Force
 
-Copy-LibraryAliases $xrdpLibSource "libcommon.so.0.0.0" @("libcommon.so.0", "libcommon.so") $stageLib
-Copy-LibraryAliases $xrdpLibSource "libipm.so.0.0.0" @("libipm.so.0", "libipm.so") $stageLib
-Copy-LibraryAliases $xrdpLibSource "libtoml.so.1.0.0" @("libtoml.so.1", "libtoml.so") $stageLib
-Copy-LibraryAliases $xrdpLibSource "libxrdp.so.0.0.0" @("libxrdp.so.0", "libxrdp.so") $stageLib
-Copy-LibraryAliases $xrdpLibSource "libxrdpohos.so" @() $stageLib
+Copy-LibraryAs $xrdpLibSource "libcommon.so.0.0.0" "libcommon.so.0" $stageLib
+Copy-LibraryAs $xrdpLibSource "libipm.so.0.0.0" "libipm.so.0" $stageLib
+Copy-LibraryAs $xrdpLibSource "libtoml.so.1.0.0" "libtoml.so.1" $stageLib
+Copy-LibraryAs $xrdpLibSource "libxrdp.so.0.0.0" "libxrdp.so.0" $stageLib
+Copy-LibraryAs $xrdpLibSource "libxrdpohos.so" "libxrdpohos.so" $stageLib
 
-Copy-LibraryAliases $depsLibSource "libssl.so.3" @("libssl.so") $stageLib
-Copy-LibraryAliases $depsLibSource "libcrypto.so.3" @("libcrypto.so") $stageLib
-Copy-LibraryAliases $depsLibSource "libz.so.1.3.1" @("libz.so.1", "libz.so") $stageLib
-Copy-LibraryAliases $depsLibSource $openH264RealName @("libopenh264.so.7", "libopenh264.so") $stageLib
+Copy-LibraryAs $depsLibSource "libssl.so.3" "libssl.so.3" $stageLib
+Copy-LibraryAs $depsLibSource "libcrypto.so.3" "libcrypto.so.3" $stageLib
+Copy-LibraryAs $depsLibSource "libz.so.1.3.1" "libz.so.1" $stageLib
+Copy-LibraryAs $depsLibSource $openH264RealName "libopenh264.so.7" $stageLib
 
 Get-ChildItem -LiteralPath $configSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $stageConfig -Force
@@ -133,19 +145,6 @@ $hnpJson = @"
 "@
 Set-Content -LiteralPath (Join-Path $stage "hnp.json") -Value $hnpJson -Encoding ASCII
 
-$targetHnp = Join-Path $targetAbiDir "$HnpName.hnp"
-if (Test-Path -LiteralPath $targetHnp) {
-  Remove-Item -LiteralPath $targetHnp -Force
-}
-
-& $HnpCliPath pack -i $stage -o $targetAbiDir
-if ($LASTEXITCODE -ne 0) {
-  throw "hnpcli pack failed with exit code $LASTEXITCODE"
-}
-if (-not (Test-Path -LiteralPath $targetHnp)) {
-  throw "HNP output was not created: $targetHnp"
-}
-
 $requiredHnpStageFiles = @(
   (Join-Path $stageBin "xrdp"),
   (Join-Path $stageLib "libxrdpserver.so"),
@@ -153,6 +152,8 @@ $requiredHnpStageFiles = @(
   (Join-Path $stageLib "libxrdp.so.0"),
   (Join-Path $stageLib "libcommon.so.0"),
   (Join-Path $stageLib "libssl.so.3"),
+  (Join-Path $stageLib "libcrypto.so.3"),
+  (Join-Path $stageLib "libz.so.1"),
   (Join-Path $stageLib "libopenh264.so.7"),
   (Join-Path $stageConfig "xrdp.ini"),
   (Join-Path $stageConfig "rsakeys.ini"),
@@ -166,6 +167,24 @@ foreach ($path in $requiredHnpStageFiles) {
   if (-not (Test-Path -LiteralPath $path)) {
     throw "Missing HNP staged file: $path"
   }
+}
+
+Strip-FileIfPossible (Join-Path $stageBin "xrdp")
+Get-ChildItem -LiteralPath $stageLib -File | ForEach-Object {
+  Strip-FileIfPossible $_.FullName
+}
+
+$targetHnp = Join-Path $targetAbiDir "$HnpName.hnp"
+if (Test-Path -LiteralPath $targetHnp) {
+  Remove-Item -LiteralPath $targetHnp -Force
+}
+
+& $HnpCliPath pack -i $stage -o $targetAbiDir
+if ($LASTEXITCODE -ne 0) {
+  throw "hnpcli pack failed with exit code $LASTEXITCODE"
+}
+if (-not (Test-Path -LiteralPath $targetHnp)) {
+  throw "HNP output was not created: $targetHnp"
 }
 
 Get-Item -LiteralPath $targetHnp | Select-Object FullName, Length
