@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T02 已完成 API/ABI 骨架，T03 待执行
+状态：T03 已完成本地构建验证，等待真机回归
 目标分支：`main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
@@ -132,6 +132,15 @@
 - 如果把 NativeWindow/EGL 细节放进 API，会重新耦合 HAP，必须只用 callback 传 surface target。
 
 ## T03：HAP 改成调用 Session API
+
+实施状态：已完成，2026-05-25。该任务已切换连接逻辑，需要真机验证。
+
+实施记录：
+
+- `ohos_session.*` 现在负责 `freerdp_new/context_new/connect/get_event_handles/check_event_handles/disconnect/context_free` 生命周期和事件循环。
+- `FREERDP_OHOS_SESSION_CALLBACKS` 扩展了 configure、connected、pump、shouldContinue、teardown callbacks；HAP 通过 callback 保留 surface、证书、clipboard、输入队列和渲染管线桥接。
+- `freerdp_session_runner.cpp` 改为 `freerdp_ohos_session_*` 的适配层，不再直接创建 FreeRDP instance 或运行 event loop。
+- 已验证 FreeRDP OHOS arm64 构建、session 符号导出、runtime sync 和本地 HAP build。真机连接/断开/输入/resize 需要人工回归。
 
 修改点：
 

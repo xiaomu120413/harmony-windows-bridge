@@ -13,6 +13,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdio>
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/client.h>
@@ -76,6 +77,27 @@ void StopRenderPipeline(const RdpSessionCallbacks& callbacks)
     }
 }
 
+uint32_t ToNativeCertificatePolicy(CertificatePolicy policy)
+{
+    switch (policy) {
+        case CertificatePolicy::Strict:
+            return FREERDP_OHOS_CERTIFICATE_POLICY_STRICT;
+        case CertificatePolicy::Ignore:
+            return FREERDP_OHOS_CERTIFICATE_POLICY_IGNORE;
+        case CertificatePolicy::Tofu:
+        default:
+            return FREERDP_OHOS_CERTIFICATE_POLICY_TOFU;
+    }
+}
+
+void CopyCallbackMessage(char* message, size_t messageSize, const std::string& value)
+{
+    if (message == nullptr || messageSize == 0) {
+        return;
+    }
+    std::snprintf(message, messageSize, "%s", value.c_str());
+}
+
 void AlignH264DesktopSize(const GraphicsPipelineConfig& graphicsConfig, uint32_t& width,
     uint32_t& height, const std::function<void(const std::string&)>& log)
 {
@@ -105,6 +127,179 @@ void AlignH264DesktopSize(const GraphicsPipelineConfig& graphicsConfig, uint32_t
             " -> " + std::to_string(width) + "x" + std::to_string(height));
     }
 }
+
+struct OhosSessionAdapter {
+    FreerdpRuntimeApi& api;
+    const ConnectParams& params;
+    const GraphicsPipelineConfig& graphicsConfig;
+    CertificatePolicy certificatePolicy;
+    const RdpSessionCallbacks& callbacks;
+    const FreerdpSetActiveFn& setActive;
+    const FreerdpClearActiveFn& clearActive;
+    const std::function<void(const std::string&)>& log;
+    const FreerdpConnectedFn& onConnected;
+    const FreerdpInputPumpFn& pumpInput;
+    std::atomic_bool& running;
+    HarmonyClipboardBridge clipboardBridge;
+    bool activeSet = false;
+    bool certificateRegistered = false;
+    bool connected = false;
+    std::chrono::steady_clock::time_point nextAudioDiagnosticsLog =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+
+    void EmitLog(const std::string& line)
+    {
+        if (log != nullptr && !line.empty()) {
+            log(line);
+        }
+    }
+
+    bool Configure(freerdp* instance, rdpContext* context, char* message, size_t messageSize)
+    {
+        if (instance == nullptr || context == nullptr || context->settings == nullptr) {
+            CopyCallbackMessage(message, messageSize, "FreeRDP session configure context is unavailable");
+            return false;
+        }
+
+        setActive(&api, instance, context);
+        activeSet = true;
+
+        std::string error;
+        SetCertificatePolicyLogSink(log);
+        if (!ConfigureFreerdpStoragePaths(api, context->settings, params, log, error) ||
+            !ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
+            !ConfigureGraphicsPipelineChannel(api, context->settings, graphicsConfig, log, error)) {
+            CopyCallbackMessage(message, messageSize, error);
+            return false;
+        }
+
+        if (!clipboardBridge.Initialize(context, api, log, error)) {
+            CopyCallbackMessage(message, messageSize, error);
+            return false;
+        }
+
+        instance->PostConnect = HarmonyPostConnect;
+        instance->PostDisconnect = HarmonyPostDisconnect;
+        instance->VerifyCertificateEx = HarmonyVerifyCertificateEx;
+        instance->VerifyChangedCertificateEx = HarmonyVerifyChangedCertificateEx;
+        SetGdiBridgeCallbacks({
+            IsAvc420SurfaceOutputEnabled,
+            callbacks.queueSurfaceRgbaFrame,
+            callbacks.startRenderPipeline,
+            callbacks.stopRenderPipeline,
+            log,
+        });
+        RegisterCertificatePolicy(instance, certificatePolicy);
+        certificateRegistered = true;
+        ClearRdpDesktopSize();
+
+        EmitLog("FreeRDP target configured through OHOS session API");
+        EmitLog("FreeRDP mode=OhosSessionApi");
+        EmitLog("FreeRDP GDI renderer configured");
+        EmitLog(std::string("FreeRDP certificate policy=") + CertificatePolicyName(certificatePolicy));
+        return true;
+    }
+
+    void Connected(freerdp*, rdpContext*)
+    {
+        connected = true;
+        onConnected();
+    }
+
+    bool Pump(freerdp*, rdpContext* context)
+    {
+        pumpInput(&api, context);
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= nextAudioDiagnosticsLog) {
+            EmitHilogInfo("FreeRDP audio diagnostics: " + BuildOHAudioStatsLog());
+            nextAudioDiagnosticsLog = now + std::chrono::seconds(10);
+        }
+        return true;
+    }
+
+    bool ShouldContinue() const
+    {
+        return running.load();
+    }
+
+    void Teardown(freerdp* instance, rdpContext*)
+    {
+        ResetAvcSurfaceOutput(api);
+        clipboardBridge.Uninitialize();
+        ClearRdpDesktopSize();
+        if (certificateRegistered) {
+            UnregisterCertificatePolicy(instance);
+            certificateRegistered = false;
+        }
+        ClearCertificatePolicyLogSink();
+        StopRenderPipeline(callbacks);
+        if (activeSet) {
+            clearActive(instance);
+            activeSet = false;
+        }
+    }
+
+    static void LogCallback(const char* message, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        if (adapter != nullptr && message != nullptr && message[0] != '\0') {
+            adapter->EmitLog(message);
+        }
+    }
+
+    static void ErrorCallback(const char* message, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        if (adapter != nullptr && message != nullptr && message[0] != '\0') {
+            adapter->EmitLog(message);
+        }
+    }
+
+    static void StateCallback(const char* state, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        if (adapter != nullptr && state != nullptr && state[0] != '\0') {
+            adapter->EmitLog(std::string("OHOS session state=") + state);
+        }
+    }
+
+    static BOOL ConfigureCallback(freerdp* instance, rdpContext* context,
+        const FREERDP_OHOS_SESSION_OPTIONS*, char* message, size_t messageSize, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        return adapter != nullptr && adapter->Configure(instance, context, message, messageSize)
+            ? TRUE
+            : FALSE;
+    }
+
+    static void ConnectedCallback(freerdp* instance, rdpContext* context, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        if (adapter != nullptr) {
+            adapter->Connected(instance, context);
+        }
+    }
+
+    static BOOL PumpCallback(freerdp* instance, rdpContext* context, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        return adapter != nullptr && adapter->Pump(instance, context) ? TRUE : FALSE;
+    }
+
+    static BOOL ShouldContinueCallback(void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        return adapter != nullptr && adapter->ShouldContinue() ? TRUE : FALSE;
+    }
+
+    static void TeardownCallback(freerdp* instance, rdpContext* context, void* userData)
+    {
+        auto* adapter = static_cast<OhosSessionAdapter*>(userData);
+        if (adapter != nullptr) {
+            adapter->Teardown(instance, context);
+        }
+    }
+};
 #endif
 
 } // namespace
@@ -151,212 +346,99 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     log("FreeRDP runtime symbols loaded");
     RegisterMicrophonePermissionBridge(api, log);
 
-    freerdp* instance = api.freerdpNew();
-    if (instance == nullptr) {
-        result.message = "freerdp_new failed";
+    if (api.ohosSessionNew == nullptr || api.ohosSessionFree == nullptr ||
+        api.ohosSessionConnect == nullptr || api.ohosSessionGetDiagnostics == nullptr) {
+        result.message = "FreeRDP OHOS session API symbols are not loaded";
         result.failed = true;
         return result;
     }
-
-    bool contextCreated = false;
-    HarmonyClipboardBridge clipboardBridge;
-    auto cleanup = [&]() {
-        ResetAvcSurfaceOutput(api);
-        clipboardBridge.Uninitialize();
-        ClearRdpDesktopSize();
-        UnregisterCertificatePolicy(instance);
-        ClearCertificatePolicyLogSink();
-        if (contextCreated && instance->context != nullptr) {
-            api.abortConnectContext(instance->context);
-            api.disconnect(instance);
-            StopRenderPipeline(callbacks);
-            clearActive(instance);
-            api.contextFree(instance);
-        } else {
-            clearActive(instance);
-        }
-        api.freerdpFree(instance);
-    };
-
-    if (!api.contextNew(instance)) {
-        result.message = "freerdp_context_new failed";
+    if (api.ohosSessionConfigDefault == nullptr) {
+        result.message = "FreeRDP OHOS session config symbol is not loaded";
         result.failed = true;
-        cleanup();
         return result;
     }
-    contextCreated = true;
-    if (!EnableFreerdpClientChannels(api, instance, log, error)) {
-        result.message = error;
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-    setActive(&api, instance, instance->context);
-
-    rdpSettings* settings = instance->context == nullptr ? nullptr : instance->context->settings;
-    if (settings == nullptr) {
-        result.message = "FreeRDP settings unavailable";
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-    SetCertificatePolicyLogSink(log);
 
     UserParts user = SplitDomainUsername(params.username);
     const CertificatePolicy certificatePolicy = ParseCertificatePolicy(params.certPolicy);
     const bool ignoreCertificate = certificatePolicy == CertificatePolicy::Ignore;
 
-    if (api.ohosSessionApplyConnectionSettings == nullptr) {
-        result.message = "FreeRDP OHOS connection settings helper is not loaded";
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-    FREERDP_OHOS_CONNECTION_CONFIG connectionConfig = {};
-    connectionConfig.serverHostname = params.host.c_str();
-    connectionConfig.serverPort = port;
-    connectionConfig.username = user.username.c_str();
-    connectionConfig.password = params.password.c_str();
-    connectionConfig.domain = user.domain.empty() ? nullptr : user.domain.c_str();
-    connectionConfig.desktopWidth = width;
-    connectionConfig.desktopHeight = height;
-    connectionConfig.colorDepth = 32;
-    connectionConfig.tcpConnectTimeoutMs = 5000;
-    connectionConfig.ignoreCertificate = ignoreCertificate ? TRUE : FALSE;
-
-    std::array<char, 256> connectionDetail {};
-    if (!api.ohosSessionApplyConnectionSettings(
-            settings, &connectionConfig, connectionDetail.data(), connectionDetail.size())) {
-        result.message = connectionDetail[0] == '\0'
-            ? "FreeRDP OHOS connection settings helper failed"
-            : connectionDetail.data();
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-    log("OHOS FreeRDP connection settings applied");
-
-    if (!ConfigureFreerdpStoragePaths(api, settings, params, log, error) ||
-        !ConfigureEnhancedRdpSettings(api, settings, graphicsConfig, params, log, error) ||
-        !ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
-        !ConfigureGraphicsPipelineChannel(api, settings, graphicsConfig, log, error) ||
-        !ConfigureOhosStandardChannels(api, settings, graphicsConfig, params, log, error)) {
-        result.message = error;
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-
-    if (!clipboardBridge.Initialize(instance->context, api, log, error)) {
-        result.message = error;
-        result.failed = true;
-        cleanup();
-        return result;
-    }
-
-    instance->PostConnect = HarmonyPostConnect;
-    instance->PostDisconnect = HarmonyPostDisconnect;
-    instance->VerifyCertificateEx = HarmonyVerifyCertificateEx;
-    instance->VerifyChangedCertificateEx = HarmonyVerifyChangedCertificateEx;
-    SetGdiBridgeCallbacks({
-        IsAvc420SurfaceOutputEnabled,
-        callbacks.queueSurfaceRgbaFrame,
-        callbacks.startRenderPipeline,
-        callbacks.stopRenderPipeline,
-        log,
-    });
-    RegisterCertificatePolicy(instance, certificatePolicy);
-    ClearRdpDesktopSize();
-
-    log("FreeRDP target configured");
-    log("FreeRDP mode=PersistentSession");
-    log("FreeRDP GDI renderer configured");
-    log(std::string("FreeRDP certificate policy=") + CertificatePolicyName(certificatePolicy));
     if (!user.domain.empty()) {
         log("FreeRDP domain parsed from username");
     }
 
-    BOOL rc = api.connect(instance);
-    uint32_t lastError = instance->context == nullptr ? UINT32_MAX : api.getLastError(instance->context);
-    log(std::string("freerdp_connect returned ") + (rc ? "true" : "false"));
+    FREERDP_OHOS_SESSION_CONFIG sessionConfig = api.ohosSessionConfigDefault();
+    sessionConfig.graphicsPipeline = graphicsConfig.enabled ? TRUE : FALSE;
+    sessionConfig.h264 = graphicsConfig.enabled && graphicsConfig.h264 ? TRUE : FALSE;
+
+    FREERDP_OHOS_SESSION_OPTIONS options = {};
+    options.connection.serverHostname = params.host.c_str();
+    options.connection.serverPort = port;
+    options.connection.username = user.username.c_str();
+    options.connection.password = params.password.c_str();
+    options.connection.domain = user.domain.empty() ? nullptr : user.domain.c_str();
+    options.connection.desktopWidth = width;
+    options.connection.desktopHeight = height;
+    options.connection.colorDepth = 32;
+    options.connection.tcpConnectTimeoutMs = 5000;
+    options.connection.ignoreCertificate = ignoreCertificate ? TRUE : FALSE;
+    options.session = sessionConfig;
+    options.appDataDir = params.appFilesDir.empty() ? nullptr : params.appFilesDir.c_str();
+    options.certificatePolicy = ToNativeCertificatePolicy(certificatePolicy);
+
+    freerdpOhosSession* session = api.ohosSessionNew();
+    if (session == nullptr) {
+        result.message = "freerdp_ohos_session_new failed";
+        result.failed = true;
+        return result;
+    }
+
+    OhosSessionAdapter adapter {
+        api,
+        params,
+        graphicsConfig,
+        certificatePolicy,
+        callbacks,
+        setActive,
+        clearActive,
+        log,
+        onConnected,
+        pumpInput,
+        running,
+    };
+    FREERDP_OHOS_SESSION_CALLBACKS sessionCallbacks = {};
+    sessionCallbacks.StateChanged = OhosSessionAdapter::StateCallback;
+    sessionCallbacks.Log = OhosSessionAdapter::LogCallback;
+    sessionCallbacks.Error = OhosSessionAdapter::ErrorCallback;
+    sessionCallbacks.Configure = OhosSessionAdapter::ConfigureCallback;
+    sessionCallbacks.Connected = OhosSessionAdapter::ConnectedCallback;
+    sessionCallbacks.Pump = OhosSessionAdapter::PumpCallback;
+    sessionCallbacks.ShouldContinue = OhosSessionAdapter::ShouldContinueCallback;
+    sessionCallbacks.Teardown = OhosSessionAdapter::TeardownCallback;
+    sessionCallbacks.userData = &adapter;
+
+    std::array<char, 512> detail {};
+    const BOOL ok = api.ohosSessionConnect(
+        session, &options, &sessionCallbacks, detail.data(), detail.size());
+    result.connected = adapter.connected;
+    result.message = detail[0] == '\0' ? SafeCString(api.ohosSessionGetDiagnostics(session)) : detail.data();
+    api.ohosSessionFree(session);
 
     if (!running.load()) {
         result.cancelled = true;
-        result.message = "FreeRDP connect cancelled";
-        cleanup();
-        return result;
-    }
-
-    if (!rc) {
-        result.failed = true;
-        result.message = "FreeRDP connect failed: " + LastErrorMessage(api, lastError);
-        cleanup();
-        return result;
-    }
-
-    result.connected = true;
-    result.message = "FreeRDP session connected";
-    onConnected();
-    log("FreeRDP event loop started");
-    auto nextAudioDiagnosticsLog = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-
-    while (running.load() && !api.shallDisconnectContext(instance->context)) {
-        pumpInput(&api, instance->context);
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= nextAudioDiagnosticsLog) {
-            EmitHilogInfo("FreeRDP audio diagnostics: " + BuildOHAudioStatsLog());
-            nextAudioDiagnosticsLog = now + std::chrono::seconds(10);
-        }
-
-        HANDLE handles[MAXIMUM_WAIT_OBJECTS] = {};
-        DWORD count = api.getEventHandles(instance->context, handles, MAXIMUM_WAIT_OBJECTS);
-        if (count == 0) {
-            uint32_t errorCode = api.getLastError(instance->context);
-            result.failed = true;
-            result.message = "freerdp_get_event_handles failed: " + LastErrorMessage(api, errorCode);
-            break;
-        }
-
-        DWORD waitStatus = api.waitForMultipleObjects(count, handles, FALSE, 5);
-        if (!running.load()) {
-            result.cancelled = true;
+        if (result.message.empty()) {
             result.message = "FreeRDP session cancelled";
-            break;
         }
-
-        if (waitStatus == WAIT_TIMEOUT) {
-            continue;
-        }
-
-        if (waitStatus == WAIT_FAILED) {
-            result.failed = true;
-            result.message = "WaitForMultipleObjects failed: " + Hex32(static_cast<uint32_t>(waitStatus));
-            break;
-        }
-
-        if (!api.checkEventHandles(instance->context)) {
-            uint32_t errorCode = api.getLastError(instance->context);
-            if (errorCode == FREERDP_ERROR_SUCCESS) {
-                result.message = "FreeRDP event loop stopped without error";
-            } else if (graphicsConfig.h264 && errorCode == ERROR_NOT_SUPPORTED) {
-                result.failed = true;
-                result.message =
-                    "FreeRDP graphics negotiation failed: server did not confirm requested RDPGFX H264 mode";
-            } else {
-                result.failed = true;
-                result.message = "FreeRDP event loop failed: " + LastErrorMessage(api, errorCode);
-            }
-            break;
-        }
-
-        pumpInput(&api, instance->context);
+        return result;
     }
 
-    if (!result.cancelled && !result.failed && result.message == "FreeRDP session connected") {
+    if (!ok) {
+        result.failed = true;
+        if (result.message.empty()) {
+            result.message = "FreeRDP OHOS session API failed";
+        }
+    } else if (result.message.empty()) {
         result.message = "FreeRDP session ended";
     }
-
-    cleanup();
     return result;
 }
 #else
