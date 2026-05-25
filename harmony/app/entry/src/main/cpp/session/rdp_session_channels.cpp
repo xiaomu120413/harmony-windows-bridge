@@ -96,7 +96,7 @@ bool RdpSessionChannels::RequestCurrentFrameRender(const std::string& reason, st
     return true;
 #else
     (void)reason;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }
@@ -157,7 +157,7 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
     (void)width;
     (void)height;
     (void)reason;
-    message = "FreeRDP headers not found at build time";
+    message = "explicit FreeRDP demo build has no headers";
     return false;
 #endif
 }

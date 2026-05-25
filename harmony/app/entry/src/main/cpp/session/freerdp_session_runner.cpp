@@ -364,7 +364,7 @@ RdpSessionRunResult RunFreerdpSessionUnavailable()
 {
     RdpSessionRunResult result;
     result.available = false;
-    result.message = "FreeRDP headers not found at build time";
+    result.message = "explicit FreeRDP demo build has no headers";
     result.failed = true;
     return result;
 }

@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T00 基线已建立，T01 待执行
+状态：T01 已完成，T02 待执行
 目标分支：`codex/prelaunch-main`  
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
@@ -69,6 +69,15 @@
 - runtime libs 如果不是从当前 submodule commit 构建，后续问题可能被误判为代码问题。
 
 ## T01：去掉商用构建中的 mock/header fallback
+
+实施状态：已完成，2026-05-25。
+
+实施记录：
+
+- 商用默认构建现在要求 FreeRDP/WinPR headers、FreeRDP `client/OHOS` headers 和核心 runtime `.so` 均存在，否则 CMake 直接失败。
+- 仅显式传入 `-DHARMONY_ALLOW_FREERDP_DEMO_BUILD=ON` 时，才允许缺失 FreeRDP 产物的 demo/mock 构建。
+- HAP C++ 里的 headerless fallback 文案已改为显式 demo build 语义，不再把商用路径描述成可运行降级。
+- 已验证正常 CMake 配置、缺失产物 fail-fast、显式 demo 放行和本地 HAP build。
 
 修改点：
 

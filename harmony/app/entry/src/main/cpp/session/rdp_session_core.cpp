@@ -131,7 +131,7 @@ struct RdpSession::Impl {
             EmitLog(line);
         });
 #else
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -149,7 +149,7 @@ struct RdpSession::Impl {
             });
 #else
         (void)pointer;
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -165,7 +165,7 @@ struct RdpSession::Impl {
             EmitLog(line);
         });
 #else
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -182,7 +182,7 @@ struct RdpSession::Impl {
         });
 #else
         (void)event;
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -198,7 +198,7 @@ struct RdpSession::Impl {
             EmitLog(line);
         });
 #else
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -215,7 +215,7 @@ struct RdpSession::Impl {
         });
 #else
         (void)text;
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -232,7 +232,7 @@ struct RdpSession::Impl {
         });
 #else
         (void)toggleStates;
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -249,7 +249,7 @@ struct RdpSession::Impl {
             EmitLog(line);
         });
 #else
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -268,7 +268,7 @@ struct RdpSession::Impl {
 
         return channels.RequestCurrentFrameRender(reason, message);
 #else
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
@@ -284,7 +284,7 @@ struct RdpSession::Impl {
 
         return channels.RequestDynamicDesktopResize(width, height, reason, message);
 #else
-        message = "FreeRDP headers not found at build time";
+        message = "explicit FreeRDP demo build has no headers";
         return false;
 #endif
     }
