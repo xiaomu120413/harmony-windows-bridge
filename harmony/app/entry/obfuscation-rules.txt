@@ -21,3 +21,29 @@
 -enable-toplevel-obfuscation
 -enable-filename-obfuscation
 -enable-export-obfuscation
+
+# Keep the ArkTS <-> NAPI bridge contract stable. The native layer reads and
+# writes these property names by string through napi_get_named_property and
+# napi_set_named_property, so property obfuscation must not rename them.
+-keep-property-name
+connect
+releaseAllKeys
+onState
+onLog
+onError
+onMicrophonePermissionRequest
+onClipboardPermissionRequest
+completeClipboardPermissionRequest
+completeMicrophonePermissionRequest
+host
+port
+username
+password
+certPolicy
+appFilesDir
+requestId
+granted
+ok
+state
+message
+logs
