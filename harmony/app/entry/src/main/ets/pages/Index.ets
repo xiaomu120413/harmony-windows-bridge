@@ -20,6 +20,11 @@ struct Index {
   @State private password: string = ''
   // 暂时固定使用 TOFU 证书策略，后续需要严格校验时再恢复策略选择入口。
   private certPolicy: string = 'tofu'
+  private graphicsMode: string = 'rdpgfx-h264'
+  private resolution: string = 'auto'
+  @State private enableAudioPlayback: boolean = true
+  @State private enableClipboard: boolean = false
+  @State private enableAudioCapture: boolean = false
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
   @State private settingsButtonHovered: boolean = false
@@ -163,21 +168,28 @@ struct Index {
     const username = this.username
     const password = this.password
     const appFilesDir = this.getAppFilesDir()
+    const enableAudioPlayback = this.enableAudioPlayback
+    const enableClipboard = this.enableClipboard
+    const enableAudioCapture = this.enableAudioCapture
     this.connected = false
     this.setSessionVisible(true)
     this.appendLog('Opening session surface')
-    this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
+    this.queueNativeConnect(host, port, username, password, policy, appFilesDir, enableAudioPlayback,
+      enableClipboard, enableAudioCapture)
   }
 
   private queueNativeConnect(host: string, port: string, username: string, password: string, policy: string,
-    appFilesDir: string): void {
+    appFilesDir: string, enableAudioPlayback: boolean, enableClipboard: boolean,
+    enableAudioCapture: boolean): void {
     setTimeout((): void => {
-      this.startNativeConnect(host, port, username, password, policy, appFilesDir)
+      this.startNativeConnect(host, port, username, password, policy, appFilesDir, enableAudioPlayback,
+        enableClipboard, enableAudioCapture)
     }, 0)
   }
 
   private startNativeConnect(host: string, port: string, username: string, password: string,
-    policy: string, appFilesDir: string): void {
+    policy: string, appFilesDir: string, enableAudioPlayback: boolean, enableClipboard: boolean,
+    enableAudioCapture: boolean): void {
     try {
       this.appendLog('Calling native connect')
       const result: NativeCommandResult = rdpNative.connect({
@@ -186,7 +198,13 @@ struct Index {
         username: username,
         password: password,
         certPolicy: policy,
-        appFilesDir: appFilesDir
+        resolution: this.resolution,
+        graphicsMode: this.graphicsMode,
+        appFilesDir: appFilesDir,
+        enableAudioPlayback: enableAudioPlayback,
+        enableClipboard: enableClipboard,
+        enableDisplayControl: true,
+        enableAudioCapture: enableAudioCapture
       })
       this.appendLog(result.message)
       this.appendNativeLogs(result.logs)
@@ -354,6 +372,7 @@ struct Index {
           .onChange((value: string) => {
             this.password = value
           })
+        this.buildChannelOptions()
         Button(SettingsText.HOME_CONNECT_BUTTON)
           .type(ButtonType.Normal)
           .height(44)
@@ -388,6 +407,49 @@ struct Index {
         style: BorderStyle.Solid
       })
       .onChange(onChange)
+  }
+
+  @Builder
+  private buildChannelOptions() {
+    Column({ space: 8 }) {
+      this.channelToggle(SettingsText.HOME_AUDIO_PLAYBACK_TOGGLE, this.enableAudioPlayback, (value: boolean) => {
+        this.enableAudioPlayback = value
+      })
+      this.channelToggle(SettingsText.HOME_CLIPBOARD_TOGGLE, this.enableClipboard, (value: boolean) => {
+        this.enableClipboard = value
+      })
+      this.channelToggle(SettingsText.HOME_MICROPHONE_TOGGLE, this.enableAudioCapture, (value: boolean) => {
+        this.enableAudioCapture = value
+      })
+    }
+    .width('100%')
+    .margin({ bottom: 12 })
+  }
+
+  @Builder
+  private channelToggle(label: string, value: boolean, onChange: (value: boolean) => void) {
+    Row() {
+      Text(label)
+        .fontSize(14)
+        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+        .maxLines(1)
+        .layoutWeight(1)
+
+      Toggle({ type: ToggleType.Switch, isOn: value })
+        .selectedColor('#0A84FF')
+        .onChange(onChange)
+    }
+    .height(42)
+    .width('100%')
+    .padding({ left: 14, right: 10 })
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+    .borderRadius(SettingsTheme.CARD_RADIUS)
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark()),
+      style: BorderStyle.Solid
+    })
   }
 
   @Builder

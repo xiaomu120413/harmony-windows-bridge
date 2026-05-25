@@ -15,6 +15,9 @@ export class SettingsText {
   static readonly HOME_PORT_PLACEHOLDER: string = 'Port'
   static readonly HOME_USERNAME_PLACEHOLDER: string = 'Username'
   static readonly HOME_PASSWORD_PLACEHOLDER: string = 'Password'
+  static readonly HOME_AUDIO_PLAYBACK_TOGGLE: string = '声音'
+  static readonly HOME_CLIPBOARD_TOGGLE: string = '剪贴板'
+  static readonly HOME_MICROPHONE_TOGGLE: string = '麦克风'
   static readonly HOME_CONNECT_BUTTON: string = 'Connect'
 
   static readonly SETTINGS_TITLE: string = '设置'

@@ -1,6 +1,6 @@
 # HarmonyOS FreeRDP 下沉与可接入化任务清单
 
-状态：T05 已完成本地构建验证，等待真机回归
+状态：T06 已完成本地构建验证，等待真机回归
 目标分支：本地 `main`，获确认后仅推送远端 `codex/prelaunch-main`
 目标交付：可商用、可被其他 HarmonyOS 应用快速接入的 FreeRDP OHOS 版本
 
@@ -190,7 +190,7 @@
 
 ## T05：证书策略彻底下沉
 
-实施状态：已完成本地构建验证，2026-05-25。该任务切换了证书回调归属，需要真机验证。
+实施状态：已完成本地构建和真机验证，2026-05-25。
 
 本次实现记录：
 
@@ -217,6 +217,15 @@
 - 改默认策略会影响现有测试机连接，需要同步更新测试配置。
 
 ## T06：通道默认开关改成显式配置
+
+实施状态：已完成本地构建验证，2026-05-25。该任务切换了默认通道开关，需要真机验证。
+
+本次实现记录：
+
+- `FREERDP_OHOS_SESSION_INPUT` 新增 clipboard、display-control、audio playback、audio capture 和音频参数字段，HAP/N-API 显式传入通道选择。
+- `freerdp_ohos_session_config_default` 默认关闭 clipboard 和 audio capture，保留 display-control 和 audio playback 默认开启；`DeviceRedirection` 默认关闭。
+- HAP 主界面新增声音、剪贴板、麦克风开关；剪贴板和麦克风默认关闭，关闭时不会注册 cliprdr bridge 或 audin 权限桥。
+- 已验证 FreeRDP OHOS build、runtime sync 和 HAP build。
 
 修改点：
 
