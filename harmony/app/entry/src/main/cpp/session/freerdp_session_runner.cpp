@@ -8,7 +8,6 @@
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/graphics_config.h"
 #include "napi/microphone_permission_bridge.h"
-#include "freerdp/rdp_channel_config.h"
 #include "common/string_utils.h"
 
 #include <array>
