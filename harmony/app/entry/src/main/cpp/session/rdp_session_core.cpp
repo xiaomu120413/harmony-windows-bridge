@@ -441,6 +441,16 @@ struct RdpSession::Impl {
         }
         RdpSessionRunResult session;
         const std::vector<std::string> graphicsModes = BuildGraphicsFallbackModes(params);
+        if (graphicsModes.empty()) {
+            const std::string message =
+                "FreeRDP OHOS graphics fallback helper returned no modes";
+            connected.store(false);
+            EmitState("Failed");
+            EmitLog(message);
+            EmitError(message);
+            running.store(false);
+            return;
+        }
         EmitLog("graphics fallback ladder: " + JoinGraphicsModes(graphicsModes));
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
         for (size_t attempt = 0; attempt < graphicsModes.size(); ++attempt) {

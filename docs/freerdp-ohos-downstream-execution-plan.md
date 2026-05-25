@@ -247,6 +247,15 @@
 
 ## T07：graphicsMode 和 fallback 单一来源
 
+实施状态：已完成本地构建验证，2026-05-25。该任务切换了图形模式和 fallback 决策来源，需要真机验证。
+
+本次实现记录：
+
+- `graphics_config.cpp` 删除 HAP 本地图形模式字符串解析、本地 fallback ladder 和本地 retry 关键字判断。
+- HAP 现在只调用 `freerdp_ohos_graphics_config_from_mode`、`freerdp_ohos_graphics_fallback_modes` 和 `freerdp_ohos_graphics_should_retry_fallback`。
+- 缺 FreeRDP OHOS graphics helper 或 helper 返回空 fallback ladder 时直接失败，不再回退到 HAP 旧逻辑。
+- 已验证 helper 符号、`diff --check` 和 HAP build。
+
 修改点：
 
 - 删除或收缩 `harmony/app/entry/src/main/cpp/freerdp/graphics_config.cpp` 的本地解析逻辑。
