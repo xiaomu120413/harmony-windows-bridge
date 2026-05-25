@@ -7,7 +7,7 @@
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
-- client channels：`cliprdr`、`drdynvc`、`disp`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。运行时默认只打开基础桌面、display-control、RDPGFX 和音频播放；剪贴板、麦克风、drive、printer 默认关闭。
+- client channels：`cliprdr`、`drdynvc`、`disp`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。剪贴板和麦克风权限保持按需申请，不在连接开始时主动弹权限。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - 首版交付不编译 FreeRDP smartcard source/channel、WinPR smartcard PCSC backend、TSMF，避免把未闭环的平台服务和 deprecated 视频路径带进包。
@@ -35,12 +35,12 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 
 | 能力 | 编译状态 | 当前打包状态 | 运行时遗留 |
 | --- | --- | --- | --- |
-| 剪贴板文本 `cliprdr` | 通过 | 已进 HAP，默认关闭 | 主界面开关启用后才注册 cliprdr bridge 和触发 Pasteboard 读取权限 |
+| 剪贴板文本 `cliprdr` | 通过 | 已进 HAP | 实际读取 Harmony Pasteboard 时才通过 callback 申请权限 |
 | 剪贴板文件/FUSE | 失败 | 未进 HAP | `WITH_FUSE=ON` 当前缺 `fuse3`；普通应用沙箱下也不建议直接暴露任意路径 |
-| 音频播放 `rdpsnd` | 通过 | 已进 HAP，默认开启 | 通过主界面声音开关显式控制；OHAudio 后端需持续真机回归 |
-| 麦克风 `audin` | 通过 | 已进 HAP，默认关闭 | 主界面麦克风开关启用后才注册 audin 和触发麦克风权限 |
-| 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP，默认关闭 | 需要 UI 选择共享目录、沙箱权限、只读/读写策略和路径脱敏 |
-| 打印 channel `printer` | 通过 | 已进 HAP，默认关闭 | channel 已有；CUPS backend 当前不能配置，后续接 Harmony Print 或移植 CUPS |
+| 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端需持续真机回归 |
+| 麦克风 `audin` | 通过 | 已进 HAP | 远端实际请求采集时才通过 callback 申请麦克风权限 |
+| 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP | 需要 UI 选择共享目录、沙箱权限、只读/读写策略和路径脱敏 |
+| 打印 channel `printer` | 通过 | 已进 HAP | channel 已有；CUPS backend 当前不能配置，后续接 Harmony Print 或移植 CUPS |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
 | 智能卡 source/channel `smartcard` | 关闭 | 未进 HAP | 首版不交付；恢复时需要独立开关、PC/SC 服务/权限模型和真机读卡验收 |
 | WinPR smartcard PCSC backend | 关闭 | 未进 HAP | 产品构建硬关 OFF，避免运行时 `dlopen` PCSC 和合规能力不闭环 |
@@ -84,9 +84,9 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 1. 启动 App，确认 `probe()` 能看到 FreeRDP runtime、client channel loader、FFmpeg/OpenH264/OpenSLES，并显示 smartcard/TSMF excluded。
 2. 连接 Windows，确认基础画面、鼠标、键盘仍正常。
 3. 观察 RDPGFX/H.264 是否被协商，并确认 AVC444 GPU compositor 日志为默认开启；如果没有，记录服务端能力和 FreeRDP 日志。
-4. 默认关闭剪贴板连接一次，确认不会加载 `cliprdr`、不会申请 Pasteboard 权限；再打开剪贴板开关验证文本同步。
-5. 播放 Windows 系统声音，观察 `rdpsnd` 日志、延迟、断连和后台行为；关闭声音开关后确认不加载 `rdpsnd`。
-6. 默认关闭麦克风连接一次，确认不会加载 `audin`、不会申请麦克风权限；打开麦克风开关后再验证权限和采集路径。
+4. 连接开始时不应立即弹 Pasteboard 权限；触发剪贴板读取时才申请权限，并验证文本同步。
+5. 播放 Windows 系统声音，观察 `rdpsnd` 日志、延迟、断连和后台行为。
+6. 连接开始时不应立即弹麦克风权限；远端实际请求音频采集时才申请权限，并验证 `audin` 采集路径。
 7. 启用一个只读共享目录，验证 `drive` runtime settings、路径选择和权限策略。
 8. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
 9. 填 RD Gateway 参数，验证 settings 映射和失败提示。
