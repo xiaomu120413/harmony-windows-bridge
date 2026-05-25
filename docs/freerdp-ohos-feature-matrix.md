@@ -1,6 +1,6 @@
 # FreeRDP OHOS Feature Matrix
 
-更新时间：2026-05-23
+更新时间：2026-05-25
 
 ## 结论
 
@@ -48,6 +48,16 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | RDPGFX/H.264 + AVC444 GPU compositor | 通过 | FFmpeg/OpenH264/OHOS AVCodec 已进 HAP | 商用默认 `rdpgfx-h264` 并默认启用 AVC444 GPU compositor；单条 command 失败时保留 FreeRDP native GDI fallback |
 | TSMF | 关闭 | 未进 HAP | FreeRDP 标注 deprecated，首版裁剪；视频路线优先 RDPGFX/H.264 或 OHOS AVCodec |
 
+## 验收基线
+
+T00 已把后续任务的可重复验收口径整理到 `docs/freerdp-ohos-validation-baseline.md`。本矩阵继续记录 feature 状态；构建命令、runtime 同步命令、HAP 产物路径和真机最小回归清单以基线文档为准。
+
+当前基线：
+
+- 主仓库提交：`b449ff223262c7605dc183bbb78cf48ac1a2b113`
+- FreeRDP 子模块提交：`d00af99d5d6abddc9e6daf46a738a18ee656e949`
+- FreeRDP 标识：`3.26.0-135-gd00af99d5`
+
 ## 本轮验证命令
 
 ```bash
@@ -64,6 +74,8 @@ HAP 构建使用 `harmony/app/build_hap.bat`，目标产物：
 ```text
 harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 ```
+
+每个 T01-T18 任务完成后，应在任务说明中明确是否已覆盖 FreeRDP build、runtime sync、HAP build 和真机检查。未覆盖的检查不能默认为通过。
 
 ## 真机验证清单
 
