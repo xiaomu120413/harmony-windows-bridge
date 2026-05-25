@@ -1,7 +1,6 @@
 #include "session/freerdp_session_runner.h"
 
 #include "common/bridge_log.h"
-#include "freerdp/certificate_policy.h"
 #include "channels/audio_diagnostics.h"
 #include "channels/clipboard_bridge.h"
 #include "channels/rdpgfx_pipeline.h"
@@ -54,7 +53,6 @@ void CopyCallbackMessage(char* message, size_t messageSize, const std::string& v
 struct OhosSessionAdapter {
     FreerdpRuntimeApi& api;
     const GraphicsPipelineConfig& graphicsConfig;
-    CertificatePolicy certificatePolicy;
     const RdpSessionCallbacks& callbacks;
     const FreerdpSetActiveFn& setActive;
     const FreerdpClearActiveFn& clearActive;
@@ -64,7 +62,6 @@ struct OhosSessionAdapter {
     std::atomic_bool& running;
     HarmonyClipboardBridge clipboardBridge;
     bool activeSet = false;
-    bool certificateRegistered = false;
     bool connected = false;
     std::chrono::steady_clock::time_point nextAudioDiagnosticsLog =
         std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -87,7 +84,6 @@ struct OhosSessionAdapter {
         activeSet = true;
 
         std::string error;
-        SetCertificatePolicyLogSink(log);
         if (!ConfigureAvc420SurfaceOutput(api, graphicsConfig, log, error) ||
             !ConfigureGraphicsPipelineChannel(api, context->settings, graphicsConfig, log, error)) {
             CopyCallbackMessage(message, messageSize, error);
@@ -101,8 +97,6 @@ struct OhosSessionAdapter {
 
         instance->PostConnect = HarmonyPostConnect;
         instance->PostDisconnect = HarmonyPostDisconnect;
-        instance->VerifyCertificateEx = HarmonyVerifyCertificateEx;
-        instance->VerifyChangedCertificateEx = HarmonyVerifyChangedCertificateEx;
         SetGdiBridgeCallbacks({
             IsAvc420SurfaceOutputEnabled,
             callbacks.queueSurfaceRgbaFrame,
@@ -110,14 +104,11 @@ struct OhosSessionAdapter {
             callbacks.stopRenderPipeline,
             log,
         });
-        RegisterCertificatePolicy(instance, certificatePolicy);
-        certificateRegistered = true;
         ClearRdpDesktopSize();
 
         EmitLog("FreeRDP target configured through OHOS session API");
         EmitLog("FreeRDP mode=OhosSessionApi");
         EmitLog("FreeRDP GDI renderer configured");
-        EmitLog(std::string("FreeRDP certificate policy=") + CertificatePolicyName(certificatePolicy));
         return true;
     }
 
@@ -148,11 +139,6 @@ struct OhosSessionAdapter {
         ResetAvcSurfaceOutput(api);
         clipboardBridge.Uninitialize();
         ClearRdpDesktopSize();
-        if (certificateRegistered) {
-            UnregisterCertificatePolicy(instance);
-            certificateRegistered = false;
-        }
-        ClearCertificatePolicyLogSink();
         StopRenderPipeline(callbacks);
         if (activeSet) {
             clearActive(instance);
@@ -287,9 +273,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
 
     const GraphicsPipelineConfig graphicsConfig = ToGraphicsPipelineConfig(prepared.graphics);
-    const CertificatePolicy certificatePolicy =
-        FromOhosCertificatePolicy(prepared.options.certificatePolicy);
-
     freerdpOhosSession* session = api.ohosSessionNew();
     if (session == nullptr) {
         result.message = "freerdp_ohos_session_new failed";
@@ -300,7 +283,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     OhosSessionAdapter adapter {
         api,
         graphicsConfig,
-        certificatePolicy,
         callbacks,
         setActive,
         clearActive,

@@ -79,7 +79,6 @@ endif()
 
 add_library(entry SHARED
     common/bridge_log.cpp
-    freerdp/certificate_policy.cpp
     channels/audio_diagnostics.cpp
     channels/clipboard_bridge.cpp
     channels/rdpgfx_diagnostics.cpp

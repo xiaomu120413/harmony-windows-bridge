@@ -18,7 +18,6 @@
 #endif
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
-#include <client/OHOS/ohos_certificate.h>
 #include <client/OHOS/ohos_clipboard.h>
 #include <client/OHOS/ohos_avc420_route.h>
 #include <client/OHOS/ohos_display.h>
@@ -96,10 +95,6 @@ public:
     using OhosImeFormatCommittedTextResultFn = int (*)(size_t, size_t, size_t, char*, size_t);
     using OhosPointerBuildEventFn = BOOL (*)(const FREERDP_OHOS_POINTER_VIEWPORT*,
         const FREERDP_OHOS_POINTER_EVENT*, FREERDP_OHOS_POINTER_PACKET*, char*, size_t);
-    using OhosCertificatePolicyFromStringFn = UINT32 (*)(const char*);
-    using OhosCertificatePolicyNameFn = const char* (*)(UINT32);
-    using OhosCertificateVerifyFn = DWORD (*)(
-        UINT32, const FREERDP_OHOS_CERTIFICATE_VERIFY_INFO*, char*, size_t);
     using OhosDisplayNormalizeSizeFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t*,
         uint32_t*);
     using OhosDisplaySendMonitorLayoutFn = int (*)(DispClientContext*, uint32_t, uint32_t,
@@ -198,9 +193,6 @@ public:
     OhosImeBuildCommittedTextPacketsFn ohosImeBuildCommittedTextPackets = nullptr;
     OhosImeFormatCommittedTextResultFn ohosImeFormatCommittedTextResult = nullptr;
     OhosPointerBuildEventFn ohosPointerBuildEvent = nullptr;
-    OhosCertificatePolicyFromStringFn ohosCertificatePolicyFromString = nullptr;
-    OhosCertificatePolicyNameFn ohosCertificatePolicyName = nullptr;
-    OhosCertificateVerifyFn ohosCertificateVerify = nullptr;
     OhosDisplayNormalizeSizeFn ohosDisplayNormalizeSize = nullptr;
     OhosDisplaySendMonitorLayoutFn ohosDisplaySendMonitorLayout = nullptr;
     OhosGraphicsConfigFromModeFn ohosGraphicsConfigFromMode = nullptr;
