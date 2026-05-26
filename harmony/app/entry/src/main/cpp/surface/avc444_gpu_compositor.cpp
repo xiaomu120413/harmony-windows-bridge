@@ -1,7 +1,6 @@
 #include "surface/avc444_gpu_compositor.h"
 
 #include "surface/avc444_gpu_compositor_internal.h"
-#include "surface/render_output_owner.h"
 
 #include <memory>
 #include <mutex>
@@ -21,12 +20,11 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     if (impl_) {
         impl_->Destroy();
     }
-    ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
     std::lock_guard<std::mutex> lock(mutex_);
     enabled_ = enabled;
     log_ = std::move(log);
     callbacks_ = std::move(callbacks);
-    active_ = false;
+    outputActive_ = false;
     candidates_ = 0;
     invalidLcRejects_ = 0;
     lastFrameId_ = 0;
@@ -49,6 +47,24 @@ std::string Avc444GpuCompositor::Diagnostics() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
     return diagnostics_;
+}
+
+void Avc444GpuCompositor::SetOutputActive(bool active, const std::string& reason)
+{
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        changed = outputActive_ != active;
+        outputActive_ = active;
+        diagnostics_ = "avc444 gpu compositor: enabled=" +
+            std::string(enabled_ ? "yes" : "no") +
+            " policyActive=" + std::string(outputActive_ ? "yes" : "no") +
+            " reason=" + reason;
+    }
+    if (changed) {
+        Log("AVC444 GPU compositor observed FreeRDP output policy: active=" +
+            std::string(active ? "yes" : "no") + " reason=" + reason);
+    }
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
@@ -116,11 +132,11 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
     }
 
     Avc444GpuCompositorCallbacks callbacks;
-    bool active = false;
+    bool outputActive = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         callbacks = callbacks_;
-        active = active_;
+        outputActive = outputActive_;
     }
 
     if (!lcValid) {
@@ -133,15 +149,14 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         std::lock_guard<std::mutex> processLock(processingMutex_);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            active = active_;
+            outputActive = outputActive_;
         }
         consumed = impl_ != nullptr &&
-            impl_->ProcessCommand(command, callbacks, active, logs);
+            impl_->ProcessCommand(command, callbacks, outputActive, logs);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            active_ = active;
-            diagnostics_ = "avc444 gpu compositor: enabled=yes active=" +
-                std::string(active_ ? "yes" : "no") +
+            diagnostics_ = "avc444 gpu compositor: enabled=yes policyActive=" +
+                std::string(outputActive_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " lastLC=" + std::to_string(lastLC_) +
@@ -165,22 +180,22 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
     bool handled = false;
     {
         std::lock_guard<std::mutex> processLock(processingMutex_);
-        bool active = false;
+        bool outputActive = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (!enabled_) {
                 return false;
             }
-            active = active_;
+            outputActive = outputActive_;
             callbacks = callbacks_;
         }
 
-        handled = impl_ != nullptr && impl_->PresentEndFrame(frame, callbacks, active, logs);
+        handled = impl_ != nullptr &&
+            impl_->PresentEndFrame(frame, callbacks, outputActive, logs);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            active_ = active;
-            diagnostics_ = "avc444 gpu compositor: enabled=yes active=" +
-                std::string(active_ ? "yes" : "no") +
+            diagnostics_ = "avc444 gpu compositor: enabled=yes policyActive=" +
+                std::string(outputActive_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " lastLC=" + std::to_string(lastLC_) +

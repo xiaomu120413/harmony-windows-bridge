@@ -3,7 +3,6 @@
 #include "common/string_utils.h"
 #include "freerdp/freerdp_runtime.h"
 #include "surface/native_rgba_copy.h"
-#include "surface/render_output_owner.h"
 
 #include <algorithm>
 #include <array>
@@ -1941,7 +1940,7 @@ struct Avc444GpuCompositorImpl::State {
     }
 
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
-        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs)
     {
         const bool codecV1 = command->codecId == RDPGFX_CODECID_AVC444;
@@ -1958,7 +1957,7 @@ struct Avc444GpuCompositorImpl::State {
             logs.push_back("AVC444 GPU compositor rejected invalid dirty rects");
             return false;
         }
-        const bool wasAuthoritative = authoritative;
+        const bool wasOutputActive = outputActive;
         bool rendererStateTouched = false;
 
         auto ignoreActiveUpdate = [&](const std::string& reason, bool resetRenderer,
@@ -2004,14 +2003,14 @@ struct Avc444GpuCompositorImpl::State {
             ++failures;
             logs.push_back("AVC444 GPU compositor failed: " + reason +
                 " failures=" + std::to_string(failures));
-            if (wasAuthoritative) {
+            if (wasOutputActive) {
                 return ignoreActiveUpdate(reason, true, false);
             }
             if (rendererStateTouched) {
                 renderer.Destroy();
                 logs.push_back(
                     "AVC444 GPU compositor reset warm-up renderer state after failed update; "
-                    "FreeRDP native GDI path remains authoritative");
+                    "FreeRDP native GDI remains active");
             }
             return false;
         };
@@ -2033,7 +2032,7 @@ struct Avc444GpuCompositorImpl::State {
 
         if ((needsLuma || needsChroma) &&
             !renderer.Ensure(nullptr, 0, 0, command->width, command->height, logs)) {
-            if (!authoritative) {
+            if (!outputActive) {
                 logs.push_back("AVC444 GPU compositor offscreen renderer unavailable before decode; keeping GDI");
                 return false;
             }
@@ -2046,7 +2045,7 @@ struct Avc444GpuCompositorImpl::State {
                 streamParameterSets, "luma", logs);
             if (!avcDecoder.Started() && !packet.hadParameterSets &&
                 !packet.prependedParameterSets) {
-                if (authoritative) {
+                if (outputActive) {
                     return ignoreActiveUpdate("single decoder missing initial SPS/PPS before luma stream",
                         true, true);
                 }
@@ -2061,7 +2060,7 @@ struct Avc444GpuCompositorImpl::State {
             const DecodeResult decode =
                 avcDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
             if (decode != DecodeResult::Decoded) {
-                if (!authoritative) {
+                if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor luma warm-up decode " +
                         std::string(decode == DecodeResult::NoOutput ? "has no output yet" :
                             "failed") + "; keeping GDI");
@@ -2083,7 +2082,7 @@ struct Avc444GpuCompositorImpl::State {
                 streamParameterSets, "chroma", logs);
             if (!avcDecoder.Started() && !packet.hadParameterSets &&
                 !packet.prependedParameterSets) {
-                if (authoritative) {
+                if (outputActive) {
                     return ignoreActiveUpdate("single decoder missing initial SPS/PPS before chroma stream",
                         true, true);
                 }
@@ -2098,7 +2097,7 @@ struct Avc444GpuCompositorImpl::State {
             const DecodeResult decode =
                 avcDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
             if (decode != DecodeResult::Decoded) {
-                if (!authoritative) {
+                if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor chroma warm-up decode " +
                         std::string(decode == DecodeResult::NoOutput ? "has no output yet" :
                             "failed") + "; keeping GDI");
@@ -2118,13 +2117,13 @@ struct Avc444GpuCompositorImpl::State {
             logs.push_back("AVC444 GPU compositor decoded command with no dirty rects; "
                 "matching FreeRDP UpdateSurfaceArea no-op frame=" +
                 std::to_string(command->frameId) + " LC=" + std::to_string(command->LC));
-            return authoritative;
+            return outputActive;
         }
 
         if (needsLuma) {
             if (!lumaFrame.PlanesValid() && !avcDecoder.MapDecodedFrame(lumaFrame, logs)) {
                 rendererStateTouched = true;
-                if (!authoritative) {
+                if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor luma mapped-plane output failed; keeping GDI");
                     renderer.Destroy();
                     return false;
@@ -2134,7 +2133,7 @@ struct Avc444GpuCompositorImpl::State {
             if (!renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
                     command->stream1.numRegionRects, logs)) {
                 rendererStateTouched = true;
-                if (!authoritative) {
+                if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor luma offscreen update failed; keeping GDI");
                     renderer.Destroy();
                     return false;
@@ -2149,7 +2148,7 @@ struct Avc444GpuCompositorImpl::State {
                 command->LC == 0 ? &command->stream2 : &command->stream1;
             if (!chromaFrame.PlanesValid() && !avcDecoder.MapDecodedFrame(chromaFrame, logs)) {
                 rendererStateTouched = true;
-                if (!authoritative) {
+                if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor chroma mapped-plane output failed; keeping GDI");
                     renderer.Destroy();
                     return false;
@@ -2163,7 +2162,7 @@ struct Avc444GpuCompositorImpl::State {
                     chromaStream->numRegionRects, logs);
             if (!chromaApplied) {
                 rendererStateTouched = true;
-                if (!authoritative) {
+                if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor chroma offscreen update failed; keeping GDI");
                     renderer.Destroy();
                     return false;
@@ -2178,7 +2177,7 @@ struct Avc444GpuCompositorImpl::State {
                 std::string(lumaUpdated ? "luma" : "-") + "/" +
                 std::string(chromaUpdated ? "chroma" : "-") +
                 " state; waiting for complete luma/base-chroma state before suppressing GDI");
-            if (authoritative) {
+            if (outputActive) {
                 ++ignoredUpdates;
                 pendingPresent = false;
                 pendingFrameId = 0;
@@ -2251,53 +2250,22 @@ struct Avc444GpuCompositorImpl::State {
                 "the bridge will skip FreeRDP dirty state and trigger GPU present: frame=" +
                 std::to_string(command->frameId) + " LC=" + std::to_string(command->LC));
         }
-        if (!authoritative) {
-            const RenderOutputOwner previousOwner =
-                ExchangeRenderOutputOwner(RenderOutputOwner::Avc444Gpu);
-            if (previousOwner != RenderOutputOwner::Avc444Gpu) {
-                if (callbacks.stopRenderPipeline != nullptr) {
-                    callbacks.stopRenderPipeline();
-                }
-                if (callbacks.releaseRenderTarget != nullptr) {
-                    callbacks.releaseRenderTarget(
-                        "before AVC444 GPU compositor SurfaceCommand takeover");
-                }
-                logs.push_back("AVC444 GPU compositor claimed render output ownership at "
-                    "SurfaceCommand before suppressing FreeRDP GDI: previousOwner=" +
-                    RenderOutputOwnerName(previousOwner) + " outputOwner=avc444-gpu");
-            }
-            authoritative = true;
-            logs.push_back("AVC444 GPU compositor is authoritative after queued update; "
-                "GDI is suppressed now and present is deferred until the matching frame boundary");
+        if (!outputActive) {
+            logs.push_back("AVC444 GPU compositor queued update; FreeRDP policy will decide "
+                "whether GPU output becomes active before the matching frame boundary");
         }
         return true;
     }
 
     bool PresentQueuedUpdate(const std::string& trigger, uint32_t frameId,
         uint32_t activeFrameId, bool matchedFrame,
-        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs)
     {
-        auto releaseWarmupOwnership = [&](const std::string& reason) {
-            if (presented != 0) {
-                return;
-            }
-            const RenderOutputOwner previous =
-                ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
-            if (previous == RenderOutputOwner::Avc444Gpu) {
-                authoritative = false;
-                if (callbacks.startRenderPipeline != nullptr) {
-                    callbacks.startRenderPipeline();
-                }
-                logs.push_back("AVC444 GPU compositor released output ownership before first "
-                    "present completed: reason=" + reason + " outputOwner=gdi");
-            }
-        };
-
         if (!pendingPresent) {
             logs.push_back("AVC444 GPU compositor " + trigger +
-                " present skipped: pending=no authoritative=" +
-                std::string(authoritative ? "yes" : "no") + " " + renderer.DebugState());
+                " present skipped: pending=no policyActive=" +
+                std::string(outputActive ? "yes" : "no") + " " + renderer.DebugState());
             return false;
         }
 
@@ -2317,8 +2285,7 @@ struct Avc444GpuCompositorImpl::State {
                 " mismatches=" + std::to_string(endFrameMismatches) +
                 " ignoredUpdates=" + std::to_string(ignoredUpdates) +
                 " " + renderer.DebugState());
-            releaseWarmupOwnership("EndFrame mismatch before first present");
-            return authoritative;
+            return outputActive;
         }
 
         if (pendingSurfaceWidth == 0 || pendingSurfaceHeight == 0) {
@@ -2329,12 +2296,11 @@ struct Avc444GpuCompositorImpl::State {
             pendingSurfaceWidth = 0;
             pendingSurfaceHeight = 0;
             logs.push_back("AVC444 GPU compositor dropped pending " + trigger +
-                " present with invalid surface dimensions; authoritative=" +
-                std::string(authoritative ? "yes" : "no") +
+                " present with invalid surface dimensions; policyActive=" +
+                std::string(outputActive ? "yes" : "no") +
                 " failures=" + std::to_string(failures) +
                 " ignoredUpdates=" + std::to_string(ignoredUpdates));
-            releaseWarmupOwnership("invalid pending surface dimensions");
-            return authoritative;
+            return outputActive;
         }
 
         DecoderSurfaceTarget target {};
@@ -2349,28 +2315,18 @@ struct Avc444GpuCompositorImpl::State {
             pendingSurfaceWidth = 0;
             pendingSurfaceHeight = 0;
             logs.push_back("AVC444 GPU compositor " + trigger + " target unavailable; "
-                "authoritative=" + std::string(authoritative ? "yes" : "no") +
+                "policyActive=" + std::string(outputActive ? "yes" : "no") +
                 " failures=" + std::to_string(failures) +
                 " ignoredUpdates=" + std::to_string(ignoredUpdates) +
-                (authoritative ? "; preserving GPU ownership and continuing with the next command" :
-                    "; FreeRDP native GDI remains authoritative"));
-            releaseWarmupOwnership("target unavailable");
-            return authoritative;
+                (outputActive ? "; preserving GPU output and continuing with the next command" :
+                    "; FreeRDP native GDI remains active"));
+            return outputActive;
         }
 
         const bool attachingWindowTarget = !renderer.HasWindowTarget();
-        bool renderPipelineStopped = false;
         if (attachingWindowTarget) {
-            if (callbacks.stopRenderPipeline != nullptr) {
-                callbacks.stopRenderPipeline();
-                renderPipelineStopped = true;
-            }
-            if (callbacks.releaseRenderTarget != nullptr) {
-                callbacks.releaseRenderTarget(
-                    "before AVC444 GPU compositor " + trigger + " takeover");
-            }
             logs.push_back("AVC444 GPU compositor taking XComponent target at " + trigger +
-                " for AVC444 GPU present: target=" +
+                " after FreeRDP output policy callback: target=" +
                 std::to_string(target.width) + "x" + std::to_string(target.height) +
                 " surface=" + std::to_string(pendingSurfaceWidth) + "x" +
                 std::to_string(pendingSurfaceHeight));
@@ -2383,18 +2339,13 @@ struct Avc444GpuCompositorImpl::State {
             pendingFrameId = 0;
             pendingSurfaceWidth = 0;
             pendingSurfaceHeight = 0;
-            if (!authoritative && attachingWindowTarget && renderPipelineStopped &&
-                callbacks.startRenderPipeline != nullptr) {
-                callbacks.startRenderPipeline();
-            }
             logs.push_back("AVC444 GPU compositor " + trigger + " present failed: " + reason +
-                " authoritative=" + std::string(authoritative ? "yes" : "no") +
+                " policyActive=" + std::string(outputActive ? "yes" : "no") +
                 " failures=" + std::to_string(failures) +
                 " ignoredUpdates=" + std::to_string(ignoredUpdates) +
-                (authoritative ? "; preserving GPU ownership and continuing with the next command" :
-                    "; FreeRDP native GDI remains authoritative"));
-            releaseWarmupOwnership(reason);
-            return authoritative;
+                (outputActive ? "; preserving GPU output and continuing with the next command" :
+                    "; FreeRDP native GDI remains active"));
+            return outputActive;
         };
 
         if (!renderer.Ensure(target.window, target.width, target.height,
@@ -2411,7 +2362,7 @@ struct Avc444GpuCompositorImpl::State {
                 " attempts=" + std::to_string(endFramePresentAttempts) +
                 " queued=" + std::to_string(queuedPresents) +
                 " presented=" + std::to_string(presented) +
-                " authoritative=" + std::string(authoritative ? "yes" : "no") +
+                " policyActive=" + std::string(outputActive ? "yes" : "no") +
                 " " + renderer.DebugState());
         }
 
@@ -2424,23 +2375,18 @@ struct Avc444GpuCompositorImpl::State {
         pendingSurfaceWidth = 0;
         pendingSurfaceHeight = 0;
         ++presented;
-        if (!authoritative) {
-            authoritative = true;
-            logs.push_back("AVC444 GPU compositor is authoritative after successful " + trigger +
-                " present; future AVC444 SurfaceCommand updates may suppress FreeRDP native GDI");
-        }
         if (ShouldLogFrequent(presented)) {
             logs.push_back("AVC444 GPU compositor presented at " + trigger + ": frame=" +
                 std::to_string(frameId) + " presented=" + std::to_string(presented) +
                 " attempts=" + std::to_string(endFramePresentAttempts) +
                 " queued=" + std::to_string(queuedPresents) +
-                " authoritative=" + std::string(authoritative ? "yes" : "no"));
+                " policyActive=" + std::string(outputActive ? "yes" : "no"));
         }
         return true;
     }
 
     bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
-        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs)
     {
         ++endFrameCallbacks;
@@ -2456,7 +2402,7 @@ struct Avc444GpuCompositorImpl::State {
                     "endFrame=" + std::to_string(frameId) +
                     " activeFrame=" + std::to_string(activeFrameId) +
                     " matched=" + std::string(matchedFrame ? "yes" : "no") +
-                    " authoritative=" + std::string(authoritative ? "yes" : "no") +
+                    " policyActive=" + std::string(outputActive ? "yes" : "no") +
                     " pending=no "
                     " pendingFrame=" + std::to_string(pendingFrameId) +
                     " callbacks=" + std::to_string(endFrameCallbacks) +
@@ -2470,7 +2416,7 @@ struct Avc444GpuCompositorImpl::State {
         }
 
         return PresentQueuedUpdate("EndFrame", frameId, activeFrameId, matchedFrame,
-            callbacks, authoritative, logs);
+            callbacks, outputActive, logs);
     }
 #else
     void Destroy() {}
@@ -2492,18 +2438,18 @@ void Avc444GpuCompositorImpl::Destroy()
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
 bool Avc444GpuCompositorImpl::ProcessCommand(
     const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
-    const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+    const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
     std::vector<std::string>& logs)
 {
-    return state_ != nullptr && state_->ProcessCommand(command, callbacks, authoritative, logs);
+    return state_ != nullptr && state_->ProcessCommand(command, callbacks, outputActive, logs);
 }
 
 bool Avc444GpuCompositorImpl::PresentEndFrame(
     const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
-    const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+    const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
     std::vector<std::string>& logs)
 {
-    return state_ != nullptr && state_->PresentEndFrame(frame, callbacks, authoritative, logs);
+    return state_ != nullptr && state_->PresentEndFrame(frame, callbacks, outputActive, logs);
 }
 #endif
 
