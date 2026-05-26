@@ -17,8 +17,6 @@
 
 namespace rdp_bridge {
 namespace {
-constexpr uint32_t kH264DesktopAlignment = 16;
-
 void EmitCallback(const std::function<void(const std::string&)>& callback, const std::string& line)
 {
     if (callback != nullptr) {
@@ -327,9 +325,10 @@ struct RdpSession::Impl {
     }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-    void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
+    void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
+        freerdpOhosSession* ohosSession)
     {
-        channels.SetActive(api, instance, context);
+        channels.SetActive(api, instance, context, ohosSession);
     }
 
     void ClearActiveNative(freerdp* instance)
@@ -456,16 +455,13 @@ struct RdpSession::Impl {
         for (size_t attempt = 0; attempt < graphicsModes.size(); ++attempt) {
             ConnectParams attemptParams = params;
             attemptParams.graphicsMode = graphicsModes[attempt];
-            const GraphicsPipelineConfig attemptGraphicsConfig =
-                ParseGraphicsPipelineConfig(attemptParams);
-            channels.SetDynamicResizeAlignment(attemptGraphicsConfig.h264 ?
-                kH264DesktopAlignment : 1U);
             bool attemptConnected = false;
             EmitLog("graphics attempt " + std::to_string(attempt + 1) + "/" +
                 std::to_string(graphicsModes.size()) + ": mode=" + attemptParams.graphicsMode);
             session = RunFreerdpSession(attemptParams, running, callbacks,
-                [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context) {
-                    SetActiveNative(api, instance, context);
+                [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
+                    freerdpOhosSession* ohosSession) {
+                    SetActiveNative(api, instance, context, ohosSession);
                 },
                 [this](freerdp* instance) {
                     ClearActiveNative(instance);

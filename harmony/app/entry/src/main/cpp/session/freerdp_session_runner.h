@@ -16,7 +16,8 @@
 namespace rdp_bridge {
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-using FreerdpSetActiveFn = std::function<void(FreerdpRuntimeApi*, freerdp*, rdpContext*)>;
+using FreerdpSetActiveFn =
+    std::function<void(FreerdpRuntimeApi*, freerdp*, rdpContext*, freerdpOhosSession*)>;
 using FreerdpClearActiveFn = std::function<void(freerdp*)>;
 using FreerdpConnectedFn = std::function<void()>;
 using FreerdpInputPumpFn = std::function<void(FreerdpRuntimeApi*, rdpContext*)>;

@@ -4,7 +4,6 @@
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_gdi_bridge.h"
 
-#include <algorithm>
 #include <array>
 #include <cstring>
 #include <unordered_map>
@@ -28,18 +27,6 @@ void RdpSessionChannels::EmitLog(const std::string& line)
     if (callbacks_.log != nullptr) {
         callbacks_.log(line);
     }
-}
-
-void RdpSessionChannels::SetDynamicResizeAlignment(uint32_t alignment)
-{
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
-    std::lock_guard<std::mutex> lock(activeMutex_);
-    dynamicResizeAlignment_ = std::max<uint32_t>(1U, alignment);
-    lastDynamicResizeWidth_ = 0;
-    lastDynamicResizeHeight_ = 0;
-#else
-    (void)alignment;
-#endif
 }
 
 void RdpSessionChannels::RequestDisconnect()
@@ -106,52 +93,25 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
 {
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(activeMutex_);
-    if (activeApi_ == nullptr || activeApi_->ohosDisplayNormalizeSize == nullptr ||
-        activeApi_->ohosDisplaySendMonitorLayout == nullptr) {
-        message = "FreeRDP OHOS display-control helper symbols are not loaded";
+    if (activeApi_ == nullptr || activeApi_->ohosSessionResize == nullptr) {
+        message = "FreeRDP OHOS session resize symbol is not loaded";
         return false;
     }
-    const uint32_t requestedWidth = width;
-    const uint32_t requestedHeight = height;
-    activeApi_->ohosDisplayNormalizeSize(width, height, dynamicResizeAlignment_, &width, &height);
-    const std::string normalizeText =
-        " requested=" + std::to_string(requestedWidth) + "x" +
-        std::to_string(requestedHeight) +
-        " normalized=" + std::to_string(width) + "x" + std::to_string(height) +
-        " alignment=" + std::to_string(dynamicResizeAlignment_);
-    if (activeDisp_ == nullptr || activeDisp_->SendMonitorLayout == nullptr) {
-        message = "display-control channel is not ready;" + normalizeText;
+    if (activeOhosSession_ == nullptr) {
+        message = "FreeRDP OHOS session resize target is not active";
         return false;
-    }
-    if (!displayControlCapsReady_) {
-        message = "display-control caps are not ready;" + normalizeText;
-        return false;
-    }
-    if (lastDynamicResizeWidth_ == width && lastDynamicResizeHeight_ == height) {
-        message = "display-control resize unchanged: " + std::to_string(width) + "x" +
-            std::to_string(height) + ";" + normalizeText;
-        return true;
     }
 
-    uint32_t sentWidth = 0;
-    uint32_t sentHeight = 0;
-    uint32_t channelStatus = 0;
     std::array<char, 192> detail {};
-    if (activeApi_->ohosDisplaySendMonitorLayout(activeDisp_, width, height, 1U, &sentWidth,
-        &sentHeight, &channelStatus, detail.data(), detail.size()) == 0) {
-        if (detail[0] != '\0') {
-            message = detail.data();
-        } else {
-            message = "display-control resize failed: " + std::to_string(channelStatus);
-        }
+    if (!activeApi_->ohosSessionResize(activeOhosSession_, width, height, detail.data(),
+        detail.size())) {
+        message = detail[0] != '\0' ? detail.data() : "FreeRDP OHOS session resize failed";
         return false;
     }
 
-    lastDynamicResizeWidth_ = sentWidth;
-    lastDynamicResizeHeight_ = sentHeight;
     message = "display-control resize requested after " + reason + ": " +
-        (detail[0] != '\0' ? detail.data() : (std::to_string(sentWidth) + "x" +
-            std::to_string(sentHeight))) + ";" + normalizeText;
+        (detail[0] != '\0' ? detail.data() : (std::to_string(width) + "x" +
+            std::to_string(height)));
     return true;
 #else
     (void)width;
@@ -163,18 +123,17 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
 }
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
-void RdpSessionChannels::SetActive(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context)
+void RdpSessionChannels::SetActive(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
+    freerdpOhosSession* ohosSession)
 {
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
         activeApi_ = api;
         activeInstance_ = instance;
         activeContext_ = context;
+        activeOhosSession_ = ohosSession;
         activeDisp_ = nullptr;
         activeGfx_ = nullptr;
-        displayControlCapsReady_ = false;
-        lastDynamicResizeWidth_ = 0;
-        lastDynamicResizeHeight_ = 0;
     }
 
     RegisterSession(context, this);
@@ -206,12 +165,9 @@ void RdpSessionChannels::ClearActive(freerdp* instance)
     activeApi_ = nullptr;
     activeInstance_ = nullptr;
     activeContext_ = nullptr;
+    activeOhosSession_ = nullptr;
     activeDisp_ = nullptr;
     activeGfx_ = nullptr;
-    displayControlCapsReady_ = false;
-    dynamicResizeAlignment_ = 1;
-    lastDynamicResizeWidth_ = 0;
-    lastDynamicResizeHeight_ = 0;
 }
 
 std::mutex& RdpSessionChannels::RegistryMutex()
@@ -297,47 +253,6 @@ void RdpSessionChannels::OnChannelDisconnected(void* context, const ChannelDisco
     }
 }
 
-UINT RdpSessionChannels::DisplayControlCaps(DispClientContext* disp, UINT32 maxNumMonitors,
-    UINT32 maxMonitorAreaFactorA, UINT32 maxMonitorAreaFactorB)
-{
-    auto* session = disp == nullptr ? nullptr : static_cast<RdpSessionChannels*>(disp->custom);
-    if (session != nullptr) {
-        session->HandleDisplayControlCaps(maxNumMonitors, maxMonitorAreaFactorA,
-            maxMonitorAreaFactorB);
-    }
-    return CHANNEL_RC_OK;
-}
-
-void RdpSessionChannels::HandleDisplayControlCaps(UINT32 maxNumMonitors,
-    UINT32 maxMonitorAreaFactorA, UINT32 maxMonitorAreaFactorB)
-{
-    {
-        std::lock_guard<std::mutex> lock(activeMutex_);
-        displayControlCapsReady_ = true;
-        lastDynamicResizeWidth_ = 0;
-        lastDynamicResizeHeight_ = 0;
-    }
-
-    EmitLog("display-control caps: maxMonitors=" + std::to_string(maxNumMonitors) +
-        " areaFactor=" + std::to_string(maxMonitorAreaFactorA) + "/" +
-        std::to_string(maxMonitorAreaFactorB));
-
-    if (callbacks_.surfaceSnapshot == nullptr) {
-        return;
-    }
-    const SurfaceSnapshot snapshot = callbacks_.surfaceSnapshot();
-    if (snapshot.width > 0 && snapshot.height > 0) {
-        std::string resizeMessage;
-        if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-            "display-control caps", resizeMessage)) {
-            EmitLog(resizeMessage);
-        } else {
-            EmitLog("display-control resize skipped after display-control caps: " +
-                resizeMessage);
-        }
-    }
-}
-
 void RdpSessionChannels::AttachDisplayControl(DispClientContext* disp)
 {
     if (disp == nullptr) {
@@ -345,16 +260,23 @@ void RdpSessionChannels::AttachDisplayControl(DispClientContext* disp)
         return;
     }
 
+    std::array<char, 192> detail {};
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
+        if (activeApi_ == nullptr || activeApi_->ohosSessionAttachDisplayControl == nullptr ||
+            activeOhosSession_ == nullptr) {
+            EmitLog("display-control connected but FreeRDP OHOS session attach symbol is not ready");
+            return;
+        }
+        if (!activeApi_->ohosSessionAttachDisplayControl(activeOhosSession_, disp, detail.data(),
+            detail.size())) {
+            EmitLog(detail[0] != '\0' ? detail.data() : "display-control attach failed");
+            return;
+        }
         activeDisp_ = disp;
-        activeDisp_->custom = this;
-        activeDisp_->DisplayControlCaps = DisplayControlCaps;
-        displayControlCapsReady_ = false;
-        lastDynamicResizeWidth_ = 0;
-        lastDynamicResizeHeight_ = 0;
     }
-    EmitLog("display-control connected to HarmonyOS window resize bridge");
+    EmitLog(detail[0] != '\0' ? detail.data() :
+        "display-control connected to FreeRDP OHOS resize manager");
 
     if (callbacks_.surfaceSnapshot == nullptr) {
         return;
@@ -376,12 +298,12 @@ void RdpSessionChannels::DetachDisplayControl(DispClientContext* disp)
 {
     std::lock_guard<std::mutex> lock(activeMutex_);
     if (activeDisp_ != nullptr && activeDisp_ == disp) {
-        activeDisp_->custom = nullptr;
+        if (activeApi_ != nullptr && activeApi_->ohosSessionDetachDisplayControl != nullptr &&
+            activeOhosSession_ != nullptr) {
+            activeApi_->ohosSessionDetachDisplayControl(activeOhosSession_, activeDisp_);
+        }
         activeDisp_ = nullptr;
-        displayControlCapsReady_ = false;
-        lastDynamicResizeWidth_ = 0;
-        lastDynamicResizeHeight_ = 0;
-        EmitLog("display-control disconnected from HarmonyOS window resize bridge");
+        EmitLog("display-control disconnected from FreeRDP OHOS resize manager");
     }
 }
 

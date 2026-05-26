@@ -52,6 +52,7 @@ void CopyCallbackMessage(char* message, size_t messageSize, const std::string& v
 
 struct OhosSessionAdapter {
     FreerdpRuntimeApi& api;
+    freerdpOhosSession* session = nullptr;
     const GraphicsPipelineConfig& graphicsConfig;
     const RdpSessionCallbacks& callbacks;
     const FreerdpSetActiveFn& setActive;
@@ -80,7 +81,7 @@ struct OhosSessionAdapter {
             return false;
         }
 
-        setActive(&api, instance, context);
+        setActive(&api, instance, context, session);
         activeSet = true;
 
         std::string error;
@@ -282,6 +283,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
 
     OhosSessionAdapter adapter {
         api,
+        session,
         graphicsConfig,
         callbacks,
         setActive,

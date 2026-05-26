@@ -350,6 +350,15 @@
 - resize 过早发送可能被服务端忽略。
 - 对齐策略改变可能导致鼠标坐标和显示区域不匹配。
 
+执行状态：
+
+- 已完成 FreeRDP OHOS `freerdp_ohos_session_resize`、display-control attach/detach 和
+  caps/last-size/alignment 状态下沉；HAP 不再直接判断 display-control ready 或直接发送
+  monitor layout。
+- 已验证 FreeRDP OHOS build、runtime sync、新 session resize/attach/detach 符号导出、
+  HAP build，并安装到设备 `3QC0124C11000711`；真机 resize 回归由用户确认通过。
+- 设备当前最新安装包为 `com.muhub.desktop`，更新时间 `2026-05-26 10:06:44 +08:00`。
+
 ## T11：RDPGFX bridge 拆分
 
 修改点：
