@@ -85,7 +85,11 @@ add_library(entry SHARED
     channels/rdpgfx_diagnostics.cpp
     channels/rdpgfx_pipeline.cpp
     common/frame_utils.cpp
-    input/xcomponent_input_bridge.cpp
+    input/xcomponent_axis.cpp
+    input/xcomponent_input_registration.cpp
+    input/xcomponent_key.cpp
+    input/xcomponent_mouse.cpp
+    input/xcomponent_touch_gesture.cpp
     napi/clipboard_permission_bridge.cpp
     session/freerdp_session_runner.cpp
     freerdp/freerdp_gdi_bridge.cpp
