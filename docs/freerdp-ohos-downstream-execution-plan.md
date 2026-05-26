@@ -383,6 +383,13 @@
 - 回调注册顺序改动会导致 RDPGFX 不工作。
 - registry/context 查找如果拆错，会出现多 session 混淆。
 
+执行记录：
+
+- 已拆分 `client/OHOS/ohos_rdpgfx.c`，公共头 `ohos_rdpgfx.h` 未改接口。
+- 新增内部头 `ohos_rdpgfx_internal.h` 承接拆分后的共享结构和回调声明。
+- 验证导出符号仍存在；单个 `ohos_rdpgfx_*.c` 文件均小于 600 行。
+- FreeRDP OHOS build、runtime sync、HAP build 均通过；已真机安装并由用户验证通过。
+
 ## T12：AVC444 policy 下沉并保持 GPU path 默认开启
 
 修改点：
