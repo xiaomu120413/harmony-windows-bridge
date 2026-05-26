@@ -19,9 +19,6 @@ class Avc444GpuCompositorImpl;
 
 struct Avc444GpuCompositorCallbacks {
     std::function<DecoderSurfaceTarget()> decoderSurfaceTarget;
-    std::function<void()> stopRenderPipeline;
-    std::function<void()> startRenderPipeline;
-    std::function<void(const std::string&)> releaseRenderTarget;
 };
 
 class Avc444GpuCompositor {
@@ -35,6 +32,7 @@ public:
         Avc444GpuCompositorCallbacks callbacks = {});
     void Reset();
     std::string Diagnostics() const;
+    void SetOutputActive(bool active, const std::string& reason);
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     bool OnSurfaceCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command);
@@ -58,7 +56,7 @@ private:
     std::string diagnostics_;
     Avc444GpuLogFn log_;
     Avc444GpuCompositorCallbacks callbacks_;
-    bool active_ = false;
+    bool outputActive_ = false;
     std::unique_ptr<Avc444GpuCompositorImpl> impl_;
 };
 

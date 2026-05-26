@@ -23,10 +23,10 @@ public:
 
 #if defined(HARMONY_HAS_FREERDP_HEADERS)
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
-        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs);
     bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
-        const Avc444GpuCompositorCallbacks& callbacks, bool& authoritative,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs);
 
     static bool CommandLcIsValid(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command);

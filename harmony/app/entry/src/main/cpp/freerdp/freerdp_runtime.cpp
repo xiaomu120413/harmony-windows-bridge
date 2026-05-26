@@ -185,10 +185,6 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionResize);
         LoadOptionalClientSymbol("freerdp_ohos_session_get_diagnostics",
             ohosSessionGetDiagnostics);
-        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
-            ohosAvcodecSetOutputSurface);
-        LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_fallback_callback",
-            ohosAvcodecSetFallbackCallback);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_get_diagnostics",
             ohosAvcodecGetDiagnostics);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_new",
@@ -199,14 +195,20 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosAvc420RouteConfigure);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_reset",
             ohosAvc420RouteReset);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_set_armed",
+            ohosAvc420RouteSetArmed);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_set_output_target",
             ohosAvc420RouteSetOutputTarget);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_clear_output_target",
             ohosAvc420RouteClearOutputTarget);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_begin_surface",
             ohosAvc420RouteBeginSurface);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_refresh_output_target",
+            ohosAvc420RouteRefreshOutputTarget);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_end_surface",
             ohosAvc420RouteEndSurface);
+        LoadOptionalClientSymbol("freerdp_ohos_avc420_route_is_surface_active",
+            ohosAvc420RouteIsSurfaceActive);
         LoadOptionalClientSymbol("freerdp_ohos_avc420_route_get_diagnostics",
             ohosAvc420RouteGetDiagnostics);
     }
