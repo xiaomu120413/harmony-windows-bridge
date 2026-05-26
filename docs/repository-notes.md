@@ -13,17 +13,17 @@ This repository intentionally excludes generated and downloaded artifacts:
 - `config.local.json`
 - `app-server*.log`
 
-To rebuild local dependencies, follow:
+To build and package the HarmonyOS app, use:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Build-NativeBridge.ps1
+cmd /c harmony\app\build_hap.bat
 ```
 
-To use process-mode FreeRDP, place `wfreerdp.exe` under:
+To connect to the xrdp path, use Windows MSTSC directly after HDC port
+forwarding. Do not use repository PowerShell launcher scripts for connection
+startup.
 
-```text
-tools\freerdp\wfreerdp.exe
+```powershell
+hdc fport tcp:13390 tcp:3390
+mstsc /v:127.0.0.1:13390
 ```
-
-or provide a custom path in the app's advanced options.
