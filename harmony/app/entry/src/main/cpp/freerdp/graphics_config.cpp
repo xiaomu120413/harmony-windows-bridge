@@ -29,7 +29,6 @@ GraphicsPipelineConfig InvalidGraphicsConfig(const std::string& mode)
     return config;
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 GraphicsPipelineConfig FromNativeGraphicsConfig(const FREERDP_OHOS_GRAPHICS_CONFIG& nativeConfig,
     const std::string& requestedMode)
 {
@@ -45,7 +44,6 @@ GraphicsPipelineConfig FromNativeGraphicsConfig(const FREERDP_OHOS_GRAPHICS_CONF
     }
     return config;
 }
-#endif
 
 } // namespace
 
@@ -59,14 +57,9 @@ GraphicsPipelineConfig ParseGraphicsPipelineConfig(const ConnectParams& params)
         return InvalidGraphicsConfig("helper-missing");
     }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
     const FREERDP_OHOS_GRAPHICS_CONFIG nativeConfig =
         api->ohosGraphicsConfigFromMode(params.graphicsMode.c_str());
     return FromNativeGraphicsConfig(nativeConfig, params.graphicsMode);
-#else
-    (void)params;
-    return InvalidGraphicsConfig("headers-unavailable");
-#endif
 }
 
 std::string GraphicsModeValidationError(const std::string& graphicsMode)

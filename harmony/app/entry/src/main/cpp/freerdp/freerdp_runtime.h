@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/addin.h>
 #include <freerdp/client.h>
 #include <freerdp/client/channels.h>
@@ -15,9 +14,7 @@
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
 #include <winpr/synch.h>
-#endif
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 #include <client/OHOS/ohos_clipboard.h>
 #include <client/OHOS/ohos_avc420_route.h>
 #include <client/OHOS/ohos_display.h>
@@ -29,7 +26,6 @@
 #include <client/OHOS/ohos_rdpgfx.h>
 #include <client/OHOS/ohos_session.h>
 #include <client/OHOS/ohos_session_config.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -38,7 +34,6 @@ class FreerdpRuntimeApi;
 std::string SharedLibraryDirectory();
 std::string EnsureOpenSslModulesPath();
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 class FreerdpRuntimeApi {
 public:
     // Keep FreeRDP/WinPR loaded for the process lifetime; WinPR registers TLS destructors.
@@ -305,6 +300,5 @@ std::string LastErrorMessage(FreerdpRuntimeApi& api, uint32_t code);
 
 FreerdpRuntimeApi& SharedFreerdpRuntimeApi();
 bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error);
-#endif
 
 } // namespace rdp_bridge

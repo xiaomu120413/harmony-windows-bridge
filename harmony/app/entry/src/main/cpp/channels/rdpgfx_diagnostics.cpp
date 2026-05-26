@@ -9,7 +9,6 @@
 
 namespace rdp_bridge {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 namespace {
 
 std::atomic_bool g_rdpgfxRuntimeRequested{false};
@@ -53,11 +52,9 @@ void ResetRdpgfxDiagnosticsStats()
     g_rdpgfxDisconnectedCount.store(0);
     g_rdpgfxInitFailedCount.store(0);
 }
-#endif
 
 std::string BuildGraphicsPipelineStatsLog()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::string error;
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (!EnsureFreerdpRuntimeLoaded(api, error)) {
@@ -94,9 +91,6 @@ std::string BuildGraphicsPipelineStatsLog()
         }
     }
     return out.str();
-#else
-    return "rdpgfx stats unavailable: explicit FreeRDP demo build has no headers";
-#endif
 }
 
 } // namespace rdp_bridge

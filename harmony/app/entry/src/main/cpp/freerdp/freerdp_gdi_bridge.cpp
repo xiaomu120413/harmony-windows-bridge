@@ -10,12 +10,10 @@
 #include <string>
 #include <utility>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/codec/color.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
-#endif
 
 namespace rdp_bridge {
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
@@ -23,7 +21,6 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 
 namespace rdp_bridge {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 namespace {
 
 std::mutex g_gdiCallbacksMutex;
@@ -371,6 +368,5 @@ void HarmonyPostDisconnect(freerdp* instance)
     ClearRdpDesktopSize();
 }
 
-#endif
 
 } // namespace rdp_bridge

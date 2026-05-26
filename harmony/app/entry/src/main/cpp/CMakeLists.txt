@@ -64,8 +64,6 @@ else()
     include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3
                         ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3
                         ${FREERDP_OHOS_SOURCE_ROOT})
-    add_compile_definitions(HARMONY_HAS_FREERDP_HEADERS=1)
-    add_compile_definitions(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE=1)
 endif()
 
 add_library(entry SHARED

@@ -6,9 +6,7 @@
 #include <string>
 #include <vector>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <client/OHOS/ohos_rdpgfx.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -21,7 +19,6 @@ public:
 
     void Destroy();
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
         const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs);
@@ -31,7 +28,6 @@ public:
 
     static bool CommandLcIsValid(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command);
     static std::string RectText(const RECTANGLE_16* rect);
-#endif
 
 private:
     struct State;

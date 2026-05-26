@@ -8,7 +8,6 @@ namespace rdp_bridge {
 
 std::string BuildOHAudioStatsLog()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::string error;
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (!EnsureFreerdpRuntimeLoaded(api, error)) {
@@ -71,9 +70,6 @@ std::string BuildOHAudioStatsLog()
         << " lastFormat=" << lastRate << "Hz/" << lastChannels << "ch/" << lastBits
         << "bit latency=" << lastLatencyMs << "ms";
     return out.str() + rdpsndClientDiagnostics + audinDiagnostics;
-#else
-    return "OHAudio stats unavailable: explicit FreeRDP demo build has no headers";
-#endif
 }
 
 } // namespace rdp_bridge

@@ -41,7 +41,6 @@ bool CompleteMicrophonePermissionRequestFromUi(uint32_t requestId, bool granted)
     return true;
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 BOOL RequestMicrophonePermissionForAudin(void* userData, UINT32 timeoutMs)
 {
     (void)userData;
@@ -114,6 +113,5 @@ void RegisterMicrophonePermissionBridge(FreerdpRuntimeApi& api,
         log("FreeRDP audin OHOS permission callback registration failed");
     }
 }
-#endif
 
 } // namespace rdp_bridge

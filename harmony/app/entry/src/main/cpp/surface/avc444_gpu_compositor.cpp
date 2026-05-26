@@ -67,7 +67,6 @@ void Avc444GpuCompositor::SetOutputActive(bool active, const std::string& reason
     }
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 bool Avc444GpuCompositor::OnSurfaceCommand(
     const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
 {
@@ -208,7 +207,6 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
     }
     return handled;
 }
-#endif
 
 void Avc444GpuCompositor::Log(const std::string& message) const
 {

@@ -6,13 +6,10 @@
 #include <memory>
 #include <string>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/freerdp.h>
-#endif
 
 namespace rdp_bridge {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 class HarmonyClipboardBridge {
 public:
     using LogFn = std::function<void(const std::string&)>;
@@ -27,6 +24,5 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
-#endif
 
 } // namespace rdp_bridge
