@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "../../tools/hapsigner/OpenHarmonyApplication.pem",
-          "keyAlias": "openharmony application release",
-          "keyPassword": "000000167480EFDCA360901AC59CD0CC6BE9EAEE9D5AAB8213F99DD4A091C3E78EEBAE68EC10",
-          "profile": "../../tools/hapsigner/ohos_provision_debug.p7b",
+          "storeFile": "C:/Users/mu/Desktop/code/demo-prelaunch/tools/app/muhub.p12",
+          "storePassword": "000000196A3ADB12BB6AEEC9A548ED65DDF721BBD56B62D042C9F17B23DAD0D1E147100A3284DA892C",
+          "keyAlias": "muhub",
+          "keyPassword": "00000019F296ACC5D63680ECCF2DF7363ACA5C1E7652242CB62FB89D1C065346094D1CFC0041B8F17E",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "../../tools/hapsigner/OpenHarmony.p12",
-          "storePassword": "000000167480EFDCA360901AC59CD0CC6BE9EAEE9D5AAB8213F99DD4A091C3E78EEBAE68EC10"
+          "profile": "C:/Users/mu/Desktop/code/demo-prelaunch/tools/app/muhub_debugDebug.p7b",
+          "certpath": "C:/Users/mu/Desktop/code/demo-prelaunch/tools/app/muhub_debug.cer"
         }
       }
     ],
