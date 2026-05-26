@@ -21,7 +21,7 @@
 
 - 架构：`arm64-v8a`。
 - 已关闭：`smartcard`, `PCSC`, `smartcard-pcsc`, `TSMF`, `CUPS`, `FUSE`。
-- 已启用：FreeRDP core、TLS/NLA、OpenSSL、zlib、cJSON、uriparser、RDPGFX、FFmpeg、OpenH264、OHOS AVCodec、OHOS Pasteboard、OHAudio、OHOS LocationKit location redirection、OHOS PrintKit printer backend；OpenSLES 兼容路径随 OHOS SDK 能力启用。
+- 已启用：FreeRDP core、TLS/NLA、OpenSSL、zlib、cJSON、uriparser、RDPGFX、FFmpeg、OpenH264、OHOS AVCodec、OHOS Pasteboard、OHAudio、OHOS LocationKit location redirection、固定 Download 目录 `rdpdr/drive` redirection、OHOS PrintKit printer backend；OpenSLES 兼容路径随 OHOS SDK 能力启用。
 - FFmpeg 当前 configure 关键项：`--enable-shared`, `--disable-static`, `--disable-programs`, `--disable-doc`, `--disable-debug`, `--disable-autodetect`, `--enable-zlib`，未开启 GPL/nonfree 开关。
 
 ## 发布包必须附带的材料
@@ -29,7 +29,7 @@
 1. 第三方开源 NOTICE 文件：包含本表所有组件、版权主体、许可证类型、版本、源码来源 URL、修改说明。
 2. 完整许可证文本：Apache-2.0、OpenSSL Apache-2.0、LGPL-2.1-or-later、BSD-2-Clause、BSD-3-Clause、MIT、zlib License、Apache-2.0 WITH LLVM-exception。
 3. 源码/构建来源说明：附 `harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/out/ohos-arm64/manifest.txt`、各组件 source tarball URL、构建日志目录 `harmony/out/ohos-arm64/logs`。
-4. 修改说明：FreeRDP OHOS client helper、证书策略、剪贴板、音频、地理位置、打印、RDPGFX/AVC444 GPU compositor、smartcard/TSMF 裁剪都要列入差异说明。
+4. 修改说明：FreeRDP OHOS client helper、证书策略、剪贴板、音频、地理位置、固定 Download 目录文件重定向、打印、RDPGFX/AVC444 GPU compositor、smartcard/TSMF 裁剪都要列入差异说明。
 5. LGPL 履约材料：FFmpeg 如按 LGPL 动态链接交付，需要提供可替换/可重新链接说明、对应源码或源码获取方式、构建脚本与编译参数。
 6. OpenH264 专项确认：确认当前以源码自编译方式分发 `libopenh264.so.7` 的专利授权和商用分发边界；若无法确认，应切换为不打包 OpenH264 或改用明确可分发方案。
 

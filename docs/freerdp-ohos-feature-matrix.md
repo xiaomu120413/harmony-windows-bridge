@@ -7,7 +7,7 @@
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
-- client channels：`cliprdr`、`drdynvc`、`disp`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、麦克风采集、地理位置重定向和 OHOS PrintKit 打印后端；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`printer` 默认暴露一个虚拟打印机，但只在 Windows 提交打印作业时初始化/连接 PrintKit；`drive` 代码可编译但首版默认不请求。
+- client channels：`cliprdr`、`drdynvc`、`disp`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、麦克风采集、地理位置重定向、固定 Download 目录文件重定向和 OHOS PrintKit 打印后端；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`drive` 默认只映射下载控件授权的 `Download/com.muhub.desktop`；`printer` 默认暴露一个虚拟打印机，但只在 Windows 提交打印作业时初始化/连接 PrintKit。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - RD Gateway core 已编译进 FreeRDP runtime，但当前 HAP 没有 UI 参数、N-API 参数和 settings 映射；在没有 RD Gateway 服务端环境前不计入已适配能力。
@@ -25,7 +25,7 @@
 FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编译器、POSIX/WinPR 抽象和第三方库。它们是否真正可用，取决于运行时有没有接平台后端：
 
 - `cliprdr` 能编译，不代表已经接了 Harmony clipboard API。
-- `drive` 能编译，不代表已经接了 Harmony 文件选择器、沙箱授权和路径映射。
+- `drive` 能编译，不代表可以暴露任意本地路径；当前只接固定 Download 子目录，HAP 通过下载控件授权，FreeRDP 负责路径映射。
 - `printer` channel 能编译，不代表已经有运行时打印能力；当前交付通过 OHOS PrintKit backend 补齐，CUPS 路径仍不可用。
 - `smartcard` 被裁剪，不代表协议层永远不支持；只是首版没有 PC/SC 服务、权限、读卡器交互和验收闭环。
 - `rdpsnd/audin` 能编译，不代表音频焦点、路由、采集权限、缓冲生命周期已经产品化。
@@ -42,7 +42,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端需持续真机回归 |
 | 麦克风 `audin` | 通过 | 已进 HAP，首版交付 | 远端实际请求采集时才通过 callback 申请麦克风权限 |
 | 地理位置 `location` | 通过 | 已进 HAP，首版交付 | 默认注册 channel；服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
-| 文件重定向 `rdpdr/drive` | 通过 | 库内可用，首版默认不请求 | 需要 UI 选择共享目录、沙箱权限、只读/读写策略和路径脱敏 |
+| 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP，固定 Download 目录默认启用 | HAP 启动时通过下载控件授权并准备 `Download/com.muhub.desktop`；FreeRDP 映射为 `\\tsclient\Downloads`，不支持任意目录传入 |
 | 打印 channel `printer` | 通过 | 已进 HAP，按远端打印作业按需启动 PrintKit | 默认只向 Windows 暴露一个虚拟打印机；远端提交作业后才初始化 PrintKit、查询/连接实际打印机并提交作业；CUPS backend 仍不可用 |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
 | 智能卡 source/channel `smartcard` | 关闭 | 未进 HAP | 首版不交付；恢复时需要独立开关、PC/SC 服务/权限模型和真机读卡验收 |
@@ -64,7 +64,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 待真机确认延迟、断连、前后台 |
 | 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 待真机确认授权、拒绝、采集路径 |
 | 地理位置 `location` | 首版交付 | 默认接入，远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝和服务端接收回归 |
-| 文件重定向 `rdpdr/drive` | 可选，首版默认关闭 | 不主动请求共享目录 | 首版不声明额外文件权限 | 未产品化；后续需 UI 和沙箱授权闭环 |
+| 文件重定向 `rdpdr/drive` | 首版交付 | 默认映射固定 Download 子目录，不暴露任意路径 | 不声明额外文件权限；依赖下载控件授权 | 已真机确认启动后创建 `Download/com.muhub.desktop`；仍需 Windows `\\tsclient\Downloads` 读写回归 |
 | 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已真机触发 Harmony PDF Printer/CUPS job 成功；仍需真实打印机选择、失败提示和多设备回归 |
 | RD Gateway core | 后续专项，需服务端环境 | 当前不启用；有 RD Gateway 服务器后再接 UI 参数和 settings 映射 | 复用网络权限 | 未验收；无 RD Gateway 服务器时不能判定可用 |
 | Smartcard source/channel/PCSC | 首版不交付 | 交付构建裁剪 | 不声明智能卡相关权限 | 不进包 |
@@ -82,7 +82,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 麦克风权限拒绝到 `audin` open 失败 | 保留 | 用户拒绝或权限请求超时 | 采集通道失败，会话和播放继续 | 日志说明拒绝；不影响基础 RDP |
 | 地理位置权限拒绝到 location sample 失败 | 保留 | 用户拒绝、定位服务关闭或权限请求超时 | 本次 location sample 不发送，会话继续 | 日志说明拒绝或采样失败；不影响基础 RDP |
 | OHAudio 播放失败到无声会话 | 暂保留 | 播放后端初始化或写入失败 | 会话继续，记录 rdpsnd/OHAudio diagnostics | 不因播放失败断开桌面 |
-| `drive` 首版默认关闭 | 保留为产品策略，不是运行时 fallback | 文件共享未产品化或未授权 | 不请求 drive channel | matrix 标明默认关闭，HAP 不声明额外文件权限 |
+| Download drive 准备失败到不注册 drive | 保留 | 下载控件授权失败、目录获取/创建失败或系统不支持 | 不请求 `drive` channel，基础 RDP 会话继续 | 日志说明失败原因；不回退到任意目录或全盘映射 |
 | 打印作业提交失败 | 保留 | PrintKit 初始化、查询、连接或 `StartPrintJob` 失败 | 当前打印作业失败，会话继续 | 日志说明失败阶段；不影响基础 RDP |
 | FUSE/CUPS/smartcard/TSMF fallback | 不保留 | 依赖缺失、服务未闭环或 deprecated | 从交付构建裁剪或标为后续专项 | 包内不出现对应 addin/runtime 路径 |
 
@@ -93,6 +93,7 @@ T00 已把后续任务的可重复验收口径整理到 `docs/freerdp-ohos-valid
 当前基线：
 
 - 地理位置功能保持默认 channel 行为；若连接后立即弹定位权限，触发源是服务端发起 `LocationStart`，不是打印链路依赖。
+- 文件重定向默认只共享系统下载目录下的 `com.muhub.desktop`；App 启动时用下载控件准备目录，RDP 连接时 FreeRDP 映射为 `\\tsclient\Downloads`。
 - 打印功能新增 OHOS PrintKit backend；连接时只注册虚拟打印机，远端提交打印作业后才进入 PrintKit。
 - 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat`
 
@@ -127,7 +128,7 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 6. 连接开始时不应立即弹麦克风权限；远端实际请求音频采集时才申请权限，并验证 `audin` 采集路径。
 7. 连接到会请求位置重定向的服务端，确认 `LocationStart` 后申请定位权限；授权后能发送样本，拒绝后会话继续。
 8. 在 Windows 内打印，确认连接开始未初始化 PrintKit，提交作业后才生成 spool 文件并进入 OHOS printer backend；成功或失败都不影响 RDP 会话。
-9. 启用一个只读共享目录，验证 `drive` runtime settings、路径选择和权限策略。
+9. 启动 App 后确认系统下载目录下存在 `com.muhub.desktop`；连接 Windows 后验证 `\\tsclient\Downloads` 能列出该目录内容并完成小文件读写。
 10. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
 11. 有 RD Gateway 服务端环境后再启动 RD Gateway 专项：补 UI 参数和 settings 映射，并验证网关认证、证书、错误提示和目标机透传。
 

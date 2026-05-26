@@ -183,11 +183,11 @@ Demo HAP 私有类型塞进 FreeRDP public API。
 - `rdpsnd` 播放
 - `audin` 麦克风采集，远端请求时按需申请麦克风权限
 - `location` 地理位置重定向，远端请求时按需申请定位权限
+- `drive` 文件重定向，固定映射下载控件授权的 `Download/com.muhub.desktop` 为 `\\tsclient\Downloads`
 - `printer` 打印重定向，连接时只向 Windows 暴露虚拟打印机；Windows 提交打印作业时才初始化/查询/连接 PrintKit 并提交作业
 
 首版默认关闭或不交付：
 
-- `drive`：源码和 channel 可编译，但缺少产品级 UI、沙箱授权和路径策略，首版默认关闭。
 - smartcard source/channel、WinPR smartcard PCSC backend、TSMF：交付构建裁剪。
 - FUSE clipboard file-copy、CUPS printer backend：当前 OHOS sysroot 不满足依赖；打印交付路径使用 OHOS PrintKit backend。
 
@@ -200,6 +200,7 @@ SDK 接入方至少应验证：
 3. 触发剪贴板读取时才申请 Pasteboard 权限，拒绝后会话不崩溃。
 4. 远端请求音频采集时才申请麦克风权限，拒绝后 `audin` 明确失败且会话继续。
 5. 远端请求位置重定向时才申请定位权限，拒绝后 location sample 失败但会话继续。
-6. 连接开始不初始化 PrintKit；远端提交打印作业时才进入 OHOS printer backend，提交失败只影响本次打印作业。
-7. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
-8. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。
+6. App 启动后能准备 `Download/com.muhub.desktop`；连接后 Windows 侧 `\\tsclient\Downloads` 能完成小文件读写。
+7. 连接开始不初始化 PrintKit；远端提交打印作业时才进入 OHOS printer backend，提交失败只影响本次打印作业。
+8. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
+9. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。
