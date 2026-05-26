@@ -13,14 +13,14 @@ Install or build FreeRDP development files first, then point `FREERDP_ROOT` at t
 
 ```powershell
 $env:FREERDP_ROOT = "C:\path\to\freerdp-install"
-cmake -S native\freerdp-bridge -B native\freerdp-bridge\build
-cmake --build native\freerdp-bridge\build --config Release
+cmake -S app\native\freerdp-bridge -B app\native\freerdp-bridge\build
+cmake --build app\native\freerdp-bridge\build --config Release
 ```
 
 Expected output path on Windows:
 
 ```text
-native\freerdp-bridge\build\Release\freerdp_bridge.exe
+app\native\freerdp-bridge\build\Release\freerdp_bridge.exe
 ```
 
 If your generator writes directly under `build`, put the executable path into the app's "native bridge path" field.

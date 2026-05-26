@@ -11,8 +11,8 @@ const publicDir = path.join(__dirname, 'public');
 const configPath = path.join(rootDir, 'config.local.json');
 const exampleConfigPath = path.join(rootDir, 'config.example.json');
 const bundledFreeRdpPath = path.join(rootDir, 'tools', 'freerdp', 'wfreerdp.exe');
-const nativeBridgePath = path.join(rootDir, 'native', 'freerdp-bridge', 'build', 'freerdp_bridge.exe');
-const nativeBridgeReleasePath = path.join(rootDir, 'native', 'freerdp-bridge', 'build', 'Release', 'freerdp_bridge.exe');
+const nativeBridgePath = path.join(__dirname, 'native', 'freerdp-bridge', 'build', 'freerdp_bridge.exe');
+const nativeBridgeReleasePath = path.join(__dirname, 'native', 'freerdp-bridge', 'build', 'Release', 'freerdp_bridge.exe');
 const port = Number(process.env.PORT || 5173);
 
 const contentTypes = {
@@ -343,7 +343,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (!bridgePath) {
-        throw new Error('FreeRDP native bridge was not found. Build native/freerdp-bridge first or switch engine to wfreerdp process.');
+        throw new Error('FreeRDP native bridge was not found. Build app/native/freerdp-bridge first or switch engine to wfreerdp process.');
       }
 
       const child = spawn(bridgePath, args, {

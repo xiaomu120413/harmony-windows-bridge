@@ -9,15 +9,17 @@ This repository intentionally excludes generated and downloaded artifacts:
 - `harmony/app/**/build/`
 - `harmony/app/**/*.hap`
 - `harmony/app/tmp/`
-- `native/freerdp-bridge/build/`
+- `app/native/freerdp-bridge/build/`
+- `app/native/freerdp-bridge/out/`
 - `config.local.json`
 - `app-server*.log`
 
 To rebuild local dependencies, follow:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Build-NativeBridge.ps1
+$env:FREERDP_ROOT = "C:\path\to\freerdp-install"
+cmake -S app\native\freerdp-bridge -B app\native\freerdp-bridge\build
+cmake --build app\native\freerdp-bridge\build --config Release
 ```
 
 To use process-mode FreeRDP, place `wfreerdp.exe` under:

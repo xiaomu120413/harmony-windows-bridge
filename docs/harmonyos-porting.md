@@ -271,7 +271,7 @@ FreeRDP 交叉编译统一放在 WSL Ubuntu 内执行。Windows 只做脚本触�
 - `docs/repository-notes.md`：说明不提交构建产物、三方源码压缩包和本地密钥。
 - `harmony/README.md` 或 `openharmony/README.md`：新增鸿蒙工程入口说明。
 - 不修改 `app/` 的 Windows demo 行为。
-- 不修改 `native/freerdp-bridge/` 的现有桌面 bridge 行为。
+- 不修改 `app/native/freerdp-bridge/` 的现有桌面 bridge 行为。
 
 执行步骤：
 
@@ -286,7 +286,7 @@ FreeRDP 交叉编译统一放在 WSL Ubuntu 内执行。Windows 只做脚本触�
 ```text
 repo/
   app/                         # Windows demo, keep
-  native/freerdp-bridge/        # desktop stand-in bridge, keep
+  app/native/freerdp-bridge/    # desktop stand-in bridge, keep
   docs/
   harmony/
     README.md
@@ -1153,7 +1153,7 @@ void RenderDirtyRects(const Frame& frame, const std::vector<Rect>& dirtyRects) {
 4. `XComponent` / `NativeWindow` 的实际 API 需要按目标 SDK 校准。
    - 影响：M5 的 native surface 绑定和 buffer flush 可能需要按 HarmonyOS / OpenHarmony 版本调整。
 
-5. 当前 `native/freerdp-bridge` 是 Windows demo 的桌面 stand-in。
+5. 当前 `app/native/freerdp-bridge` 是 Windows demo 的桌面 stand-in。
    - 影响：它能复用参数模型和 FreeRDP 调用思路，但不能直接作为鸿蒙 N-API 模块使用。
 
 6. 密码、证书和会话配置的安全存储方案未定。

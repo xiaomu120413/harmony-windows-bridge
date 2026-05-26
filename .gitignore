@@ -22,8 +22,8 @@ harmony/app/**/*.hap
 harmony/app/tmp/
 
 # Native build output
-native/freerdp-bridge/build/
-native/freerdp-bridge/out/
+app/native/freerdp-bridge/build/
+app/native/freerdp-bridge/out/
 harmony/out/
 
 # OS/editor
