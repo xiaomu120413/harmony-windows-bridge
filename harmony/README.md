@@ -26,6 +26,10 @@ Enabled delivery capabilities include:
 - `location` redirection through OHOS LocationKit. The channel is registered by
   default; a permission prompt appears only if the remote side sends
   `LocationStart`.
+- `rdpdr/drive` file redirection for the fixed public Download subdirectory
+  `com.muhub.desktop`. The HAP obtains Download-directory authorization through
+  the system download picker during startup; FreeRDP maps the directory to
+  `\\tsclient\Downloads` without receiving an ETS-provided path.
 - `printer` redirection through the OHOS PrintKit backend. The session exposes a
   virtual printer to Windows, but PrintKit initialization, printer lookup and job
   submission are deferred until Windows sends a print job.
@@ -47,8 +51,9 @@ profile.
 
 Declaring a permission is not the same as prompting at connection start.
 Pasteboard, microphone and location prompts are driven by native callbacks when
-the matching RDP feature is used. `PRINT` is used by the lazy PrintKit job
-submission path.
+the matching RDP feature is used. The Download directory picker is invoked at app
+startup to authorize and prepare the fixed drive-redirection directory. `PRINT`
+is used by the lazy PrintKit job submission path.
 
 ## Build
 

@@ -22,6 +22,7 @@ FreeRDP OHOS source owns:
 - keyboard, IME, pointer, wheel and modifier mapping;
 - session settings, storage paths, certificate policy and standard channels;
 - clipboard protocol handling and Harmony Pasteboard access;
+- fixed Download-directory `rdpdr/drive` registration and path mapping;
 - `rdpsnd` playback, `audin` capture and their diagnostics;
 - location sampling and RDP location PDU handling;
 - printer channel handling and OHOS PrintKit job submission;
@@ -31,6 +32,7 @@ The HAP may keep:
 
 - ArkUI pages, connection forms, settings and product diagnostics;
 - runtime permission prompts for Pasteboard, microphone and location;
+- Download directory picker authorization and startup directory preparation;
 - `PRINT` permission declaration for PrintKit submission;
 - N-API transport, user options, app sandbox paths and certificate storage root;
 - `XComponent` / `NativeWindow` lifecycle and surface handle forwarding.
