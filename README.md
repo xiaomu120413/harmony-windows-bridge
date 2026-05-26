@@ -2,14 +2,15 @@
 
 基于 FreeRDP 的 HarmonyOS 远程桌面客户端 Demo。仓库同时保留了本地 Web/Node 验证工具，以及 HarmonyOS App 的 native bridge 接入代码。
 
-GitHub: https://github.com/xiaomu120413/freerdp-control-demo
+GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 
 ## 功能概览
 
 - HarmonyOS HAP 客户端：填写 Windows host、端口、用户名、密码后发起 RDP 连接。
 - FreeRDP native bridge：ArkTS 通过 NAPI 调用 native 层，远程画面通过 `XComponent` surface 显示。
 - 证书策略：支持 `TOFU` 和 `Strict`，用于测试和更严格的证书校验。
-- 权限回调：远程会话请求剪贴板或麦克风时，由应用侧触发系统权限处理。
+- 权限回调：远程会话请求剪贴板、麦克风或地理位置时，由应用侧触发系统权限处理。
+- 打印重定向：默认向 Windows 暴露虚拟打印机，Windows 实际提交打印作业时才启动 HarmonyOS PrintKit。
 - 设置页：包含深色模式、浅色模式、跟随系统、使用说明、本机 IP、关于项目和第三方开源组件信息。
 - 本地 Web Demo：用于在桌面侧先验证 RDP 网络、账号和 FreeRDP 可用性。
 
@@ -19,9 +20,12 @@ GitHub: https://github.com/xiaomu120413/freerdp-control-demo
 - `harmony/third_party/FreeRDP/`: HarmonyOS 侧使用的 FreeRDP 三方源码和许可证文件。
 - `app/native/freerdp-bridge/`: 桌面侧 FreeRDP library/native bridge 骨架。
 - `app/`: 本地浏览器界面和 Node 后端 Demo。
-- `docs/harmonyos-porting.md`: HarmonyOS 迁移和结构说明。
+- `docs/README.md`: 当前文档索引，区分活文档和历史归档。
+- `docs/freerdp-ohos-feature-matrix.md`: 当前 OHOS FreeRDP 功能边界。
+- `docs/freerdp-ohos-validation-baseline.md`: 构建、同步、打包和真机验收基线。
 - `docs/windows-rdp-environment-setup.md`: Windows RDP 服务端和网络排查说明。
 - `docs/release-third-party-notices.md`: 第三方组件 NOTICE 和许可证履约材料。
+- `docs/archive/`: 历史迁移计划、阶段复盘和旧真机记录，不作为当前 source of truth。
 - `config.example.json`: 桌面 Demo 连接配置模板，不提交真实密码。
 
 ## HarmonyOS 构建
@@ -39,6 +43,8 @@ GitHub: https://github.com/xiaomu120413/freerdp-control-demo
 cd harmony\app
 .\build_hap.bat
 ```
+
+FreeRDP runtime 变更后应先按 `docs/freerdp-ohos-validation-baseline.md` 重建并同步 `harmony/out/ohos-arm64/runtime-libs`。
 
 构建产物默认位于：
 
