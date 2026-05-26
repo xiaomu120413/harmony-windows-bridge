@@ -1,13 +1,13 @@
 # FreeRDP OHOS Feature Matrix
 
-更新时间：2026-05-25
+更新时间：2026-05-26
 
 ## 结论
 
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
-- client channels：`cliprdr`、`drdynvc`、`disp`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。剪贴板和麦克风权限保持按需申请，不在连接开始时主动弹权限。
+- client channels：`cliprdr`、`drdynvc`、`disp`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本和麦克风采集；两者权限保持按需申请，不在连接开始时主动弹权限。`drive`/`printer` 代码可编译但首版默认不请求。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - 首版交付不编译 FreeRDP smartcard source/channel、WinPR smartcard PCSC backend、TSMF，避免把未闭环的平台服务和 deprecated 视频路径带进包。
@@ -35,18 +35,50 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 
 | 能力 | 编译状态 | 当前打包状态 | 运行时遗留 |
 | --- | --- | --- | --- |
-| 剪贴板文本 `cliprdr` | 通过 | 已进 HAP | 实际读取 Harmony Pasteboard 时才通过 callback 申请权限 |
+| 剪贴板文本 `cliprdr` | 通过 | 已进 HAP，首版交付 | 实际读取 Harmony Pasteboard 时才通过 callback 申请权限 |
 | 剪贴板文件/FUSE | 失败 | 未进 HAP | `WITH_FUSE=ON` 当前缺 `fuse3`；普通应用沙箱下也不建议直接暴露任意路径 |
 | 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端需持续真机回归 |
-| 麦克风 `audin` | 通过 | 已进 HAP | 远端实际请求采集时才通过 callback 申请麦克风权限 |
-| 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP | 需要 UI 选择共享目录、沙箱权限、只读/读写策略和路径脱敏 |
-| 打印 channel `printer` | 通过 | 已进 HAP | channel 已有；CUPS backend 当前不能配置，后续接 Harmony Print 或移植 CUPS |
+| 麦克风 `audin` | 通过 | 已进 HAP，首版交付 | 远端实际请求采集时才通过 callback 申请麦克风权限 |
+| 文件重定向 `rdpdr/drive` | 通过 | 库内可用，首版默认不请求 | 需要 UI 选择共享目录、沙箱权限、只读/读写策略和路径脱敏 |
+| 打印 channel `printer` | 通过 | 库内可用，首版默认不请求 | channel 已有；CUPS backend 当前不能配置，后续接 Harmony Print 或移植 CUPS |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
 | 智能卡 source/channel `smartcard` | 关闭 | 未进 HAP | 首版不交付；恢复时需要独立开关、PC/SC 服务/权限模型和真机读卡验收 |
 | WinPR smartcard PCSC backend | 关闭 | 未进 HAP | 产品构建硬关 OFF，避免运行时 `dlopen` PCSC 和合规能力不闭环 |
 | RD Gateway core | 通过 | 依赖已进 HAP | 需要 UI 参数、settings 映射、证书/代理错误提示和服务器验证 |
 | RDPGFX/H.264 + AVC444 GPU compositor | 通过 | FFmpeg/OpenH264/OHOS AVCodec 已进 HAP | 商用默认 `rdpgfx-h264` 并默认启用 AVC444 GPU compositor；单条 command 失败时保留 FreeRDP native GDI fallback |
 | TSMF | 关闭 | 未进 HAP | FreeRDP 标注 deprecated，首版裁剪；视频路线优先 RDPGFX/H.264 或 OHOS AVCodec |
+
+## 商用状态矩阵
+
+| 能力 | 商用状态 | 默认策略 | 需要权限 | 真机验证状态 |
+| --- | --- | --- | --- | --- |
+| 基础 RDP/TLS/NLA | 首版交付 | 默认启用 | `INTERNET`、网络状态 | 待按 T00 基线复测连接、认证、证书 |
+| RDPGFX/H.264 + AVC444 GPU compositor | 首版交付 | 默认 `rdpgfx-h264`，AVC444 GPU compositor 开启 | 无新增权限 | 待真机确认协商、首帧、resize、fallback |
+| GDI/software render | 保留 fallback | 图形失败时可回退 | 无新增权限 | 待真机确认失败场景不黑屏 |
+| 动态分辨率 `disp` | 首版交付 | 默认请求 | 无新增权限 | 待真机确认 resize 和服务端不支持提示 |
+| 剪贴板文本 `cliprdr` + Pasteboard | 首版交付 | 默认接入，按需授权 | `READ_PASTEBOARD` | 待真机确认双向文本、拒绝权限和 change echo |
+| 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
+| 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 待真机确认延迟、断连、前后台 |
+| 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 待真机确认授权、拒绝、采集路径 |
+| 文件重定向 `rdpdr/drive` | 可选，首版默认关闭 | 不主动请求共享目录 | 首版不声明额外文件权限 | 未产品化；后续需 UI 和沙箱授权闭环 |
+| 打印 `printer` channel | 可选，首版默认关闭 | 不主动请求 printer channel | 首版不声明额外打印权限 | 未产品化；缺 Harmony Print/CUPS backend |
+| RD Gateway core | 可选 | UI 参数接入后启用 | 复用网络权限 | 待服务端验证 |
+| Smartcard source/channel/PCSC | 首版不交付 | 交付构建裁剪 | 不声明智能卡相关权限 | 不进包 |
+| TSMF | 首版不交付 | 交付构建裁剪 | 无 | 不进包 |
+
+## Fallback 清单
+
+| Fallback | 是否保留 | 触发条件 | 恢复路径 | 验收口径 |
+| --- | --- | --- | --- | --- |
+| 缺 FreeRDP headers/runtime 的 demo/mock fallback | 不保留在商用构建 | 构建或启动缺核心 headers/`.so` | fail-fast，提示缺失产物 | 商用 profile 不允许假装可运行 |
+| `rdpgfx-h264` 到 `rdpgfx`/`gdi` | 保留 | 图形协商、codec、surface 或 compositor 路径失败 | 只在图形失败时重试下一档 | 密码、证书、TCP 失败不能触发图形 fallback |
+| AVC444 GPU compositor 到 FreeRDP native GDI | 保留 | 单条 AVC444 command 不可消费或 Surface 不可用 | 该 command 交回 native GDI/RGB 输出 | 不允许 GPU/GDI 双写、旧帧或黑屏 |
+| `disp` resize 失败到固定分辨率 | 保留 | 服务端不支持 display-control 或 caps 未就绪 | 保持当前桌面尺寸并记录原因 | 日志说明未发送、待重试或服务端不支持 |
+| Pasteboard 权限拒绝到剪贴板操作失败 | 保留 | 用户拒绝或权限请求超时 | 本次剪贴板读写失败，会话继续 | 不崩溃，不在连接开始弹权限 |
+| 麦克风权限拒绝到 `audin` open 失败 | 保留 | 用户拒绝或权限请求超时 | 采集通道失败，会话和播放继续 | 日志说明拒绝；不影响基础 RDP |
+| OHAudio 播放失败到无声会话 | 暂保留 | 播放后端初始化或写入失败 | 会话继续，记录 rdpsnd/OHAudio diagnostics | 不因播放失败断开桌面 |
+| `drive`/`printer` 首版默认关闭 | 保留为产品策略，不是运行时 fallback | 功能未产品化或未授权 | 不请求相关 channel | matrix 标明默认关闭，HAP 不声明额外权限 |
+| FUSE/CUPS/smartcard/TSMF fallback | 不保留 | 依赖缺失、服务未闭环或 deprecated | 从交付构建裁剪或标为后续专项 | 包内不出现对应 addin/runtime 路径 |
 
 ## 验收基线
 
