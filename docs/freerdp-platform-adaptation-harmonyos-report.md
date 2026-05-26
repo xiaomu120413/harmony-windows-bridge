@@ -103,7 +103,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 - 设备重定向：`drive`、`printer`、`smartcard`、`serial`、`parallel`、`urbdrc`、`rdpdr`。
 - 其他：`rail`、`remdesk`、`sshagent`、`location`、`rdp2tcp` 等。
 
-对 HarmonyOS 的影响：第一版先用最小通道闭环是合理的；当前增强构建已把 cliprdr、disp、location、rdpgfx、rdpdr/drive、rdpsnd/audin、printer 编译进 FreeRDP，smartcard source/channel/PCSC 和 TSMF 已从交付构建裁剪。产品可用性仍取决于 HarmonyOS 侧的剪贴板、音频、地理位置权限、文件选择/沙箱、打印等后端。
+对 HarmonyOS 的影响：第一版先用最小通道闭环是合理的；当前增强构建已把 cliprdr、disp、location、rdpgfx、rdpdr/drive、rdpsnd/audin、printer 编译进 FreeRDP，smartcard source/channel/PCSC 和 TSMF 已从交付构建裁剪。产品可用性仍取决于 HarmonyOS 侧的剪贴板、音频、地理位置权限、文件选择/沙箱等后端；打印已接 OHOS PrintKit 后端，但仍需更多真机和真实打印机场景验收。
 
 ## 当前 HarmonyOS 适配现状
 
@@ -142,8 +142,8 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 2. **输入已有骨架，但需要补齐映射和焦点策略**：ArkTS 已有 touch/mouse/axis/key 入口，native 已有输入队列；仍需专项验证中文输入、组合键、软键盘、右键/滚轮、窗口失焦时释放按键、resize 后坐标映射。
 3. **动态远端分辨率未完成**：当前 `resize()` 会明确返回 display-control channel disabled。窗口变化只能本地缩放，不能通知远端桌面真实变更。后续要打开 `disp` channel 或接受固定远端分辨率。
 4. **证书策略已改成 TOFU/Strict/Ignore，但还要做产品化存储与提示**：TOFU 已通过 FreeRDP 证书回调接入，后续需要做证书详情展示、替换确认和严格模式默认策略。
-5. **FreeRDP 源码层 OHOS 后端仍未完整**：当前只有 WinPR 线程兼容分支改动；后续剪贴板、音频、硬件解码、日志、文件/打印/智能卡等能力需要继续在 FreeRDP 或 bridge 层增加 OHOS 专用后端。
-6. **增强通道已编译，但还没有全部业务闭环**：剪贴板文本、动态分辨率、音频、文件、打印、智能卡、RD Gateway 都需要继续接 HarmonyOS UI、权限、系统 API 或专用后端。
+5. **FreeRDP 源码层 OHOS 后端仍未完整**：当前已补齐 WinPR 线程兼容、剪贴板、音频、地理位置、图形和打印等关键路径；后续文件共享、智能卡、RD Gateway 以及更多日志/诊断能力仍需要继续在 FreeRDP 或 bridge 层增加 OHOS 专用后端。
+6. **增强通道已编译，但还没有全部业务闭环**：剪贴板文本、动态分辨率、音频、地理位置和打印已有基础闭环；文件、智能卡、RD Gateway 仍需要继续接 HarmonyOS UI、权限、系统 API 或专用后端。
 7. **生命周期需要压测**：断开、页面销毁、surface 销毁、App 后台、重复连接、网络抖动都需要验证 worker、FreeRDP context、dlopen runtime、NativeWindow 引用和输入队列的释放策略。
 
 ## HarmonyOS 是否需要这些适配，以及怎么适配
@@ -165,7 +165,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 | 地理位置 | `location` dynamic channel + 平台位置 provider | 首版需要，按服务端策略触发 | `location` channel 已默认启用；FreeRDP OHOS 后端调用 native LocationKit 采样，HAP 只负责 `APPROXIMATELY_LOCATION`/`LOCATION` 授权 |
 | 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是商用默认性能路径；独立视频通道按需 | 当前商用默认 `rdpgfx-h264`，AVC444 走 OHOS AVCodec-backed GPU compositor，并保留 per-command FreeRDP native GDI fallback；不要直接套 Android MediaCodec |
 | 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | `drive`/`rdpdr` 已编译；后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径。FUSE 文件复制仍是可选专项 |
-| 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | printer channel 已编译；smartcard source/channel/PCSC 已裁剪，恢复时必须先完成 PC/SC 服务、权限和真机读卡验收；真实打印仍需 CUPS 端口或 Harmony Print 后端 |
+| 打印/智能卡/USB | PrintKit/CUPS/PCSC/系统设备 API | 打印已接入基础后端；智能卡/USB 首版不需要 | printer channel 已编译并接 OHOS PrintKit 后端；连接时只暴露虚拟打印机，远端提交打印作业后才初始化/连接 PrintKit。smartcard source/channel/PCSC 已裁剪，恢复时必须先完成 PC/SC 服务、权限和真机读卡验收 |
 | 证书校验 | Windows 可用系统证书；Linux/Android 用 OpenSSL/known_hosts/回调 | 需要 | 实现 `VerifyCertificateEx/VerifyChangedCertificateEx` 回调到 ArkTS；做 TOFU 指纹存储；生产默认不使用 ignore |
 | 日志 | Console/file/syslog/Android log | 需要 | N-API 回调继续保留；建议补 `hilog` 输出，App UI 只显示脱敏摘要 |
 | 生命周期 | 各 client 自己管理事件循环 | 需要 | 页面销毁/后台/断网时统一进入 `Disconnecting`，调用 `freerdp_abort_connect_context`，等待 worker join，释放 surface |

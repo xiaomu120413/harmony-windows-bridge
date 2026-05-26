@@ -127,6 +127,7 @@ prepare_cmake_args() {
     -DWITH_JPEG=OFF
     -DWITH_OPENH264=ON
     -DWITH_OHOS_PASTEBOARD=ON
+    -DWITH_OHOS_PRINT=ON
     -DWITH_GFX_AV1=OFF
     -DWITH_ALSA=OFF
     -DWITH_PULSE=OFF
@@ -265,7 +266,7 @@ main() {
     printf '%s\n\n' "- Matrix build: \`$MATRIX_BUILD\`"
     printf '| Case | Status | Scope | Reason |\n'
     printf '| --- | --- | --- | --- |\n'
-    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, location, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
+    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, location, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel with OHOS native backend, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
     printf '| `smartcard-pcsc` | skipped | Smartcard source, channel, and WinPR PCSC backend are excluded from the delivery build | Do not compile for prelaunch package |\n'
     printf '| `tsmf` | skipped | TSMF channel is excluded from the delivery build | Do not compile for prelaunch package |\n'
   } > "$MATRIX_DIR/report.md"
