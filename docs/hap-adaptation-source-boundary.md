@@ -18,6 +18,7 @@ RDP 语义，放到 `harmony/third_party/FreeRDP/client/OHOS` 或对应 FreeRDP
 | display-control resize layout | `client/OHOS/ohos_display.*` | 转发 XComponent 宽高 |
 | graphics mode、RDPGFX capability、H.264 fallback policy | `client/OHOS/ohos_graphics.*`, `client/OHOS/ohos_rdpgfx.*` | 传 `graphicsMode` 和 surface 能力 |
 | 连接默认 settings 和标准 channel 参数 | `client/OHOS/ohos_session_config.*` | 传 host/user/password/resolution 等用户输入 |
+| location 地理位置重定向 | `client/OHOS/ohos_location.*` | 做定位授权回调 |
 | rdpsnd 播放后端 | `channels/rdpsnd/client/ohos/` | 展示播放诊断 |
 | audin 采集后端 | `channels/audin/client/ohos/` | 做麦克风授权回调 |
 | OHOS AVCodec H.264 解码入口 | `libfreerdp/codec/h264_ohos_avcodec.c` | 提供 `NativeWindow`/surface target |
@@ -25,7 +26,7 @@ RDP 语义，放到 `harmony/third_party/FreeRDP/client/OHOS` 或对应 FreeRDP
 ## HAP 里允许保留
 
 - ArkUI 连接表单、会话页、日志页和临时验证控件。
-- `INTERNET`、`READ_PASTEBOARD`、`MICROPHONE` 权限声明和授权弹窗。
+- `INTERNET`、`READ_PASTEBOARD`、`MICROPHONE`、`APPROXIMATELY_LOCATION`、`LOCATION` 权限声明和授权弹窗。
 - `XComponent` 创建、销毁、尺寸变化、焦点管理和 `NativeWindow` 句柄转交。
 - N-API 方法：`probe/connect/disconnect/sendPointerEvent/sendPlatformKey/sendText/releaseAllKeys` 等薄转发。
 - 本地 app sandbox 目录、证书 known-hosts 存储目录的传入。
@@ -41,6 +42,7 @@ RDP 语义，放到 `harmony/third_party/FreeRDP/client/OHOS` 或对应 FreeRDP
 | `certificate_policy.*` 证书 callback 行为 | 策略解析和 callback 决策已委托 `ohos_certificate.*` |
 | `freerdp_session_runner.cpp` 连接 settings 默认值 | 已委托 `freerdp_ohos_session_apply_connection_settings` |
 | channel 默认参数 | 已由 `ohos_session_config.*` 负责 |
+| location 采样和 RDP PDU 语义 | 已委托 `ohos_location.*`；HAP 只处理权限，不调用位置采样 API |
 | RDPGFX surface route 诊断 | route/caps/surface-command 统计在 `ohos_rdpgfx.*`；HAP 保留 NativeWindow 绑定和日志转发 |
 
 ## 后续建议

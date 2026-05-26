@@ -7,7 +7,7 @@
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
-- client channels：`cliprdr`、`drdynvc`、`disp`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本和麦克风采集；两者权限保持按需申请，不在连接开始时主动弹权限。`drive`/`printer` 代码可编译但首版默认不请求。
+- client channels：`cliprdr`、`drdynvc`、`disp`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、麦克风采集和地理位置重定向；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`drive`/`printer` 代码可编译但首版默认不请求。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - 首版交付不编译 FreeRDP smartcard source/channel、WinPR smartcard PCSC backend、TSMF，避免把未闭环的平台服务和 deprecated 视频路径带进包。
@@ -28,6 +28,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 - `printer` channel 能编译，不代表已经有 CUPS 或 Harmony 打印后端。
 - `smartcard` 被裁剪，不代表协议层永远不支持；只是首版没有 PC/SC 服务、权限、读卡器交互和验收闭环。
 - `rdpsnd/audin` 能编译，不代表音频焦点、路由、采集权限、缓冲生命周期已经产品化。
+- `location` 已接 OHOS LocationKit native API；ETS/HAP 层只负责定位权限申请，不负责采样和 RDP PDU 语义。
 
 所以当前状态是“首版交付需要的协议和可编译后端已经进包”，下一步是“接 HarmonyOS 运行时 API 并真机验证”。smartcard source/channel/PCSC 和 TSMF 不进入首版包。
 
@@ -39,6 +40,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 剪贴板文件/FUSE | 失败 | 未进 HAP | `WITH_FUSE=ON` 当前缺 `fuse3`；普通应用沙箱下也不建议直接暴露任意路径 |
 | 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端需持续真机回归 |
 | 麦克风 `audin` | 通过 | 已进 HAP，首版交付 | 远端实际请求采集时才通过 callback 申请麦克风权限 |
+| 地理位置 `location` | 通过 | 已进 HAP，首版交付 | 默认注册 channel；服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
 | 文件重定向 `rdpdr/drive` | 通过 | 库内可用，首版默认不请求 | 需要 UI 选择共享目录、沙箱权限、只读/读写策略和路径脱敏 |
 | 打印 channel `printer` | 通过 | 库内可用，首版默认不请求 | channel 已有；CUPS backend 当前不能配置，后续接 Harmony Print 或移植 CUPS |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
@@ -60,6 +62,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 待真机确认延迟、断连、前后台 |
 | 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 待真机确认授权、拒绝、采集路径 |
+| 地理位置 `location` | 首版交付 | 默认接入，远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 可选，首版默认关闭 | 不主动请求共享目录 | 首版不声明额外文件权限 | 未产品化；后续需 UI 和沙箱授权闭环 |
 | 打印 `printer` channel | 可选，首版默认关闭 | 不主动请求 printer channel | 首版不声明额外打印权限 | 未产品化；缺 Harmony Print/CUPS backend |
 | RD Gateway core | 可选 | UI 参数接入后启用 | 复用网络权限 | 待服务端验证 |
@@ -76,6 +79,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | `disp` resize 失败到固定分辨率 | 保留 | 服务端不支持 display-control 或 caps 未就绪 | 保持当前桌面尺寸并记录原因 | 日志说明未发送、待重试或服务端不支持 |
 | Pasteboard 权限拒绝到剪贴板操作失败 | 保留 | 用户拒绝或权限请求超时 | 本次剪贴板读写失败，会话继续 | 不崩溃，不在连接开始弹权限 |
 | 麦克风权限拒绝到 `audin` open 失败 | 保留 | 用户拒绝或权限请求超时 | 采集通道失败，会话和播放继续 | 日志说明拒绝；不影响基础 RDP |
+| 地理位置权限拒绝到 location sample 失败 | 保留 | 用户拒绝、定位服务关闭或权限请求超时 | 本次 location sample 不发送，会话继续 | 日志说明拒绝或采样失败；不影响基础 RDP |
 | OHAudio 播放失败到无声会话 | 暂保留 | 播放后端初始化或写入失败 | 会话继续，记录 rdpsnd/OHAudio diagnostics | 不因播放失败断开桌面 |
 | `drive`/`printer` 首版默认关闭 | 保留为产品策略，不是运行时 fallback | 功能未产品化或未授权 | 不请求相关 channel | matrix 标明默认关闭，HAP 不声明额外权限 |
 | FUSE/CUPS/smartcard/TSMF fallback | 不保留 | 依赖缺失、服务未闭环或 deprecated | 从交付构建裁剪或标为后续专项 | 包内不出现对应 addin/runtime 路径 |
@@ -86,9 +90,9 @@ T00 已把后续任务的可重复验收口径整理到 `docs/freerdp-ohos-valid
 
 当前基线：
 
-- 主仓库提交：`b449ff223262c7605dc183bbb78cf48ac1a2b113`
-- FreeRDP 子模块提交：`d00af99d5d6abddc9e6daf46a738a18ee656e949`
-- FreeRDP 标识：`3.26.0-135-gd00af99d5`
+- 地理位置功能主仓库提交：`57c2d97`
+- 地理位置功能 FreeRDP 子模块提交：`f5d777f4d`
+- 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat`
 
 ## 本轮验证命令
 
@@ -119,12 +123,14 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 4. 连接开始时不应立即弹 Pasteboard 权限；触发剪贴板读取时才申请权限，并验证文本同步。
 5. 播放 Windows 系统声音，观察 `rdpsnd` 日志、延迟、断连和后台行为。
 6. 连接开始时不应立即弹麦克风权限；远端实际请求音频采集时才申请权限，并验证 `audin` 采集路径。
-7. 启用一个只读共享目录，验证 `drive` runtime settings、路径选择和权限策略。
-8. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
-9. 填 RD Gateway 参数，验证 settings 映射和失败提示。
+7. 连接到会请求位置重定向的服务端，确认 `LocationStart` 后申请定位权限；授权后能发送样本，拒绝后会话继续。
+8. 启用一个只读共享目录，验证 `drive` runtime settings、路径选择和权限策略。
+9. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
+10. 填 RD Gateway 参数，验证 settings 映射和失败提示。
 
 ## 影响
 
 - 当前 signed HAP 为 33,320,512 bytes，约 31.78 MiB；相对裁剪前工作区基线 88.27 MiB 减少约 56.49 MiB。
 - smartcard source/channel/PCSC 和 TSMF 不进入包，减少未闭环平台服务和 deprecated 通道带来的商业验收风险。
 - CUPS/FUSE 不进入包，避免把当前无法闭合的 Linux 服务模型带进普通 HarmonyOS 应用。
+- 地理位置已进入默认 channel 集合；上架隐私材料和真机验收必须覆盖定位权限用途、拒绝授权行为和服务端触发时机。

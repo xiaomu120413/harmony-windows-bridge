@@ -179,6 +179,7 @@ Demo HAP 私有类型塞进 FreeRDP public API。
 - `rdpgfx-h264` 和 AVC444 GPU compositor
 - `rdpsnd` 播放
 - `audin` 麦克风采集，远端请求时按需申请麦克风权限
+- `location` 地理位置重定向，远端请求时按需申请定位权限
 
 首版默认关闭或不交付：
 
@@ -194,5 +195,6 @@ SDK 接入方至少应验证：
 2. 连接开始不弹 Pasteboard 或麦克风权限。
 3. 触发剪贴板读取时才申请 Pasteboard 权限，拒绝后会话不崩溃。
 4. 远端请求音频采集时才申请麦克风权限，拒绝后 `audin` 明确失败且会话继续。
-5. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
-6. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。
+5. 远端请求位置重定向时才申请定位权限，拒绝后 location sample 失败但会话继续。
+6. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
+7. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。

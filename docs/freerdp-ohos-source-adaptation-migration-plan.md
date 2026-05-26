@@ -18,6 +18,7 @@ harmony/third_party/FreeRDP
   channels/rdpsnd/client/ohos/         OHAudio playback backend
   channels/audin/client/ohos/          OHAudio microphone capture backend
   channels/cliprdr/client/ohos/        OHOS clipboard backend
+  client/OHOS/ohos_location.*          LocationKit-backed location provider
   channels/disp/client/ohos helpers    display-control resize helper
   channels/rdpgfx/client/ohos helpers  graphics capability and surface policy
   libfreerdp/codec/                    OHOS AVCodec decoder backend
@@ -38,7 +39,7 @@ protocol buffering, cliprdr message handling or display-control layout building.
 Allowed HAP logic:
 
 - connection form, session view, diagnostic pages and validation toggles
-- runtime permission prompts such as microphone, pasteboard and storage access
+- runtime permission prompts such as microphone, pasteboard, location and storage access
 - forwarding native surface/window handles and user-selected options
 - showing FreeRDP backend logs and counters
 
@@ -49,6 +50,7 @@ Logic that must migrate to FreeRDP source:
 - clipboard format negotiation, text transfer and loop suppression
 - rdpsnd playback queue and OHAudio renderer backend
 - audin microphone capture and OHAudio capturer backend
+- location channel callbacks, LocationKit sampling and RDP location PDU sending
 - RDPGFX capability advertisement and codec fallback policy
 - AVCodec hardware decoder integration and diagnostics
 - dynamic resolution layout construction and `disp` channel calls
@@ -84,6 +86,10 @@ Clipboard
   client/X11 clipboard integration plus cliprdr client channel callbacks
   -> OHOS Pasteboard wrapper under a FreeRDP OHOS clipboard backend
 
+Location
+  channels/location/client plus platform provider callbacks
+  -> OHOS provider is client/OHOS/ohos_location.* and uses native LocationKit
+
 Display resize
   channels/disp/client
   -> OHOS helper builds monitor layout, HAP forwards only width/height
@@ -94,9 +100,9 @@ Graphics and codecs
   -> OHOS helper owns AVC420/AVC444 policy and AVCodec route
 ```
 
-The microphone gap is explicit: `CHANNEL_AUDIN_CLIENT` may compile, but there is
-no `channels/audin/client/ohos` backend yet. Without that backend, the remote
-Windows session cannot receive local microphone samples.
+The remaining pattern is explicit: if a FreeRDP channel needs OS data, the
+protocol and platform API calls live in FreeRDP source, while the HAP only
+bridges runtime permission prompts and UI-owned handles.
 
 ## Current State
 
@@ -105,17 +111,21 @@ Already in FreeRDP source:
 - `client/OHOS/ohos_keyboard.*`
 - `libfreerdp/codec/h264_ohos_avcodec.c`
 - `channels/rdpsnd/client/ohos/rdpsnd_ohos.c`
+- `channels/audin/client/ohos/`
+- `client/OHOS/ohos_clipboard.*`
+- `client/OHOS/ohos_location.*`
 - WinPR OHOS compatibility patches
 
 Still incomplete or too much in the HAP layer:
 
 - final remote validation for Ctrl combinations and long-press repeat
 - IME committed text ownership
-- Pasteboard plus `cliprdr` bridge ownership
-- `rdpgfx` capability and AVC route policy
-- display-control helper ownership
-- microphone `audin` backend
+- Pasteboard, `audin` and `location` have source backends, but still need broader true-device regression for permission refusal, reconnect and service-side behavior
 - audio playback stutter diagnostics and queue tuning
+- `drive` shared-directory UI/sandbox policy and product enablement
+- `printer` runtime backend through Harmony Print or CUPS-compatible path
+- RD Gateway UI/settings exposure and server-side validation
+- smartcard/PCSC, FUSE and TSMF remain out of the delivery build
 - lifecycle stress testing for disconnect, reconnect, page destroy, background
   and network jitter
 

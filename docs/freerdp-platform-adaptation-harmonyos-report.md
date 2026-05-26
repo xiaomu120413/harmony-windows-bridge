@@ -103,7 +103,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 - 设备重定向：`drive`、`printer`、`smartcard`、`serial`、`parallel`、`urbdrc`、`rdpdr`。
 - 其他：`rail`、`remdesk`、`sshagent`、`location`、`rdp2tcp` 等。
 
-对 HarmonyOS 的影响：第一版先用最小通道闭环是合理的；当前增强构建已把 cliprdr、disp、rdpgfx、rdpdr/drive、rdpsnd/audin、printer 编译进 FreeRDP，smartcard source/channel/PCSC 和 TSMF 已从交付构建裁剪。产品可用性仍取决于 HarmonyOS 侧的剪贴板、音频、文件选择/沙箱、打印等后端。
+对 HarmonyOS 的影响：第一版先用最小通道闭环是合理的；当前增强构建已把 cliprdr、disp、location、rdpgfx、rdpdr/drive、rdpsnd/audin、printer 编译进 FreeRDP，smartcard source/channel/PCSC 和 TSMF 已从交付构建裁剪。产品可用性仍取决于 HarmonyOS 侧的剪贴板、音频、地理位置权限、文件选择/沙箱、打印等后端。
 
 ## 当前 HarmonyOS 适配现状
 
@@ -127,7 +127,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
    - `harmony/scripts/windows/sync-freerdp-runtime.ps1` 同步到 `harmony/app/entry/libs/arm64-v8a/`。
    - `elf-report.txt` 显示 arm64 产物为 ELF64 AArch64，依赖关系基本闭合。
 5. Harmony App 已具备 native bridge：
-   - `module.json5` 仅声明 `ohos.permission.INTERNET`。
+   - `module.json5` 声明 `ohos.permission.INTERNET`、网络状态、Pasteboard、麦克风和定位权限；Pasteboard/麦克风/定位通过 native callback 在协议需要时申请。
    - `Index.ets` 调用 `libentry.so` 的 `probe/connect/disconnect/resize/paintTestPattern/sendPointer/sendKey/sendUnicode/onState/onLog/onError`。
    - `Index.ets` 已使用 `XComponent(id: 'rdpSurface', type: SURFACE, libraryname: 'entry')` 承载远端桌面区域，并在 ArkTS 侧处理 touch、mouse、axis、key 事件。
    - `napi_init.cpp` 已经做 TCP reachability check、运行期 `dlopen`、FreeRDP settings 映射、worker thread、FreeRDP event loop、线程安全回调。
@@ -161,7 +161,8 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 | 渲染 | Windows GDI/X11 image/AndroidBitmap | 需要重写 | `XComponent` 获取 surface，C++ 注册 `OH_NativeXComponent_Callback`，用 `NativeWindow` request/flush buffer，FreeRDP frame 转 `RGBA8888` |
 | 输入 | Windows/X11/Android 各自把本地键鼠转 FreeRDP input | 需要重写 | ArkUI touch/key -> N-API -> native event queue -> `freerdp_input_send_mouse_event/keyboard_event/unicode_keyboard_event` |
 | 剪贴板 | `cliprdr` + 平台 clipboard | 首版需要文本剪贴板，文件后续 | `CHANNEL_CLIPRDR_CLIENT` 已编译；首版接 Harmony Pasteboard 文本能力，权限按需申请，文件/复杂格式后续评估 |
-| 音频 | ALSA/Pulse/OSS/OpenSLES | 首个可交互版本可不做，产品化通常需要 | 继续关闭到 M6；后续打开 `rdpsnd/audin`，用 Harmony AudioRenderer/AudioCapturer 写 OHOS backend，不能直接用 ALSA/Pulse/OpenSLES |
+| 音频 | ALSA/Pulse/OSS/OpenSLES | 首版需要 | `rdpsnd`/`audin` 已接 OHAudio 后端；麦克风权限由远端实际请求采集时按需申请，仍需持续真机回归 |
+| 地理位置 | `location` dynamic channel + 平台位置 provider | 首版需要，按服务端策略触发 | `location` channel 已默认启用；FreeRDP OHOS 后端调用 native LocationKit 采样，HAP 只负责 `APPROXIMATELY_LOCATION`/`LOCATION` 授权 |
 | 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是商用默认性能路径；独立视频通道按需 | 当前商用默认 `rdpgfx-h264`，AVC444 走 OHOS AVCodec-backed GPU compositor，并保留 per-command FreeRDP native GDI fallback；不要直接套 Android MediaCodec |
 | 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | `drive`/`rdpdr` 已编译；后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径。FUSE 文件复制仍是可选专项 |
 | 打印/智能卡/USB | CUPS/PCSC/系统设备 API | 首版不需要 | printer channel 已编译；smartcard source/channel/PCSC 已裁剪，恢复时必须先完成 PC/SC 服务、权限和真机读卡验收；真实打印仍需 CUPS 端口或 Harmony Print 后端 |
@@ -582,6 +583,7 @@ WITH_MEDIACODEC=OFF
 7. **音视频专项**
    - `rdpsnd` + Harmony AudioRenderer。
    - `audin` + Harmony AudioCapturer。
+   - `location` + Harmony LocationKit。
    - `rdpgfx` + OpenH264/FFmpeg 软件验证。
    - OHOS AVCodec 硬解 subsystem 和 fallback。
 
