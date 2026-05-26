@@ -63,6 +63,9 @@ export class SettingsText {
   static readonly USAGE_FORM_TITLE: string = '填写连接信息'
   static readonly USAGE_FORM_BODY: string =
     '在主界面填写 Windows host、Port、Username 和 Password。host 可以是目标电脑 IP 或主机名，默认端口是 3389。'
+  static readonly USAGE_REMOTE_FILES_TITLE: string = '远程文件'
+  static readonly USAGE_REMOTE_FILES_BODY: string =
+    '应用启动后会通过系统下载控件准备 Download/com.muhub.desktop。连接到 Windows 后，在远程桌面里打开 \\\\tsclient\\Downloads，可与该目录互传小文件。当前只共享这个固定目录，不会暴露任意本地路径。'
   static readonly USAGE_CERT_TITLE: string = '证书策略'
   static readonly USAGE_CERT_BODY: string =
     '当前版本暂时固定使用 TOFU 证书策略，适合测试和内网首次连接，会在首次连接时信任目标证书。后续需要更严格校验时再开放策略选择入口。'

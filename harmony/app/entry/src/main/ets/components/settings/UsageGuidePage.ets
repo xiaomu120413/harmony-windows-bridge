@@ -51,6 +51,11 @@ export struct UsageGuidePage {
             body: SettingsText.USAGE_FORM_BODY,
             isDark: this.isDark
           })
+          SettingsInfoCard({
+            title: SettingsText.USAGE_REMOTE_FILES_TITLE,
+            body: SettingsText.USAGE_REMOTE_FILES_BODY,
+            isDark: this.isDark
+          })
 
           SettingsSectionTitle({
             title: SettingsText.USAGE_SECTION_SECURITY,
