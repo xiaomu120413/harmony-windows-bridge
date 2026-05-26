@@ -120,7 +120,6 @@ struct RdpSession::Impl {
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -128,15 +127,10 @@ struct RdpSession::Impl {
         return input.EnqueuePointer(flags, x, y, message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -145,16 +139,10 @@ struct RdpSession::Impl {
             RdpDesktopHeight(), message, [this](const std::string& line) {
                 EmitLog(line);
             });
-#else
-        (void)pointer;
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -162,15 +150,10 @@ struct RdpSession::Impl {
         return input.EnqueueKey(rdpScancode, down, repeat, message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool SendPlatformKey(const OhosKeyEvent& event, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -178,16 +161,10 @@ struct RdpSession::Impl {
         return input.EnqueuePlatformKey(event, message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        (void)event;
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool SendUnicode(uint32_t code, bool down, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -195,15 +172,10 @@ struct RdpSession::Impl {
         return input.EnqueueUnicode(code, down, message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool SendCommittedText(const std::u16string& text, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -211,16 +183,10 @@ struct RdpSession::Impl {
         return input.EnqueueCommittedText(text, message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        (void)text;
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool SendFocusIn(uint16_t toggleStates, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -228,16 +194,10 @@ struct RdpSession::Impl {
         return input.EnqueueFocusIn(toggleStates, message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        (void)toggleStates;
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool ReleaseAllKeys(std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             input.Clear();
             message = "no active FreeRDP session";
@@ -246,15 +206,10 @@ struct RdpSession::Impl {
         return input.EnqueueReleaseAllKeys(message, [this](const std::string& line) {
             EmitLog(line);
         });
-#else
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (IsAvc420SurfaceOutputEnabled()) {
             message = "AVC420 surface output owns XComponent";
             return false;
@@ -265,26 +220,17 @@ struct RdpSession::Impl {
         }
 
         return channels.RequestCurrentFrameRender(reason, message);
-#else
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
         std::string& message)
     {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
         }
 
         return channels.RequestDynamicDesktopResize(width, height, reason, message);
-#else
-        message = "explicit FreeRDP demo build has no headers";
-        return false;
-#endif
     }
 
     void EmitState(const std::string& state)
@@ -324,7 +270,6 @@ struct RdpSession::Impl {
         return running.load();
     }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     void SetActiveNative(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
         freerdpOhosSession* ohosSession)
     {
@@ -335,7 +280,6 @@ struct RdpSession::Impl {
     {
         channels.ClearActive(instance);
     }
-#endif
 
     bool WaitForAutoInitialResolution(ConnectParams& params)
     {
@@ -451,7 +395,6 @@ struct RdpSession::Impl {
             return;
         }
         EmitLog("graphics fallback ladder: " + JoinGraphicsModes(graphicsModes));
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
         for (size_t attempt = 0; attempt < graphicsModes.size(); ++attempt) {
             ConnectParams attemptParams = params;
             attemptParams.graphicsMode = graphicsModes[attempt];
@@ -527,10 +470,6 @@ struct RdpSession::Impl {
             }
             break;
         }
-#else
-        (void)graphicsModes;
-        session = RunFreerdpSessionUnavailable();
-#endif
         input.Clear();
 
         if (session.cancelled || !running.load()) {

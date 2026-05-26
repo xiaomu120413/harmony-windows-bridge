@@ -8,16 +8,13 @@ RdpSessionInput::RdpSessionInput() = default;
 
 RdpSessionInput::~RdpSessionInput()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (queue_ != nullptr && queueApi_ != nullptr && queueApi_->ohosInputQueueFree != nullptr) {
         queueApi_->ohosInputQueueFree(queue_);
     }
-#endif
 }
 
 namespace {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 uint32_t ToOhosPointerAction(LocalPointerAction action)
 {
     switch (action) {
@@ -77,11 +74,9 @@ FREERDP_OHOS_KEY_EVENT ToOhosKeyEvent(const OhosKeyEvent& event)
         event.meta ? 1 : 0,
     };
 }
-#endif
 
 } // namespace
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 bool RdpSessionInput::EnsureQueue(
     std::string& message, const std::function<void(const std::string&)>& log)
 {
@@ -135,12 +130,10 @@ FREERDP_OHOS_INPUT_QUEUE_DIAGNOSTICS RdpSessionInput::Diagnostics() const
     }
     return diagnostics;
 }
-#endif
 
 bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y,
     std::string& message, const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -152,21 +145,12 @@ bool RdpSessionInput::EnqueuePointer(uint16_t flags, uint16_t x, uint16_t y,
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)flags;
-    (void)x;
-    (void)y;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueueLocalPointer(const LocalPointerEvent& pointer,
     const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight,
     std::string& message, const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -189,21 +173,11 @@ bool RdpSessionInput::EnqueueLocalPointer(const LocalPointerEvent& pointer,
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)pointer;
-    (void)surface;
-    (void)desktopWidth;
-    (void)desktopHeight;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueueKey(uint32_t rdpScancode, bool down, bool repeat,
     std::string& message, const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -216,20 +190,11 @@ bool RdpSessionInput::EnqueueKey(uint32_t rdpScancode, bool down, bool repeat,
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)rdpScancode;
-    (void)down;
-    (void)repeat;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueuePlatformKey(const OhosKeyEvent& event, std::string& message,
     const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -242,18 +207,11 @@ bool RdpSessionInput::EnqueuePlatformKey(const OhosKeyEvent& event, std::string&
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)event;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueueUnicode(uint32_t code, bool down, std::string& message,
     const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -265,19 +223,11 @@ bool RdpSessionInput::EnqueueUnicode(uint32_t code, bool down, std::string& mess
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)code;
-    (void)down;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::string& message,
     const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -290,18 +240,11 @@ bool RdpSessionInput::EnqueueCommittedText(const std::u16string& text, std::stri
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)text;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueueFocusIn(uint16_t toggleStates, std::string& message,
     const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -313,18 +256,11 @@ bool RdpSessionInput::EnqueueFocusIn(uint16_t toggleStates, std::string& message
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)toggleStates;
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionInput::EnqueueReleaseAllKeys(
     std::string& message, const std::function<void(const std::string&)>& log)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (!EnsureQueue(message, log)) {
         return false;
     }
@@ -336,69 +272,43 @@ bool RdpSessionInput::EnqueueReleaseAllKeys(
         LogInputFailure(message, log);
     }
     return ok == TRUE;
-#else
-    (void)log;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 void RdpSessionInput::Clear()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (queue_ != nullptr && queueApi_ != nullptr && queueApi_->ohosInputQueueClear != nullptr) {
         queueApi_->ohosInputQueueClear(queue_);
     }
-#endif
 }
 
 void RdpSessionInput::Reset()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     if (queue_ != nullptr && queueApi_ != nullptr && queueApi_->ohosInputQueueReset != nullptr) {
         queueApi_->ohosInputQueueReset(queue_);
     }
-#endif
     inputFailureLogCount_.store(0);
 }
 
 uint32_t RdpSessionInput::QueueDepth() const
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     return Diagnostics().depth;
-#else
-    return 0;
-#endif
 }
 
 uint32_t RdpSessionInput::QueuedCount() const
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     return Diagnostics().queued;
-#else
-    return 0;
-#endif
 }
 
 uint32_t RdpSessionInput::SentCount() const
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     return Diagnostics().sent;
-#else
-    return 0;
-#endif
 }
 
 uint32_t RdpSessionInput::DroppedCount() const
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     return Diagnostics().dropped;
-#else
-    return 0;
-#endif
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
     const std::function<void(const std::string&)>& log)
 {
@@ -415,7 +325,6 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
         LogInputFailure(detail.data(), log);
     }
 }
-#endif
 
 void RdpSessionInput::LogInputFailure(
     const std::string& message, const std::function<void(const std::string&)>& log)

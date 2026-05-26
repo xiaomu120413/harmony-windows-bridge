@@ -5,12 +5,10 @@
 #include <functional>
 #include <string>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include "freerdp/freerdp_runtime.h"
 
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/settings.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -29,7 +27,6 @@ bool IsAvc420SurfaceOutputEnabled();
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 void UpdateRdpgfxSurfaceTargetIfReady(const std::string& reason);
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 void ResetAvcSurfaceOutput(FreerdpRuntimeApi& api);
 bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi& api, const GraphicsPipelineConfig& graphicsConfig,
     const FreerdpLogFn& log, std::string& error);
@@ -39,6 +36,5 @@ std::string OhosRdpgfxBridgeDiagnostics(FreerdpRuntimeApi& api);
 std::string OhosAvc420RouteDiagnostics(FreerdpRuntimeApi& api);
 void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx);
 void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx);
-#endif
 
 } // namespace rdp_bridge

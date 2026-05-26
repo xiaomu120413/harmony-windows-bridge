@@ -208,7 +208,6 @@ std::string NativeBufferFormatName(OH_NativeBuffer_Format format)
     }
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 
 bool IsValidLcForCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
 {
@@ -1878,12 +1877,10 @@ private:
     bool hasChroma_ = false;
 };
 
-#endif
 
 } // namespace
 
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 bool Avc444GpuCompositorImpl::CommandLcIsValid(
     const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command)
 {
@@ -1894,9 +1891,7 @@ std::string Avc444GpuCompositorImpl::RectText(const RECTANGLE_16* rect)
 {
     return FormatRectText(rect);
 }
-#endif
 struct Avc444GpuCompositorImpl::State {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     Avc444HardwareDecoder avcDecoder;
     Avc444GpuRenderer renderer;
     std::vector<uint8_t> streamParameterSets;
@@ -2418,9 +2413,6 @@ struct Avc444GpuCompositorImpl::State {
         return PresentQueuedUpdate("EndFrame", frameId, activeFrameId, matchedFrame,
             callbacks, outputActive, logs);
     }
-#else
-    void Destroy() {}
-#endif
 };
 
 
@@ -2435,7 +2427,6 @@ void Avc444GpuCompositorImpl::Destroy()
     }
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 bool Avc444GpuCompositorImpl::ProcessCommand(
     const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
     const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
@@ -2451,6 +2442,5 @@ bool Avc444GpuCompositorImpl::PresentEndFrame(
 {
     return state_ != nullptr && state_->PresentEndFrame(frame, callbacks, outputActive, logs);
 }
-#endif
 
 } // namespace rdp_bridge

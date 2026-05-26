@@ -6,13 +6,10 @@
 #include <memory>
 #include <string>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 #include <client/OHOS/ohos_clipboard.h>
-#endif
 
 namespace rdp_bridge {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS) && defined(HARMONY_HAS_FREERDP_OHOS_CLIENT_SOURCE)
 struct HarmonyClipboardBridge::Impl {
 public:
     ~Impl()
@@ -120,6 +117,5 @@ void HarmonyClipboardBridge::Uninitialize()
 {
     impl_->Uninitialize();
 }
-#endif
 
 } // namespace rdp_bridge

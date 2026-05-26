@@ -5,14 +5,11 @@
 #include <functional>
 #include <string>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/freerdp.h>
 #include <freerdp/update.h>
-#endif
 
 namespace rdp_bridge {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 struct GdiBridgeCallbacks {
     std::function<bool()> isAvc420SurfaceOutputEnabled;
     std::function<bool(const RgbaFrame&, std::string&, bool)> queueFrame;
@@ -33,6 +30,5 @@ BOOL HarmonyEndPaint(rdpContext* context);
 BOOL HarmonyDesktopResize(rdpContext* context);
 BOOL HarmonyPostConnect(freerdp* instance);
 void HarmonyPostDisconnect(freerdp* instance);
-#endif
 
 } // namespace rdp_bridge

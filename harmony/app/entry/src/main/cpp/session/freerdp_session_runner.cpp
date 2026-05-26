@@ -13,17 +13,14 @@
 #include <chrono>
 #include <cstdio>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/client.h>
 #include <freerdp/error.h>
 #include <freerdp/settings.h>
 #include <winpr/synch.h>
-#endif
 
 namespace rdp_bridge {
 namespace {
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 void StopRenderPipeline(const RdpSessionCallbacks& callbacks)
 {
     if (callbacks.stopRenderPipeline != nullptr) {
@@ -208,11 +205,9 @@ struct OhosSessionAdapter {
         }
     }
 };
-#endif
 
 } // namespace
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
     const RdpSessionCallbacks& callbacks, const FreerdpSetActiveFn& setActive,
     const FreerdpClearActiveFn& clearActive, const std::function<void(const std::string&)>& log,
@@ -329,15 +324,5 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
     return result;
 }
-#else
-RdpSessionRunResult RunFreerdpSessionUnavailable()
-{
-    RdpSessionRunResult result;
-    result.available = false;
-    result.message = "explicit FreeRDP demo build has no headers";
-    result.failed = true;
-    return result;
-}
-#endif
 
 } // namespace rdp_bridge

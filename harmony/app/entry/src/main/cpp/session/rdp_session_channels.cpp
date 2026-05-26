@@ -9,11 +9,9 @@
 #include <unordered_map>
 #include <utility>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <freerdp/client/channels.h>
 #include <freerdp/channels/disp.h>
 #include <freerdp/channels/rdpgfx.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -31,17 +29,14 @@ void RdpSessionChannels::EmitLog(const std::string& line)
 
 void RdpSessionChannels::RequestDisconnect()
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(activeMutex_);
     if (activeApi_ != nullptr && activeContext_ != nullptr) {
         activeApi_->abortConnectContext(activeContext_);
     }
-#endif
 }
 
 bool RdpSessionChannels::RequestCurrentFrameRender(const std::string& reason, std::string& message)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(activeMutex_);
     if (activeContext_ == nullptr || activeContext_->gdi == nullptr) {
         message = "FreeRDP GDI context is not ready";
@@ -81,17 +76,11 @@ bool RdpSessionChannels::RequestCurrentFrameRender(const std::string& reason, st
     message = std::to_string(frame.width) + "x" + std::to_string(frame.height) +
         " current-gdi";
     return true;
-#else
-    (void)reason;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
 bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t height,
     const std::string& reason, std::string& message)
 {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     std::lock_guard<std::mutex> lock(activeMutex_);
     if (activeApi_ == nullptr || activeApi_->ohosSessionResize == nullptr) {
         message = "FreeRDP OHOS session resize symbol is not loaded";
@@ -113,16 +102,8 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
         (detail[0] != '\0' ? detail.data() : (std::to_string(width) + "x" +
             std::to_string(height)));
     return true;
-#else
-    (void)width;
-    (void)height;
-    (void)reason;
-    message = "explicit FreeRDP demo build has no headers";
-    return false;
-#endif
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 void RdpSessionChannels::SetActive(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
     freerdpOhosSession* ohosSession)
 {
@@ -372,6 +353,5 @@ bool RdpSessionChannels::DetachGraphicsPipelineLocked(RdpgfxClientContext* gfx)
     IncrementRdpgfxDisconnected();
     return true;
 }
-#endif
 
 } // namespace rdp_bridge

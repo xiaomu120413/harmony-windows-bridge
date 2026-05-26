@@ -42,7 +42,6 @@ bool CompleteClipboardPermissionRequestFromUi(uint32_t requestId, bool granted)
     return true;
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 BOOL RequestClipboardPermissionForPasteboard(void* userData, UINT32 timeoutMs)
 {
     (void)userData;
@@ -96,6 +95,5 @@ BOOL RequestClipboardPermissionForPasteboard(void* userData, UINT32 timeoutMs)
     }
     return granted ? TRUE : FALSE;
 }
-#endif
 
 } // namespace rdp_bridge

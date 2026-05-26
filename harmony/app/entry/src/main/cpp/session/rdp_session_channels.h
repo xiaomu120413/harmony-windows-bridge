@@ -8,14 +8,12 @@
 #include <string>
 #include <unordered_map>
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include "freerdp/freerdp_runtime.h"
 
 #include <freerdp/client/channels.h>
 #include <freerdp/client/disp.h>
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/freerdp.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -30,11 +28,9 @@ public:
 
     void SetCallbacks(Callbacks callbacks);
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     void SetActive(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
         freerdpOhosSession* ohosSession);
     void ClearActive(freerdp* instance);
-#endif
     void RequestDisconnect();
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message);
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
@@ -43,7 +39,6 @@ public:
 private:
     void EmitLog(const std::string& line);
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     static std::mutex& RegistryMutex();
     static std::unordered_map<rdpContext*, RdpSessionChannels*>& Registry();
     static void RegisterSession(rdpContext* context, RdpSessionChannels* session);
@@ -67,7 +62,6 @@ private:
     freerdpOhosSession* activeOhosSession_ = nullptr;
     DispClientContext* activeDisp_ = nullptr;
     RdpgfxClientContext* activeGfx_ = nullptr;
-#endif
 
     Callbacks callbacks_;
 };

@@ -42,7 +42,6 @@ std::string EnsureOpenSslModulesPath()
     return modulesPath;
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 bool FreerdpRuntimeApi::Load(std::string& error)
 {
     if (loaded_) {
@@ -307,6 +306,5 @@ bool EnsureFreerdpRuntimeLoaded(FreerdpRuntimeApi& api, std::string& error)
     std::lock_guard<std::mutex> lock(loadMutex);
     return api.Load(error);
 }
-#endif
 
 } // namespace rdp_bridge

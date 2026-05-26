@@ -24,12 +24,10 @@ std::atomic<uint64_t> g_avc444EndFrameCallbackCount{0};
 std::mutex g_callbacksMutex;
 RdpgfxPipelineCallbacks g_callbacks;
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 std::mutex g_ohosRdpgfxBridgeMutex;
 freerdpOhosRdpgfxBridge *g_ohosRdpgfxBridge = nullptr;
 std::mutex g_ohosAvc420RouteMutex;
 freerdpOhosAvc420Route *g_ohosAvc420Route = nullptr;
-#endif
 
 RdpgfxPipelineCallbacks SnapshotCallbacks() {
   std::lock_guard<std::mutex> lock(g_callbacksMutex);
@@ -52,7 +50,6 @@ void ResetAvc444GpuOutputOwner(const std::string &reason) {
   }
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 freerdpOhosRdpgfxBridge *EnsureOhosRdpgfxBridge(FreerdpRuntimeApi &api,
                                                 std::string &error) {
   std::lock_guard<std::mutex> lock(g_ohosRdpgfxBridgeMutex);
@@ -330,7 +327,6 @@ void OhosRdpgfxAvc444OutputStateCallback(BOOL active, const char *reason,
       RenderOutputOwnerName(previous) + " reason=" + SafeCString(reason));
 }
 
-#endif
 
 } // namespace
 
@@ -340,18 +336,13 @@ void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks) {
 }
 
 bool IsAvc420SurfaceOutputEnabled() {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
   FreerdpRuntimeApi &api = SharedFreerdpRuntimeApi();
   freerdpOhosAvc420Route *route = CurrentOhosAvc420Route();
   return route != nullptr && api.ohosAvc420RouteIsSurfaceActive != nullptr &&
          api.ohosAvc420RouteIsSurfaceActive(route) != FALSE;
-#else
-  return false;
-#endif
 }
 
 void UpdateAvc420SurfaceOutputIfActive(const std::string &reason) {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
   FreerdpRuntimeApi &api = SharedFreerdpRuntimeApi();
   freerdpOhosAvc420Route *route = CurrentOhosAvc420Route();
   if (route == nullptr || api.ohosAvc420RouteIsSurfaceActive == nullptr ||
@@ -374,13 +365,9 @@ void UpdateAvc420SurfaceOutputIfActive(const std::string &reason) {
   } else if (message[0] != '\0') {
     LogThroughCallbacks(message.data());
   }
-#else
-  (void)reason;
-#endif
 }
 
 void UpdateRdpgfxSurfaceTargetIfReady(const std::string &reason) {
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
   FreerdpRuntimeApi &api = SharedFreerdpRuntimeApi();
   freerdpOhosRdpgfxBridge *bridge = CurrentOhosRdpgfxBridge();
   if (bridge == nullptr || api.ohosRdpgfxBridgeSetSurfaceTarget == nullptr) {
@@ -399,12 +386,8 @@ void UpdateRdpgfxSurfaceTargetIfReady(const std::string &reason) {
   LogThroughCallbacks("RDPGFX surface target updated after " + reason + ": " +
                       std::to_string(target.width) + "x" +
                       std::to_string(target.height));
-#else
-  (void)reason;
-#endif
 }
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 void ResetAvcSurfaceOutput(FreerdpRuntimeApi &api) {
   g_avc420SurfaceRouteArmed.store(false);
   g_avc444GpuCompositorConfigured.store(false);
@@ -582,6 +565,5 @@ void RestoreRdpgfxDiagnosticsHooks(RdpgfxClientContext *gfx) {
     api.ohosRdpgfxBridgeSetGdiAttached(bridge, FALSE);
   }
 }
-#endif
 
 } // namespace rdp_bridge

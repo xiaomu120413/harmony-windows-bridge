@@ -7,9 +7,7 @@
 
 #include "common/bridge_types.h"
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
 #include <client/OHOS/ohos_rdpgfx.h>
-#endif
 
 namespace rdp_bridge {
 
@@ -34,10 +32,8 @@ public:
     std::string Diagnostics() const;
     void SetOutputActive(bool active, const std::string& reason);
 
-#if defined(HARMONY_HAS_FREERDP_HEADERS)
     bool OnSurfaceCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command);
     bool OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame);
-#endif
 
 private:
     void Log(const std::string& message) const;
