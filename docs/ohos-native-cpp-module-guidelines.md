@@ -12,6 +12,35 @@ N-API entry files.
 - Make each module independently reviewable and testable by build.
 - Add a new module when a feature has a clear ownership boundary.
 
+## Delivery Boundary
+
+`harmony/app` is the validation and product shell. Long-term RDP protocol
+semantics and platform backends belong in `harmony/third_party/FreeRDP`.
+
+FreeRDP OHOS source owns:
+
+- keyboard, IME, pointer, wheel and modifier mapping;
+- session settings, storage paths, certificate policy and standard channels;
+- clipboard protocol handling and Harmony Pasteboard access;
+- fixed Download-directory `rdpdr/drive` registration and path mapping;
+- `rdpsnd` playback, `audin` capture and their diagnostics;
+- location sampling and RDP location PDU handling;
+- printer channel handling and OHOS PrintKit job submission;
+- display-control layout, RDPGFX capability policy and OHOS AVCodec routing.
+
+The HAP may keep:
+
+- ArkUI pages, connection forms, settings and product diagnostics;
+- runtime permission prompts for Pasteboard, microphone and location;
+- Download directory picker authorization and startup directory preparation;
+- `PRINT` permission declaration for PrintKit submission;
+- N-API transport, user options, app sandbox paths and certificate storage root;
+- `XComponent` / `NativeWindow` lifecycle and surface handle forwarding.
+
+If a new feature needs RDP protocol state or OS data conversion, put the
+protocol/platform implementation in FreeRDP source first, then keep HAP code as
+a thin UI, permission or handle relay.
+
 ## Target Build Layout
 
 The native target should evolve toward this shape:

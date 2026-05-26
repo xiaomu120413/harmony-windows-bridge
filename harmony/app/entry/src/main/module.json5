@@ -27,6 +27,9 @@
         "name": "ohos.permission.GET_NETWORK_INFO"
       },
       {
+        "name": "ohos.permission.PRINT"
+      },
+      {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:read_pasteboard_reason",
         "usedScene": {
@@ -39,6 +42,26 @@
       {
         "name": "ohos.permission.MICROPHONE",
         "reason": "$string:microphone_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.APPROXIMATELY_LOCATION",
+        "reason": "$string:location_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.LOCATION",
+        "reason": "$string:location_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
