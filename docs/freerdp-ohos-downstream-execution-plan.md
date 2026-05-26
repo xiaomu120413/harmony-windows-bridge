@@ -45,7 +45,7 @@
 | T13 | AVC420 surface fallback 收敛 | P2 | T11 | fallback 走向可解释 |
 | T14 | 剪贴板按职责拆分 | P1 | T06 | 单文件不超过 600 行 |
 | T15 | H.264 OHOS AVCodec 拆分 | P2 | T13 | decoder/surface/fallback 分离 |
-| T16 | OHAudio backend 拆分 | P2 | T06 | rdpsnd/audin 更易测 |
+| T16 | OHAudio backend 拆分并下沉 | P2 | T06 | rdpsnd/audin 主逻辑进 FreeRDP 源码树 |
 | T17 | SDK quickstart 和 public headers 安装 | P0 | T02/T03 | 第三方应用可照文档接入 |
 | T18 | 商用 feature matrix 和 fallback 清单 | P0 | T06/T07/T12 | 上架前功能边界清楚 |
 
@@ -488,31 +488,40 @@
 - codec 文件在 `libfreerdp` 下，符号可见性和 CMake 链接要谨慎。
 - callback 生命周期处理不当会出现异步回调访问已释放对象。
 
-## T16：OHAudio backend 拆分
+## T16：OHAudio backend 拆分并下沉
 
 修改点：
 
-- 拆 `channels/rdpsnd/client/ohos/rdpsnd_ohos.c`：
+- 不新增二级音频目录，继续使用现有 `channels/rdpsnd/client/ohos/` 和
+  `channels/audin/client/ohos/` backend 目录，按职责拆分同目录 `.c/.h`。
+- 拆 `channels/rdpsnd/client/ohos/rdpsnd_ohos.c` 到 FreeRDP 源码树内的 OHOS backend 子模块：
   - format negotiation
   - queue/ring buffer
   - renderer lifecycle
-  - diagnostics
-- 拆或整理 `channels/audin/client/ohos/audin_ohos.c`：
-  - permission callback
-  - format
+  - diagnostics / underrun 统计
+- 拆或整理 `channels/audin/client/ohos/audin_ohos.c` 到 FreeRDP 源码树内的 OHOS backend 子模块：
+  - permission callback 调用点
+  - format negotiation
   - capturer lifecycle
+  - capture loop / buffer
   - diagnostics
+- HAP/native 层只保留无法通用下沉的外部桥接：
+  - 权限弹窗和用户授权结果回传。
+  - 日志展示或 UI 状态展示。
+  - 不直接实现 rdpsnd/audin 的实时音频队列、OHAudio 生命周期或 FreeRDP channel 状态机。
 
 验收点：
 
 - rdpsnd 播放正常，underrun 计数可见。
 - audin 只在用户授权后启动采集。
 - 拒绝麦克风权限时连接不崩溃，audin 明确失败。
+- rdpsnd/audin 的主要音频状态、实时队列、OHAudio lifecycle 和 diagnostics 都在 FreeRDP 源码树内，不依赖 HAP 私有类实现。
 
 验收风险：
 
 - 音频是实时路径，拆 queue 容易引入卡顿或 underrun。
 - 权限 callback 阻塞时间过长会影响 audin open。
+- 下沉后要避免 FreeRDP 源码直接依赖 HAP 私有 C++ 类型，否则 SDK 化和上游同步都会变困难。
 
 ## T17：SDK quickstart 和 public headers 安装
 
