@@ -25,10 +25,14 @@ or RDPGFX update/dirty/EndFrame ownership. Keep code here when it depends on
 N-API, ArkTS callbacks, XComponent/native-window lifetime, EGL/GLES objects, or
 app session state.
 
+FreeRDP-owned policy that is already exposed through thin app wrappers:
+
+- `freerdp/graphics_config.*` only loads and forwards to the FreeRDP OHOS
+  graphics helpers for mode parsing, fallback policy, and capability-derived
+  configuration.
+
 Good candidates for future FreeRDP-side cleanup:
 
-- graphics mode parsing, fallback policy, and capability diagnostics currently
-  wrapped by `freerdp/graphics_config.*`;
 - any RDPGFX AVC444 suppression/present policy that is still app-side and does
   not require XComponent or GL objects.
 

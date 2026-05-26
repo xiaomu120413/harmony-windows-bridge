@@ -75,14 +75,14 @@
 实施记录：
 
 - 商用默认构建现在要求 FreeRDP/WinPR headers、FreeRDP `client/OHOS` headers 和核心 runtime `.so` 均存在，否则 CMake 直接失败。
-- 仅显式传入 `-DHARMONY_ALLOW_FREERDP_DEMO_BUILD=ON` 时，才允许缺失 FreeRDP 产物的 demo/mock 构建。
-- HAP C++ 里的 headerless fallback 文案已改为显式 demo build 语义，不再把商用路径描述成可运行降级。
-- 已验证正常 CMake 配置、缺失产物 fail-fast、显式 demo 放行和本地 HAP build。
+- `HARMONY_ALLOW_FREERDP_DEMO_BUILD` 已移除，缺失 FreeRDP 产物时 HAP CMake 始终 fail-fast。
+- HAP C++ 里的 headerless fallback 文案仍是历史分支，后续单独删除；当前构建入口不再允许 demo/mock 放行。
+- 已验证正常 CMake 配置、缺失产物 fail-fast 和本地 HAP build。
 
 修改点：
 
 - 修改 `harmony/app/entry/src/main/cpp/CMakeLists.txt`，商用 profile 下 FreeRDP headers 和 `client/OHOS` headers 必须存在，否则 CMake 直接失败。
-- 保留 demo/mock profile 时，把 `HARMONY_HAS_FREERDP_HEADERS` 缺失路径移动到明确的 demo build 开关，不参与商用构建。
+- 删除 demo/mock 构建入口；`HARMONY_HAS_FREERDP_HEADERS` 缺失路径仅作为后续待删历史代码，不参与正常构建。
 - 清理 HAP C++ 中大量 `FreeRDP headers not found at build time` 的商用路径。
 
 验收点：
@@ -93,7 +93,7 @@
 
 验收风险：
 
-- 当前开发环境如果还依赖 mock build，会影响本地调试，需要保留显式 demo profile。
+- 当前开发环境如果还依赖 mock build，会直接暴露为构建失败，需要先同步 FreeRDP 产物。
 - 过早删除 fallback 会暴露 CI/DevEco 环境路径问题，需要先固化构建路径。
 
 ## T02：新增 FreeRDP OHOS Session 公共 API
