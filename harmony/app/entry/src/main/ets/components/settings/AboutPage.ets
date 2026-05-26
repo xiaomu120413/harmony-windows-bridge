@@ -17,7 +17,6 @@ export struct AboutPage {
   @State private cardHovered: boolean = false
   @State private cardPressed: boolean = false
   @State private versionValue: string = SettingsText.EMPTY_VALUE
-  @State private bundleValue: string = SettingsText.EMPTY_VALUE
 
   aboutToAppear(): void {
     this.loadBundleInfo()
@@ -29,10 +28,8 @@ export struct AboutPage {
         bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION
       )
       this.versionValue = `${bundleInfo.versionName} (${bundleInfo.versionCode})`
-      this.bundleValue = bundleInfo.name
     } catch (_error) {
       this.versionValue = SettingsText.EMPTY_VALUE
-      this.bundleValue = SettingsText.ABOUT_BUNDLE_VALUE
     }
   }
 
@@ -89,8 +86,10 @@ export struct AboutPage {
 
           Column() {
             this.aboutInfoRow(SettingsText.ABOUT_VERSION_LABEL, this.versionValue)
-            this.aboutInfoRow(SettingsText.ABOUT_BUNDLE_LABEL, this.bundleValue)
             this.aboutInfoRow(SettingsText.ABOUT_GITHUB_LABEL, SettingsText.ABOUT_GITHUB_VALUE)
+            this.aboutInfoRow(SettingsText.ABOUT_FREERDP_ADAPTATION_LABEL,
+              SettingsText.ABOUT_FREERDP_ADAPTATION_VALUE)
+            this.aboutInfoRow(SettingsText.ABOUT_XRDP_ADAPTATION_LABEL, SettingsText.ABOUT_XRDP_ADAPTATION_VALUE)
             this.aboutInfoRow(SettingsText.ABOUT_LICENSE_LABEL, SettingsText.ABOUT_LICENSE_VALUE)
           }
           .width('100%')
