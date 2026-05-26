@@ -525,11 +525,30 @@
 
 ## T17：SDK quickstart 和 public headers 安装
 
+实施状态：已完成 SDK 接入口径收口，2026-05-26。
+
+- 新增 `docs/freerdp-ohos-sdk-quickstart.md`，记录 include 路径、runtime `.so`
+  清单、session API 最小流程、权限 callback 和 Surface callback 示例。
+- 新增 `client/OHOS/ohos_audio.h`，把 rdpsnd/audin 诊断和麦克风权限 callback
+  作为 public OHOS SDK 入口暴露。
+- 更新 `client/OHOS/README.md`，明确 public/internal header 边界。
+- 更新 `client/common/CMakeLists.txt`，OHOS 构建时安装 public headers 到
+  `include/freerdp3/freerdp/client/ohos/`。
+
+本轮验收记录：
+
+- 已执行 `git diff --check` 和 `git -C harmony/third_party/FreeRDP diff --check`。
+- 已静态检查 CMake install 列表中的 public headers 均存在。
+- 未覆盖完整 FreeRDP build、runtime sync、HAP build 和真机检查；本机
+  `check-freerdp-ohos-feature-matrix.sh` 尝试运行 120 秒无输出后超时终止，
+  且当前 PowerShell 环境未找到 `ohpm`/`hvigor`。
+
 修改点：
 
 - 新增 `docs/freerdp-ohos-sdk-quickstart.md`。
 - 更新 `harmony/third_party/FreeRDP/client/OHOS/README.md`，标出 public/internal API。
-- 修改 CMake install，把 public OHOS headers 安装到 `include/freerdp/client/ohos/`。
+- 修改 CMake install，把 public OHOS headers 安装到 FreeRDP include root 下的
+  `freerdp/client/ohos/`。
 - 提供 20-30 行 C/C++ 示例，展示 create session、set callbacks、connect、send input、resize、disconnect。
 
 验收点：
@@ -545,6 +564,23 @@
 
 ## T18：商用 feature matrix 和 fallback 清单
 
+实施状态：已完成商用矩阵和 fallback 清单收口，2026-05-26。
+
+- `docs/freerdp-ohos-feature-matrix.md` 已补商用状态矩阵和 fallback 清单。
+- 首版范围明确包含剪贴板文本、音频播放和麦克风采集；HAP 保留
+  `READ_PASTEBOARD` 和 `MICROPHONE` 权限声明，但连接开始不主动弹权限。
+- `drive`/`printer` 保持源码可编译、首版默认不请求；smartcard source/channel/PCSC
+  和 TSMF 保持交付构建裁剪。
+- 同步修正旧平台适配报告中“剪贴板/麦克风/音频可延后”的历史口径。
+
+本轮验收记录：
+
+- 已执行 `git diff --check` 和 T18 文档口径搜索，未再发现“剪贴板/麦克风首版不需要”的残留表述。
+- 已确认 `harmony/app/entry/src/main/module.json5` 仍声明 `READ_PASTEBOARD`
+  和 `MICROPHONE`。
+- 未覆盖完整 FreeRDP build、runtime sync、HAP build 和真机检查；需要按
+  T00 基线在有设备和完整 OHOS 工具链的环境补跑。
+
 修改点：
 
 - 更新 `docs/freerdp-ohos-feature-matrix.md`，增加：
@@ -555,17 +591,22 @@
   - 需要权限
   - 真机验证状态
 - 新增 fallback 清单，列出每个 fallback 是否可达、触发条件、恢复路径、是否保留。
+- 明确首版交付包含剪贴板文本和麦克风采集：HAP 保留 `READ_PASTEBOARD`
+  和 `MICROPHONE` 权限声明，连接开始不主动弹权限，实际读取 Pasteboard
+  或远端请求音频采集时再按需申请。
 - 对 drive/printer 做首版默认关闭和接入策略确认；smartcard source/channel/PCSC 和 TSMF 已按首版不交付从交付构建裁剪。
 
 验收点：
 
 - 每个功能都有明确商用状态。
+- 剪贴板文本和麦克风在 matrix 中标为首版交付、默认接入、按需授权。
 - 不可达 fallback 被删除或标记为待删。
-- 首版 HAP 不声明未实际启用的权限。
+- 首版 HAP 必须声明 `READ_PASTEBOARD` 和 `MICROPHONE`；除这类已启用能力外，不声明未实际启用的权限。
 
 验收风险：
 
 - 裁剪通道可能影响少数企业 RDP 环境，需要确认首版范围。
+- 剪贴板和麦克风是权限敏感能力，必须把“权限已声明”和“连接开始不主动弹窗”同时验收清楚。
 - feature matrix 如果没有真机记录，后续上架风险仍然不可控。
 
 ## 每个任务的通用验收模板

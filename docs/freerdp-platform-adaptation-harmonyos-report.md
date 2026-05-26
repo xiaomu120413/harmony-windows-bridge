@@ -160,7 +160,7 @@ FreeRDP 的 `channels/` 默认包含大量虚拟通道：
 | Android JNI client | JNI、AndroidBitmap、Android event queue | 需要参考，不直接复用 | 重写为 N-API；保留“native worker + event queue + GDI buffer + UI 回调”的架构思想 |
 | 渲染 | Windows GDI/X11 image/AndroidBitmap | 需要重写 | `XComponent` 获取 surface，C++ 注册 `OH_NativeXComponent_Callback`，用 `NativeWindow` request/flush buffer，FreeRDP frame 转 `RGBA8888` |
 | 输入 | Windows/X11/Android 各自把本地键鼠转 FreeRDP input | 需要重写 | ArkUI touch/key -> N-API -> native event queue -> `freerdp_input_send_mouse_event/keyboard_event/unicode_keyboard_event` |
-| 剪贴板 | `cliprdr` + 平台 clipboard | 首版可不需要，后续需要 | `CHANNEL_CLIPRDR_CLIENT` 已编译；下一步接 Harmony clipboard API，先做文本，再评估文件 |
+| 剪贴板 | `cliprdr` + 平台 clipboard | 首版需要文本剪贴板，文件后续 | `CHANNEL_CLIPRDR_CLIENT` 已编译；首版接 Harmony Pasteboard 文本能力，权限按需申请，文件/复杂格式后续评估 |
 | 音频 | ALSA/Pulse/OSS/OpenSLES | 首个可交互版本可不做，产品化通常需要 | 继续关闭到 M6；后续打开 `rdpsnd/audin`，用 Harmony AudioRenderer/AudioCapturer 写 OHOS backend，不能直接用 ALSA/Pulse/OpenSLES |
 | 图形/H.264/视频 | Bitmap/RFX/NSCodec/RDPGFX；H.264 可走 OpenH264/FFmpeg/MediaFoundation/MediaCodec | 基础画面必须做；RDPGFX/H.264 是商用默认性能路径；独立视频通道按需 | 当前商用默认 `rdpgfx-h264`，AVC444 走 OHOS AVCodec-backed GPU compositor，并保留 per-command FreeRDP native GDI fallback；不要直接套 Android MediaCodec |
 | 文件/磁盘重定向 | `drive`、FUSE、POSIX 文件系统 | 首版不需要 | `drive`/`rdpdr` 已编译；后续需配合 Harmony 文件选择器和沙箱权限，不能直接暴露任意路径。FUSE 文件复制仍是可选专项 |
@@ -377,8 +377,8 @@ WindowStage
 | --- | --- | --- | --- |
 | 键盘 | 必须 | ArkTS `onKeyEvent`、工具栏快捷键、N-API `sendKey/sendUnicode` 和 native 输入队列已有骨架 | 继续完善 keycode/scancode 映射、中文输入、软键盘、组合键和窗口失焦释放 modifier |
 | 鼠标/触摸 | 必须 | ArkTS `onTouch/onMouse/onAxisEvent`、坐标映射和 N-API `sendPointer` 已有骨架 | 继续验证触摸手势、右键、滚轮、viewport 外点击丢弃、窗口 resize 后坐标正确 |
-| 音频播放 | 产品化通常需要，首个闭环可延后 | `rdpsnd` 已编译，OHOS NDK 有 OpenSLES 时启用 FreeRDP OpenSLES backend，并用兼容 shim 处理 Android simple buffer queue 头文件差异 | 先实机验证 OpenSLES 播放；如果稳定性不足，再新增 OHOS AudioRenderer backend；处理采样率、通道数、缓冲、静音和后台生命周期 |
-| 麦克风 | 可选，取决于会议/语音场景 | `audin` 已编译，但还没有 OHOS AudioCapturer 采集后端和权限/UI 闭环 | 接 `audin-client-ohos` backend，用 Harmony AudioCapturer 采集 PCM，再按 FreeRDP audin 协议送给服务端；需要麦克风权限和隐私提示 |
+| 音频播放 | 首版需要 | `rdpsnd` 已编译，OHOS NDK 有 OpenSLES 时启用 FreeRDP OpenSLES backend，并用兼容 shim 处理 Android simple buffer queue 头文件差异 | 持续实机验证 OpenSLES/OHAudio 播放；处理采样率、通道数、缓冲、静音和后台生命周期 |
+| 麦克风 | 首版需要，远端请求时按需授权 | `audin` 已编译，OHOS AudioCapturer 采集后端和权限 callback 已接入，仍需持续真机回归 | 使用 `audin-client-ohos` backend 采集 PCM，再按 FreeRDP audin 协议送给服务端；连接开始不主动弹麦克风权限 |
 | 桌面图形 | 必须 | `PostConnect/gdi_init/EndPaint` 到 `NativeWindow` CPU copy 已有骨架 | 作为 GDI fallback 和非 RDPGFX 兜底继续保留 |
 | RDPGFX/H.264 | 商用默认 | `rdpgfx`、FFmpeg、OpenH264、OHOS AVCodec-backed AVC444 GPU compositor 已编译并打包 | 默认走 `rdpgfx-h264`；高分辨率依赖 AVC444 GPU compositor 降低卡顿 |
 | 硬件视频解码 | 已进入默认性能路径 | FreeRDP 现有硬件路径是 MediaFoundation/MediaCodec/VAAPI/VideoToolbox 等，不覆盖 OHOS | OHOS 侧使用 AVCodec-backed AVC444 GPU compositor；单条 command 失败时回到 FreeRDP native GDI，不直接启用 Android `WITH_MEDIACODEC` |
@@ -427,8 +427,8 @@ FreeRDP 音频不是“系统自动播放”，需要启用并接平台后端：
 
 - 远端播放到本机：`rdpsnd` channel。FreeRDP 已有 `alsa`、`pulse`、`oss`、`winmm`、`opensles`、`mac`、`ios`、`fake` 后端，HarmonyOS 需要新增 `ohos` 后端。
 - 本机麦克风到远端：`audin` dynamic channel。HarmonyOS 需要新增 `audin-client-ohos`，接 AudioCapturer。
-- 首版建议只做 `rdpsnd`，而且先支持 PCM/S16LE/48k 或服务端常见格式；压缩格式、重采样、回声消除、音频焦点和蓝牙路由后置。
-- 麦克风涉及权限、隐私状态、后台采集和设备切换，建议独立于播放能力验收。
+- 首版包含 `rdpsnd` 播放和 `audin` 麦克风采集。播放先聚焦 PCM/S16LE/48k 或服务端常见格式；压缩格式、重采样、回声消除、音频焦点和蓝牙路由后置。
+- 麦克风涉及权限、隐私状态、后台采集和设备切换，必须独立于播放能力验收；拒绝授权时会话继续，`audin` 明确失败。
 
 #### 视频与硬件编解码适配细节
 
@@ -462,7 +462,7 @@ FreeRDP 音频不是“系统自动播放”，需要启用并接平台后端：
 4. 剪贴板文本同步。
 5. dirty rect、双缓冲、减少全帧 copy。
 6. 高分辨率性能测试默认覆盖 RDPGFX/H.264、AVC444 GPU compositor 和 per-command GDI fallback。
-7. 音频播放、麦克风、文件、打印、智能卡、RD Gateway 等作为单独里程碑。
+7. 音频播放和麦克风按首版能力持续验收；文件、打印、智能卡、RD Gateway 等作为单独里程碑。
 
 ## 当前脚本配置建议
 
