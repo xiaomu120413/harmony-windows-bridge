@@ -116,11 +116,14 @@ void stop_session(struct app_state* app)
 
 HAP 必须在 `module.json5` 声明首版实际启用的权限：
 
+- `ohos.permission.PRINT`
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
+- `ohos.permission.APPROXIMATELY_LOCATION`
+- `ohos.permission.LOCATION`
 
 声明权限不等于连接开始时弹窗。接入方应把权限弹窗放到 callback 内：
-读取 Pasteboard 或远端实际打开 `audin` 采集时才请求用户授权。
+读取 Pasteboard、远端实际打开 `audin` 采集或远端发起 `LocationStart` 时才请求用户授权。`PRINT` 用于远端打印作业到达后的 PrintKit 提交流程，连接开始时不应初始化或连接 PrintKit。
 
 ```c
 static BOOL RequestPasteboard(void* userData, UINT32 timeoutMs)
@@ -179,12 +182,14 @@ Demo HAP 私有类型塞进 FreeRDP public API。
 - `rdpgfx-h264` 和 AVC444 GPU compositor
 - `rdpsnd` 播放
 - `audin` 麦克风采集，远端请求时按需申请麦克风权限
+- `location` 地理位置重定向，远端请求时按需申请定位权限
+- `printer` 打印重定向，连接时只向 Windows 暴露虚拟打印机；Windows 提交打印作业时才初始化/查询/连接 PrintKit 并提交作业
 
 首版默认关闭或不交付：
 
-- `drive`/`printer`：源码和 channel 可编译，但缺少产品级 UI、沙箱授权和后端闭环，首版默认关闭。
+- `drive`：源码和 channel 可编译，但缺少产品级 UI、沙箱授权和路径策略，首版默认关闭。
 - smartcard source/channel、WinPR smartcard PCSC backend、TSMF：交付构建裁剪。
-- FUSE clipboard file-copy、CUPS printer backend：当前 OHOS sysroot 不满足依赖。
+- FUSE clipboard file-copy、CUPS printer backend：当前 OHOS sysroot 不满足依赖；打印交付路径使用 OHOS PrintKit backend。
 
 ## 验收
 
@@ -194,5 +199,7 @@ SDK 接入方至少应验证：
 2. 连接开始不弹 Pasteboard 或麦克风权限。
 3. 触发剪贴板读取时才申请 Pasteboard 权限，拒绝后会话不崩溃。
 4. 远端请求音频采集时才申请麦克风权限，拒绝后 `audin` 明确失败且会话继续。
-5. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
-6. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。
+5. 远端请求位置重定向时才申请定位权限，拒绝后 location sample 失败但会话继续。
+6. 连接开始不初始化 PrintKit；远端提交打印作业时才进入 OHOS printer backend，提交失败只影响本次打印作业。
+7. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
+8. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。

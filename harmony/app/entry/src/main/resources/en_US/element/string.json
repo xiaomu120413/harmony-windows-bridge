@@ -19,6 +19,10 @@
     {
       "name": "microphone_reason",
       "value": "Capture microphone audio for remote desktop audio input redirection."
+    },
+    {
+      "name": "location_reason",
+      "value": "Access this device's current location for remote desktop location redirection."
     }
   ]
 }

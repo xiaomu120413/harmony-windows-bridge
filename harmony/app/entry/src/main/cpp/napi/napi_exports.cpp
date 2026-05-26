@@ -5,6 +5,7 @@
 #include "common/bridge_types.h"
 #include "common/bridge_log.h"
 #include "napi/clipboard_permission_bridge.h"
+#include "napi/location_bridge.h"
 #include "napi/microphone_permission_bridge.h"
 #include "napi/napi_event_sink.h"
 #include "napi/napi_utils.h"
@@ -147,6 +148,12 @@ napi_value OnClipboardPermissionRequest(napi_env env, napi_callback_info info)
         "rdpClipboardPermissionRequestCallback", true);
 }
 
+napi_value OnLocationPermissionRequest(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, LocationPermissionRequestSink(),
+        "rdpLocationPermissionRequestCallback", true);
+}
+
 napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
@@ -172,6 +179,38 @@ napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info i
     SetString(env, result, "state", ok ? "Updated" : "Failed");
     SetString(env, result, "message", ok ? "clipboard permission result accepted" :
         "clipboard permission request is not pending");
+    SetNamed(env, result, "logs", MakeStringArray(env, {
+        "requestId=" + std::to_string(requestId) +
+            " granted=" + std::string(granted ? "true" : "false")
+    }));
+    return result;
+}
+
+napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "location permission completion requires an object argument");
+        SetNamed(env, result, "logs", MakeStringArray(env, {"parameter validation failed"}));
+        return result;
+    }
+
+    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
+    const bool granted = GetBoolProperty(env, arg, "granted");
+    const bool ok = CompleteLocationPermissionRequestFromUi(requestId, granted);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Updated" : "Failed");
+    SetString(env, result, "message", ok ? "location permission result accepted" :
+        "location permission request is not pending");
     SetNamed(env, result, "logs", MakeStringArray(env, {
         "requestId=" + std::to_string(requestId) +
             " granted=" + std::string(granted ? "true" : "false")
@@ -224,9 +263,13 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
             napi_default, nullptr},
         {"onClipboardPermissionRequest", nullptr, OnClipboardPermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
+        {"onLocationPermissionRequest", nullptr, OnLocationPermissionRequest, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
         {"completeClipboardPermissionRequest", nullptr, CompleteClipboardPermissionRequest, nullptr, nullptr,
             nullptr, napi_default, nullptr},
         {"completeMicrophonePermissionRequest", nullptr, CompleteMicrophonePermissionRequest, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
+        {"completeLocationPermissionRequest", nullptr, CompleteLocationPermissionRequest, nullptr, nullptr,
             nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);

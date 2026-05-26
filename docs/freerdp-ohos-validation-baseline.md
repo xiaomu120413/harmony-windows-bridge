@@ -1,8 +1,8 @@
 # FreeRDP OHOS Validation Baseline
 
-日期：2026-05-25
+日期：2026-05-26
 
-本文档是 `docs/freerdp-ohos-downstream-execution-plan.md` 的 T00 基线记录。后续每个下沉或可接入化任务完成后，都应基于这里的命令和真机清单做最小回归，并在任务说明中写明未覆盖项。
+本文档是当前 FreeRDP OHOS 构建和真机回归基线。后续每个下沉或可接入化任务完成后，都应基于这里的命令和真机清单做最小回归，并在任务说明中写明未覆盖项。
 
 ## 基线标识
 
@@ -53,7 +53,9 @@ harmony/scripts/wsl/build-freerdp-ohos.sh
 
 - `OHOS_NDK_HOME` 指向 Linux 侧 HarmonyOS native SDK。
 - `OHOS_LLVM_HOME` 未设置时由脚本默认推导为 `$OHOS_NDK_HOME/llvm`。
-- 可选能力默认来自 `build-freerdp-ohos.sh`：`ENABLE_OHAUDIO=1`、`ENABLE_OHOS_AVCODEC=1`、`ENABLE_OHOS_PASTEBOARD=1`。
+- 可选能力默认来自 `build-freerdp-ohos.sh`：`ENABLE_OHAUDIO=1`、`ENABLE_OHOS_AVCODEC=1`、`ENABLE_OHOS_PASTEBOARD=1`、`ENABLE_OHOS_PRINT=1`。
+- location channel 默认编译并注册，OHOS 后端通过 native LocationKit 采样；HAP 只负责定位权限申请。若远端在连接后主动发起 `LocationStart`，定位权限弹窗属于远端业务触发，不是打印链路依赖。
+- printer channel 默认暴露一个虚拟打印机；OHOS PrintKit 初始化、打印机查询/连接和 `StartPrintJob` 只在 Windows 提交打印作业时发生。
 - 首版交付 profile 继续保持 smartcard source/channel/PCSC 和 TSMF 关闭。
 
 输出期望：
@@ -115,8 +117,10 @@ build_app projectPath=harmony/app
 6. 验证 IME：中文提交、英文软键盘、软键盘 Backspace，硬件 Delete/Backspace 不依赖 TextInput 兜底。
 7. 验证剪贴板文本：Windows 到 HarmonyOS、HarmonyOS 到 Windows，关注权限提示、编码和 change echo。
 8. 验证音频：Windows 测试音、断开释放、重连恢复、后台/前台切换日志。
-9. 验证 display resize：连接前分辨率、连接后 resize 请求、服务端不支持时错误原因。
-10. 验证生命周期：快速连接/断开、页面切换、App 后台、网络失败、凭据错误、证书变化。
+9. 验证地理位置：服务端发起 `LocationStart` 后申请定位权限，授权后发送样本，拒绝或定位服务关闭时会话继续。
+10. 验证打印：连接开始不初始化/连接 PrintKit；Windows 打印时生成临时 spool 文件并进入 OHOS printer backend，Harmony Print/虚拟 PDF 打印成功或失败都不影响 RDP 会话。
+11. 验证 display resize：连接前分辨率、连接后 resize 请求、服务端不支持时错误原因。
+12. 验证生命周期：快速连接/断开、页面切换、App 后台、网络失败、凭据错误、证书变化。
 
 ## 本轮 T00 判定
 

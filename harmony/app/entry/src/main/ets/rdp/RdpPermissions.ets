@@ -1,8 +1,10 @@
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
+  APPROXIMATE_LOCATION_PERMISSION,
   HILOG_DOMAIN,
   HILOG_TAG,
+  LOCATION_PERMISSION,
   MICROPHONE_PERMISSION,
   READ_PASTEBOARD_PERMISSION
 } from './RdpConstants'
@@ -37,6 +39,8 @@ export class RdpPermissionManager {
   private pasteboardPermissionRequest: Promise<boolean> | null = null
   private microphonePermissionInFlight: boolean = false
   private microphonePermissionRequest: Promise<boolean> | null = null
+  private locationPermissionInFlight: boolean = false
+  private locationPermissionRequest: Promise<boolean> | null = null
 
   constructor(delegate: RdpPermissionDelegate) {
     this.delegate = delegate
@@ -120,6 +124,50 @@ export class RdpPermissionManager {
     return this.microphonePermissionRequest
   }
 
+  ensureLocationPermission(trigger: string): Promise<boolean> {
+    if (this.hasLocationPermission()) {
+      this.delegate.log(`Location permission granted: ${trigger}`)
+      return Promise.resolve(true)
+    }
+    if (this.locationPermissionRequest !== null) {
+      return this.locationPermissionRequest
+    }
+
+    const context = this.delegate.getContext()
+    if (context === null) {
+      this.delegate.log('Location permission request skipped: no UIAbilityContext')
+      return Promise.resolve(false)
+    }
+
+    this.locationPermissionInFlight = true
+    const permissions: Permissions[] = [APPROXIMATE_LOCATION_PERMISSION, LOCATION_PERMISSION]
+    const atManager = abilityAccessCtrl.createAtManager()
+    this.locationPermissionRequest = atManager.requestPermissionsFromUser(context, permissions)
+      .then((result) => {
+        let granted = false
+        if (Array.isArray(result.authResults)) {
+          for (let i = 0; i < result.authResults.length; i++) {
+            if (result.authResults[i] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
+              granted = true
+              break
+            }
+          }
+        }
+        granted = granted || this.hasLocationPermission()
+        this.delegate.log(`Location permission request result: granted=${granted}`)
+        return granted
+      })
+      .catch((error: Error) => {
+        this.delegate.log(`Location permission request failed: ${JSON.stringify(error)}`)
+        return false
+      })
+      .finally(() => {
+        this.locationPermissionInFlight = false
+        this.locationPermissionRequest = null
+      })
+    return this.locationPermissionRequest
+  }
+
   private appendPasteboardPermissionLog(line: string): void {
     this.delegate.log(line)
     hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
@@ -141,5 +189,10 @@ export class RdpPermissionManager {
       this.delegate.log(`${label} permission check failed: ${JSON.stringify(error)}`)
       return false
     }
+  }
+
+  private hasLocationPermission(): boolean {
+    return this.hasPermission(APPROXIMATE_LOCATION_PERMISSION, 'Approximate location') ||
+      this.hasPermission(LOCATION_PERMISSION, 'Location')
   }
 }
