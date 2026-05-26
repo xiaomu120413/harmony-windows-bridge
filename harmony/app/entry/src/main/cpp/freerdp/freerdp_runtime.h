@@ -22,6 +22,7 @@
 #include <client/OHOS/ohos_ime.h>
 #include <client/OHOS/ohos_input_queue.h>
 #include <client/OHOS/ohos_keyboard.h>
+#include <client/OHOS/ohos_location.h>
 #include <client/OHOS/ohos_pointer.h>
 #include <client/OHOS/ohos_rdpgfx.h>
 #include <client/OHOS/ohos_session.h>
@@ -63,6 +64,9 @@ public:
     using AudinOhosGetDiagnosticsFn = const char* (*)();
     using AudinOhosPermissionRequestFn = BOOL (*)(void*, UINT32);
     using AudinOhosSetPermissionCallbackFn = BOOL (*)(AudinOhosPermissionRequestFn, void*);
+    using OhosLocationPermissionRequestFn = BOOL (*)(void*, UINT32);
+    using OhosLocationSetPermissionCallbackFn =
+        BOOL (*)(OhosLocationPermissionRequestFn, void*);
     using RdpsndClientGetDiagnosticsFn = const char* (*)();
     using OhosClipboardNewFn = freerdpOhosClipboard* (*)();
     using OhosClipboardRegisterFn = BOOL (*)(freerdpOhosClipboard*, rdpContext*,
@@ -170,6 +174,7 @@ public:
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
     AudinOhosGetDiagnosticsFn audinOhosGetDiagnostics = nullptr;
     AudinOhosSetPermissionCallbackFn audinOhosSetPermissionCallback = nullptr;
+    OhosLocationSetPermissionCallbackFn ohosLocationSetPermissionCallback = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
     OhosClipboardNewFn ohosClipboardNew = nullptr;
     OhosClipboardRegisterFn ohosClipboardRegister = nullptr;

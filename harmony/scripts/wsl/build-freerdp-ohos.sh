@@ -31,6 +31,7 @@ ENABLE_FFMPEG="${ENABLE_FFMPEG:-1}"
 ENABLE_OHAUDIO="${ENABLE_OHAUDIO:-1}"
 ENABLE_OHOS_AVCODEC="${ENABLE_OHOS_AVCODEC:-1}"
 ENABLE_OHOS_PASTEBOARD="${ENABLE_OHOS_PASTEBOARD:-1}"
+ENABLE_OHOS_PRINT="${ENABLE_OHOS_PRINT:-1}"
 ENABLE_OPENSLES="${ENABLE_OPENSLES:-0}"
 ENABLE_CUPS="${ENABLE_CUPS:-0}"
 ENABLE_SMARTCARD=0
@@ -43,9 +44,10 @@ CCACHE_PROGRAM="${CCACHE_PROGRAM:-ccache}"
 WITH_OHAUDIO=OFF
 WITH_OHOS_AVCODEC=OFF
 WITH_OHOS_PASTEBOARD=OFF
+WITH_OHOS_PRINT=OFF
 WITH_OPENSLES=OFF
 CCACHE_LAUNCHER=""
-FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-no-smartcard-tsmf-v2"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-print-location-no-smartcard-tsmf-v4"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -195,6 +197,15 @@ extract_tarball() {
 }
 
 detect_optional_backends() {
+  [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/filemanagement/environment/oh_environment.h" ]] || {
+    printf 'OHOS Environment header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/filemanagement/environment" >&2
+    exit 1
+  }
+  [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libohenvironment.so" ]] || {
+    printf 'OHOS Environment library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+    exit 1
+  }
+
   WITH_OHAUDIO="$(cmake_bool "$ENABLE_OHAUDIO")"
   if [[ "$WITH_OHAUDIO" == "ON" ]]; then
     [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/ohaudio/native_audiorenderer.h" ]] || {
@@ -247,6 +258,18 @@ detect_optional_backends() {
     }
   fi
 
+  WITH_OHOS_PRINT="$(cmake_bool "$ENABLE_OHOS_PRINT")"
+  if [[ "$WITH_OHOS_PRINT" == "ON" ]]; then
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/include/BasicServicesKit/ohprint.h" ]] || {
+      printf 'OHOS Print header was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/include/BasicServicesKit" >&2
+      exit 1
+    }
+    [[ -f "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libohprint.so" ]] || {
+      printf 'OHOS Print library was not found under %s\n' "$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE" >&2
+      exit 1
+    }
+  fi
+
   if is_auto "$ENABLE_OPENSLES"; then
     if find "$OHOS_NDK_HOME" \( -path '*/SLES/OpenSLES.h' -o -name 'libOpenSLES.so' \) -print -quit | grep -q .; then
       WITH_OPENSLES=ON
@@ -258,8 +281,8 @@ detect_optional_backends() {
   fi
 
   log "optional backends"
-  printf 'OHAudio=%s OHOS_AVCodec=%s OHOS_Pasteboard=%s OpenSLES=%s CUPS=%s Smartcard=%s PCSC=%s FUSE=%s\n' \
-    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OHOS_PASTEBOARD" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_SMARTCARD")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
+  printf 'OHOS_Environment=ON OHAudio=%s OHOS_AVCodec=%s OHOS_Pasteboard=%s OHOS_Print=%s OpenSLES=%s CUPS=%s Smartcard=%s PCSC=%s FUSE=%s\n' \
+    "$WITH_OHAUDIO" "$WITH_OHOS_AVCODEC" "$WITH_OHOS_PASTEBOARD" "$WITH_OHOS_PRINT" "$WITH_OPENSLES" "$(cmake_bool "$ENABLE_CUPS")" "$(cmake_bool "$ENABLE_SMARTCARD")" "$(cmake_bool "$ENABLE_PCSC")" "$(cmake_bool "$ENABLE_FUSE")"
 }
 
 install_ohos_opensles_android_shim() {
@@ -344,6 +367,8 @@ prepare_cmake_args() {
     "-DCMAKE_CXX_COMPILER=$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang++"
     "-DOHOS_ARCH=$OHOS_ARCH"
     "-DCMAKE_BUILD_TYPE=Release"
+    "-DCMAKE_C_FLAGS=-Qunused-arguments"
+    "-DCMAKE_CXX_FLAGS=-Qunused-arguments"
     "-DCMAKE_INSTALL_PREFIX=$PREFIX"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_PREFIX_PATH=$PREFIX"
@@ -586,8 +611,10 @@ freerdp_feature_profile() {
     printf 'uriparser=%s:%s\n' "$(cmake_bool "$ENABLE_URIPARSER")" "$URIPARSER_VERSION"
     printf 'openh264=%s:%s\n' "$(cmake_bool "$ENABLE_OPENH264")" "$OPENH264_VERSION"
     printf 'ffmpeg=%s:%s\n' "$(cmake_bool "$ENABLE_FFMPEG")" "$FFMPEG_VERSION"
+    printf 'ohos_environment=ON\n'
     printf 'ohos_avcodec=%s\n' "$WITH_OHOS_AVCODEC"
     printf 'ohos_pasteboard=%s\n' "$WITH_OHOS_PASTEBOARD"
+    printf 'ohos_print=%s\n' "$WITH_OHOS_PRINT"
     printf 'opensles=%s\n' "$WITH_OPENSLES"
     printf 'cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'smartcard=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD")"
@@ -650,9 +677,6 @@ build_freerdp() {
     -DOPENSSL_INCLUDE_DIR="$PREFIX/include" \
     -DOPENSSL_SSL_LIBRARY="$PREFIX/lib/libssl.so" \
     -DOPENSSL_CRYPTO_LIBRARY="$PREFIX/lib/libcrypto.so" \
-    -DZLIB_ROOT="$PREFIX" \
-    -DZLIB_INCLUDE_DIR="$PREFIX/include" \
-    -DZLIB_LIBRARY="$PREFIX/lib/libz.so" \
     -DWITH_JSON_DISABLED=OFF \
     -DWITH_CJSON_REQUIRED=ON \
     -DWITH_AAD=ON \
@@ -665,14 +689,13 @@ build_freerdp() {
     -DWITH_OPENH264="$(cmake_bool "$ENABLE_OPENH264")" \
     -DWITH_OHOS_AVCODEC="$WITH_OHOS_AVCODEC" \
     -DWITH_OHOS_PASTEBOARD="$WITH_OHOS_PASTEBOARD" \
+    -DWITH_OHOS_PRINT="$WITH_OHOS_PRINT" \
     -DWITH_GFX_AV1=OFF \
     -DWITH_ALSA=OFF \
     -DWITH_PULSE=OFF \
     -DWITH_OSS=OFF \
     -DWITH_OHAUDIO="$WITH_OHAUDIO" \
     -DWITH_OPENSLES="$WITH_OPENSLES" \
-    -DOpenSLES_INCLUDE_DIR="$OHOS_NDK_HOME/sysroot/usr/include" \
-    -DOpenSLES_LIBRARY="$OHOS_NDK_HOME/sysroot/usr/lib/$OHOS_TRIPLE/libOpenSLES.so" \
     -DWITH_CUPS="$(cmake_bool "$ENABLE_CUPS")" \
     -DWITH_FUSE="$(cmake_bool "$ENABLE_FUSE")" \
     -DWITH_GSSAPI=OFF \
@@ -716,7 +739,8 @@ build_freerdp() {
     -DCHANNEL_ENCOMSP=OFF \
     -DCHANNEL_GEOMETRY=OFF \
     -DCHANNEL_GFXREDIR=OFF \
-    -DCHANNEL_LOCATION=OFF \
+    -DCHANNEL_LOCATION=ON \
+    -DCHANNEL_LOCATION_CLIENT=ON \
     -DCHANNEL_PARALLEL=OFF \
     -DCHANNEL_RAIL=OFF \
     -DCHANNEL_RDP2TCP=OFF \
@@ -931,8 +955,10 @@ write_manifest() {
     printf 'openh264_version=%s\n' "$OPENH264_VERSION"
     printf 'ffmpeg_version=%s\n' "$FFMPEG_VERSION"
     printf 'with_ohaudio=%s\n' "$WITH_OHAUDIO"
+    printf 'with_ohos_environment=ON\n'
     printf 'with_ohos_avcodec=%s\n' "$WITH_OHOS_AVCODEC"
     printf 'with_ohos_pasteboard=%s\n' "$WITH_OHOS_PASTEBOARD"
+    printf 'with_ohos_print=%s\n' "$WITH_OHOS_PRINT"
     printf 'with_opensles=%s\n' "$WITH_OPENSLES"
     printf 'with_cups=%s\n' "$(cmake_bool "$ENABLE_CUPS")"
     printf 'with_smartcard=%s\n' "$(cmake_bool "$ENABLE_SMARTCARD")"

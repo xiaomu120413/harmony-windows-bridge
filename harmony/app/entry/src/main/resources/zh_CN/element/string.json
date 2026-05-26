@@ -19,6 +19,10 @@
     {
       "name": "microphone_reason",
       "value": "采集麦克风音频，用于远程桌面音频输入重定向。"
+    },
+    {
+      "name": "location_reason",
+      "value": "获取本机当前位置，用于远程桌面会话中的地理位置重定向。"
     }
   ]
 }
