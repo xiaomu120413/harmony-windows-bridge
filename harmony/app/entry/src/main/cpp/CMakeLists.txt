@@ -34,6 +34,7 @@ set(FREERDP_OHOS_REQUIRED_HEADERS
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_ime.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_input_queue.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_location.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_pointer.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_rdpgfx.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session.h
@@ -79,6 +80,7 @@ add_library(entry SHARED
     input/xcomponent_mouse.cpp
     input/xcomponent_touch_gesture.cpp
     napi/clipboard_permission_bridge.cpp
+    napi/location_bridge.cpp
     session/freerdp_session_runner.cpp
     freerdp/freerdp_gdi_bridge.cpp
     freerdp/freerdp_runtime.cpp

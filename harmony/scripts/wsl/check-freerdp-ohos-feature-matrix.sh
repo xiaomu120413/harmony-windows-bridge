@@ -76,6 +76,8 @@ prepare_cmake_args() {
     "-DCMAKE_TOOLCHAIN_FILE=$OHOS_NDK_HOME/build/cmake/ohos.toolchain.cmake"
     "-DOHOS_ARCH=$OHOS_ARCH"
     "-DCMAKE_BUILD_TYPE=Release"
+    "-DCMAKE_C_FLAGS=-Qunused-arguments"
+    "-DCMAKE_CXX_FLAGS=-Qunused-arguments"
     "-DCMAKE_INSTALL_PREFIX=$MATRIX_DIR/install"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_PREFIX_PATH=$PREFIX"
@@ -172,7 +174,8 @@ prepare_cmake_args() {
     -DCHANNEL_ENCOMSP=OFF
     -DCHANNEL_GEOMETRY=OFF
     -DCHANNEL_GFXREDIR=OFF
-    -DCHANNEL_LOCATION=OFF
+    -DCHANNEL_LOCATION=ON
+    -DCHANNEL_LOCATION_CLIENT=ON
     -DCHANNEL_PARALLEL=OFF
     -DCHANNEL_RAIL=OFF
     -DCHANNEL_RDP2TCP=OFF
@@ -262,7 +265,7 @@ main() {
     printf '%s\n\n' "- Matrix build: \`$MATRIX_BUILD\`"
     printf '| Case | Status | Scope | Reason |\n'
     printf '| --- | --- | --- | --- |\n'
-    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
+    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, location, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
     printf '| `smartcard-pcsc` | skipped | Smartcard source, channel, and WinPR PCSC backend are excluded from the delivery build | Do not compile for prelaunch package |\n'
     printf '| `tsmf` | skipped | TSMF channel is excluded from the delivery build | Do not compile for prelaunch package |\n'
   } > "$MATRIX_DIR/report.md"

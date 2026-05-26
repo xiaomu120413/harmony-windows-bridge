@@ -45,7 +45,7 @@ WITH_OHOS_AVCODEC=OFF
 WITH_OHOS_PASTEBOARD=OFF
 WITH_OPENSLES=OFF
 CCACHE_LAUNCHER=""
-FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-no-smartcard-tsmf-v2"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-location-no-smartcard-tsmf-v3"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -344,6 +344,8 @@ prepare_cmake_args() {
     "-DCMAKE_CXX_COMPILER=$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang++"
     "-DOHOS_ARCH=$OHOS_ARCH"
     "-DCMAKE_BUILD_TYPE=Release"
+    "-DCMAKE_C_FLAGS=-Qunused-arguments"
+    "-DCMAKE_CXX_FLAGS=-Qunused-arguments"
     "-DCMAKE_INSTALL_PREFIX=$PREFIX"
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DCMAKE_PREFIX_PATH=$PREFIX"
@@ -716,7 +718,8 @@ build_freerdp() {
     -DCHANNEL_ENCOMSP=OFF \
     -DCHANNEL_GEOMETRY=OFF \
     -DCHANNEL_GFXREDIR=OFF \
-    -DCHANNEL_LOCATION=OFF \
+    -DCHANNEL_LOCATION=ON \
+    -DCHANNEL_LOCATION_CLIENT=ON \
     -DCHANNEL_PARALLEL=OFF \
     -DCHANNEL_RAIL=OFF \
     -DCHANNEL_RDP2TCP=OFF \

@@ -6,6 +6,7 @@
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/graphics_config.h"
+#include "napi/location_bridge.h"
 #include "napi/microphone_permission_bridge.h"
 #include "common/string_utils.h"
 
@@ -231,6 +232,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     }
     log("FreeRDP runtime symbols loaded");
     RegisterMicrophonePermissionBridge(api, log);
+    RegisterLocationBridge(api, log);
 
     if (api.ohosSessionPrepareOptions == nullptr || api.ohosSessionNew == nullptr ||
         api.ohosSessionFree == nullptr || api.ohosSessionConnect == nullptr ||
