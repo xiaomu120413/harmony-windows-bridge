@@ -136,6 +136,21 @@ struct Index {
             })
         })
       })
+      rdpNative.onLocationPermissionRequest((requestIdText: string) => {
+        this.deferUiUpdate(() => {
+          const requestId = Number(requestIdText)
+          this.appendLog(`RDP location channel requested location permission: requestId=${requestIdText}`)
+          this.getPermissionManager().ensureLocationPermission('remote location redirection')
+            .then((granted: boolean) => {
+              const result: NativeCommandResult = rdpNative.completeLocationPermissionRequest({
+                requestId: isNaN(requestId) ? 0 : requestId,
+                granted: granted
+              })
+              this.appendLog(`${result.message}: granted=${granted}`)
+              this.appendNativeLogs(result.logs)
+            })
+        })
+      })
       this.callbacksRegistered = true
     } catch (error) {
       this.appendLog(`Native callback registration failed: ${JSON.stringify(error)}`)
