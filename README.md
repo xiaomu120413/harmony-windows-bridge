@@ -25,7 +25,7 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 - `docs/freerdp-ohos-validation-baseline.md`: 构建、同步、打包和真机验收基线。
 - `docs/windows-rdp-environment-setup.md`: Windows RDP 服务端和网络排查说明。
 - `docs/release-third-party-notices.md`: 第三方组件 NOTICE 和许可证履约材料。
-- `docs/archive/`: 历史迁移计划、阶段复盘和旧真机记录，不作为当前 source of truth。
+- `docs/archive/`: 调试复盘和旧真机记录，不作为当前 source of truth。
 - `config.example.json`: 桌面 Demo 连接配置模板，不提交真实密码。
 
 ## HarmonyOS 构建

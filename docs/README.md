@@ -1,7 +1,7 @@
 # Documentation Index
 
-Keep current operating docs in this directory. Historical plans, retrospectives
-and dated validation notes live under `docs/archive/`.
+Keep current operating docs in this directory. Retained retrospectives and dated
+validation notes live under `docs/archive/`.
 
 ## Current Docs
 
@@ -25,6 +25,6 @@ and dated validation notes live under `docs/archive/`.
 
 ## Archive
 
-`docs/archive/` contains historical migration plans, dated validation logs and
-debug retrospectives. They are useful for background when investigating old
-decisions, but they should not be treated as the current source of truth.
+`docs/archive/` contains retained debug retrospectives and dated validation
+logs. They are useful when investigating old regressions, but they should not be
+treated as the current source of truth.
