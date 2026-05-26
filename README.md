@@ -64,7 +64,8 @@ hdc install -r harmony\app\entry\build\default\outputs\default\entry-default-sig
 1. 在主界面填写 `Windows host`、`Port`、`Username` 和 `Password`。
 2. 选择证书策略。内网测试可用 `TOFU`，更严格环境使用 `Strict`。
 3. 点击 `Connect` 后，应用会调用 native FreeRDP 会话并打开远程桌面 surface。
-4. 进入 `设置` 可以查看使用说明、本机 IP、关于信息，或切换深色/浅色/跟随系统。
+4. 远程文件：应用启动后会通过系统下载控件准备 `Download/com.muhub.desktop`。连接 Windows 后，在远程桌面中打开 `\\tsclient\Downloads`，可与该目录互传小文件；当前只共享这个固定目录。
+5. 进入 `设置` 可以查看使用说明、本机 IP、关于信息，或切换深色/浅色/跟随系统。
 
 常见排查：
 
