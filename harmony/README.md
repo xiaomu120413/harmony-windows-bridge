@@ -62,7 +62,7 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- FreeRDP channels and H.264/FFmpeg/OpenH264/OHOS AVCodec-backed AVC444 GPU compositor are now compiled into the enhanced WSL build. Remote audio playback requests static `rdpsnd` with `sys:opensles`, and graphics default to `rdpgfx-h264` with per-command GDI fallback. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, RD Gateway UI/settings, and display-control resize PDUs. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
+- FreeRDP channels and H.264/FFmpeg/OpenH264/OHOS AVCodec-backed AVC444 GPU compositor are now compiled into the enhanced WSL build. Remote audio playback requests static `rdpsnd` with `sys:opensles`, and graphics default to `rdpgfx-h264` with per-command GDI fallback. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, display-control resize PDUs, and RD Gateway UI/settings after a real gateway server is available for validation. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
 - IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
 - Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 

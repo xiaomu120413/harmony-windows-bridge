@@ -10,6 +10,7 @@
 - client channels：`cliprdr`、`drdynvc`、`disp`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、麦克风采集和地理位置重定向；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`drive`/`printer` 代码可编译但首版默认不请求。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
+- RD Gateway core 已编译进 FreeRDP runtime，但当前 HAP 没有 UI 参数、N-API 参数和 settings 映射；在没有 RD Gateway 服务端环境前不计入已适配能力。
 - 首版交付不编译 FreeRDP smartcard source/channel、WinPR smartcard PCSC backend、TSMF，避免把未闭环的平台服务和 deprecated 视频路径带进包。
 
 仍不能直接在当前 OHOS NDK sysroot 下打开的后端：
@@ -46,7 +47,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
 | 智能卡 source/channel `smartcard` | 关闭 | 未进 HAP | 首版不交付；恢复时需要独立开关、PC/SC 服务/权限模型和真机读卡验收 |
 | WinPR smartcard PCSC backend | 关闭 | 未进 HAP | 产品构建硬关 OFF，避免运行时 `dlopen` PCSC 和合规能力不闭环 |
-| RD Gateway core | 通过 | 依赖已进 HAP | 需要 UI 参数、settings 映射、证书/代理错误提示和服务器验证 |
+| RD Gateway core | 通过 | core 依赖已进 HAP，HAP 参数链路未接入 | 当前不作为可用功能；需 RD Gateway 服务端环境后再接 UI 参数、settings 映射、证书/代理错误提示并验收 |
 | RDPGFX/H.264 + AVC444 GPU compositor | 通过 | FFmpeg/OpenH264/OHOS AVCodec 已进 HAP | 商用默认 `rdpgfx-h264` 并默认启用 AVC444 GPU compositor；单条 command 失败时保留 FreeRDP native GDI fallback |
 | TSMF | 关闭 | 未进 HAP | FreeRDP 标注 deprecated，首版裁剪；视频路线优先 RDPGFX/H.264 或 OHOS AVCodec |
 
@@ -65,7 +66,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 地理位置 `location` | 首版交付 | 默认接入，远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 可选，首版默认关闭 | 不主动请求共享目录 | 首版不声明额外文件权限 | 未产品化；后续需 UI 和沙箱授权闭环 |
 | 打印 `printer` channel | 可选，首版默认关闭 | 不主动请求 printer channel | 首版不声明额外打印权限 | 未产品化；缺 Harmony Print/CUPS backend |
-| RD Gateway core | 可选 | UI 参数接入后启用 | 复用网络权限 | 待服务端验证 |
+| RD Gateway core | 后续专项，需服务端环境 | 当前不启用；有 RD Gateway 服务器后再接 UI 参数和 settings 映射 | 复用网络权限 | 未验收；无 RD Gateway 服务器时不能判定可用 |
 | Smartcard source/channel/PCSC | 首版不交付 | 交付构建裁剪 | 不声明智能卡相关权限 | 不进包 |
 | TSMF | 首版不交付 | 交付构建裁剪 | 无 | 不进包 |
 
@@ -126,7 +127,7 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 7. 连接到会请求位置重定向的服务端，确认 `LocationStart` 后申请定位权限；授权后能发送样本，拒绝后会话继续。
 8. 启用一个只读共享目录，验证 `drive` runtime settings、路径选择和权限策略。
 9. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
-10. 填 RD Gateway 参数，验证 settings 映射和失败提示。
+10. 有 RD Gateway 服务端环境后再启动 RD Gateway 专项：补 UI 参数和 settings 映射，并验证网关认证、证书、错误提示和目标机透传。
 
 ## 影响
 

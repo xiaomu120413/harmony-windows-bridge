@@ -124,7 +124,7 @@ Still incomplete or too much in the HAP layer:
 - audio playback stutter diagnostics and queue tuning
 - `drive` shared-directory UI/sandbox policy and product enablement
 - `printer` runtime backend through Harmony Print or CUPS-compatible path
-- RD Gateway UI/settings exposure and server-side validation
+- RD Gateway remains server-gated: FreeRDP core is compiled, but HAP UI/settings wiring should wait for a real RD Gateway server so connection, authentication, certificate and proxy-error paths can be validated
 - smartcard/PCSC, FUSE and TSMF remain out of the delivery build
 - lifecycle stress testing for disconnect, reconnect, page destroy, background
   and network jitter
