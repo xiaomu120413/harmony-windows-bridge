@@ -8,6 +8,7 @@
 #include <freerdp/addin.h>
 #include <freerdp/client.h>
 #include <freerdp/client/channels.h>
+#include <freerdp/client/disp.h>
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
@@ -97,10 +98,6 @@ public:
     using OhosInputQueueDrainFn = BOOL (*)(freerdpOhosInputQueue*, rdpContext*, char*, size_t);
     using OhosInputQueueGetDiagnosticsFn = BOOL (*)(
         freerdpOhosInputQueue*, FREERDP_OHOS_INPUT_QUEUE_DIAGNOSTICS*);
-    using OhosDisplayNormalizeSizeFn = void (*)(uint32_t, uint32_t, uint32_t, uint32_t*,
-        uint32_t*);
-    using OhosDisplaySendMonitorLayoutFn = int (*)(DispClientContext*, uint32_t, uint32_t,
-        uint32_t, uint32_t*, uint32_t*, uint32_t*, char*, size_t);
     using OhosGraphicsConfigFromModeFn = FREERDP_OHOS_GRAPHICS_CONFIG (*)(const char*);
     using OhosGraphicsFallbackModesFn = size_t (*)(const char*, const char**, size_t);
     using OhosGraphicsShouldRetryFallbackFn = BOOL (*)(BOOL, BOOL, const char*, size_t, size_t,
@@ -135,6 +132,11 @@ public:
         const FREERDP_OHOS_SESSION_OPTIONS*, const FREERDP_OHOS_SESSION_CALLBACKS*, char*,
         size_t);
     using OhosSessionDisconnectFn = void (*)(freerdpOhosSession*);
+    using OhosSessionAttachDisplayControlFn = BOOL (*)(
+        freerdpOhosSession*, DispClientContext*, char*, size_t);
+    using OhosSessionDetachDisplayControlFn = void (*)(freerdpOhosSession*, DispClientContext*);
+    using OhosSessionResizeFn = BOOL (*)(freerdpOhosSession*, uint32_t, uint32_t, char*,
+        size_t);
     using OhosSessionGetDiagnosticsFn = const char* (*)(freerdpOhosSession*);
     using OhosAvcodecSetOutputSurfaceFn = BOOL (*)(void*, UINT32, UINT32, BOOL);
     using OhosAvcodecFallbackCallbackFn = void (*)(const char*, void*);
@@ -191,8 +193,6 @@ public:
     OhosInputQueueEnqueueReleaseAllKeysFn ohosInputQueueEnqueueReleaseAllKeys = nullptr;
     OhosInputQueueDrainFn ohosInputQueueDrain = nullptr;
     OhosInputQueueGetDiagnosticsFn ohosInputQueueGetDiagnostics = nullptr;
-    OhosDisplayNormalizeSizeFn ohosDisplayNormalizeSize = nullptr;
-    OhosDisplaySendMonitorLayoutFn ohosDisplaySendMonitorLayout = nullptr;
     OhosGraphicsConfigFromModeFn ohosGraphicsConfigFromMode = nullptr;
     OhosGraphicsFallbackModesFn ohosGraphicsFallbackModes = nullptr;
     OhosGraphicsShouldRetryFallbackFn ohosGraphicsShouldRetryFallback = nullptr;
@@ -217,6 +217,9 @@ public:
     OhosSessionFreeFn ohosSessionFree = nullptr;
     OhosSessionConnectFn ohosSessionConnect = nullptr;
     OhosSessionDisconnectFn ohosSessionDisconnect = nullptr;
+    OhosSessionAttachDisplayControlFn ohosSessionAttachDisplayControl = nullptr;
+    OhosSessionDetachDisplayControlFn ohosSessionDetachDisplayControl = nullptr;
+    OhosSessionResizeFn ohosSessionResize = nullptr;
     OhosSessionGetDiagnosticsFn ohosSessionGetDiagnostics = nullptr;
     OhosAvcodecSetOutputSurfaceFn ohosAvcodecSetOutputSurface = nullptr;
     OhosAvcodecSetFallbackCallbackFn ohosAvcodecSetFallbackCallback = nullptr;

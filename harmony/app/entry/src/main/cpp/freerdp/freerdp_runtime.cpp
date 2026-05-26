@@ -131,10 +131,6 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("freerdp_ohos_input_queue_drain", ohosInputQueueDrain);
         LoadOptionalClientSymbol("freerdp_ohos_input_queue_get_diagnostics",
             ohosInputQueueGetDiagnostics);
-        LoadOptionalClientSymbol("freerdp_ohos_display_normalize_size",
-            ohosDisplayNormalizeSize);
-        LoadOptionalClientSymbol("freerdp_ohos_display_send_monitor_layout",
-            ohosDisplaySendMonitorLayout);
         LoadOptionalClientSymbol("freerdp_ohos_graphics_config_from_mode",
             ohosGraphicsConfigFromMode);
         LoadOptionalClientSymbol("freerdp_ohos_graphics_fallback_modes",
@@ -181,6 +177,12 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionConnect);
         LoadOptionalClientSymbol("freerdp_ohos_session_disconnect",
             ohosSessionDisconnect);
+        LoadOptionalClientSymbol("freerdp_ohos_session_attach_display_control",
+            ohosSessionAttachDisplayControl);
+        LoadOptionalClientSymbol("freerdp_ohos_session_detach_display_control",
+            ohosSessionDetachDisplayControl);
+        LoadOptionalClientSymbol("freerdp_ohos_session_resize",
+            ohosSessionResize);
         LoadOptionalClientSymbol("freerdp_ohos_session_get_diagnostics",
             ohosSessionGetDiagnostics);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_set_output_surface",
