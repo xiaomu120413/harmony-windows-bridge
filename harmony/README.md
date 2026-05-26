@@ -34,6 +34,7 @@ Current milestone:
 - M6.13 keeps the enhanced runtime packaged and retains software GDI as fallback while later builds default to rdpgfx/H.264 for performance.
 - M6.14 enables remote audio playback through a static `rdpsnd` channel using the packaged OpenSLES backend while keeping dynamic channels, microphone capture, and graphics pipeline negotiation off.
 - M6.14 also pre-fills the local debug host, account, password, and ignore-certificate policy in the connection form to reduce repeated device input during validation. This must be replaced by saved profiles or empty defaults before a production-style build.
+- M6.15 adds the FreeRDP OHOS printer backend. The session exposes a virtual printer to Windows, but HarmonyOS PrintKit initialization, printer lookup, and job submission are deferred until Windows actually sends a print job.
 - A live Windows desktop frame has been verified on device; current follow-up validation is focused on reliable remote operation and lifecycle stress.
 
 ## Native bridge
@@ -62,13 +63,13 @@ M4.1 verification:
 
 Remaining issues carried forward:
 
-- FreeRDP channels and H.264/FFmpeg/OpenH264/OHOS AVCodec-backed AVC444 GPU compositor are now compiled into the enhanced WSL build. Remote audio playback requests static `rdpsnd` with `sys:opensles`, and graphics default to `rdpgfx-h264` with per-command GDI fallback. Several product features still need runtime wiring: clipboard callbacks, drive path selection and permissions, printer backend, display-control resize PDUs, and RD Gateway UI/settings after a real gateway server is available for validation. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
+- FreeRDP channels and H.264/FFmpeg/OpenH264/OHOS AVCodec-backed AVC444 GPU compositor are now compiled into the enhanced WSL build. Remote audio playback requests static `rdpsnd` with `sys:opensles`, graphics default to `rdpgfx-h264` with per-command GDI fallback, and printer redirection uses the OHOS PrintKit backend on demand. Several product features still need runtime wiring or broader validation: clipboard callbacks, drive path selection and permissions, display-control resize PDUs, printer UX/error handling, and RD Gateway UI/settings after a real gateway server is available. Smartcard source/channel/PCSC and TSMF are excluded from the delivery build.
 - IME composition is still limited to the explicit Session text box sending BMP UTF-16 code units; inline composition and non-BMP input remain future work.
 - Callback lifecycle is only smoke-tested for basic connect/disconnect paths; reconnect, page teardown, app backgrounding, and network jitter still need stress testing.
 
 M4.2 notes:
 
-- The module declares only `ohos.permission.INTERNET`; no signing-profile privileges are added.
+- The module declares network, `PRINT`, Pasteboard, microphone, and location permissions. Pasteboard, microphone, and location prompts are still driven by native callbacks when the corresponding RDP feature is used; printer permission is needed for the lazy PrintKit job submission path.
 - TCP success/failure is reported through `onState`, `onLog`, and `onError`.
 
 M4.3 notes:
@@ -198,10 +199,10 @@ M6.11 notes:
 
 - `harmony/scripts/wsl/build-freerdp-ohos.sh` now builds uriparser, OpenH264, and FFmpeg before FreeRDP, then configures FreeRDP with `WITH_CHANNELS=ON`, `WITH_CLIENT_CHANNELS=ON`, `WITH_FFMPEG=ON`, `WITH_OPENH264=ON`, `WITH_URIPARSER=ON`, and OpenSLES when the OHOS NDK provides it.
 - FreeRDP source adaptations are tracked in the `harmony/third_party/FreeRDP` submodule on the `ohos-port` branch; the current submodule commit disables WinPR `pthread_cancel` on `__OHOS__`.
-- The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, and `printer`; `WITH_SMARTCARD=OFF`, `smartcard`, and `tsmf` are not compiled into the delivery profile.
-- `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264 with default AVC444 GPU compositor, display-control, and rdpsnd at session start.
+- The enabled client channels are `cliprdr`, `drdynvc`, `disp`, `location`, `rdpgfx`, `rdpsnd`, `audin`, `rdpdr`, `drive`, and `printer`; `WITH_SMARTCARD=OFF`, `smartcard`, and `tsmf` are not compiled into the delivery profile.
+- `libentry.so` loads `libfreerdp-client3.so`, registers the static client addin provider, and requests cliprdr, rdpdr, rdpgfx/H.264 with default AVC444 GPU compositor, display-control, location, printer, and rdpsnd at session start. Location permission is requested only if the server starts the location channel. Printer registration does not initialize PrintKit; PrintKit starts only when Windows submits a print job.
 - Runtime library sync now copies the whole `runtime-libs` directory, including FFmpeg/OpenH264/uriparser/OpenSLES/`libc++_shared.so` shared libraries, instead of a fixed minimal list. Use a clean HAP build after changing the native library set so hvigor does not reuse stale package metadata.
-- Remaining risk: CUPS and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer and clipboard file-copy need OHOS-specific backends or explicit third-party ports before they are truly usable. Smartcard source/channel/PCSC and TSMF are cut from the first delivery profile.
+- Remaining risk: CUPS and FUSE are intentionally optional build flags because HarmonyOS does not provide those Linux services as normal app APIs. Printer now uses an OHOS PrintKit backend, but still needs broader true-printer validation and product UX around printer selection/errors. Clipboard file-copy and drive sharing need OHOS-specific UI, sandbox grants, or explicit third-party ports before they are truly usable. Smartcard source/channel/PCSC and TSMF are cut from the first delivery profile.
 
 M6.12 notes:
 
