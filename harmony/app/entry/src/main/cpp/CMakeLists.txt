@@ -10,9 +10,6 @@ endif()
 include_directories(${NATIVERENDER_ROOT_PATH}
                     ${NATIVERENDER_ROOT_PATH}/include)
 
-option(HARMONY_ALLOW_FREERDP_DEMO_BUILD
-    "Allow an explicit demo build without synced FreeRDP OHOS headers/runtime" OFF)
-
 set(FREERDP_OHOS_SYSROOT_INCLUDE
     ${NATIVERENDER_ROOT_PATH}/../../../../../out/ohos-arm64/sysroot/include
     CACHE PATH "FreeRDP OHOS sysroot include directory")
@@ -58,18 +55,11 @@ foreach(required_path IN LISTS FREERDP_REQUIRED_HEADERS FREERDP_OHOS_REQUIRED_HE
 endforeach()
 
 if(FREERDP_MISSING_PATHS)
-    if(HARMONY_ALLOW_FREERDP_DEMO_BUILD)
-        add_compile_definitions(HARMONY_FREERDP_DEMO_BUILD=1)
-        message(WARNING
-            "Building explicit FreeRDP demo mode with missing OHOS artifacts: ${FREERDP_MISSING_PATHS}")
-    else()
-        message(FATAL_ERROR
-            "FreeRDP OHOS artifacts are required for the commercial HAP build. "
-            "Run harmony/scripts/wsl/build-freerdp-ohos.sh and "
-            "harmony/scripts/windows/sync-freerdp-runtime.ps1 first. "
-            "Missing: ${FREERDP_MISSING_PATHS}. "
-            "Set -DHARMONY_ALLOW_FREERDP_DEMO_BUILD=ON only for explicit mock/demo builds.")
-    endif()
+    message(FATAL_ERROR
+        "FreeRDP OHOS artifacts are required for the HAP build. "
+        "Run harmony/scripts/wsl/build-freerdp-ohos.sh and "
+        "harmony/scripts/windows/sync-freerdp-runtime.ps1 first. "
+        "Missing: ${FREERDP_MISSING_PATHS}.")
 else()
     include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3
                         ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3
