@@ -1,6 +1,6 @@
 # 木枢
 
-基于 FreeRDP 的 HarmonyOS 远程桌面客户端 Demo。仓库同时保留了本地 Web/Node 验证工具、Windows RDP 环境排查脚本，以及 HarmonyOS App 的 native bridge 接入代码。
+基于 FreeRDP 的 HarmonyOS 远程桌面客户端 Demo。仓库同时保留了本地 Web/Node 验证工具，以及 HarmonyOS App 的 native bridge 接入代码。
 
 GitHub: https://github.com/xiaomu120413/freerdp-control-demo
 
@@ -12,15 +12,13 @@ GitHub: https://github.com/xiaomu120413/freerdp-control-demo
 - 权限回调：远程会话请求剪贴板或麦克风时，由应用侧触发系统权限处理。
 - 设置页：包含深色模式、浅色模式、跟随系统、使用说明、本机 IP、关于项目和第三方开源组件信息。
 - 本地 Web Demo：用于在桌面侧先验证 RDP 网络、账号和 FreeRDP 可用性。
-- Windows 排查脚本：辅助开启目标机远程桌面、防火墙规则和连接测试。
 
 ## 目录结构
 
 - `harmony/app/`: HarmonyOS 应用工程，HAP 构建入口。
 - `harmony/third_party/FreeRDP/`: HarmonyOS 侧使用的 FreeRDP 三方源码和许可证文件。
-- `native/freerdp-bridge/`: 桌面侧 FreeRDP library/native bridge 骨架。
+- `app/native/freerdp-bridge/`: 桌面侧 FreeRDP library/native bridge 骨架。
 - `app/`: 本地浏览器界面和 Node 后端 Demo。
-- `scripts/`: FreeRDP 构建、连接测试、目标 Windows RDP 配置脚本。
 - `docs/harmonyos-porting.md`: HarmonyOS 迁移和结构说明。
 - `docs/windows-rdp-environment-setup.md`: Windows RDP 服务端和网络排查说明。
 - `docs/release-third-party-notices.md`: 第三方组件 NOTICE 和许可证履约材料。
@@ -93,31 +91,7 @@ http://127.0.0.1:5173
 
 ## Windows 目标机准备
 
-如果目标机器是 Windows，建议用管理员 PowerShell 在目标机器上执行：
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Enable-WindowsRdpTarget.ps1
-```
-
-也可以在控制端检查连通性：
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\Test-FreeRdpDemo.ps1
-```
-
-发起桌面侧 FreeRDP 连接：
-
-```powershell
-.\scripts\Connect-FreeRdpDemo.ps1 -TargetHost 192.168.1.20 -User "TARGET-PC\demo" -CertMode tofu
-```
-
-如果 `wfreerdp.exe` 没有加入 `PATH`：
-
-```powershell
-.\scripts\Connect-FreeRdpDemo.ps1 -TargetHost 192.168.1.20 -User "TARGET-PC\demo" -FreeRdpPath "C:\tools\freerdp\wfreerdp.exe"
-```
+目标 Windows 机器需要在系统设置中开启远程桌面，允许目标账号远程登录，并确保当前设备可以访问 TCP `3389`。本地 Web Demo 内置“测试端口”能力，可以直接检查目标地址的 TCP/RDP 握手。
 
 ## 第三方开源组件
 
