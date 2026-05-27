@@ -7,6 +7,9 @@ namespace rdp_bridge {
 namespace xrdp_bridge_internal {
 namespace {
 
+constexpr uint32_t kDefaultMaxDesktopWidth = 2560;
+constexpr uint32_t kDefaultMaxDesktopHeight = 1440;
+
 std::string TrimAscii(const std::string& value)
 {
     size_t begin = 0;
@@ -88,6 +91,8 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         << "username=ohos\n"
         << "password=ask\n"
         << "access_code=" << accessCode << "\n"
+        << "max_desktop_width=" << kDefaultMaxDesktopWidth << "\n"
+        << "max_desktop_height=" << kDefaultMaxDesktopHeight << "\n"
         << "port=0\n"
         << "code=0\n";
 
