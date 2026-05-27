@@ -7,8 +7,8 @@ namespace rdp_bridge {
 namespace xrdp_bridge_internal {
 namespace {
 
-constexpr uint32_t kDefaultMaxDesktopWidth = 2560;
-constexpr uint32_t kDefaultMaxDesktopHeight = 1440;
+constexpr uint32_t kDefaultMaxDesktopWidth = 0;
+constexpr uint32_t kDefaultMaxDesktopHeight = 0;
 
 std::string TrimAscii(const std::string& value)
 {
