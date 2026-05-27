@@ -609,7 +609,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext* gfx)
 
     FREERDP_OHOS_RDPGFX_BRIDGE_CONFIG config = {};
     config.avc420SurfaceMode = g_avc420SurfaceOutputConfigured.load() ? TRUE : FALSE;
-    config.avc444GpuExperimental = g_avc444GpuExperimentalConfigured.load() ? TRUE : FALSE;
+    config.avc444GpuCompositor = g_avc444GpuExperimentalConfigured.load() ? TRUE : FALSE;
     RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
     if (callbacks.decoderSurfaceTarget != nullptr) {
         const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
