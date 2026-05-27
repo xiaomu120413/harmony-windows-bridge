@@ -17,8 +17,16 @@
       "value": "读取本地剪贴板，用于在远程桌面会话中同步文本、文件和图片粘贴。"
     },
     {
+      "name": "full_disk_access_reason",
+      "value": "访问剪贴板 URI 和图片粘贴引用的本地文件，用于远程桌面剪贴板同步。"
+    },
+    {
       "name": "microphone_reason",
       "value": "采集麦克风音频，用于远程桌面音频输入重定向。"
+    },
+    {
+      "name": "screen_recording_reason",
+      "value": "采集本机屏幕，用于通过 xrdp 将鸿蒙桌面传输到远程桌面客户端。"
     },
     {
       "name": "location_reason",

@@ -9,7 +9,12 @@ import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpP
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAccent, SettingsAppearanceMode, SettingsResources, SettingsTheme } from '../components/settings/SettingsUi'
-import rdpNative, { NativeCommandResult } from 'libentry.so'
+import rdpNative, {
+  NativeCommandResult,
+  NativeXrdpDiagnosticsResult,
+  NativeXrdpServerParams,
+  NativeXrdpServerResult
+} from 'libentry.so'
 
 @Entry
 @Component
@@ -20,6 +25,8 @@ struct Index {
   @State private password: string = ''
   // 暂时固定使用 TOFU 证书策略，后续需要严格校验时再恢复策略选择入口。
   private certPolicy: string = 'tofu'
+  @State private remoteAccessCode: string = '000000'
+  @State private remoteAccessCodeGateEnabled: boolean = false
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
   @State private settingsButtonHovered: boolean = false
@@ -28,6 +35,8 @@ struct Index {
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
   private callbacksRegistered: boolean = false
+  private xrdpServerStartRequested: boolean = false
+  private remoteAccessCodeInitialized: boolean = false
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
 
@@ -49,6 +58,10 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerNativeCallbacks()
+    this.getPermissionManager().ensurePasteboardReadPermission('page appear')
+    this.getPermissionManager().ensureFullDiskAccessPermission('page appear')
+    this.getPermissionManager().ensureScreenRecordingPermission('page appear')
+    this.ensureXrdpServerStarted('page appear')
   }
 
   aboutToDisappear(): void {
@@ -163,6 +176,72 @@ struct Index {
       return ''
     }
     return context.filesDir
+  }
+
+  private generateRemoteAccessCode(): string {
+    const value = Math.floor(100000 + Math.random() * 900000)
+    return `${value}`
+  }
+
+  private ensureRemoteAccessCode(): string {
+    if (!this.remoteAccessCodeInitialized || this.remoteAccessCode === '000000') {
+      this.remoteAccessCode = this.generateRemoteAccessCode()
+      this.remoteAccessCodeInitialized = true
+    }
+    return this.remoteAccessCode
+  }
+
+  private xrdpParams(restartIfRunning: boolean = false): NativeXrdpServerParams {
+    return {
+      appFilesDir: this.getAppFilesDir(),
+      accessCode: this.remoteAccessCodeGateEnabled ? this.ensureRemoteAccessCode() : '',
+      accessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+      restartIfRunning: restartIfRunning,
+      port: 3390
+    }
+  }
+
+  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false): void {
+    if (this.xrdpServerStartRequested && !restartIfRunning) {
+      return
+    }
+    this.xrdpServerStartRequested = true
+    try {
+      const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams(restartIfRunning))
+      this.appendLog(`${result.message}: ${trigger}`)
+      this.appendNativeLogs(result.logs)
+      this.appendXrdpDiagnostics(`ensure ${trigger}`)
+      if (!result.ok) {
+        this.xrdpServerStartRequested = false
+      }
+    } catch (error) {
+      this.xrdpServerStartRequested = false
+      this.appendLog(`xrdp ensure start failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private setRemoteAccessCodeGateEnabled(enabled: boolean): void {
+    if (this.remoteAccessCodeGateEnabled === enabled) {
+      return
+    }
+    this.remoteAccessCodeGateEnabled = enabled
+    if (enabled) {
+      this.ensureRemoteAccessCode()
+    }
+    this.ensureXrdpServerStarted(enabled ? 'access code gate enabled' : 'access code gate disabled', true)
+  }
+
+  private appendXrdpDiagnostics(trigger: string): void {
+    try {
+      const diagnostics: NativeXrdpDiagnosticsResult = rdpNative.getXrdpServerDiagnostics()
+      this.appendLog(`xrdp diagnostics: ${trigger} state=${diagnostics.state} running=${diagnostics.running}` +
+        ` activeMstsc=${diagnostics.activeMstscSession} port=${diagnostics.port}` +
+        ` session=${diagnostics.sessionWidth}x${diagnostics.sessionHeight} bpp=${diagnostics.sessionBpp}` +
+        ` lastEvent=${diagnostics.lastBackendEvent} disconnect=${diagnostics.lastDisconnectReason}`)
+      this.appendNativeLogs(diagnostics.logs)
+    } catch (error) {
+      this.appendLog(`xrdp diagnostics failed: ${JSON.stringify(error)}`)
+    }
   }
 
   private connectNative(): void {
@@ -341,6 +420,40 @@ struct Index {
           .alignItems(VerticalAlign.Center)
           .width('100%')
           .margin({ bottom: 18 })
+
+        Row() {
+          Column() {
+            Text('xrdp 验证码门禁')
+              .fontSize(15)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text(this.remoteAccessCodeGateEnabled ? `验证码 ${this.remoteAccessCode}` : '默认关闭')
+              .fontSize(12)
+              .fontColor(SettingsTheme.mutedText(this.isAppDark()))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          .layoutWeight(1)
+
+          Toggle({ type: ToggleType.Switch, isOn: this.remoteAccessCodeGateEnabled })
+            .onChange((enabled: boolean) => {
+              this.setRemoteAccessCodeGateEnabled(enabled)
+            })
+        }
+          .height(52)
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: 12, right: 12 })
+          .margin({ bottom: 12 })
+          .borderRadius(SettingsTheme.CARD_RADIUS)
+          .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+          .border({
+            width: 1,
+            color: SettingsTheme.borderColor(this.isAppDark()),
+            style: BorderStyle.Solid
+          })
 
         this.inputField(SettingsText.HOME_HOST_PLACEHOLDER, this.host, (value: string) => {
           this.host = value

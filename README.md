@@ -8,6 +8,7 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 
 - HarmonyOS HAP 客户端：填写 Windows host、端口、用户名、密码后发起 RDP 连接。
 - FreeRDP native bridge：ArkTS 通过 NAPI 调用 native 层，远程画面通过 `XComponent` surface 显示。
+- xrdp/MSTSC 路径：HAP 可随包携带 xrdp HNP，启动后监听本机 `3390`，配合 `hdc fport` 让 Windows MSTSC 反向控制 HarmonyOS 桌面。
 - 证书策略：支持 `TOFU` 和 `Strict`，用于测试和更严格的证书校验。
 - 权限回调：远程会话请求剪贴板、麦克风或地理位置时，由应用侧触发系统权限处理。
 - 打印重定向：默认向 Windows 暴露虚拟打印机，Windows 实际提交打印作业时才启动 HarmonyOS PrintKit。
@@ -18,6 +19,7 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 
 - `harmony/app/`: HarmonyOS 应用工程，HAP 构建入口。
 - `harmony/third_party/FreeRDP/`: HarmonyOS 侧使用的 FreeRDP 三方源码和许可证文件。
+- `harmony/third_party/xrdp/`: HarmonyOS 侧 xrdp 服务端源码和 OHOS backend。
 - `app/native/freerdp-bridge/`: 桌面侧 FreeRDP library/native bridge 骨架。
 - `app/`: 本地浏览器界面和 Node 后端 Demo。
 - `docs/README.md`: 当前文档索引，区分活文档和历史归档。
@@ -46,6 +48,8 @@ cd harmony\app
 
 FreeRDP runtime 变更后应先按 `docs/freerdp-ohos-validation-baseline.md` 重建并同步 `harmony/out/ohos-arm64/runtime-libs`。
 
+xrdp runtime 变更后，先构建 `harmony/out/xrdp-ohos-arm64`，再运行同一个 HAP 构建脚本；脚本会同步 xrdp runtime、打包 `xrdp.hnp`，并在 HAP 构建后重新注入 HNP。
+
 构建产物默认位于：
 
 ```text
@@ -66,6 +70,17 @@ hdc install -r harmony\app\entry\build\default\outputs\default\entry-default-sig
 3. 点击 `Connect` 后，应用会调用 native FreeRDP 会话并打开远程桌面 surface。
 4. 远程文件：应用启动后会通过系统下载控件准备 `Download/com.muhub.desktop`。连接 Windows 后，在远程桌面中打开 `\\tsclient\Downloads`，可与该目录互传小文件；当前只共享这个固定目录。
 5. 进入 `设置` 可以查看使用说明、本机 IP、关于信息，或切换深色/浅色/跟随系统。
+
+## xrdp / MSTSC 反向控制
+
+应用启动后会尝试启动 xrdp 服务端，默认监听设备侧 `3390`。在 Windows 侧通过 HDC 转发后，用 MSTSC 连接本地转发端口：
+
+```powershell
+hdc fport tcp:13390 tcp:3390
+mstsc /v:127.0.0.1:13390
+```
+
+主界面可以开启 xrdp 验证码门禁；开启后，远程登录需要输入界面显示的 6 位验证码。
 
 常见排查：
 

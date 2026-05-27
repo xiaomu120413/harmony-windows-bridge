@@ -27,11 +27,31 @@
         "name": "ohos.permission.GET_NETWORK_INFO"
       },
       {
+        "name": "ohos.permission.CUSTOM_SCREEN_RECORDING",
+        "reason": "$string:screen_recording_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
         "name": "ohos.permission.PRINT"
       },
       {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:read_pasteboard_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.ACCESS_USER_FULL_DISK",
+        "reason": "$string:full_disk_access_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
@@ -68,6 +88,12 @@
           ],
           "when": "inuse"
         }
+      }
+    ],
+    "hnpPackages": [
+      {
+        "package": "xrdp.hnp",
+        "type": "private"
       }
     ],
     "pages": "$profile:main_pages",
