@@ -16,6 +16,8 @@ tools/hapsigner/stage-*/
 harmony/app/.hvigor/
 harmony/app/oh_modules/
 harmony/app/entry/libs/
+harmony/app/entry/hnp/
+harmony/app/entry/src/main/resources/rawfile/xrdp/
 harmony/app/entry/src/main/libs/
 harmony/app/**/build/
 harmony/app/**/*.hap

@@ -1,12 +1,14 @@
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
+  ACCESS_USER_FULL_DISK_PERMISSION,
   APPROXIMATE_LOCATION_PERMISSION,
   HILOG_DOMAIN,
   HILOG_TAG,
   LOCATION_PERMISSION,
   MICROPHONE_PERMISSION,
-  READ_PASTEBOARD_PERMISSION
+  READ_PASTEBOARD_PERMISSION,
+  SCREEN_RECORDING_PERMISSION
 } from './RdpConstants'
 
 export interface RdpPermissionDelegate {
@@ -41,6 +43,10 @@ export class RdpPermissionManager {
   private microphonePermissionRequest: Promise<boolean> | null = null
   private locationPermissionInFlight: boolean = false
   private locationPermissionRequest: Promise<boolean> | null = null
+  private fullDiskAccessPermissionRequested: boolean = false
+  private fullDiskAccessPermissionRequest: Promise<boolean> | null = null
+  private screenRecordingPermissionRequested: boolean = false
+  private screenRecordingPermissionRequest: Promise<boolean> | null = null
 
   constructor(delegate: RdpPermissionDelegate) {
     this.delegate = delegate
@@ -168,6 +174,62 @@ export class RdpPermissionManager {
     return this.locationPermissionRequest
   }
 
+  ensureFullDiskAccessPermission(trigger: string): Promise<boolean> {
+    if (this.hasPermission(ACCESS_USER_FULL_DISK_PERMISSION, 'Full disk access')) {
+      this.delegate.log(`Full disk access permission granted: ${trigger}`)
+      return Promise.resolve(true)
+    }
+    if (this.fullDiskAccessPermissionRequest !== null) {
+      return this.fullDiskAccessPermissionRequest
+    }
+    if (this.fullDiskAccessPermissionRequested) {
+      this.delegate.log(`Full disk access permission is not granted: ${trigger}`)
+      return Promise.resolve(false)
+    }
+
+    const context = this.delegate.getContext()
+    if (context === null) {
+      this.delegate.log('Full disk access permission request skipped: no UIAbilityContext')
+      return Promise.resolve(false)
+    }
+
+    this.fullDiskAccessPermissionRequested = true
+    this.fullDiskAccessPermissionRequest = this.openPermissionOnSetting(context,
+      ACCESS_USER_FULL_DISK_PERMISSION, 'Full disk access')
+      .finally(() => {
+        this.fullDiskAccessPermissionRequest = null
+      })
+    return this.fullDiskAccessPermissionRequest
+  }
+
+  ensureScreenRecordingPermission(trigger: string): Promise<boolean> {
+    if (this.hasPermission(SCREEN_RECORDING_PERMISSION, 'Screen recording')) {
+      this.delegate.log(`Screen recording permission granted: ${trigger}`)
+      return Promise.resolve(true)
+    }
+    if (this.screenRecordingPermissionRequest !== null) {
+      return this.screenRecordingPermissionRequest
+    }
+    if (this.screenRecordingPermissionRequested) {
+      this.delegate.log(`Screen recording permission is not granted: ${trigger}`)
+      return Promise.resolve(false)
+    }
+
+    const context = this.delegate.getContext()
+    if (context === null) {
+      this.delegate.log('Screen recording permission request skipped: no UIAbilityContext')
+      return Promise.resolve(false)
+    }
+
+    this.screenRecordingPermissionRequested = true
+    this.screenRecordingPermissionRequest = this.openPermissionOnSetting(context,
+      SCREEN_RECORDING_PERMISSION, 'Screen recording')
+      .finally(() => {
+        this.screenRecordingPermissionRequest = null
+      })
+    return this.screenRecordingPermissionRequest
+  }
+
   private appendPasteboardPermissionLog(line: string): void {
     this.delegate.log(line)
     hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
@@ -189,6 +251,22 @@ export class RdpPermissionManager {
       this.delegate.log(`${label} permission check failed: ${JSON.stringify(error)}`)
       return false
     }
+  }
+
+  private openPermissionOnSetting(context: common.UIAbilityContext, permission: Permissions,
+    label: string): Promise<boolean> {
+    const atManager = abilityAccessCtrl.createAtManager()
+    return atManager.openPermissionOnSetting(context, permission)
+      .then((result: abilityAccessCtrl.SelectedResult) => {
+        const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
+          this.hasPermission(permission, label)
+        this.delegate.log(`${label} setting result: granted=${granted} result=${result}`)
+        return granted
+      })
+      .catch((error: Error) => {
+        this.delegate.log(`${label} setting request failed: ${JSON.stringify(error)}`)
+        return false
+      })
   }
 
   private hasLocationPermission(): boolean {

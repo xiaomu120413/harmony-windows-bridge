@@ -16,6 +16,9 @@ set(FREERDP_OHOS_SYSROOT_INCLUDE
 set(FREERDP_OHOS_SOURCE_ROOT
     ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/FreeRDP
     CACHE PATH "FreeRDP source checkout with OHOS client headers")
+set(XRDP_OHOS_SOURCE_ROOT
+    ${NATIVERENDER_ROOT_PATH}/../../../../../third_party/xrdp
+    CACHE PATH "xrdp source checkout with OHOS backend headers")
 set(FREERDP_OHOS_RUNTIME_LIB_DIR
     ${NATIVERENDER_ROOT_PATH}/../../../libs/arm64-v8a
     CACHE PATH "Synced FreeRDP OHOS runtime library directory")
@@ -39,6 +42,8 @@ set(FREERDP_OHOS_REQUIRED_HEADERS
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_rdpgfx.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session_config.h)
+set(XRDP_OHOS_REQUIRED_HEADERS
+    ${XRDP_OHOS_SOURCE_ROOT}/ohos/xrdp_ohos.h)
 set(FREERDP_REQUIRED_RUNTIME_LIBS
     ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libcjson.so.1
     ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libcrypto.so.3
@@ -49,7 +54,11 @@ set(FREERDP_REQUIRED_RUNTIME_LIBS
     ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libz.so.1)
 
 set(FREERDP_MISSING_PATHS)
-foreach(required_path IN LISTS FREERDP_REQUIRED_HEADERS FREERDP_OHOS_REQUIRED_HEADERS FREERDP_REQUIRED_RUNTIME_LIBS)
+foreach(required_path IN LISTS
+        FREERDP_REQUIRED_HEADERS
+        FREERDP_OHOS_REQUIRED_HEADERS
+        XRDP_OHOS_REQUIRED_HEADERS
+        FREERDP_REQUIRED_RUNTIME_LIBS)
     if(NOT EXISTS ${required_path})
         list(APPEND FREERDP_MISSING_PATHS ${required_path})
     endif()
@@ -64,7 +73,8 @@ if(FREERDP_MISSING_PATHS)
 else()
     include_directories(${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3
                         ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3
-                        ${FREERDP_OHOS_SOURCE_ROOT})
+                        ${FREERDP_OHOS_SOURCE_ROOT}
+                        ${XRDP_OHOS_SOURCE_ROOT})
 endif()
 
 add_library(entry SHARED
@@ -102,7 +112,11 @@ add_library(entry SHARED
     surface/native_window_rgba_painter.cpp
     surface/render_output_owner.cpp
     surface/surface_bridge.cpp
-    common/string_utils.cpp)
+    common/string_utils.cpp
+    xrdp/xrdp_ini_builder.cpp
+    xrdp/xrdp_runtime_config.cpp
+    xrdp/xrdp_runtime_loader.cpp
+    xrdp/xrdp_server_bridge.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
 target_link_libraries(entry PUBLIC
     libace_napi.z.so

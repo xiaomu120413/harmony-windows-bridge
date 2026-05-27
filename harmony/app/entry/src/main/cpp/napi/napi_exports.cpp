@@ -9,7 +9,9 @@
 #include "napi/microphone_permission_bridge.h"
 #include "napi/napi_event_sink.h"
 #include "napi/napi_utils.h"
+#include "xrdp/xrdp_server_bridge.h"
 
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -39,9 +41,111 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     params.port = GetStringProperty(env, args[0], "port");
     params.username = GetStringProperty(env, args[0], "username");
     params.password = GetStringProperty(env, args[0], "password");
+    const std::string resolution = GetStringProperty(env, args[0], "resolution");
+    if (!resolution.empty()) {
+        params.resolution = resolution;
+    }
     params.certPolicy = GetStringProperty(env, args[0], "certPolicy");
+    const std::string graphicsMode = GetStringProperty(env, args[0], "graphicsMode");
+    if (!graphicsMode.empty()) {
+        params.graphicsMode = graphicsMode;
+    }
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
+}
+
+uint32_t ParseUint32String(const std::string& value, uint32_t fallback)
+{
+    if (value.empty()) {
+        return fallback;
+    }
+
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
+    if (end == value.c_str() || parsed > 0xFFFFFFFFUL) {
+        return fallback;
+    }
+    return static_cast<uint32_t>(parsed);
+}
+
+XrdpServerParams ReadXrdpServerParams(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    XrdpServerParams params;
+    if (arg == nullptr || type != napi_object) {
+        return params;
+    }
+
+    params.appFilesDir = GetStringProperty(env, arg, "appFilesDir");
+    params.runtimeRoot = GetStringProperty(env, arg, "runtimeRoot");
+    params.hnpRoot = GetStringProperty(env, arg, "hnpRoot");
+    params.libraryPath = GetStringProperty(env, arg, "libraryPath");
+    params.libDir = GetStringProperty(env, arg, "libDir");
+    params.modulePath = GetStringProperty(env, arg, "modulePath");
+    params.configPath = GetStringProperty(env, arg, "configPath");
+    params.sharePath = GetStringProperty(env, arg, "sharePath");
+    params.accessCode = GetStringProperty(env, arg, "accessCode");
+    params.accessCodeGateEnabled = GetBoolProperty(env, arg, "accessCodeGateEnabled");
+    params.restartIfRunning = GetBoolProperty(env, arg, "restartIfRunning");
+    params.port = GetUint32Property(env, arg, "port", 0);
+    if (params.port == 0) {
+        params.port = ParseUint32String(GetStringProperty(env, arg, "port"), 0);
+    }
+    return params;
+}
+
+void SetXrdpCommonResult(napi_env env, napi_value result, const XrdpServerCommandResult& command)
+{
+    SetBool(env, result, "ok", command.ok);
+    SetString(env, result, "state", command.state);
+    SetString(env, result, "message", command.message);
+    SetString(env, result, "libraryPath", command.libraryPath);
+    SetString(env, result, "runtimeRoot", command.runtimeRoot);
+    SetString(env, result, "configPath", command.configPath);
+    SetString(env, result, "modulePath", command.modulePath);
+    SetString(env, result, "logPath", command.logPath);
+    SetBool(env, result, "activeMstscSession", command.activeMstscSession);
+    SetUint32(env, result, "port", command.port);
+    SetNamed(env, result, "logs", MakeStringArray(env, command.logs));
+}
+
+napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& command)
+{
+    napi_value result = MakeObject(env);
+    SetXrdpCommonResult(env, result, command);
+    return result;
+}
+
+napi_value MakeXrdpDiagnosticsResult(napi_env env, const XrdpServerDiagnostics& diagnostics)
+{
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", diagnostics.ok);
+    SetBool(env, result, "running", diagnostics.running);
+    SetBool(env, result, "activeMstscSession", diagnostics.activeMstscSession);
+    SetUint32(env, result, "port", diagnostics.port);
+    SetUint32(env, result, "sessionWidth", diagnostics.sessionWidth);
+    SetUint32(env, result, "sessionHeight", diagnostics.sessionHeight);
+    SetUint32(env, result, "sessionBpp", diagnostics.sessionBpp);
+    SetUint32(env, result, "backendEventCount", diagnostics.backendEventCount);
+    SetUint32(env, result, "inputEventCount", diagnostics.inputEventCount);
+    SetString(env, result, "state", diagnostics.state);
+    SetString(env, result, "message", diagnostics.message);
+    SetString(env, result, "lastBackendEvent", diagnostics.lastBackendEvent);
+    SetString(env, result, "lastDisconnectReason", diagnostics.lastDisconnectReason);
+    SetString(env, result, "libraryPath", diagnostics.libraryPath);
+    SetString(env, result, "backendLibraryPath", diagnostics.backendLibraryPath);
+    SetString(env, result, "runtimeRoot", diagnostics.runtimeRoot);
+    SetString(env, result, "configPath", diagnostics.configPath);
+    SetString(env, result, "modulePath", diagnostics.modulePath);
+    SetString(env, result, "sharePath", diagnostics.sharePath);
+    SetString(env, result, "logPath", diagnostics.logPath);
+    SetNamed(env, result, "logs", MakeStringArray(env, diagnostics.logs));
+    return result;
 }
 
 std::string RedactedEndpointLog(const ConnectParams& params)
@@ -91,6 +195,17 @@ napi_value Connect(napi_env env, napi_callback_info info)
     SetString(env, result, "message", message);
     SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
+}
+
+napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
+{
+    const XrdpServerParams params = ReadXrdpServerParams(env, info);
+    return MakeXrdpServerResult(env, rdp_bridge::StartXrdpServer(params));
+}
+
+napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info)
+{
+    return MakeXrdpDiagnosticsResult(env, rdp_bridge::GetXrdpServerDiagnostics());
 }
 
 napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
@@ -256,6 +371,9 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default,
+            nullptr},
         {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

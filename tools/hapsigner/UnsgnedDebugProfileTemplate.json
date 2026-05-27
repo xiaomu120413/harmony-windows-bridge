@@ -16,12 +16,16 @@
   },
   "acls": {
     "allowed-acls": [
-      "ohos.permission.READ_PASTEBOARD"
+      "ohos.permission.CUSTOM_SCREEN_RECORDING",
+      "ohos.permission.READ_PASTEBOARD",
+      "ohos.permission.ACCESS_USER_FULL_DISK"
     ]
   },
   "permissions": {
     "restricted-permissions": [
-      "ohos.permission.READ_PASTEBOARD"
+      "ohos.permission.CUSTOM_SCREEN_RECORDING",
+      "ohos.permission.READ_PASTEBOARD",
+      "ohos.permission.ACCESS_USER_FULL_DISK"
     ]
   },
   "debug-info": {
