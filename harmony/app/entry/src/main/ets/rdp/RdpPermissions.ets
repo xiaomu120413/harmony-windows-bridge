@@ -89,18 +89,6 @@ export class RdpPermissionManager {
     )
   }
 
-  ensureScreenRecordingPermission(trigger: string): Promise<boolean> {
-    return this.ensurePermission(
-      this.screenRecordingPermission,
-      'Screen recording',
-      trigger,
-      (): boolean => this.hasScreenRecordingPermission(),
-      (context: common.UIAbilityContext): Promise<boolean> =>
-        this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording'),
-      true
-    )
-  }
-
   requestScreenRecordingPermission(trigger: string): Promise<boolean> {
     return this.ensurePermission(
       this.screenRecordingPermission,

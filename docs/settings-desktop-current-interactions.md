@@ -1,0 +1,363 @@
+# 桌面设置页交互规格（当前能力版）
+
+本文档对应 `docs/settings-desktop-current-capability.svg`，只覆盖当前代码里已经具备或已经有回调入口的能力，不新增日志导出、更新中心、高级诊断、安全策略等未实现功能。
+
+## 0. 当前代码功能对应关系
+
+这一版设计只映射当前工程里已经存在的页面、状态、回调和文案。
+
+### 页面文件对应
+
+| 设计模块 | 当前文件 | 当前职责 | 改造方式 |
+| --- | --- | --- | --- |
+| 主页设置入口 | `harmony/app/entry/src/main/ets/pages/Index.ets` | 展示连接页、设置按钮、维护全局状态 | 只调整设置按钮视觉和打开设置前的刷新逻辑 |
+| 设置容器 / 导航 | `harmony/app/entry/src/main/ets/components/SettingsPage.ets` | 当前用 `pageName` 在三个设置页之间切换 | 桌面版改成左侧导航 + 右侧内容，继续复用 `pageName` |
+| 基础设置 | `harmony/app/entry/src/main/ets/components/settings/BasicSettingsPage.ets` | 外观模式、本机网络 IP | 桌面版只重排布局，不改能力 |
+| 远控设置 | `harmony/app/entry/src/main/ets/components/settings/RemoteControlSettingsPage.ets` | xrdp、验证码、录屏权限、远程文件目录 | 桌面版改成四个功能面板 |
+| 项目帮助 | `harmony/app/entry/src/main/ets/components/settings/ProjectHelpPage.ets` | 关于项目、使用说明、排查说明 | 桌面版改成分组知识区 |
+| 公共 UI | `harmony/app/entry/src/main/ets/components/settings/SettingsUi.ets` | Header、ListItem、Card、颜色、阴影 | 增加桌面行、状态 chip、状态面板组件 |
+| 文案常量 | `harmony/app/entry/src/main/ets/components/settings/SettingsConstants.ets` | 当前设置页所有中文文案 | 继续复用，缺少的状态短文案再补 |
+
+### 当前全局状态对应
+
+这些状态都在 `Index.ets` 里维护，然后通过 `SettingsPage` 传给子页面。
+
+| 设计字段 | 当前状态 / 函数 | 当前用途 |
+| --- | --- | --- |
+| xrdp 是否运行 | `xrdpServerRunning` | 控制远控服务显示“已启动/未启动” |
+| xrdp 原始状态 | `xrdpServerState` | 显示 `Stopped`、`Listening`、`ActiveSession`、`Exited` 等 |
+| xrdp 端口 | `xrdpServerPort` | 当前默认 `3390` |
+| xrdp 状态消息 | `xrdpServerMessage` | 使用 `SettingsText.REMOTE_SERVER_MESSAGE_*` |
+| xrdp 忙碌态 | `xrdpServerBusy` | 启动/重启时禁用重复操作 |
+| 验证码 | `remoteAccessCode` | 门禁开启后展示当前验证码 |
+| 门禁开关 | `remoteAccessCodeGateEnabled` | 控制验证码门禁开启/关闭 |
+| 录屏权限 | `screenRecordingPermissionGranted` | 控制“已授权/未授权” |
+| 外观模式 | `@StorageLink('settingsAppearanceMode') appearanceMode` | 主界面和设置页深浅色 |
+| 系统深色 | `@StorageLink('settingsSystemDark') systemDark` | 跟随系统模式时判断实际颜色 |
+
+### 当前回调对应
+
+这些回调已经从 `Index.ets` 透传到 `SettingsPage.ets`，再传给 `RemoteControlSettingsPage.ets`。
+
+| 设计动作 | 当前回调 | 当前实现位置 |
+| --- | --- | --- |
+| 刷新 xrdp 状态 | `onRefreshXrdpServerStatus` | `Index.refreshXrdpServerDiagnostics()` |
+| 启动 xrdp 服务 | `onStartXrdpServer` | `Index.startXrdpServerFromSettings()` |
+| 切换验证码门禁 | `onRemoteAccessCodeGateChange` | `Index.setRemoteAccessCodeGateFromSettings(enabled)` |
+| 重新生成验证码 | `onRemoteAccessCodeRegenerate` | `Index.regenerateRemoteAccessCodeFromSettings()` |
+| 请求录屏权限 | `onRequestScreenRecordingPermission` | `Index.requestScreenRecordingPermissionFromSettings()` |
+| 刷新录屏权限状态 | `onRefreshScreenRecordingPermission` | `Index.refreshScreenRecordingPermissionState()` |
+| 打开共享目录 | `onOpenRemoteFilesDirectory` | `Index.openRemoteFilesDirectoryFromSettings()` |
+| 关闭设置页 | `onClose` | `Index` 中设置 `showSettings = false` |
+
+### 当前文案对应
+
+| 设计模块 | 当前文案常量 |
+| --- | --- |
+| 设置页标题 | `SettingsText.SETTINGS_TITLE`、`SettingsText.SETTINGS_SUBTITLE` |
+| 基础设置入口 | `BASIC_SETTINGS_ENTRY_TITLE`、`BASIC_SETTINGS_ENTRY_DESC` |
+| 远控设置入口 | `REMOTE_CONTROL_ENTRY_TITLE`、`REMOTE_CONTROL_ENTRY_DESC` |
+| 项目帮助入口 | `PROJECT_HELP_ENTRY_TITLE`、`PROJECT_HELP_ENTRY_DESC` |
+| xrdp 服务 | `REMOTE_SERVER_*` |
+| 验证码门禁 | `REMOTE_ACCESS_*` |
+| 录屏权限 | `REMOTE_SCREEN_*` |
+| 远程文件 | `REMOTE_FILES_*` |
+| 本机网络 | `NETWORK_*` |
+| 使用说明 | `USAGE_*` |
+| 关于项目 | `ABOUT_*` |
+
+### 当前还没有的能力
+
+这些不应该出现在当前版本 UI 里，最多作为后续规划，不做按钮入口：
+
+- 日志导出
+- 更新中心
+- 高级诊断中心
+- 多共享目录管理
+- 安全策略配置页
+- 证书策略切换 UI
+- 剪贴板/麦克风/定位权限的独立设置页
+- 远程会话列表管理
+
+## 1. 页面结构
+
+桌面版设置页采用「左侧导航 + 右侧内容」。
+
+- 左侧导航固定显示：`基础设置`、`远控设置`、`项目帮助`。
+- 右侧默认显示 `设置概览`。
+- 点击左侧导航或概览卡片后，右侧切换对应子页面，不关闭设置页。
+- 设置页左上角保留返回/关闭按钮，点击后回到主页连接界面。
+
+建议路由值：
+
+```ts
+SettingsRoute.SETTINGS = 'settings'          // 概览
+SettingsRoute.BASIC = 'basic'                // 基础设置
+SettingsRoute.REMOTE_CONTROL = 'remoteControl'
+SettingsRoute.PROJECT_HELP = 'projectHelp'
+```
+
+## 2. 主页设置入口
+
+主页右上角设置入口保留为按钮，但弱化视觉。
+
+点击行为：
+
+1. 调用 `refreshScreenRecordingPermissionState()`。
+2. 调用 `refreshXrdpServerDiagnostics()`。
+3. 设置 `showSettings = true`。
+4. 设置页默认进入 `SettingsRoute.SETTINGS` 概览。
+
+状态点规则：
+
+| 条件 | 状态点 |
+| --- | --- |
+| `xrdpServerBusy === true` | 蓝色，表示处理中 |
+| `!screenRecordingPermissionGranted` | 黄色，表示需要处理 |
+| `xrdpServerRunning === false` | 灰色，表示服务未启动 |
+| `xrdpServerRunning && screenRecordingPermissionGranted` | 绿色，表示可用 |
+
+不要在主页入口展示过多文本。详细状态放到设置页。
+
+## 3. 设置概览页
+
+概览页负责让用户先看到当前关键状态，再决定进入哪个子页。
+
+进入概览页时刷新：
+
+- 屏幕录制权限：`onRefreshScreenRecordingPermission`
+- xrdp 状态：`onRefreshXrdpServerStatus`
+- 外观模式：`SettingsTheme.getStoredAppearanceMode()`
+
+概览状态区显示：
+
+| 字段 | 数据来源 |
+| --- | --- |
+| 外观 | `appearanceMode` |
+| 本机 IP | 基础设置页已有的网络读取逻辑，可显示 `Ready / Loading / Empty` |
+| xrdp | `xrdpServerRunning`、`xrdpServerPort`、`xrdpServerState` |
+| 门禁 | `remoteAccessCodeGateEnabled` |
+| 录屏权限 | `screenRecordingPermissionGranted` |
+
+概览卡片点击：
+
+- `基础设置` 卡片：`pageName = SettingsRoute.BASIC`
+- `远控设置` 卡片：`pageName = SettingsRoute.REMOTE_CONTROL`
+- `项目帮助` 卡片：`pageName = SettingsRoute.PROJECT_HELP`
+
+## 4. 基础设置页
+
+当前可做内容：外观模式、本机 IP。
+
+### 外观模式
+
+三个选项：
+
+- 跟随系统
+- 浅色模式
+- 深色模式
+
+点击任一选项：
+
+1. 先记录旧值。
+2. 乐观更新本地选中态。
+3. 调用 `SettingsTheme.applyAppearanceMode(this.getUIContext(), mode)`。
+4. 成功：调用 `onModeChange(mode)`。
+5. 失败：恢复旧值。
+
+选中态：
+
+- 选中的行显示蓝色边框或勾选图标。
+- 未选中的行保持普通白底。
+
+### 本机 IP
+
+页面出现时自动调用 `refreshIp()`。
+
+刷新按钮行为：
+
+1. 将 `interfaceName = '-'`。
+2. 将 `ipAddresses = ['查询中']`。
+3. 调用 `connection.getDefaultNet()` 和 `connection.getConnectionProperties()`。
+4. 成功后显示接口名和 IP 列表。
+5. 失败后显示读取失败文本。
+
+状态展示：
+
+| 状态 | 展示 |
+| --- | --- |
+| 查询中 | 蓝色/灰色 loading 文案 |
+| 无默认网络 | 灰色空状态 |
+| 无可用 IP | 黄色提示 |
+| 读取失败 | 红色错误提示，保留刷新按钮 |
+| 成功 | 显示接口名和 IP |
+
+## 5. 远控设置页
+
+当前可做内容：xrdp 服务、验证码门禁、录屏权限、远程文件说明。
+
+进入页面时：
+
+1. 将 props 同步到 local state。
+2. 调用 `refreshScreenRecordingState()`。
+3. 调用 `refreshXrdpServerStatus()`。
+
+### xrdp 服务卡
+
+显示字段：
+
+- 状态：`localXrdpServerState`
+- 端口：`localXrdpServerPort`
+- 消息：`localXrdpServerMessage`
+- 运行状态：`localXrdpServerRunning`
+
+按钮规则：
+
+| 当前状态 | 主按钮文本 | 点击行为 |
+| --- | --- | --- |
+| `localXrdpServerBusy` | 处理中 | 禁止重复点击 |
+| `localXrdpServerRunning === true` | 刷新 | `refreshXrdpServerStatus()` |
+| `localXrdpServerRunning === false` | 启动服务 | `startXrdpServer()` |
+
+`startXrdpServer()` 行为：
+
+1. 若 busy，直接返回。
+2. 设置 `localXrdpServerBusy = true`。
+3. 调用 `onStartXrdpServer()`。
+4. 成功：`applyXrdpServerStatus(status)`，并刷新录屏权限。
+5. 失败：刷新当前 xrdp 状态。
+6. finally：`localXrdpServerBusy = false`。
+
+### 验证码门禁卡
+
+显示字段：
+
+- 开关：`localGateEnabled`
+- 当前验证码：开启时显示 `localAccessCode`，关闭时显示“默认关闭”
+- 状态文本：开启 / 默认关闭
+
+开关行为：
+
+1. 用户切换 Toggle。
+2. 本地立即更新 `localGateEnabled`。
+3. 调用 `onRemoteAccessCodeGateChange(enabled)`。
+4. 若返回了新的验证码，则更新 `localAccessCode`。
+5. 显示提示：切换后会重启或刷新 xrdp 生效（如果当前实现已经这样做）。
+
+重新生成按钮：
+
+1. 调用 `onRemoteAccessCodeRegenerate()`。
+2. 如果返回非空字符串，更新 `localAccessCode`。
+3. 如果门禁关闭，按钮可以保留，但验证码区域仍显示“默认关闭”。
+
+### 录屏权限卡
+
+显示字段：
+
+- 当前授权状态：`localScreenRecordingGranted`
+- 忙碌状态：`screenPermissionBusy`
+
+按钮规则：
+
+| 状态 | 按钮文本 | 点击行为 |
+| --- | --- | --- |
+| busy | 处理中 | 禁止重复点击 |
+| 已授权 | 已授权 | 可禁用，或点击刷新状态 |
+| 未授权 | 去授权 | `requestScreenRecordingPermission()` |
+
+`requestScreenRecordingPermission()` 行为：
+
+1. 若 `screenPermissionBusy`，直接返回。
+2. 设置 `screenPermissionBusy = true`。
+3. 调用 `onRequestScreenRecordingPermission()`。
+4. 成功：更新 `localScreenRecordingGranted`，并刷新 xrdp 状态。
+5. 失败：调用 `onRefreshScreenRecordingPermission()` 回读状态。
+6. finally：`screenPermissionBusy = false`。
+
+### 远程文件卡
+
+当前已有打开共享目录能力，不要只做说明，也不要扩展成多目录管理。
+
+显示：
+
+- Windows 侧路径：`\\tsclient\\Downloads`
+- 说明：连接到 Windows 后，可通过该路径访问鸿蒙侧固定共享目录。
+
+按钮：
+
+- `打开共享目录`：调用 `onOpenRemoteFilesDirectory()`。
+
+不要展示“选择目录”“新增共享目录”“权限管理”等当前没有的能力。
+
+## 6. 项目帮助页
+
+当前内容包括：
+
+- 关于项目
+- GitHub 链接
+- FreeRDP 适配链接
+- xrdp 适配链接
+- MIT license
+- 使用说明
+- 连接前检查
+- 填写连接信息
+- 证书策略
+- 常见排查
+- 远程文件说明
+
+桌面版建议分三组：
+
+1. 连接指南
+2. 安全与排查
+3. 项目信息
+
+搜索框可以先只做 UI 预留；如果要实现搜索，规则如下：
+
+- 输入为空：显示全部分组。
+- 输入非空：按标题和正文做本地包含匹配。
+- 无结果：显示空状态“没有找到相关内容”。
+
+## 7. 状态视觉规则
+
+只设计当前已有状态，不增加新能力。
+
+| 状态 | 颜色 | 使用位置 |
+| --- | --- | --- |
+| Running / Granted / Ready | 绿色 | xrdp 已启动、录屏已授权、本机 IP 成功 |
+| Stopped / Empty | 灰色 | xrdp 未启动、无网络 |
+| Busy / Loading | 蓝色 | 正在启动服务、正在请求权限、正在读取 IP |
+| Failed | 红色 | 状态读取失败、权限请求失败 |
+| Warning / Missing | 黄色 | 权限缺失、门禁关闭提示、无可用 IP |
+| ActiveSession | 蓝色 | xrdp 有活跃远程会话 |
+
+## 8. 桌面布局规则
+
+建议断点：
+
+- 宽度 `>= 1000vp`：左侧导航 + 右侧内容。
+- 宽度 `< 1000vp`：退回当前手机式单页下钻。
+
+桌面尺寸建议：
+
+- 左侧导航宽度：`260-288vp`
+- 设置内容最大宽度：不超过 `1280vp`
+- 卡片圆角：`10-14`
+- 主按钮高度：`34-40`
+- 行高：`42-56`
+- 卡片 hover：只变背景和边框，不做大幅上移动画。
+
+## 9. 开发优先级
+
+第一阶段建议只做：
+
+1. 桌面设置壳：左侧导航 + 右侧内容。
+2. 设置概览页。
+3. 远控设置页重排。
+4. 状态颜色和 busy/failed/missing 展示。
+
+第二阶段再做：
+
+1. 基础设置页桌面重排。
+2. 项目帮助页分组。
+3. 搜索框真正过滤。
+4. 小屏回退适配。

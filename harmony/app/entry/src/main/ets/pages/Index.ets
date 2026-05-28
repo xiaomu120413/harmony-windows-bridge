@@ -330,18 +330,13 @@ struct Index {
     }
     this.xrdpServerStartRequested = true
     this.xrdpServerBusy = true
-    return this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
-      .then((granted: boolean) => {
-        const allowed = granted || this.refreshScreenRecordingPermissionState()
-        this.screenRecordingPermissionGranted = allowed
-        if (!allowed) {
-          this.appendLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
-          return this.refreshXrdpServerDiagnostics()
-        }
-        return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
+    return Promise.resolve()
+      .then((): XrdpServerStatus => {
+        this.refreshScreenRecordingPermissionState()
+        return this.startXrdpServerListener(trigger, restartIfRunning)
       })
       .catch((error: Error) => {
-        this.appendLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
+        this.appendLog(`xrdp start failed: ${JSON.stringify(error)}`)
         return this.refreshXrdpServerDiagnostics()
       })
       .finally(() => {
@@ -350,7 +345,7 @@ struct Index {
       })
   }
 
-  private startXrdpServerAfterPermissions(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
+  private startXrdpServerListener(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
     const status = this.getXrdpServerController().start(this.xrdpServerStartOptions(restartIfRunning), trigger)
     return this.applyXrdpServerStatus(status)
   }
