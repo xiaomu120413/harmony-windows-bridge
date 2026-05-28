@@ -6,7 +6,7 @@ import {
   SettingsTheme
 } from './SettingsUi'
 import { XrdpServerStatus } from '../../rdp/XrdpServerController'
-import { SettingsText } from './SettingsConstants'
+import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
 
 @Component
 export struct RemoteControlSettingsPage {
@@ -44,6 +44,7 @@ export struct RemoteControlSettingsPage {
   onOpenRemoteFilesDirectory: () => void = () => {
   }
   @Prop isDark: boolean = false
+  @Prop targetSection: string = ''
   @Prop remoteAccessCode: string = '000000'
   @Prop remoteAccessCodeGateEnabled: boolean = false
   @Prop screenRecordingPermissionGranted: boolean = false
@@ -105,6 +106,10 @@ export struct RemoteControlSettingsPage {
     SettingsTheme.animate(this.getUIContext(), () => {
       this.filesCardHovered = hovered
     })
+  }
+
+  private isTargetSection(section: string): boolean {
+    return this.targetSection === section
   }
 
   private setGateEnabled(enabled: boolean): void {
@@ -275,14 +280,17 @@ export struct RemoteControlSettingsPage {
     .alignItems(VerticalAlign.Center)
     .width('100%')
     .padding(16)
-    .backgroundColor(this.serverCardHovered || this.serverCardPressed ?
+    .backgroundColor(this.serverCardHovered || this.serverCardPressed ||
+      this.isTargetSection(SettingsRemoteControlSection.SERVER) ?
       SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
     .borderRadius(SettingsTheme.CARD_RADIUS)
     .border({
       width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
+      color: this.isTargetSection(SettingsRemoteControlSection.SERVER) ?
+        SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) : SettingsTheme.borderColor(this.isDark)
     })
-    .shadow(SettingsTheme.shadow(this.isDark, this.serverCardHovered))
+    .shadow(SettingsTheme.shadow(this.isDark, this.serverCardHovered ||
+      this.isTargetSection(SettingsRemoteControlSection.SERVER)))
     .translate({ y: this.serverCardHovered ? -5 : 0 })
     .scale({
       x: this.serverCardPressed ? 0.99 : this.serverCardHovered ? 1.012 : 1,
@@ -351,14 +359,17 @@ export struct RemoteControlSettingsPage {
     .alignItems(VerticalAlign.Center)
     .width('100%')
     .padding(16)
-    .backgroundColor(this.filesCardHovered || this.filesCardPressed ?
+    .backgroundColor(this.filesCardHovered || this.filesCardPressed ||
+      this.isTargetSection(SettingsRemoteControlSection.FILES) ?
       SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
     .borderRadius(SettingsTheme.CARD_RADIUS)
     .border({
       width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
+      color: this.isTargetSection(SettingsRemoteControlSection.FILES) ?
+        SettingsTheme.accentColor(this.isDark, SettingsAccent.PURPLE) : SettingsTheme.borderColor(this.isDark)
     })
-    .shadow(SettingsTheme.shadow(this.isDark, this.filesCardHovered))
+    .shadow(SettingsTheme.shadow(this.isDark, this.filesCardHovered ||
+      this.isTargetSection(SettingsRemoteControlSection.FILES)))
     .translate({ y: this.filesCardHovered ? -5 : 0 })
     .scale({
       x: this.filesCardPressed ? 0.99 : this.filesCardHovered ? 1.012 : 1,
@@ -461,14 +472,17 @@ export struct RemoteControlSettingsPage {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .padding(16)
-    .backgroundColor(this.accessCardHovered || this.accessCardPressed ?
+    .backgroundColor(this.accessCardHovered || this.accessCardPressed ||
+      this.isTargetSection(SettingsRemoteControlSection.ACCESS) ?
       SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
     .borderRadius(SettingsTheme.CARD_RADIUS)
     .border({
       width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
+      color: this.isTargetSection(SettingsRemoteControlSection.ACCESS) ?
+        SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) : SettingsTheme.borderColor(this.isDark)
     })
-    .shadow(SettingsTheme.shadow(this.isDark, this.accessCardHovered))
+    .shadow(SettingsTheme.shadow(this.isDark, this.accessCardHovered ||
+      this.isTargetSection(SettingsRemoteControlSection.ACCESS)))
     .translate({ y: this.accessCardHovered ? -5 : 0 })
     .scale({
       x: this.accessCardPressed ? 0.99 : this.accessCardHovered ? 1.012 : 1,
@@ -544,14 +558,17 @@ export struct RemoteControlSettingsPage {
     .alignItems(VerticalAlign.Center)
     .width('100%')
     .padding(16)
-    .backgroundColor(this.screenCardHovered || this.screenCardPressed ?
+    .backgroundColor(this.screenCardHovered || this.screenCardPressed ||
+      this.isTargetSection(SettingsRemoteControlSection.SCREEN) ?
       SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
     .borderRadius(SettingsTheme.CARD_RADIUS)
     .border({
       width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
+      color: this.isTargetSection(SettingsRemoteControlSection.SCREEN) ?
+        SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN) : SettingsTheme.borderColor(this.isDark)
     })
-    .shadow(SettingsTheme.shadow(this.isDark, this.screenCardHovered))
+    .shadow(SettingsTheme.shadow(this.isDark, this.screenCardHovered ||
+      this.isTargetSection(SettingsRemoteControlSection.SCREEN)))
     .translate({ y: this.screenCardHovered ? -5 : 0 })
     .scale({
       x: this.screenCardPressed ? 0.99 : this.screenCardHovered ? 1.012 : 1,

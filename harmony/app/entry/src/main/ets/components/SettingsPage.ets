@@ -11,7 +11,6 @@ import {
   SettingsDesktopNavItem,
   SettingsKeyValueRow,
   SettingsListItem,
-  SettingsPageHeader,
   SettingsResources,
   SettingsStatusChip,
   SettingsStatusTone,
@@ -53,6 +52,8 @@ export struct SettingsPage {
   }
   onOpenRemoteFilesDirectory: () => void = () => {
   }
+  @Prop initialPageName: string = SettingsRoute.SETTINGS
+  @Prop initialRemoteControlSection: string = ''
   @Prop remoteAccessCode: string = '000000'
   @Prop remoteAccessCodeGateEnabled: boolean = false
   @Prop screenRecordingPermissionGranted: boolean = false
@@ -62,11 +63,15 @@ export struct SettingsPage {
   @Prop xrdpServerMessage: string = ''
   @Prop xrdpServerBusy: boolean = false
   @State private pageName: string = SettingsRoute.SETTINGS
+  @State private remoteControlTargetSection: string = ''
   @State private appearanceMode: SettingsAppearanceMode = SettingsTheme.getStoredAppearanceMode()
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
 
   aboutToAppear(): void {
     this.appearanceMode = SettingsTheme.getStoredAppearanceMode()
+    this.pageName = this.initialPageName.length > 0 ? this.initialPageName : SettingsRoute.SETTINGS
+    this.remoteControlTargetSection = this.pageName === SettingsRoute.REMOTE_CONTROL ?
+      this.initialRemoteControlSection : ''
   }
 
   private isDarkMode(): boolean {
@@ -150,6 +155,7 @@ export struct SettingsPage {
         isDark: this.isDarkMode(),
         onPress: () => {
           this.pageName = SettingsRoute.SETTINGS
+          this.remoteControlTargetSection = ''
         }
       })
       SettingsDesktopNavItem({
@@ -162,6 +168,7 @@ export struct SettingsPage {
         isDark: this.isDarkMode(),
         onPress: () => {
           this.pageName = SettingsRoute.BASIC
+          this.remoteControlTargetSection = ''
         }
       })
       SettingsDesktopNavItem({
@@ -174,6 +181,7 @@ export struct SettingsPage {
         isDark: this.isDarkMode(),
         onPress: () => {
           this.pageName = SettingsRoute.REMOTE_CONTROL
+          this.remoteControlTargetSection = ''
         }
       })
       SettingsDesktopNavItem({
@@ -185,6 +193,7 @@ export struct SettingsPage {
         isDark: this.isDarkMode(),
         onPress: () => {
           this.pageName = SettingsRoute.PROJECT_HELP
+          this.remoteControlTargetSection = ''
         }
       })
     }
@@ -296,14 +305,17 @@ export struct SettingsPage {
           SettingsResources.SETTINGS_ICON, SettingsAccent.CYAN, SettingsText.appearanceValue(this.appearanceMode),
           () => {
             this.pageName = SettingsRoute.BASIC
+            this.remoteControlTargetSection = ''
           })
         this.overviewEntry(SettingsText.REMOTE_CONTROL_ENTRY_TITLE, SettingsText.REMOTE_CONTROL_ENTRY_DESC,
           SettingsResources.DASHBOARD_ICON, SettingsAccent.BLUE, this.xrdpStatusText(), () => {
             this.pageName = SettingsRoute.REMOTE_CONTROL
+            this.remoteControlTargetSection = ''
           })
         this.overviewEntry(SettingsText.PROJECT_HELP_ENTRY_TITLE, SettingsText.PROJECT_HELP_ENTRY_DESC,
           SettingsResources.HELP_ICON, SettingsAccent.PURPLE, '', () => {
             this.pageName = SettingsRoute.PROJECT_HELP
+            this.remoteControlTargetSection = ''
           })
       }
       .alignItems(HorizontalAlign.Start)
@@ -313,64 +325,6 @@ export struct SettingsPage {
     .justifyContent(FlexAlign.Start)
     .width('100%')
     .padding(22)
-  }
-
-  @Builder
-  private buildSettingsPage() {
-    Column() {
-      SettingsPageHeader({
-        title: SettingsText.SETTINGS_TITLE,
-        subtitle: SettingsText.SETTINGS_SUBTITLE,
-        isDark: this.isDarkMode(),
-        onBack: () => {
-          this.onClose()
-        }
-      })
-
-      Scroll() {
-        Column() {
-          SettingsListItem({
-            title: SettingsText.BASIC_SETTINGS_ENTRY_TITLE,
-            description: SettingsText.BASIC_SETTINGS_ENTRY_DESC,
-            iconResource: SettingsResources.SETTINGS_ICON,
-            accentName: SettingsAccent.CYAN,
-            value: SettingsText.appearanceValue(this.appearanceMode),
-            isDark: this.isDarkMode(),
-            onPress: () => {
-              this.pageName = SettingsRoute.BASIC
-            }
-          })
-          SettingsListItem({
-            title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
-            description: SettingsText.REMOTE_CONTROL_ENTRY_DESC,
-            iconResource: SettingsResources.DASHBOARD_ICON,
-            accentName: SettingsAccent.BLUE,
-            value: this.xrdpServerBusy ? SettingsText.REMOTE_SERVER_BUSY :
-              (this.xrdpServerRunning ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED),
-            isDark: this.isDarkMode(),
-            onPress: () => {
-              this.pageName = SettingsRoute.REMOTE_CONTROL
-            }
-          })
-          SettingsListItem({
-            title: SettingsText.PROJECT_HELP_ENTRY_TITLE,
-            description: SettingsText.PROJECT_HELP_ENTRY_DESC,
-            iconResource: SettingsResources.HELP_ICON,
-            accentName: SettingsAccent.PURPLE,
-            isDark: this.isDarkMode(),
-            onPress: () => {
-              this.pageName = SettingsRoute.PROJECT_HELP
-            }
-          })
-        }
-        .padding({ left: 20, right: 20, bottom: 20 })
-        .width('100%')
-      }
-      .layoutWeight(1)
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(SettingsTheme.pageBackground(this.isDarkMode()))
   }
 
   build() {
@@ -390,6 +344,7 @@ export struct SettingsPage {
         } else if (this.pageName === SettingsRoute.REMOTE_CONTROL) {
           RemoteControlSettingsPage({
             isDark: this.isDarkMode(),
+            targetSection: this.remoteControlTargetSection,
             remoteAccessCode: this.remoteAccessCode,
             remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
             screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
@@ -407,6 +362,7 @@ export struct SettingsPage {
             onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
             onBack: () => {
               this.pageName = SettingsRoute.SETTINGS
+              this.remoteControlTargetSection = ''
             }
           })
         } else if (this.pageName === SettingsRoute.PROJECT_HELP) {

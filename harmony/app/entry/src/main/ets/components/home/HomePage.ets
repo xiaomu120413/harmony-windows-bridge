@@ -5,6 +5,7 @@ import {
   SettingsStatusTone,
   SettingsTheme
 } from '../settings/SettingsUi'
+import { SettingsRemoteControlSection } from '../settings/SettingsConstants'
 import { WindowsConnectionProfile } from '../../rdp/WindowsConnectionStore'
 
 class HomeResources {
@@ -52,7 +53,7 @@ export struct HomePage {
   }
   onConnect: () => void = () => {
   }
-  onOpenSettings: () => void = () => {
+  onOpenSettings: (remoteControlSection: string) => void = (_remoteControlSection: string) => {
   }
   @State private profileSearchText: string = ''
   @State private hoveredProfileId: string = ''
@@ -65,6 +66,8 @@ export struct HomePage {
   @State private settingsPressed: boolean = false
   @State private connectHovered: boolean = false
   @State private connectPressed: boolean = false
+  @State private hoveredFooterSection: string = ''
+  @State private pressedFooterSection: string = ''
 
   private panelBackground(): string {
     return SettingsTheme.cardBackground(this.isDark)
@@ -265,6 +268,12 @@ export struct HomePage {
     })
   }
 
+  private setHoveredFooterSection(section: string, hovered: boolean): void {
+    SettingsTheme.animate(this.getUIContext(), () => {
+      this.hoveredFooterSection = hovered ? section : ''
+    })
+  }
+
   @Builder
   private buildHeaderStatus() {
     Row({ space: 10 }) {
@@ -315,7 +324,7 @@ export struct HomePage {
     })
     .onClick(() => {
       this.settingsPressed = false
-      this.onOpenSettings()
+      this.onOpenSettings('')
     })
   }
 
@@ -950,7 +959,8 @@ export struct HomePage {
   }
 
   @Builder
-  private buildFooterStatusCard(label: string, value: string, icon: Resource, tone: SettingsStatusTone) {
+  private buildFooterStatusCard(label: string, value: string, icon: Resource, tone: SettingsStatusTone,
+    section: string) {
     Row({ space: 12 }) {
       this.buildStatusIcon(icon, tone)
       Text(label)
@@ -973,21 +983,48 @@ export struct HomePage {
     .layoutWeight(1)
     .padding({ left: 16, right: 16 })
     .alignItems(VerticalAlign.Center)
-    .backgroundColor(this.panelBackground())
+    .backgroundColor(this.hoveredFooterSection === section || this.pressedFooterSection === section ?
+      this.inactivePanelBackground(this.hoveredFooterSection === section, this.pressedFooterSection === section) :
+      this.panelBackground())
     .borderRadius(8)
     .border({
       width: 1,
-      color: this.mutedBorderColor()
+      color: this.hoveredFooterSection === section || this.pressedFooterSection === section ?
+        SettingsTheme.statusText(this.isDark, tone) : this.mutedBorderColor()
+    })
+    .scale({
+      x: this.pressedFooterSection === section ? 0.99 : 1,
+      y: this.pressedFooterSection === section ? 0.99 : 1
+    })
+    .onHover((hovered: boolean) => {
+      this.setHoveredFooterSection(section, hovered)
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.pressedFooterSection = section
+        return
+      }
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressedFooterSection = ''
+      }
+    })
+    .onClick(() => {
+      this.pressedFooterSection = ''
+      this.onOpenSettings(section)
     })
   }
 
   @Builder
   private buildFooter() {
     Row({ space: 22 }) {
-      this.buildFooterStatusCard('被控服务', this.serviceStatusText(), HomeResources.SHIELD_ICON, this.serviceStatusTone())
-      this.buildFooterStatusCard('录屏', this.screenStatusText(), HomeResources.MONITOR_ICON, this.screenStatusTone())
-      this.buildFooterStatusCard('验证码', this.accessStatusText(), HomeResources.SHIELD_ICON, this.accessStatusTone())
-      this.buildFooterStatusCard('共享目录', '已配置', HomeResources.LOCK_ICON, 'ok')
+      this.buildFooterStatusCard('被控服务', this.serviceStatusText(), HomeResources.SHIELD_ICON,
+        this.serviceStatusTone(), SettingsRemoteControlSection.SERVER)
+      this.buildFooterStatusCard('录屏', this.screenStatusText(), HomeResources.MONITOR_ICON, this.screenStatusTone(),
+        SettingsRemoteControlSection.SCREEN)
+      this.buildFooterStatusCard('验证码', this.accessStatusText(), HomeResources.SHIELD_ICON, this.accessStatusTone(),
+        SettingsRemoteControlSection.ACCESS)
+      this.buildFooterStatusCard('共享目录', '已配置', HomeResources.LOCK_ICON, 'ok',
+        SettingsRemoteControlSection.FILES)
     }
     .width('100%')
     .height(82)
