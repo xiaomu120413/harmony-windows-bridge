@@ -77,6 +77,19 @@ else()
                         ${XRDP_OHOS_SOURCE_ROOT})
 endif()
 
+set(OPENSSL_CRYPTO_INCLUDE_DIR ${FREERDP_OHOS_SYSROOT_INCLUDE})
+set(OPENSSL_CRYPTO_LIBRARY ${FREERDP_OHOS_RUNTIME_LIB_DIR}/libcrypto.so.3)
+if(NOT EXISTS ${OPENSSL_CRYPTO_INCLUDE_DIR}/openssl/evp.h)
+    message(FATAL_ERROR
+        "OpenSSL headers are required for xrdp TLS material generation. "
+        "Missing: ${OPENSSL_CRYPTO_INCLUDE_DIR}/openssl/evp.h.")
+endif()
+if(NOT EXISTS ${OPENSSL_CRYPTO_LIBRARY})
+    message(FATAL_ERROR
+        "OpenSSL libcrypto runtime is required for xrdp TLS material generation. "
+        "Missing: ${OPENSSL_CRYPTO_LIBRARY}.")
+endif()
+
 add_library(entry SHARED
     common/bridge_log.cpp
     channels/audio_diagnostics.cpp
@@ -118,7 +131,10 @@ add_library(entry SHARED
     xrdp/xrdp_runtime_loader.cpp
     xrdp/xrdp_server_bridge.cpp)
 target_compile_features(entry PUBLIC cxx_std_17)
+target_compile_definitions(entry PRIVATE HARMONY_HAS_OPENSSL_CRYPTO=1)
+target_include_directories(entry PRIVATE ${OPENSSL_CRYPTO_INCLUDE_DIR})
 target_link_libraries(entry PUBLIC
+    ${OPENSSL_CRYPTO_LIBRARY}
     libace_napi.z.so
     libace_ndk.z.so
     libEGL.so
