@@ -605,7 +605,7 @@ export struct HomePage {
         .width('100%')
       }
     }
-    .width('34%')
+    .width('33%')
     .height('100%')
     .padding({ left: 22, right: 22, top: 24, bottom: 24 })
     .alignItems(HorizontalAlign.Start)
@@ -834,13 +834,16 @@ export struct HomePage {
           .fontWeight(FontWeight.Bold)
           .fontColor(SettingsTheme.statusText(this.isDark, tone))
           .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
       .justifyContent(FlexAlign.Center)
       .alignItems(VerticalAlign.Center)
+      .width('100%')
+      .padding({ left: 6, right: 6 })
     }
     .type(ButtonType.Normal)
-    .height(40)
-    .width(144)
+    .height(36)
+    .layoutWeight(1)
     .borderRadius(7)
     .backgroundColor(this.pressedAction === action ? SettingsTheme.statusBackground(this.isDark, tone) :
       (this.hoveredAction === action ? SettingsTheme.statusBackground(this.isDark, tone) : this.fieldBackground()))
@@ -871,11 +874,11 @@ export struct HomePage {
 
   @Builder
   private buildDeviceActions() {
-    Row({ space: 24 }) {
+    Row({ space: 12 }) {
       Text('设备操作')
         .fontSize(16)
         .fontColor(SettingsTheme.primaryText(this.isDark))
-        .width(190)
+        .width(170)
         .textAlign(TextAlign.End)
       this.buildActionButton('delete', '删除', HomeResources.TRASH_ICON, 'danger', () => {
         this.onDeleteProfile()
@@ -891,7 +894,7 @@ export struct HomePage {
       })
     }
     .width('100%')
-    .margin({ top: 6 })
+    .height(40)
     .alignItems(VerticalAlign.Center)
   }
 
@@ -911,7 +914,7 @@ export struct HomePage {
 
   @Builder
   private buildConnectionDetails() {
-    Column({ space: 14 }) {
+    Column({ space: 12 }) {
       Text('连接详情')
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
