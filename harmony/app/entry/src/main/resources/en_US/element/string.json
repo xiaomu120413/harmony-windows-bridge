@@ -17,10 +17,6 @@
       "value": "Read the local clipboard to sync text, files, and image paste operations in remote desktop sessions."
     },
     {
-      "name": "full_disk_access_reason",
-      "value": "Access local files referenced by clipboard URIs and image paste operations for remote desktop clipboard sync."
-    },
-    {
       "name": "microphone_reason",
       "value": "Capture microphone audio for remote desktop audio input redirection."
     },

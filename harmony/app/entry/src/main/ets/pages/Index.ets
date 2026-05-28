@@ -57,9 +57,6 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerNativeCallbacks()
-    this.getPermissionManager().ensurePasteboardReadPermission('page appear')
-    this.getPermissionManager().ensureFullDiskAccessPermission('page appear')
-    this.getPermissionManager().ensureScreenRecordingPermission('page appear')
     this.ensureXrdpServerStarted('page appear')
   }
 
@@ -120,47 +117,38 @@ struct Index {
       })
       rdpNative.onMicrophonePermissionRequest((requestIdText: string) => {
         this.deferUiUpdate(() => {
-          const requestId = Number(requestIdText)
-          this.appendLog(`Remote audio capture requested microphone permission: requestId=${requestIdText}`)
-          this.getPermissionManager().ensureMicrophonePermission('remote audio capture')
-            .then((granted: boolean) => {
-              const result: NativeCommandResult = rdpNative.completeMicrophonePermissionRequest({
-                requestId: isNaN(requestId) ? 0 : requestId,
-                granted: granted
-              })
-              this.appendLog(`${result.message}: granted=${granted}`)
-              this.appendNativeLogs(result.logs)
-            })
+          this.handleNativePermissionRequest(
+            requestIdText,
+            'Remote audio capture requested microphone permission',
+            'remote audio capture',
+            (trigger: string): Promise<boolean> => this.getPermissionManager().ensureMicrophonePermission(trigger),
+            (requestId: number, granted: boolean): NativeCommandResult =>
+              rdpNative.completeMicrophonePermissionRequest({ requestId: requestId, granted: granted })
+          )
         })
       })
       rdpNative.onClipboardPermissionRequest((requestIdText: string) => {
         this.deferUiUpdate(() => {
-          const requestId = Number(requestIdText)
-          this.appendLog(`Clipboard sync requested pasteboard permission: requestId=${requestIdText}`)
-          this.getPermissionManager().ensurePasteboardReadPermission('clipboard read')
-            .then((granted: boolean) => {
-              const result: NativeCommandResult = rdpNative.completeClipboardPermissionRequest({
-                requestId: isNaN(requestId) ? 0 : requestId,
-                granted: granted
-              })
-              this.appendLog(`${result.message}: granted=${granted}`)
-              this.appendNativeLogs(result.logs)
-            })
+          this.handleNativePermissionRequest(
+            requestIdText,
+            'Clipboard sync requested pasteboard permission',
+            'clipboard read',
+            (trigger: string): Promise<boolean> => this.getPermissionManager().ensurePasteboardReadPermission(trigger),
+            (requestId: number, granted: boolean): NativeCommandResult =>
+              rdpNative.completeClipboardPermissionRequest({ requestId: requestId, granted: granted })
+          )
         })
       })
       rdpNative.onLocationPermissionRequest((requestIdText: string) => {
         this.deferUiUpdate(() => {
-          const requestId = Number(requestIdText)
-          this.appendLog(`RDP location channel requested location permission: requestId=${requestIdText}`)
-          this.getPermissionManager().ensureLocationPermission('remote location redirection')
-            .then((granted: boolean) => {
-              const result: NativeCommandResult = rdpNative.completeLocationPermissionRequest({
-                requestId: isNaN(requestId) ? 0 : requestId,
-                granted: granted
-              })
-              this.appendLog(`${result.message}: granted=${granted}`)
-              this.appendNativeLogs(result.logs)
-            })
+          this.handleNativePermissionRequest(
+            requestIdText,
+            'RDP location channel requested location permission',
+            'remote location redirection',
+            (trigger: string): Promise<boolean> => this.getPermissionManager().ensureLocationPermission(trigger),
+            (requestId: number, granted: boolean): NativeCommandResult =>
+              rdpNative.completeLocationPermissionRequest({ requestId: requestId, granted: granted })
+          )
         })
       })
       this.callbacksRegistered = true
@@ -175,6 +163,26 @@ struct Index {
       return ''
     }
     return context.filesDir
+  }
+
+  private handleNativePermissionRequest(requestIdText: string, label: string, trigger: string,
+    ensurePermission: (trigger: string) => Promise<boolean>,
+    completeRequest: (requestId: number, granted: boolean) => NativeCommandResult): void {
+    const requestId = Number(requestIdText)
+    const safeRequestId = isNaN(requestId) ? 0 : requestId
+    this.appendLog(`${label}: requestId=${requestIdText}`)
+    ensurePermission(trigger)
+      .then((granted: boolean) => {
+        const result: NativeCommandResult = completeRequest(safeRequestId, granted)
+        this.appendLog(`${result.message}: granted=${granted}`)
+        this.appendNativeLogs(result.logs)
+      })
+      .catch((error: Error) => {
+        this.appendLog(`${label} failed: ${JSON.stringify(error)}`)
+        const result: NativeCommandResult = completeRequest(safeRequestId, false)
+        this.appendLog(`${result.message}: granted=false`)
+        this.appendNativeLogs(result.logs)
+      })
   }
 
   private generateRemoteAccessCode(): string {
@@ -204,6 +212,22 @@ struct Index {
       return
     }
     this.xrdpServerStartRequested = true
+    this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
+      .then((granted: boolean) => {
+        if (!granted) {
+          this.xrdpServerStartRequested = false
+          this.appendLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
+          return
+        }
+        this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
+      })
+      .catch((error: Error) => {
+        this.xrdpServerStartRequested = false
+        this.appendLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
+      })
+  }
+
+  private startXrdpServerAfterPermissions(trigger: string, restartIfRunning: boolean): void {
     try {
       const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams(restartIfRunning))
       this.appendLog(`${result.message}: ${trigger}`)
