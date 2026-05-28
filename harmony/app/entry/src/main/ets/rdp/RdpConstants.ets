@@ -5,7 +5,6 @@ export const HILOG_TAG: string = 'FreeRDPUi'
 export const REMOTE_SURFACE_FOCUS_ID: string = 'rdpRemoteSurface'
 
 export const READ_PASTEBOARD_PERMISSION: Permissions = 'ohos.permission.READ_PASTEBOARD'
-export const ACCESS_USER_FULL_DISK_PERMISSION: Permissions = 'ohos.permission.ACCESS_USER_FULL_DISK'
 export const MICROPHONE_PERMISSION: Permissions = 'ohos.permission.MICROPHONE'
 export const APPROXIMATE_LOCATION_PERMISSION: Permissions = 'ohos.permission.APPROXIMATELY_LOCATION'
 export const LOCATION_PERMISSION: Permissions = 'ohos.permission.LOCATION'
