@@ -13,8 +13,6 @@ export class SettingsResources {
   static readonly DASHBOARD_ICON: Resource = $r('app.media.dashboard')
   static readonly SETTINGS_ICON: Resource = $r('app.media.settings')
   static readonly HELP_ICON: Resource = $r('app.media.help_menu')
-  static readonly NETWORK_ICON: Resource = $r('app.media.network')
-  static readonly INFO_ICON: Resource = $r('app.media.info_menu')
   static readonly SYSTEM_ICON: Resource = $r('app.media.globe')
   static readonly SUN_ICON: Resource = $r('app.media.sun')
   static readonly MOON_ICON: Resource = $r('app.media.moon')
@@ -454,51 +452,6 @@ export struct SettingsKeyValueRow {
 }
 
 @Component
-export struct SettingsCompactButton {
-  @Prop text: string = ''
-  @Prop isDark: boolean = false
-  @Prop busy: boolean = false
-  @Prop primary: boolean = false
-  onPress: () => void = () => {
-  }
-  @State private hovered: boolean = false
-  @State private pressed: boolean = false
-
-  build() {
-    Button(this.text)
-      .type(ButtonType.Normal)
-      .height(34)
-      .borderRadius(10)
-      .padding({ left: 14, right: 14 })
-      .backgroundColor(this.primary ? '#0A84FF' : SettingsTheme.subtleButton(this.isDark, this.hovered,
-        this.pressed || this.busy))
-      .fontColor(this.primary ? Color.White : SettingsTheme.primaryText(this.isDark))
-      .fontSize(12)
-      .stateEffect(false)
-      .opacity(this.busy ? 0.7 : 1)
-      .onHover((isHover: boolean) => {
-        this.hovered = isHover
-      })
-      .onTouch((event: TouchEvent) => {
-        if (event.type === TouchType.Down) {
-          this.pressed = true
-          return
-        }
-        if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-          this.pressed = false
-        }
-      })
-      .onClick(() => {
-        if (this.busy) {
-          return
-        }
-        this.pressed = false
-        this.onPress()
-      })
-  }
-}
-
-@Component
 export struct SettingsBackButton {
   @Prop isDark: boolean = false
   onBack: () => void = () => {
@@ -720,97 +673,6 @@ export struct SettingsSectionTitle {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .margin({ top: 6, bottom: 10 })
-  }
-}
-
-@Component
-export struct SettingsFeatureCard {
-  @Prop title: string = ''
-  @Prop body: string = ''
-  @Prop meta: string = ''
-  @Prop iconResource: Resource = SettingsResources.SETTINGS_ICON
-  @Prop accentName: SettingsAccentName = SettingsAccent.BLUE
-  @Prop isDark: boolean = false
-  @State private hovered: boolean = false
-  @State private pressed: boolean = false
-
-  private setHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.hovered = hovered
-    })
-  }
-
-  build() {
-    Row({ space: 14 }) {
-      Column() {
-        Image(this.iconResource)
-          .width(24)
-          .height(24)
-          .fillColor(SettingsTheme.accentColor(this.isDark, this.accentName))
-          .draggable(false)
-      }
-      .width(46)
-      .height(46)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(this.hovered || this.pressed ? SettingsTheme.accentHoverBackground(this.isDark,
-        this.accentName) : SettingsTheme.accentBackground(this.isDark, this.accentName))
-
-      Column({ space: 7 }) {
-        Text(this.title)
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .width('100%')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.body)
-          .fontSize(13)
-          .fontColor(SettingsTheme.secondaryText(this.isDark))
-          .lineHeight(20)
-          .width('100%')
-          .maxLines(3)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        if (this.meta.length > 0) {
-          Text(this.meta)
-            .fontSize(12)
-            .fontColor(SettingsTheme.accentColor(this.isDark, this.accentName))
-            .width('100%')
-        }
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-    }
-    .alignItems(VerticalAlign.Center)
-    .width('100%')
-    .padding(18)
-    .backgroundColor(this.hovered || this.pressed ? SettingsTheme.cardHoverBackground(this.isDark) :
-      SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
-    })
-    .shadow(SettingsTheme.shadow(this.isDark, this.hovered))
-    .translate({ y: this.hovered ? -5 : 0 })
-    .scale({
-      x: this.pressed ? 0.99 : this.hovered ? 1.012 : 1,
-      y: this.pressed ? 0.99 : this.hovered ? 1.012 : 1
-    })
-    .margin({ bottom: 14 })
-    .onHover((isHover: boolean) => {
-      this.setHovered(isHover)
-    })
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.pressed = true
-        return
-      }
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.pressed = false
-      }
-    })
   }
 }
 

@@ -66,7 +66,99 @@ struct Index {
   }
 
   private appendLog(line: string): void {
+    const level = this.classifyLogLevel(line)
+    if (level === 'error') {
+      this.appendErrorLog(line)
+    } else if (level === 'warn') {
+      this.appendWarnLog(line)
+    } else if (level === 'info') {
+      this.appendInfoLog(line)
+    } else {
+      this.appendDebugLog(line)
+    }
+  }
+
+  private classifyLogLevel(line: string): string {
+    const lower = line.toLowerCase()
+    if (this.containsLogMarker(lower, [
+      ' error',
+      ': error',
+      'native error',
+      'failed',
+      'failure',
+      'fatal',
+      'timed out',
+      'timeout',
+      'invalid',
+      'unavailable',
+      'could not',
+      'cannot',
+      'missing',
+      'refusing',
+      'not writable',
+      'must be'
+    ])) {
+      return 'error'
+    }
+    if (this.containsLogMarker(lower, [
+      'denied',
+      'skipped',
+      'dropped',
+      'backpressure',
+      'overflow',
+      'warning',
+      'warn',
+      'disabled',
+      'fallback'
+    ])) {
+      return 'warn'
+    }
+    if (this.containsLogMarker(lower, [
+      'native state:',
+      'connected',
+      'disconnected',
+      'opening session surface',
+      'calling native connect',
+      'screen recording permission granted',
+      'permission requested',
+      'xrdp server start requested',
+      'xrdp server started',
+      'xrdp server already running',
+      'xrdp backend exited',
+      'xrdp.ohos.auth: accepted client',
+      'xrdp.ohos.module: start',
+      'xrdp.ohos.module: connect',
+      'xrdp.ohos.session: disconnect summary',
+      'listening'
+    ])) {
+      return 'info'
+    }
+    return 'debug'
+  }
+
+  private containsLogMarker(line: string, markers: string[]): boolean {
+    for (let i = 0; i < markers.length; i++) {
+      if (line.includes(markers[i])) {
+        return true
+      }
+    }
+    return false
+  }
+
+  private appendDebugLog(line: string): void {
+    hilog.debug(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
+  }
+
+  private appendInfoLog(line: string): void {
     hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
+  }
+
+  private appendWarnLog(line: string): void {
+    hilog.warn(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
+  }
+
+  private appendErrorLog(line: string): void {
+    hilog.error(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
   }
 
   private appendNativeLogs(lines: string[]): void {
@@ -99,7 +191,7 @@ struct Index {
       }
       return hostContext as common.UIAbilityContext
     } catch (error) {
-      this.appendLog(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
+      this.appendWarnLog(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
       return null
     }
   }
@@ -154,13 +246,18 @@ struct Index {
             this.setSessionVisible(true)
             this.focusRemoteSurface()
           }
+          if (state === 'Failed') {
+            this.appendErrorLog(`Native state: ${state}`)
+          } else if (state === 'Connected' || state === 'Disconnected') {
+            this.appendInfoLog(`Native state: ${state}`)
+          }
         })
       })
       rdpNative.onError((message: string) => {
         this.deferUiUpdate(() => {
           this.setSessionVisible(false)
           this.connected = false
-          this.appendLog(`Native error: ${message}`)
+          this.appendErrorLog(`Native error: ${message}`)
         })
       })
       rdpNative.onMicrophonePermissionRequest((requestIdText: string) => {
@@ -201,7 +298,7 @@ struct Index {
       })
       this.callbacksRegistered = true
     } catch (error) {
-      this.appendLog(`Native callback registration failed: ${JSON.stringify(error)}`)
+      this.appendErrorLog(`Native callback registration failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -219,7 +316,7 @@ struct Index {
       (line: string): void => this.appendLog(line)
     )
       .catch((error: Error) => {
-        this.appendLog(`remote files directory open failed: ${JSON.stringify(error)}`)
+        this.appendErrorLog(`remote files directory open failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -228,17 +325,21 @@ struct Index {
     completeRequest: (requestId: number, granted: boolean) => NativeCommandResult): void {
     const requestId = Number(requestIdText)
     const safeRequestId = isNaN(requestId) ? 0 : requestId
-    this.appendLog(`${label}: requestId=${requestIdText}`)
+    this.appendInfoLog(`${label}: requestId=${requestIdText}`)
     ensurePermission(trigger)
       .then((granted: boolean) => {
         const result: NativeCommandResult = completeRequest(safeRequestId, granted)
-        this.appendLog(`${result.message}: granted=${granted}`)
+        if (granted && result.ok) {
+          this.appendInfoLog(`${result.message}: granted=true`)
+        } else {
+          this.appendWarnLog(`${result.message}: granted=${granted}`)
+        }
         this.appendNativeLogs(result.logs)
       })
       .catch((error: Error) => {
-        this.appendLog(`${label} failed: ${JSON.stringify(error)}`)
+        this.appendErrorLog(`${label} failed: ${JSON.stringify(error)}`)
         const result: NativeCommandResult = completeRequest(safeRequestId, false)
-        this.appendLog(`${result.message}: granted=false`)
+        this.appendWarnLog(`${result.message}: granted=false`)
         this.appendNativeLogs(result.logs)
       })
   }
@@ -279,7 +380,7 @@ struct Index {
           })
       })
       .catch((error: Error) => {
-        this.appendLog(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
+        this.appendErrorLog(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
         return this.refreshScreenRecordingPermissionState()
       })
   }
@@ -338,7 +439,7 @@ struct Index {
       if (requestScreenRecordingImmediately) {
         this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`)
           .catch((error: Error) => {
-            this.appendLog(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
+            this.appendErrorLog(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
           })
       }
       return this.xrdpServerStartRequest
@@ -356,13 +457,13 @@ struct Index {
         const allowed = granted || this.refreshScreenRecordingPermissionState()
         this.screenRecordingPermissionGranted = allowed
         if (!allowed) {
-          this.appendLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
+          this.appendWarnLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
           return this.refreshXrdpServerDiagnostics()
         }
         return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
       })
       .catch((error: Error) => {
-        this.appendLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
+        this.appendErrorLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
         return this.refreshXrdpServerDiagnostics()
       })
       .finally(() => {
@@ -392,7 +493,7 @@ struct Index {
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connected = false
-      this.appendLog('Missing host, username, or password')
+      this.appendWarnLog('Missing host, username, or password')
       return
     }
 
@@ -404,7 +505,7 @@ struct Index {
     const appFilesDir = this.getAppFilesDir()
     this.connected = false
     this.setSessionVisible(true)
-    this.appendLog('Opening session surface')
+    this.appendInfoLog('Opening session surface')
     this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
   }
 
@@ -418,7 +519,7 @@ struct Index {
   private startNativeConnect(host: string, port: string, username: string, password: string,
     policy: string, appFilesDir: string): void {
     try {
-      this.appendLog('Calling native connect')
+      this.appendInfoLog('Calling native connect')
       const result: NativeCommandResult = rdpNative.connect({
         host: host,
         port: port,
@@ -427,19 +528,20 @@ struct Index {
         certPolicy: policy,
         appFilesDir: appFilesDir
       })
-      this.appendLog(result.message)
       this.appendNativeLogs(result.logs)
       if (result.ok) {
+        this.appendInfoLog(result.message)
         this.connected = result.state === 'Connected'
         this.setSessionVisible(true)
       } else {
+        this.appendErrorLog(result.message)
         this.setSessionVisible(false)
         this.connected = false
       }
     } catch (error) {
       this.setSessionVisible(false)
       this.connected = false
-      this.appendLog(`Native connect failed: ${JSON.stringify(error)}`)
+      this.appendErrorLog(`Native connect failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -461,7 +563,7 @@ struct Index {
     this.deferUiUpdate(() => {
       const focused = focusControl.requestFocus(REMOTE_SURFACE_FOCUS_ID)
       if (!focused) {
-        this.appendLog('Remote surface focus failed')
+        this.appendWarnLog('Remote surface focus failed')
       }
     })
   }
@@ -474,10 +576,10 @@ struct Index {
     try {
       const result: NativeCommandResult = rdpNative.releaseAllKeys()
       if (!result.ok) {
-        this.appendLog(result.message)
+        this.appendWarnLog(result.message)
       }
     } catch (error) {
-      this.appendLog(`Native release all keys failed: ${JSON.stringify(error)}`)
+      this.appendErrorLog(`Native release all keys failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -551,13 +653,6 @@ struct Index {
 
   private homeAccessStatusText(): string {
     return this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
-  }
-
-  private homeFeedbackText(): string {
-    if (this.xrdpServerMessage.length > 0) {
-      return this.xrdpServerMessage
-    }
-    return SettingsText.HOME_FEEDBACK_IDLE
   }
 
   @Builder
@@ -856,48 +951,6 @@ struct Index {
   }
 
   @Builder
-  private buildHomeFeedbackPanel() {
-    Column({ space: 12 }) {
-      Column({ space: 4 }) {
-        Text(SettingsText.HOME_FEEDBACK_TITLE)
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-          .width('100%')
-        Text(SettingsText.HOME_FEEDBACK_SUBTITLE)
-          .fontSize(12)
-          .fontColor(SettingsTheme.mutedText(this.isAppDark()))
-          .lineHeight(18)
-          .width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-
-      Text(this.homeFeedbackText())
-        .fontSize(13)
-        .fontColor(SettingsTheme.secondaryText(this.isAppDark()))
-        .lineHeight(20)
-        .width('100%')
-        .padding(12)
-        .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
-        .borderRadius(12)
-        .border({
-          width: 1,
-          color: SettingsTheme.borderColor(this.isAppDark())
-        })
-    }
-    .width('100%')
-    .padding(18)
-    .alignItems(HorizontalAlign.Start)
-    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-    .borderRadius(18)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isAppDark())
-    })
-  }
-
-  @Builder
   private buildConnectPage() {
     Scroll() {
       Column({ space: 16 }) {
@@ -911,7 +964,6 @@ struct Index {
 
           Column({ space: 16 }) {
             this.buildHomeStatusPanel()
-            this.buildHomeFeedbackPanel()
           }
           .width(330)
         }
