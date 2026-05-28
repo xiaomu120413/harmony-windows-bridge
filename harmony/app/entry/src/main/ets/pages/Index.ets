@@ -1,10 +1,8 @@
 import { common } from '@kit.AbilityKit'
-import { hilog } from '@kit.PerformanceAnalysisKit'
 import {
-  HILOG_DOMAIN,
-  HILOG_TAG,
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
+import { RdpLogger } from '../rdp/RdpLogger'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
 import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
 import {
@@ -13,16 +11,15 @@ import {
   XrdpServerStartOptions,
   XrdpServerStatus
 } from '../rdp/XrdpServerController'
+import {
+  WindowsConnectionProfile,
+  WindowsConnectionSnapshot,
+  WindowsConnectionStore
+} from '../rdp/WindowsConnectionStore'
+import { HomePage } from '../components/home/HomePage'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsText } from '../components/settings/SettingsConstants'
-import {
-  SettingsAccent,
-  SettingsAppearanceMode,
-  SettingsResources,
-  SettingsStatusChip,
-  SettingsStatusTone,
-  SettingsTheme
-} from '../components/settings/SettingsUi'
+import { SettingsAppearanceMode, SettingsTheme } from '../components/settings/SettingsUi'
 import rdpNative, {
   NativeCommandResult
 } from 'libentry.so'
@@ -34,7 +31,10 @@ struct Index {
   @State private port: string = '3389'
   @State private username: string = ''
   @State private password: string = ''
-  // 暂时固定使用 TOFU 证书策略，后续需要严格校验时再恢复策略选择入口。
+  @State private connectionProfiles: WindowsConnectionProfile[] = []
+  @State private selectedConnectionProfileId: string = ''
+  @State private rememberConnectionPassword: boolean = false
+  // Temporarily pin TOFU certificate policy; restore policy selector when strict validation is needed.
   private certPolicy: string = 'tofu'
   @State private remoteAccessCode: string = '000000'
   @State private remoteAccessCodeGateEnabled: boolean = false
@@ -46,8 +46,6 @@ struct Index {
   @State private xrdpServerBusy: boolean = false
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
-  @State private settingsButtonHovered: boolean = false
-  @State private settingsButtonPressed: boolean = false
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
@@ -58,6 +56,8 @@ struct Index {
   private permissionManager: RdpPermissionManager | null = null
   private xrdpServerController: XrdpServerController | null = null
   private xrdpServerStartRequest: Promise<XrdpServerStatus> | null = null
+  private windowsConnectionStore: WindowsConnectionStore | null = null
+  private connectionProfilesLoaded: boolean = false
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -65,116 +65,18 @@ struct Index {
     }, 0)
   }
 
-  private appendLog(line: string): void {
-    const level = this.classifyLogLevel(line)
-    if (level === 'error') {
-      this.appendErrorLog(line)
-    } else if (level === 'warn') {
-      this.appendWarnLog(line)
-    } else if (level === 'info') {
-      this.appendInfoLog(line)
-    } else {
-      this.appendDebugLog(line)
-    }
-  }
-
-  private classifyLogLevel(line: string): string {
-    const lower = line.toLowerCase()
-    if (this.containsLogMarker(lower, [
-      ' error',
-      ': error',
-      'native error',
-      'failed',
-      'failure',
-      'fatal',
-      'timed out',
-      'timeout',
-      'invalid',
-      'unavailable',
-      'could not',
-      'cannot',
-      'missing',
-      'refusing',
-      'not writable',
-      'must be'
-    ])) {
-      return 'error'
-    }
-    if (this.containsLogMarker(lower, [
-      'denied',
-      'skipped',
-      'dropped',
-      'backpressure',
-      'overflow',
-      'warning',
-      'warn',
-      'disabled',
-      'fallback'
-    ])) {
-      return 'warn'
-    }
-    if (this.containsLogMarker(lower, [
-      'native state:',
-      'connected',
-      'disconnected',
-      'opening session surface',
-      'calling native connect',
-      'screen recording permission granted',
-      'permission requested',
-      'xrdp server start requested',
-      'xrdp server started',
-      'xrdp server already running',
-      'xrdp backend exited',
-      'xrdp.ohos.auth: accepted client',
-      'xrdp.ohos.module: start',
-      'xrdp.ohos.module: connect',
-      'xrdp.ohos.session: disconnect summary',
-      'listening'
-    ])) {
-      return 'info'
-    }
-    return 'debug'
-  }
-
-  private containsLogMarker(line: string, markers: string[]): boolean {
-    for (let i = 0; i < markers.length; i++) {
-      if (line.includes(markers[i])) {
-        return true
-      }
-    }
-    return false
-  }
-
-  private appendDebugLog(line: string): void {
-    hilog.debug(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
-  }
-
-  private appendInfoLog(line: string): void {
-    hilog.info(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
-  }
-
-  private appendWarnLog(line: string): void {
-    hilog.warn(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
-  }
-
-  private appendErrorLog(line: string): void {
-    hilog.error(HILOG_DOMAIN, HILOG_TAG, '%{private}s', line)
-  }
-
-  private appendNativeLogs(lines: string[]): void {
-    for (let i = 0; i < lines.length; i++) {
-      this.appendLog(lines[i])
-    }
-  }
-
   aboutToAppear(): void {
     this.registerNativeCallbacks()
+    this.loadConnectionProfiles()
     this.refreshScreenRecordingPermissionState()
     this.refreshXrdpServerDiagnostics()
     this.ensureXrdpServerStarted('page appear')
   }
 
   onPageShow(): void {
+    if (!this.connectionProfilesLoaded) {
+      this.loadConnectionProfiles()
+    }
     this.refreshScreenRecordingPermissionState()
     this.refreshXrdpServerDiagnostics()
   }
@@ -191,7 +93,7 @@ struct Index {
       }
       return hostContext as common.UIAbilityContext
     } catch (error) {
-      this.appendWarnLog(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
+      RdpLogger.warn(`UIAbilityContext unavailable: ${JSON.stringify(error)}`)
       return null
     }
   }
@@ -199,8 +101,7 @@ struct Index {
   private getPermissionManager(): RdpPermissionManager {
     if (this.permissionManager === null) {
       const delegate = new RdpPermissionCallbackDelegate(
-        (): common.UIAbilityContext | null => this.getUiAbilityContext(),
-        (line: string): void => this.appendLog(line)
+        (): common.UIAbilityContext | null => this.getUiAbilityContext()
       )
       this.permissionManager = new RdpPermissionManager(delegate)
     }
@@ -210,12 +111,192 @@ struct Index {
   private getXrdpServerController(): XrdpServerController {
     if (this.xrdpServerController === null) {
       this.xrdpServerController = new XrdpServerController(
-        this.xrdpServerDisplayMessages(),
-        (line: string): void => this.appendLog(line),
-        (lines: string[]): void => this.appendNativeLogs(lines)
+        this.xrdpServerDisplayMessages()
       )
     }
     return this.xrdpServerController
+  }
+
+  private getWindowsConnectionStore(): WindowsConnectionStore | null {
+    if (this.windowsConnectionStore !== null) {
+      return this.windowsConnectionStore
+    }
+
+    const context = this.getUiAbilityContext()
+    if (context === null) {
+      return null
+    }
+
+    this.windowsConnectionStore = new WindowsConnectionStore(context)
+    return this.windowsConnectionStore
+  }
+
+  private loadConnectionProfiles(): void {
+    const store = this.getWindowsConnectionStore()
+    if (store === null) {
+      return
+    }
+
+    store.loadSnapshot()
+      .then((snapshot: WindowsConnectionSnapshot) => {
+        this.deferUiUpdate(() => {
+          this.connectionProfilesLoaded = true
+          this.applyConnectionSnapshot(snapshot, true, false)
+        })
+      })
+      .catch((error: Error) => {
+        RdpLogger.warn(`windows connection profiles load failed: ${JSON.stringify(error)}`)
+      })
+  }
+
+  private applyConnectionSnapshot(snapshot: WindowsConnectionSnapshot, applySelectedProfile: boolean,
+    clearWhenEmpty: boolean): void {
+    this.connectionProfiles = snapshot.profiles
+    this.selectedConnectionProfileId = snapshot.selectedProfileId
+
+    if (!applySelectedProfile) {
+      return
+    }
+
+    const selectedProfile = this.findConnectionProfile(snapshot.selectedProfileId)
+    if (selectedProfile === null) {
+      this.rememberConnectionPassword = false
+      if (clearWhenEmpty) {
+        this.startNewConnectionProfile()
+      }
+      return
+    }
+
+    this.applyConnectionProfile(selectedProfile, snapshot.selectedPassword)
+  }
+
+  private findConnectionProfile(profileId: string): WindowsConnectionProfile | null {
+    for (const profile of this.connectionProfiles) {
+      if (profile.id === profileId) {
+        return profile
+      }
+    }
+    return null
+  }
+
+  private applyConnectionProfile(profile: WindowsConnectionProfile, password: string): void {
+    this.selectedConnectionProfileId = profile.id
+    this.host = profile.host
+    this.port = profile.port
+    this.username = profile.username
+    this.password = password
+    this.rememberConnectionPassword = profile.rememberPassword
+    if (profile.certPolicy.length > 0) {
+      this.certPolicy = profile.certPolicy
+    }
+  }
+
+  private selectConnectionProfile(profileId: string): void {
+    if (profileId.length === 0) {
+      this.startNewConnectionProfile()
+      return
+    }
+
+    const profile = this.findConnectionProfile(profileId)
+    if (profile === null) {
+      return
+    }
+
+    this.applyConnectionProfile(profile, '')
+    if (!profile.rememberPassword) {
+      return
+    }
+
+    const store = this.getWindowsConnectionStore()
+    if (store === null) {
+      return
+    }
+    store.loadPassword(profile)
+      .then((savedPassword: string) => {
+        this.deferUiUpdate(() => {
+          if (this.selectedConnectionProfileId === profile.id) {
+            this.password = savedPassword
+          }
+        })
+      })
+      .catch((error: Error) => {
+        RdpLogger.warn(`windows connection profile password select failed: ${JSON.stringify(error)}`)
+      })
+  }
+
+  private startNewConnectionProfile(): void {
+    this.selectedConnectionProfileId = ''
+    this.host = ''
+    this.port = '3389'
+    this.username = ''
+    this.password = ''
+    this.rememberConnectionPassword = false
+    this.certPolicy = 'tofu'
+  }
+
+  private deleteSelectedConnectionProfile(): void {
+    if (this.selectedConnectionProfileId.length === 0) {
+      this.startNewConnectionProfile()
+      return
+    }
+
+    const store = this.getWindowsConnectionStore()
+    if (store === null) {
+      return
+    }
+
+    store.deleteProfile(this.selectedConnectionProfileId)
+      .then((snapshot: WindowsConnectionSnapshot) => {
+        this.deferUiUpdate(() => {
+          this.applyConnectionSnapshot(snapshot, true, true)
+        })
+      })
+      .catch((error: Error) => {
+        RdpLogger.warn(`windows connection profile delete failed: ${JSON.stringify(error)}`)
+      })
+  }
+
+  private setRememberConnectionPassword(remember: boolean): void {
+    this.rememberConnectionPassword = remember
+  }
+
+  private saveCurrentConnectionProfile(): void {
+    const store = this.getWindowsConnectionStore()
+    if (store === null) {
+      return
+    }
+
+    store.saveProfile({
+      profileId: this.selectedConnectionProfileId,
+      host: this.host,
+      port: this.port,
+      username: this.username,
+      password: this.password,
+      certPolicy: this.certPolicy,
+      rememberPassword: this.rememberConnectionPassword
+    })
+      .then((profile: WindowsConnectionProfile | null) => {
+        if (profile === null) {
+          return
+        }
+        this.deferUiUpdate(() => {
+          this.selectedConnectionProfileId = profile.id
+          this.rememberConnectionPassword = profile.rememberPassword
+        })
+        return store.loadSnapshot()
+      })
+      .then((snapshot: WindowsConnectionSnapshot | void) => {
+        if (!snapshot) {
+          return
+        }
+        this.deferUiUpdate(() => {
+          this.connectionProfiles = snapshot.profiles
+          this.selectedConnectionProfileId = snapshot.selectedProfileId
+        })
+      })
+      .catch((error: Error) => {
+        RdpLogger.warn(`windows connection profile save failed: ${JSON.stringify(error)}`)
+      })
   }
 
   private xrdpServerDisplayMessages(): XrdpServerDisplayMessages {
@@ -247,9 +328,9 @@ struct Index {
             this.focusRemoteSurface()
           }
           if (state === 'Failed') {
-            this.appendErrorLog(`Native state: ${state}`)
+            RdpLogger.error(`Native state: ${state}`)
           } else if (state === 'Connected' || state === 'Disconnected') {
-            this.appendInfoLog(`Native state: ${state}`)
+            RdpLogger.info(`Native state: ${state}`)
           }
         })
       })
@@ -257,7 +338,7 @@ struct Index {
         this.deferUiUpdate(() => {
           this.setSessionVisible(false)
           this.connected = false
-          this.appendErrorLog(`Native error: ${message}`)
+          RdpLogger.error(`Native error: ${message}`)
         })
       })
       rdpNative.onMicrophonePermissionRequest((requestIdText: string) => {
@@ -298,7 +379,7 @@ struct Index {
       })
       this.callbacksRegistered = true
     } catch (error) {
-      this.appendErrorLog(`Native callback registration failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`Native callback registration failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -312,11 +393,10 @@ struct Index {
 
   private openRemoteFilesDirectoryFromSettings(): void {
     RemoteFilesDirectory.openSharedDirectory(
-      this.getUiAbilityContext(),
-      (line: string): void => this.appendLog(line)
+      this.getUiAbilityContext()
     )
       .catch((error: Error) => {
-        this.appendErrorLog(`remote files directory open failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`remote files directory open failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -325,22 +405,20 @@ struct Index {
     completeRequest: (requestId: number, granted: boolean) => NativeCommandResult): void {
     const requestId = Number(requestIdText)
     const safeRequestId = isNaN(requestId) ? 0 : requestId
-    this.appendInfoLog(`${label}: requestId=${requestIdText}`)
+    RdpLogger.info(`${label}: requestId=${requestIdText}`)
     ensurePermission(trigger)
       .then((granted: boolean) => {
         const result: NativeCommandResult = completeRequest(safeRequestId, granted)
         if (granted && result.ok) {
-          this.appendInfoLog(`${result.message}: granted=true`)
+          RdpLogger.info(`${result.message}: granted=true`)
         } else {
-          this.appendWarnLog(`${result.message}: granted=${granted}`)
+          RdpLogger.warn(`${result.message}: granted=${granted}`)
         }
-        this.appendNativeLogs(result.logs)
       })
       .catch((error: Error) => {
-        this.appendErrorLog(`${label} failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`${label} failed: ${JSON.stringify(error)}`)
         const result: NativeCommandResult = completeRequest(safeRequestId, false)
-        this.appendWarnLog(`${result.message}: granted=false`)
-        this.appendNativeLogs(result.logs)
+        RdpLogger.warn(`${result.message}: granted=false`)
       })
   }
 
@@ -380,7 +458,7 @@ struct Index {
           })
       })
       .catch((error: Error) => {
-        this.appendErrorLog(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
         return this.refreshScreenRecordingPermissionState()
       })
   }
@@ -439,7 +517,7 @@ struct Index {
       if (requestScreenRecordingImmediately) {
         this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`)
           .catch((error: Error) => {
-            this.appendErrorLog(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
+            RdpLogger.error(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
           })
       }
       return this.xrdpServerStartRequest
@@ -457,13 +535,13 @@ struct Index {
         const allowed = granted || this.refreshScreenRecordingPermissionState()
         this.screenRecordingPermissionGranted = allowed
         if (!allowed) {
-          this.appendWarnLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
+          RdpLogger.warn(`xrdp start skipped: screen recording permission denied: ${trigger}`)
           return this.refreshXrdpServerDiagnostics()
         }
         return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
       })
       .catch((error: Error) => {
-        this.appendErrorLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`xrdp permission check failed: ${JSON.stringify(error)}`)
         return this.refreshXrdpServerDiagnostics()
       })
       .finally(() => {
@@ -493,7 +571,7 @@ struct Index {
   private connectNative(): void {
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connected = false
-      this.appendWarnLog('Missing host, username, or password')
+      RdpLogger.warn('Missing host, username, or password')
       return
     }
 
@@ -504,8 +582,9 @@ struct Index {
     const password = this.password
     const appFilesDir = this.getAppFilesDir()
     this.connected = false
+    this.saveCurrentConnectionProfile()
     this.setSessionVisible(true)
-    this.appendInfoLog('Opening session surface')
+    RdpLogger.info('Opening session surface')
     this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
   }
 
@@ -519,7 +598,7 @@ struct Index {
   private startNativeConnect(host: string, port: string, username: string, password: string,
     policy: string, appFilesDir: string): void {
     try {
-      this.appendInfoLog('Calling native connect')
+      RdpLogger.info('Calling native connect')
       const result: NativeCommandResult = rdpNative.connect({
         host: host,
         port: port,
@@ -528,20 +607,19 @@ struct Index {
         certPolicy: policy,
         appFilesDir: appFilesDir
       })
-      this.appendNativeLogs(result.logs)
       if (result.ok) {
-        this.appendInfoLog(result.message)
+        RdpLogger.info(result.message)
         this.connected = result.state === 'Connected'
         this.setSessionVisible(true)
       } else {
-        this.appendErrorLog(result.message)
+        RdpLogger.error(result.message)
         this.setSessionVisible(false)
         this.connected = false
       }
     } catch (error) {
       this.setSessionVisible(false)
       this.connected = false
-      this.appendErrorLog(`Native connect failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`Native connect failed: ${JSON.stringify(error)}`)
     }
   }
 
@@ -563,7 +641,7 @@ struct Index {
     this.deferUiUpdate(() => {
       const focused = focusControl.requestFocus(REMOTE_SURFACE_FOCUS_ID)
       if (!focused) {
-        this.appendWarnLog('Remote surface focus failed')
+        RdpLogger.warn('Remote surface focus failed')
       }
     })
   }
@@ -576,30 +654,11 @@ struct Index {
     try {
       const result: NativeCommandResult = rdpNative.releaseAllKeys()
       if (!result.ok) {
-        this.appendWarnLog(result.message)
+        RdpLogger.warn(result.message)
       }
     } catch (error) {
-      this.appendErrorLog(`Native release all keys failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`Native release all keys failed: ${JSON.stringify(error)}`)
     }
-  }
-
-  private setSettingsButtonHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.settingsButtonHovered = hovered
-    })
-  }
-
-  private settingsButtonStatusColor(): string {
-    if (this.xrdpServerBusy) {
-      return SettingsTheme.statusText(this.isAppDark(), 'info')
-    }
-    if (!this.screenRecordingPermissionGranted) {
-      return SettingsTheme.statusText(this.isAppDark(), 'warning')
-    }
-    if (!this.xrdpServerRunning) {
-      return SettingsTheme.statusText(this.isAppDark(), 'neutral')
-    }
-    return SettingsTheme.statusText(this.isAppDark(), 'ok')
   }
 
   private getAppearanceMode(): SettingsAppearanceMode {
@@ -617,384 +676,6 @@ struct Index {
     return this.systemDark
   }
 
-  private homeXrdpStatusTone(): SettingsStatusTone {
-    if (this.xrdpServerBusy) {
-      return 'info'
-    }
-    if (this.xrdpServerState === 'Failed' || this.xrdpServerState === 'Exited') {
-      return 'danger'
-    }
-    if (this.xrdpServerRunning) {
-      return 'ok'
-    }
-    return 'neutral'
-  }
-
-  private homeXrdpStatusText(): string {
-    if (this.xrdpServerBusy) {
-      return SettingsText.REMOTE_SERVER_BUSY
-    }
-    const status = this.xrdpServerRunning ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED
-    return `${status} / ${this.xrdpServerPort}`
-  }
-
-  private homeScreenStatusTone(): SettingsStatusTone {
-    return this.screenRecordingPermissionGranted ? 'ok' : 'warning'
-  }
-
-  private homeScreenStatusText(): string {
-    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
-      SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
-  }
-
-  private homeAccessStatusTone(): SettingsStatusTone {
-    return this.remoteAccessCodeGateEnabled ? 'ok' : 'neutral'
-  }
-
-  private homeAccessStatusText(): string {
-    return this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
-  }
-
-  @Builder
-  private buildSettingsButton() {
-    Row({ space: 6 }) {
-      Image(SettingsResources.SETTINGS_ICON)
-        .width(18)
-        .height(18)
-        .fillColor(SettingsTheme.accentColor(this.isAppDark(), SettingsAccent.BLUE))
-        .draggable(false)
-
-      Text(SettingsText.SETTINGS_BUTTON)
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-        .maxLines(1)
-
-      Circle()
-        .width(7)
-        .height(7)
-        .fill(this.settingsButtonStatusColor())
-    }
-    .width(96)
-    .height(38)
-    .alignItems(VerticalAlign.Center)
-    .justifyContent(FlexAlign.Center)
-    .borderRadius(12)
-    .backgroundColor(SettingsTheme.subtleButton(this.isAppDark(), this.settingsButtonHovered,
-      this.settingsButtonPressed))
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isAppDark())
-    })
-    .scale({
-      x: this.settingsButtonPressed ? 0.98 : 1,
-      y: this.settingsButtonPressed ? 0.98 : 1
-    })
-    .onHover((isHover: boolean) => {
-      this.setSettingsButtonHovered(isHover)
-    })
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.settingsButtonPressed = true
-        return
-      }
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.settingsButtonPressed = false
-      }
-    })
-    .onClick(() => {
-      this.settingsButtonPressed = false
-      this.refreshScreenRecordingPermissionState()
-      this.refreshXrdpServerDiagnostics()
-      this.showSettings = true
-    })
-  }
-
-  @Builder
-  private buildHomeHeader() {
-    Row() {
-      Row({ space: 12 }) {
-        Column() {
-          Image(SettingsResources.APP_ICON)
-            .width(38)
-            .height(38)
-            .draggable(false)
-        }
-        .width(38)
-        .height(38)
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-        .borderRadius(10)
-
-        Column({ space: 3 }) {
-          Text(SettingsText.HOME_PRODUCT_NAME)
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .width('100%')
-          Text(SettingsText.HOME_PRODUCT_SUBTITLE)
-            .fontSize(12)
-            .fontColor(SettingsTheme.mutedText(this.isAppDark()))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .width('100%')
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-      }
-      .layoutWeight(1)
-      .alignItems(VerticalAlign.Center)
-
-      this.buildSettingsButton()
-    }
-    .width('100%')
-    .height(62)
-    .padding({ left: 18, right: 18 })
-    .alignItems(VerticalAlign.Center)
-    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-    .borderRadius(16)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isAppDark())
-    })
-  }
-
-  @Builder
-  private homeTextField(label: string, value: string, onChange: (value: string) => void) {
-    Column({ space: 8 }) {
-      Text(label)
-        .fontSize(12)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(SettingsTheme.secondaryText(this.isAppDark()))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .width('100%')
-
-      TextInput({ placeholder: label, text: value })
-        .height(42)
-        .width('100%')
-        .fontSize(14)
-        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-        .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
-        .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
-        .borderRadius(10)
-        .border({
-          width: 1,
-          color: SettingsTheme.borderColor(this.isAppDark()),
-          style: BorderStyle.Solid
-        })
-        .onChange(onChange)
-    }
-    .width('100%')
-  }
-
-  @Builder
-  private homePasswordField() {
-    Column({ space: 8 }) {
-      Text(SettingsText.HOME_PASSWORD_PLACEHOLDER)
-        .fontSize(12)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(SettingsTheme.secondaryText(this.isAppDark()))
-        .maxLines(1)
-        .width('100%')
-
-      TextInput({ placeholder: SettingsText.HOME_PASSWORD_PLACEHOLDER, text: this.password })
-        .type(InputType.Password)
-        .height(42)
-        .width('100%')
-        .fontSize(14)
-        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-        .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
-        .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
-        .borderRadius(10)
-        .border({
-          width: 1,
-          color: SettingsTheme.borderColor(this.isAppDark()),
-          style: BorderStyle.Solid
-        })
-        .onChange((value: string) => {
-          this.password = value
-        })
-    }
-    .width('100%')
-  }
-
-  @Builder
-  private buildConnectionCard() {
-    Column({ space: 16 }) {
-      Column({ space: 4 }) {
-        Text(SettingsText.HOME_CONNECT_TITLE)
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-          .width('100%')
-        Text(SettingsText.HOME_CONNECT_SUBTITLE)
-          .fontSize(13)
-          .fontColor(SettingsTheme.mutedText(this.isAppDark()))
-          .lineHeight(20)
-          .width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-
-      this.homeTextField(SettingsText.HOME_HOST_PLACEHOLDER, this.host, (value: string) => {
-        this.host = value
-      })
-
-      Row({ space: 12 }) {
-        Column() {
-          this.homeTextField(SettingsText.HOME_PORT_PLACEHOLDER, this.port, (value: string) => {
-            this.port = value
-          })
-        }
-        .width(120)
-
-        Column() {
-          this.homeTextField(SettingsText.HOME_USERNAME_PLACEHOLDER, this.username, (value: string) => {
-            this.username = value
-          })
-        }
-        .layoutWeight(1)
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
-
-      this.homePasswordField()
-
-      Button(SettingsText.HOME_CONNECT_BUTTON)
-        .type(ButtonType.Normal)
-        .height(42)
-        .width('100%')
-        .borderRadius(12)
-        .backgroundColor('#0A84FF')
-        .fontColor(Color.White)
-        .stateEffect(false)
-        .onClick(() => {
-          this.connectNative()
-        })
-    }
-    .width('100%')
-    .padding(20)
-    .alignItems(HorizontalAlign.Start)
-    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-    .borderRadius(18)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isAppDark())
-    })
-  }
-
-  @Builder
-  private homeStatusLine(label: string, value: string, tone: SettingsStatusTone) {
-    Row() {
-      Text(label)
-        .fontSize(13)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
-
-      SettingsStatusChip({
-        text: value,
-        tone: tone,
-        isDark: this.isAppDark()
-      })
-    }
-    .width('100%')
-    .height(42)
-    .padding({ left: 12, right: 10 })
-    .alignItems(VerticalAlign.Center)
-    .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
-    .borderRadius(12)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isAppDark())
-    })
-  }
-
-  @Builder
-  private buildHomeStatusPanel() {
-    Column({ space: 12 }) {
-      Column({ space: 4 }) {
-        Text(SettingsText.HOME_STATUS_TITLE)
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-          .width('100%')
-        Text(SettingsText.HOME_STATUS_SUBTITLE)
-          .fontSize(12)
-          .fontColor(SettingsTheme.mutedText(this.isAppDark()))
-          .lineHeight(18)
-          .width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-
-      this.homeStatusLine(SettingsText.HOME_REMOTE_SERVICE_LABEL, this.homeXrdpStatusText(), this.homeXrdpStatusTone())
-      this.homeStatusLine(SettingsText.HOME_SCREEN_PERMISSION_LABEL, this.homeScreenStatusText(),
-        this.homeScreenStatusTone())
-      this.homeStatusLine(SettingsText.HOME_ACCESS_GATE_LABEL, this.homeAccessStatusText(), this.homeAccessStatusTone())
-      this.homeStatusLine(SettingsText.HOME_SHARED_DIR_LABEL, SettingsText.HOME_SHARED_DIR_READY, 'ok')
-    }
-    .width('100%')
-    .padding(18)
-    .alignItems(HorizontalAlign.Start)
-    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-    .borderRadius(18)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isAppDark())
-    })
-  }
-
-  @Builder
-  private buildConnectPage() {
-    Scroll() {
-      Column({ space: 16 }) {
-        this.buildHomeHeader()
-
-        Row({ space: 16 }) {
-          Column() {
-            this.buildConnectionCard()
-          }
-          .layoutWeight(1)
-
-          Column({ space: 16 }) {
-            this.buildHomeStatusPanel()
-          }
-          .width(330)
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Top)
-      }
-      .width('100%')
-      .padding(18)
-    }
-    .layoutWeight(1)
-  }
-
-  @Builder
-  private inputField(label: string, value: string, onChange: (value: string) => void) {
-    TextInput({ placeholder: label, text: value })
-      .height(44)
-      .width('100%')
-      .margin({ bottom: 12 })
-      .fontSize(14)
-      .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-      .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
-      .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-      .borderRadius(SettingsTheme.CARD_RADIUS)
-      .border({
-        width: 1,
-        color: SettingsTheme.borderColor(this.isAppDark()),
-        style: BorderStyle.Solid
-      })
-      .onChange(onChange)
-  }
-
   @Builder
   private buildSessionPage() {
     Column() {
@@ -1008,13 +689,13 @@ struct Index {
           .height('100%')
           .onLoad(() => {
             this.deferUiUpdate(() => {
-              this.appendLog('XComponent loaded')
+              RdpLogger.debug('XComponent loaded')
               this.focusRemoteSurface()
             })
           })
           .onDestroy(() => {
             this.deferUiUpdate(() => {
-              this.appendLog('XComponent destroyed')
+              RdpLogger.debug('XComponent destroyed')
             })
           })
           .id(REMOTE_SURFACE_FOCUS_ID)
@@ -1055,7 +736,54 @@ struct Index {
           }
         })
       } else {
-        this.buildConnectPage()
+        HomePage({
+          host: this.host,
+          port: this.port,
+          username: this.username,
+          password: this.password,
+          connectionProfiles: this.connectionProfiles,
+          selectedConnectionProfileId: this.selectedConnectionProfileId,
+          rememberPassword: this.rememberConnectionPassword,
+          isDark: this.isAppDark(),
+          xrdpServerBusy: this.xrdpServerBusy,
+          xrdpServerState: this.xrdpServerState,
+          xrdpServerRunning: this.xrdpServerRunning,
+          xrdpServerPort: this.xrdpServerPort,
+          screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+          remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+          onHostChange: (value: string): void => {
+            this.host = value
+          },
+          onPortChange: (value: string): void => {
+            this.port = value
+          },
+          onUsernameChange: (value: string): void => {
+            this.username = value
+          },
+          onPasswordChange: (value: string): void => {
+            this.password = value
+          },
+          onProfileSelect: (profileId: string): void => {
+            this.selectConnectionProfile(profileId)
+          },
+          onNewProfile: (): void => {
+            this.startNewConnectionProfile()
+          },
+          onDeleteProfile: (): void => {
+            this.deleteSelectedConnectionProfile()
+          },
+          onRememberPasswordChange: (remember: boolean): void => {
+            this.setRememberConnectionPassword(remember)
+          },
+          onConnect: (): void => {
+            this.connectNative()
+          },
+          onOpenSettings: (): void => {
+            this.refreshScreenRecordingPermissionState()
+            this.refreshXrdpServerDiagnostics()
+            this.showSettings = true
+          }
+        })
       }
     }
     .width('100%')
