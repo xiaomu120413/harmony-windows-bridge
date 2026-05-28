@@ -83,4 +83,9 @@ foreach ($name in $requiredNames) {
   }
 }
 
-Get-ChildItem -Recurse -File $target | Select-Object FullName, Length
+$syncedFiles = Get-ChildItem -Recurse -File $target
+$syncedBytes = ($syncedFiles | Measure-Object -Property Length -Sum).Sum
+if ($null -eq $syncedBytes) {
+  $syncedBytes = 0
+}
+Write-Host ("synced FreeRDP runtime: files={0} bytes={1}" -f $syncedFiles.Count, [int64]$syncedBytes)

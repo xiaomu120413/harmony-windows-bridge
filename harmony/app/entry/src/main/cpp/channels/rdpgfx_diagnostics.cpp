@@ -5,6 +5,7 @@
 #include "surface/avc444_gpu_compositor.h"
 
 #include <atomic>
+#include <cctype>
 #include <sstream>
 
 namespace rdp_bridge {
@@ -17,6 +18,63 @@ std::atomic_bool g_rdpgfxBridgeAttached{false};
 std::atomic_uint32_t g_rdpgfxConnectedCount{0};
 std::atomic_uint32_t g_rdpgfxDisconnectedCount{0};
 std::atomic_uint32_t g_rdpgfxInitFailedCount{0};
+
+bool ParseUintAfter(const std::string& text, const std::string& key, uint64_t& value)
+{
+    const size_t keyOffset = text.find(key);
+    if (keyOffset == std::string::npos) {
+        return false;
+    }
+
+    size_t offset = keyOffset + key.size();
+    if (offset >= text.size() || !std::isdigit(static_cast<unsigned char>(text[offset]))) {
+        return false;
+    }
+
+    uint64_t parsed = 0;
+    while (offset < text.size() && std::isdigit(static_cast<unsigned char>(text[offset]))) {
+        parsed = (parsed * 10U) + static_cast<uint64_t>(text[offset] - '0');
+        ++offset;
+    }
+    value = parsed;
+    return true;
+}
+
+bool ParseFrames(const std::string& text, uint64_t& startFrames, uint64_t& endFrames)
+{
+    const size_t keyOffset = text.find("frames=");
+    if (keyOffset == std::string::npos) {
+        return false;
+    }
+
+    size_t offset = keyOffset + 7U;
+    if (offset >= text.size() || !std::isdigit(static_cast<unsigned char>(text[offset]))) {
+        return false;
+    }
+
+    uint64_t start = 0;
+    while (offset < text.size() && std::isdigit(static_cast<unsigned char>(text[offset]))) {
+        start = (start * 10U) + static_cast<uint64_t>(text[offset] - '0');
+        ++offset;
+    }
+    if (offset >= text.size() || text[offset] != '/') {
+        return false;
+    }
+    ++offset;
+    if (offset >= text.size() || !std::isdigit(static_cast<unsigned char>(text[offset]))) {
+        return false;
+    }
+
+    uint64_t end = 0;
+    while (offset < text.size() && std::isdigit(static_cast<unsigned char>(text[offset]))) {
+        end = (end * 10U) + static_cast<uint64_t>(text[offset] - '0');
+        ++offset;
+    }
+
+    startFrames = start;
+    endFrames = end;
+    return true;
+}
 
 } // namespace
 
@@ -51,6 +109,30 @@ void ResetRdpgfxDiagnosticsStats()
     g_rdpgfxConnectedCount.store(0);
     g_rdpgfxDisconnectedCount.store(0);
     g_rdpgfxInitFailedCount.store(0);
+}
+
+RdpgfxFrameProgress SnapshotRdpgfxFrameProgress()
+{
+    RdpgfxFrameProgress progress;
+    progress.bridgeAttached = g_rdpgfxBridgeAttached.load();
+
+    std::string error;
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    if (!EnsureFreerdpRuntimeLoaded(api, error)) {
+        return progress;
+    }
+
+    const std::string bridgeDiagnostics = OhosRdpgfxBridgeDiagnostics(api);
+    if (bridgeDiagnostics.empty()) {
+        return progress;
+    }
+
+    progress.bridgeAttached =
+        progress.bridgeAttached || bridgeDiagnostics.find("bridge=attached") != std::string::npos;
+    progress.available =
+        ParseFrames(bridgeDiagnostics, progress.startFrames, progress.endFrames) &&
+        ParseUintAfter(bridgeDiagnostics, "surfaceCommands=", progress.surfaceCommands);
+    return progress;
 }
 
 std::string BuildGraphicsPipelineStatsLog()

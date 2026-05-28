@@ -48,6 +48,9 @@ struct Index {
   @State private showSettings: boolean = false
   @State private settingsInitialPageName: string = SettingsRoute.SETTINGS
   @State private settingsRemoteControlSection: string = ''
+  @State private remoteLoginWaiting: boolean = false
+  @State private sessionNoticeTitle: string = ''
+  @State private sessionNoticeSubtitle: string = ''
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
@@ -361,18 +364,20 @@ struct Index {
       rdpNative.onState((state: string) => {
         this.deferUiUpdate(() => {
           const wasConnected = this.isConnected()
-          const nextConnected = state === 'Connected'
+          const nextConnected = this.isConnectedNativeState(state)
           if (!nextConnected && (state === 'Disconnected' || state === 'Failed' || state === 'Idle')) {
             this.setSessionVisible(false)
           }
           this.connected = nextConnected
+          this.updateSessionNoticeForNativeState(state)
           if (nextConnected && !wasConnected) {
             this.setSessionVisible(true)
             this.focusRemoteSurface()
           }
           if (state === 'Failed') {
             RdpLogger.error(`Native state: ${state}`)
-          } else if (state === 'Connected' || state === 'Disconnected') {
+          } else if (state === 'Connected' || state === 'Disconnected' ||
+            state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady') {
             RdpLogger.info(`Native state: ${state}`)
           }
         })
@@ -381,6 +386,7 @@ struct Index {
         this.deferUiUpdate(() => {
           this.setSessionVisible(false)
           this.connected = false
+          this.clearSessionNotice()
           RdpLogger.error(`Native error: ${message}`)
         })
       })
@@ -426,6 +432,52 @@ struct Index {
     }
   }
 
+  private isConnectedNativeState(state: string): boolean {
+    return state === 'Connected' || state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady'
+  }
+
+  private clearSessionNotice(): void {
+    this.remoteLoginWaiting = false
+    this.sessionNoticeTitle = ''
+    this.sessionNoticeSubtitle = ''
+  }
+
+  private updateSessionNoticeForNativeState(state: string): void {
+    if (state === 'RemoteLoginWaiting') {
+      this.remoteLoginWaiting = true
+      this.sessionNoticeTitle = '已连接，等待远端桌面'
+      this.sessionNoticeSubtitle = '远端桌面登录阶段暂未收到新画面'
+      return
+    }
+
+    this.remoteLoginWaiting = false
+    if (state === 'Connected') {
+      this.sessionNoticeTitle = '已连接，正在打开远端桌面'
+      this.sessionNoticeSubtitle = '等待远端桌面首帧'
+      return
+    }
+
+    if (state === 'RemoteDesktopReady' || state === 'Disconnected' || state === 'Failed' || state === 'Idle') {
+      this.sessionNoticeTitle = ''
+      this.sessionNoticeSubtitle = ''
+      return
+    }
+
+    if (state === 'Resolving') {
+      this.sessionNoticeTitle = '正在解析主机'
+      this.sessionNoticeSubtitle = '准备建立 RDP 连接'
+    } else if (state === 'TCP connected') {
+      this.sessionNoticeTitle = '已连通主机'
+      this.sessionNoticeSubtitle = '正在协商远程桌面会话'
+    } else if (state === 'Negotiating') {
+      this.sessionNoticeTitle = '正在协商远程桌面'
+      this.sessionNoticeSubtitle = '等待服务端返回图形能力'
+    } else if (state === 'Authenticating') {
+      this.sessionNoticeTitle = '正在验证登录信息'
+      this.sessionNoticeSubtitle = '即将进入远端桌面'
+    }
+  }
+
   private getAppFilesDir(): string {
     const context = this.getUiAbilityContext()
     if (context === null) {
@@ -460,9 +512,7 @@ struct Index {
     ensurePermission(trigger)
       .then((granted: boolean) => {
         const result: NativeCommandResult = completeRequest(safeRequestId, granted)
-        if (granted && result.ok) {
-          RdpLogger.info(`${result.message}: granted=true`)
-        } else {
+        if (!granted || !result.ok) {
           RdpLogger.warn(`${result.message}: granted=${granted}`)
         }
       })
@@ -634,8 +684,10 @@ struct Index {
     const password = this.password
     const appFilesDir = this.getAppFilesDir()
     this.connected = false
+    this.remoteLoginWaiting = false
+    this.sessionNoticeTitle = '正在连接远程桌面'
+    this.sessionNoticeSubtitle = '正在建立 RDP 会话'
     this.setSessionVisible(true)
-    RdpLogger.info('Opening session surface')
     this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
   }
 
@@ -649,7 +701,6 @@ struct Index {
   private startNativeConnect(host: string, port: string, username: string, password: string,
     policy: string, appFilesDir: string): void {
     try {
-      RdpLogger.info('Calling native connect')
       const result: NativeCommandResult = rdpNative.connect({
         host: host,
         port: port,
@@ -659,17 +710,18 @@ struct Index {
         appFilesDir: appFilesDir
       })
       if (result.ok) {
-        RdpLogger.info(result.message)
         this.connected = result.state === 'Connected'
         this.setSessionVisible(true)
       } else {
         RdpLogger.error(result.message)
         this.setSessionVisible(false)
         this.connected = false
+        this.clearSessionNotice()
       }
     } catch (error) {
       this.setSessionVisible(false)
       this.connected = false
+      this.clearSessionNotice()
       RdpLogger.error(`Native connect failed: ${JSON.stringify(error)}`)
     }
   }
@@ -679,6 +731,9 @@ struct Index {
       this.releaseActiveModifiers()
     }
     this.showSession = visible
+    if (!visible) {
+      this.clearSessionNotice()
+    }
   }
 
   private isConnected(): boolean {
@@ -729,7 +784,7 @@ struct Index {
 
   @Builder
   private buildSessionPage() {
-    Column() {
+    Stack({ alignContent: Alignment.TopStart }) {
         XComponent({
           id: 'rdpSurface',
           type: XComponentType.SURFACE,
@@ -740,13 +795,7 @@ struct Index {
           .height('100%')
           .onLoad(() => {
             this.deferUiUpdate(() => {
-              RdpLogger.debug('XComponent loaded')
               this.focusRemoteSurface()
-            })
-          })
-          .onDestroy(() => {
-            this.deferUiUpdate(() => {
-              RdpLogger.debug('XComponent destroyed')
             })
           })
           .id(REMOTE_SURFACE_FOCUS_ID)
@@ -755,10 +804,47 @@ struct Index {
           .defaultFocus(true)
           .backgroundColor(Color.Black)
           .renderFit(RenderFit.CENTER)
+        if (this.shouldShowSessionNotice()) {
+          this.buildSessionNotice()
+        }
     }
     .width('100%')
     .height('100%')
     .backgroundColor(Color.Black)
+  }
+
+  private shouldShowSessionNotice(): boolean {
+    return this.sessionNoticeTitle.length > 0
+  }
+
+  @Builder
+  private buildSessionNotice() {
+    Row() {
+      Column() {
+        Text(this.sessionNoticeTitle)
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(Color.White)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(this.sessionNoticeSubtitle)
+          .fontSize(12)
+          .fontColor('rgba(255,255,255,0.72)')
+          .margin({ top: 4 })
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .alignItems(HorizontalAlign.Start)
+    }
+    .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+    .margin({ left: 18, top: 18, right: 18 })
+    .constraintSize({ maxWidth: 520 })
+    .backgroundColor(this.remoteLoginWaiting ? 'rgba(84,64,22,0.88)' : 'rgba(18,22,30,0.82)')
+    .border({
+      width: 1,
+      color: this.remoteLoginWaiting ? 'rgba(255,190,92,0.42)' : 'rgba(255,255,255,0.18)'
+    })
+    .borderRadius(8)
   }
 
   build() {

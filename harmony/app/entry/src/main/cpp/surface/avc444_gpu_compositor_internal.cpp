@@ -34,10 +34,16 @@ constexpr int64_t kFollowupOutputTimeoutUs = 6000;
 constexpr int64_t kOutputSyncDeadlineUs = 120000;
 constexpr uint32_t kOutputSyncMaxAttempts = 32;
 constexpr const char* kGpuReadbackEnv = "FREERDP_BRIDGE_GPU_READBACK";
+constexpr uint64_t kTimingSampleInterval = 60U;
 
 bool ShouldLogFrequent(uint64_t count)
 {
-    return count <= 3U || (count % 600U) == 0U;
+    return count == 1U || (count % 600U) == 0U;
+}
+
+bool ShouldSampleTiming(uint64_t count)
+{
+    return count <= 3U || (count % kTimingSampleInterval) == 0U;
 }
 
 bool IsGpuReadbackEnabled()
@@ -89,17 +95,24 @@ struct TimingBucket {
 
 class ScopedTiming {
 public:
-    explicit ScopedTiming(TimingBucket& bucket) : bucket_(bucket), startUs_(NowMicros()) {}
-    ScopedTiming(TimingBucket& bucket, uint64_t startUs) : bucket_(bucket), startUs_(startUs) {}
+    ScopedTiming(TimingBucket& bucket, bool enabled)
+        : bucket_(enabled ? &bucket : nullptr), startUs_(enabled ? NowMicros() : 0)
+    {}
+    ScopedTiming(TimingBucket& bucket, uint64_t startUs, bool enabled)
+        : bucket_(enabled ? &bucket : nullptr), startUs_(enabled ? startUs : 0)
+    {}
 
     ~ScopedTiming()
     {
+        if (bucket_ == nullptr) {
+            return;
+        }
         const uint64_t nowUs = NowMicros();
-        bucket_.Add(nowUs >= startUs_ ? nowUs - startUs_ : 0);
+        bucket_->Add(nowUs >= startUs_ ? nowUs - startUs_ : 0);
     }
 
 private:
-    TimingBucket& bucket_;
+    TimingBucket* bucket_ = nullptr;
     uint64_t startUs_ = 0;
 };
 
@@ -731,7 +744,7 @@ public:
             }
 
             ++outputs_;
-            if (outputs_ <= 3 || (outputs_ % 600) == 0) {
+            if (ShouldLogFrequent(outputs_)) {
                 logs.push_back("AVC444 GPU " + role_ + " decoded output: pts=" +
                     std::to_string(pts) +
                     " nativeFormat=" + NativeBufferFormatName(
@@ -748,7 +761,7 @@ public:
         }
 
         ++noOutput_;
-        if (noOutput_ <= 3 || (noOutput_ % 600) == 0) {
+        if (ShouldLogFrequent(noOutput_)) {
             logs.push_back("AVC444 GPU " + role_ + " synchronous output wait timed out: pts=" +
                 std::to_string(pts) + " waitedUs=" + std::to_string(waitedUs) +
                 " budgetUs=" + std::to_string(kOutputSyncDeadlineUs) +
@@ -2064,12 +2077,15 @@ struct Avc444GpuCompositorImpl::State {
     uint64_t endFrameMismatches = 0;
     uint64_t endFramePresentAttempts = 0;
     uint64_t pendingPresentOverwrites = 0;
+    uint64_t prewarms = 0;
+    uint64_t prewarmFailures = 0;
     bool pendingPresent = false;
     bool resetDecodersBeforeNextDecode = false;
     uint32_t pendingFrameId = 0;
     uint32_t pendingSurfaceWidth = 0;
     uint32_t pendingSurfaceHeight = 0;
-    uint64_t lastProcessStartUs = 0;
+    uint64_t processedCommands = 0;
+    uint64_t lastSampledProcessStartUs = 0;
     TimingBucket commandTiming;
     TimingBucket commandIntervalTiming;
     TimingBucket offscreenEnsureTiming;
@@ -2095,12 +2111,15 @@ struct Avc444GpuCompositorImpl::State {
         endFrameMismatches = 0;
         endFramePresentAttempts = 0;
         pendingPresentOverwrites = 0;
+        prewarms = 0;
+        prewarmFailures = 0;
         pendingPresent = false;
         resetDecodersBeforeNextDecode = false;
         pendingFrameId = 0;
         pendingSurfaceWidth = 0;
         pendingSurfaceHeight = 0;
-        lastProcessStartUs = 0;
+        processedCommands = 0;
+        lastSampledProcessStartUs = 0;
         commandTiming.Reset();
         commandIntervalTiming.Reset();
         offscreenEnsureTiming.Reset();
@@ -2112,16 +2131,48 @@ struct Avc444GpuCompositorImpl::State {
         presentTiming.Reset();
     }
 
+    bool Prewarm(uint32_t surfaceWidth, uint32_t surfaceHeight, std::vector<std::string>& logs)
+    {
+        if (surfaceWidth == 0 || surfaceHeight == 0) {
+            logs.push_back("AVC444 GPU renderer prewarm skipped: invalid surface size");
+            return false;
+        }
+
+        ++prewarms;
+        const bool ready = renderer.Ensure(nullptr, 0, 0, surfaceWidth, surfaceHeight, logs);
+        if (!ready) {
+            ++prewarmFailures;
+            logs.push_back("AVC444 GPU renderer prewarm failed: surface=" +
+                std::to_string(surfaceWidth) + "x" + std::to_string(surfaceHeight) +
+                " prewarms=" + std::to_string(prewarms) +
+                " failures=" + std::to_string(prewarmFailures));
+            return false;
+        }
+
+        if (ShouldLogFrequent(prewarms)) {
+            logs.push_back("AVC444 GPU renderer prewarmed: surface=" +
+                std::to_string(surfaceWidth) + "x" + std::to_string(surfaceHeight) +
+                " prewarms=" + std::to_string(prewarms) +
+                " " + renderer.DebugState());
+        }
+        return true;
+    }
+
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
         const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs)
     {
-        const uint64_t processStartUs = NowMicros();
-        ScopedTiming commandTimer(commandTiming, processStartUs);
-        if (lastProcessStartUs != 0 && processStartUs >= lastProcessStartUs) {
-            commandIntervalTiming.Add(processStartUs - lastProcessStartUs);
+        const uint64_t commandIndex = ++processedCommands;
+        const bool sampleTiming = ShouldSampleTiming(commandIndex);
+        const uint64_t processStartUs = sampleTiming ? NowMicros() : 0;
+        ScopedTiming commandTimer(commandTiming, processStartUs, sampleTiming);
+        if (sampleTiming) {
+            if (lastSampledProcessStartUs != 0 &&
+                processStartUs >= lastSampledProcessStartUs) {
+                commandIntervalTiming.Add(processStartUs - lastSampledProcessStartUs);
+            }
+            lastSampledProcessStartUs = processStartUs;
         }
-        lastProcessStartUs = processStartUs;
 
         const bool codecV1 = command->codecId == RDPGFX_CODECID_AVC444;
         const bool codecV2 = command->codecId == RDPGFX_CODECID_AVC444v2;
@@ -2212,7 +2263,7 @@ struct Avc444GpuCompositorImpl::State {
 
         bool offscreenReady = true;
         if (needsLuma || needsChroma) {
-            ScopedTiming timing(offscreenEnsureTiming);
+            ScopedTiming timing(offscreenEnsureTiming, sampleTiming);
             offscreenReady = renderer.Ensure(nullptr, 0, 0, command->width, command->height, logs);
         }
         if (!offscreenReady) {
@@ -2243,7 +2294,7 @@ struct Avc444GpuCompositorImpl::State {
             const int64_t pts = static_cast<int64_t>(++streamPts);
             DecodeResult decode = DecodeResult::Failed;
             {
-                ScopedTiming timing(lumaDecodeTiming);
+                ScopedTiming timing(lumaDecodeTiming, sampleTiming);
                 decode = avcDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
             }
             if (decode != DecodeResult::Decoded) {
@@ -2283,7 +2334,7 @@ struct Avc444GpuCompositorImpl::State {
             const int64_t pts = static_cast<int64_t>(++streamPts);
             DecodeResult decode = DecodeResult::Failed;
             {
-                ScopedTiming timing(chromaDecodeTiming);
+                ScopedTiming timing(chromaDecodeTiming, sampleTiming);
                 decode = avcDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
             }
             if (decode != DecodeResult::Decoded) {
@@ -2322,7 +2373,7 @@ struct Avc444GpuCompositorImpl::State {
             }
             bool lumaApplied = false;
             {
-                ScopedTiming timing(lumaApplyTiming);
+                ScopedTiming timing(lumaApplyTiming, sampleTiming);
                 lumaApplied = renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
                     command->stream1.numRegionRects, logs);
             }
@@ -2352,7 +2403,7 @@ struct Avc444GpuCompositorImpl::State {
             }
             bool chromaApplied = false;
             {
-                ScopedTiming timing(chromaApplyTiming);
+                ScopedTiming timing(chromaApplyTiming, sampleTiming);
                 chromaApplied = codecV1 ?
                     renderer.ApplyChromaV1(chromaFrame, chromaStream->regionRects,
                         chromaStream->numRegionRects, logs) :
@@ -2547,9 +2598,11 @@ struct Avc444GpuCompositorImpl::State {
             return outputActive;
         };
 
+        ++endFramePresentAttempts;
+        const bool sampleTiming = ShouldSampleTiming(endFramePresentAttempts);
         bool windowReady = false;
         {
-            ScopedTiming timing(windowEnsureTiming);
+            ScopedTiming timing(windowEnsureTiming, sampleTiming);
             windowReady = renderer.Ensure(target.window, target.width, target.height,
                 pendingSurfaceWidth, pendingSurfaceHeight, logs);
         }
@@ -2557,7 +2610,6 @@ struct Avc444GpuCompositorImpl::State {
             return failPresent("renderer window attach");
         }
 
-        ++endFramePresentAttempts;
         const bool logPresentSummary = ShouldLogFrequent(endFramePresentAttempts);
         if (logPresentSummary) {
             logs.push_back("AVC444 GPU compositor " + trigger + " present attempt: "
@@ -2572,7 +2624,7 @@ struct Avc444GpuCompositorImpl::State {
 
         bool presentOk = false;
         {
-            ScopedTiming timing(presentTiming);
+            ScopedTiming timing(presentTiming, sampleTiming);
             presentOk = renderer.Present(logs, logPresentSummary);
         }
         if (!presentOk) {
@@ -2634,15 +2686,19 @@ struct Avc444GpuCompositorImpl::State {
         out << "impl=queued:" << queuedPresents
             << ",presented:" << presented
             << ",failures:" << failures
+            << ",prewarm:" << prewarms << "/" << prewarmFailures
             << ",ignored:" << ignoredUpdates
             << ",endCallbacks:" << endFrameCallbacks
             << ",skipNoPending:" << endFrameSkipNoPending
             << ",mismatch:" << endFrameMismatches
             << ",attempts:" << endFramePresentAttempts
+            << ",commands:" << processedCommands
             << ",pending:" << (pendingPresent ? "yes" : "no")
             << ",pendingFrame:" << pendingFrameId
             << ",pendingSize:" << pendingSurfaceWidth << "x" << pendingSurfaceHeight
-            << ",lastCmdAgeUs:" << (lastProcessStartUs == 0 ? 0 : NowMicros() - lastProcessStartUs)
+            << ",lastSampleAgeUs:" << (lastSampledProcessStartUs == 0 ?
+                0 : NowMicros() - lastSampledProcessStartUs)
+            << ",timingSample=1/" << kTimingSampleInterval
             << ",timingUs(avg/max/count)="
             << commandTiming.Text("cmd") << ";"
             << commandIntervalTiming.Text("cmdGap") << ";"
@@ -2668,6 +2724,12 @@ void Avc444GpuCompositorImpl::Destroy()
     if (state_) {
         state_->Destroy();
     }
+}
+
+bool Avc444GpuCompositorImpl::Prewarm(
+    uint32_t surfaceWidth, uint32_t surfaceHeight, std::vector<std::string>& logs)
+{
+    return state_ != nullptr && state_->Prewarm(surfaceWidth, surfaceHeight, logs);
 }
 
 std::string Avc444GpuCompositorImpl::DebugSummary() const

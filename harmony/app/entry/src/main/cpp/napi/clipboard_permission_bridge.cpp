@@ -72,7 +72,6 @@ BOOL RequestClipboardPermissionForPasteboard(void* userData, UINT32 timeoutMs)
         g_clipboardPermissionGranted = false;
     }
 
-    BridgeLogger::Info("OHOS clipboard permission requested by cliprdr pasteboard read");
     g_clipboardPermissionRequests.Emit(std::to_string(requestId));
 
     const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : kDefaultClipboardPermissionTimeoutMs;

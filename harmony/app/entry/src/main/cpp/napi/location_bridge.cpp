@@ -80,7 +80,6 @@ BOOL RequestLocationPermissionForFreeRdp(void* userData, UINT32 timeoutMs)
         g_locationPermissionGranted = false;
     }
 
-    BridgeLogger::Info("OHOS location permission requested by RDP location channel");
     g_locationPermissionRequests.Emit(std::to_string(requestId));
 
     std::unique_lock<std::mutex> lock(g_locationPermissionMutex);

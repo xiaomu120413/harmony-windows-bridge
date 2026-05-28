@@ -338,13 +338,13 @@ private:
             }
 
             if (paint.ok) {
-                if (forcedRender || rendered <= 3 || rendered % 60 == 0 ||
-                    (paint.partial && (partialRendered <= 3 || partialRendered % 60 == 0))) {
+                if (forcedRender || rendered == 1 || rendered % 600 == 0 ||
+                    (paint.partial && (partialRendered == 1 || partialRendered % 600 == 0))) {
                     EmitLog("Render thread painted frame " + std::to_string(rendered) +
                         " render=" + std::to_string(renderUs / 1000.0) + "ms pace=" +
                         std::to_string(targetFrameIntervalMs) + "ms " + paint.message);
                 }
-            } else if (failed <= 3 || failed % 120 == 0) {
+            } else if (failed == 1 || failed % 300 == 0) {
                 EmitLog("Render thread paint failed: " + paint.message);
             }
         }

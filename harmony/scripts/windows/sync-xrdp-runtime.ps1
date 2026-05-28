@@ -181,6 +181,17 @@ foreach ($path in $requiredNativeRuntimeFiles) {
 }
 Strip-FileIfPossible (Join-Path $targetNativeBin "xrdp")
 
-Get-ChildItem -File $targetLib | Where-Object { $_.Name -like "libxrdp*" -or $_.Name -like "libcommon*" -or $_.Name -like "libipm*" -or $_.Name -like "libtoml*" } |
-  Select-Object FullName, Length
-Get-ChildItem -Recurse -File $targetNativeRuntime | Select-Object FullName, Length
+$syncedLibs = Get-ChildItem -File $targetLib | Where-Object {
+  $_.Name -like "libxrdp*" -or $_.Name -like "libcommon*" -or $_.Name -like "libipm*" -or $_.Name -like "libtoml*"
+}
+$syncedLibBytes = ($syncedLibs | Measure-Object -Property Length -Sum).Sum
+$syncedRuntimeFiles = Get-ChildItem -Recurse -File $targetNativeRuntime
+$syncedRuntimeBytes = ($syncedRuntimeFiles | Measure-Object -Property Length -Sum).Sum
+if ($null -eq $syncedLibBytes) {
+  $syncedLibBytes = 0
+}
+if ($null -eq $syncedRuntimeBytes) {
+  $syncedRuntimeBytes = 0
+}
+Write-Host ("synced xrdp runtime: libs={0} libBytes={1} files={2} fileBytes={3}" -f `
+  $syncedLibs.Count, [int64]$syncedLibBytes, $syncedRuntimeFiles.Count, [int64]$syncedRuntimeBytes)

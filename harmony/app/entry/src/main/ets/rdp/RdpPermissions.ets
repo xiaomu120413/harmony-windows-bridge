@@ -102,7 +102,6 @@ export class RdpPermissionManager {
 
   requestScreenRecordingPermission(trigger: string): Promise<boolean> {
     if (this.hasScreenRecordingPermission()) {
-      RdpLogger.info(`Screen recording permission granted: ${trigger}`)
       return Promise.resolve(true)
     }
     if (this.screenRecordingPermission.request !== null &&
@@ -128,7 +127,6 @@ export class RdpPermissionManager {
   private ensurePermission(state: PermissionRequestState, label: string, trigger: string,
     isGranted: PermissionGrantChecker, request: PermissionRequestFactory, requestOnce: boolean): Promise<boolean> {
     if (isGranted()) {
-      RdpLogger.info(`${label} permission granted: ${trigger}`)
       return Promise.resolve(true)
     }
     if (state.request !== null) {
@@ -178,9 +176,7 @@ export class RdpPermissionManager {
       .then((result: abilityAccessCtrl.SelectedResult) => {
         const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
           this.hasPermission(permission, label)
-        if (granted) {
-          RdpLogger.info(`${label} setting result: granted=${granted} result=${result}`)
-        } else {
+        if (!granted) {
           RdpLogger.warn(`${label} setting result: granted=${granted} result=${result}`)
         }
         return granted
@@ -263,9 +259,7 @@ export class RdpPermissionManager {
           }
         }
         granted = granted || isGranted()
-        if (granted) {
-          RdpLogger.info(`${label} permission request result: granted=${granted}`)
-        } else {
+        if (!granted) {
           RdpLogger.warn(`${label} permission request result: granted=${granted}`)
         }
         return granted

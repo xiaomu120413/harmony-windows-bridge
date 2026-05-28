@@ -179,12 +179,14 @@ if (Test-Path -LiteralPath $targetHnp) {
   Remove-Item -LiteralPath $targetHnp -Force
 }
 
-& $HnpCliPath pack -i $stage -o $targetAbiDir
+$hnpOutput = & $HnpCliPath pack -i $stage -o $targetAbiDir 2>&1
 if ($LASTEXITCODE -ne 0) {
+  $hnpOutput | ForEach-Object { Write-Error $_ }
   throw "hnpcli pack failed with exit code $LASTEXITCODE"
 }
 if (-not (Test-Path -LiteralPath $targetHnp)) {
   throw "HNP output was not created: $targetHnp"
 }
 
-Get-Item -LiteralPath $targetHnp | Select-Object FullName, Length
+$targetHnpItem = Get-Item -LiteralPath $targetHnp
+Write-Host ("packaged HNP: {0} bytes={1}" -f $targetHnpItem.FullName, $targetHnpItem.Length)

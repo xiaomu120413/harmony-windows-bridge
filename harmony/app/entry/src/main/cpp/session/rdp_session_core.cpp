@@ -29,11 +29,6 @@ SurfaceSnapshot EmptySurfaceSnapshot()
     return {};
 }
 
-std::string RedactedEndpointLog(const ConnectParams& params)
-{
-    return params.port.empty() ? "target=<redacted>" : "target=<redacted>:" + params.port;
-}
-
 } // namespace
 
 struct RdpSession::Impl {
@@ -289,21 +284,13 @@ struct RdpSession::Impl {
 
         constexpr int maxWaitMs = 3000;
         constexpr int stepMs = 50;
-        bool waitLogged = false;
         int elapsed = 0;
         while (running.load()) {
             const SurfaceSnapshot snapshot = SurfaceSnapshotValue();
             if (snapshot.ready && snapshot.width >= 320 && snapshot.height >= 240) {
                 params.resolution = std::to_string(snapshot.width) + "x" +
                     std::to_string(snapshot.height);
-                EmitLog("FreeRDP initial resolution auto from XComponent surface: " +
-                    params.resolution);
                 return true;
-            }
-
-            if (!waitLogged) {
-                EmitLog("FreeRDP initial resolution auto waiting for XComponent surface");
-                waitLogged = true;
             }
             if (elapsed >= maxWaitMs) {
                 break;
@@ -327,13 +314,6 @@ struct RdpSession::Impl {
 
     void WorkerMain(ConnectParams params)
     {
-        const GraphicsPipelineConfig graphicsConfig = ParseGraphicsPipelineConfig(params);
-        EmitLog("native worker accepted params");
-        EmitLog(RedactedEndpointLog(params));
-        EmitLog("graphicsMode=" + graphicsConfig.mode);
-        EmitLog("avc444GpuCompositor=" +
-            std::string(graphicsConfig.avc444GpuCompositor ? "auto-on" : "off"));
-
         if (!running.load()) {
             EmitState("Disconnected");
             EmitLog("native worker cancelled");
@@ -341,8 +321,6 @@ struct RdpSession::Impl {
         }
 
         EmitState("Resolving");
-        EmitLog("state=Resolving");
-        EmitLog("resolving target host");
 
         TcpConnectResult tcp = TestTcpConnect(params.host, params.port, 3000);
         if (!running.load()) {
@@ -360,8 +338,6 @@ struct RdpSession::Impl {
         }
 
         EmitState("TCP connected");
-        EmitLog("state=TCP connected");
-        EmitLog(tcp.message);
         if (!SleepInterruptibly(250)) {
             EmitState("Disconnected");
             EmitLog("native worker cancelled");
@@ -369,8 +345,6 @@ struct RdpSession::Impl {
         }
 
         EmitState("Negotiating");
-        EmitLog("state=Negotiating");
-        EmitLog("starting FreeRDP persistent connect");
         if (!SleepInterruptibly(250)) {
             EmitState("Disconnected");
             EmitLog("native worker cancelled");
@@ -378,7 +352,6 @@ struct RdpSession::Impl {
         }
 
         EmitState("Authenticating");
-        EmitLog("state=Authenticating");
         if (!WaitForAutoInitialResolution(params)) {
             return;
         }
@@ -394,13 +367,10 @@ struct RdpSession::Impl {
             running.store(false);
             return;
         }
-        EmitLog("graphics fallback ladder: " + JoinGraphicsModes(graphicsModes));
         for (size_t attempt = 0; attempt < graphicsModes.size(); ++attempt) {
             ConnectParams attemptParams = params;
             attemptParams.graphicsMode = graphicsModes[attempt];
             bool attemptConnected = false;
-            EmitLog("graphics attempt " + std::to_string(attempt + 1) + "/" +
-                std::to_string(graphicsModes.size()) + ": mode=" + attemptParams.graphicsMode);
             session = RunFreerdpSession(attemptParams, running, callbacks,
                 [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
                     freerdpOhosSession* ohosSession) {
@@ -416,28 +386,17 @@ struct RdpSession::Impl {
                     attemptConnected = true;
                     connected.store(true);
                     EmitState("Connected");
-                    EmitLog("state=Connected");
                     EmitLog("graphics mode selected: " + selectedMode);
-                    EmitLog("FreeRDP persistent session loop is active");
-                    EmitLog("FreeRDP input bridge is using worker-thread dispatch");
                     std::string focusMessage;
-                    if (SendFocusIn(0, focusMessage)) {
-                        EmitLog("FreeRDP focus-in queued after session connected: " +
-                            focusMessage);
-                    } else {
+                    if (!SendFocusIn(0, focusMessage)) {
                         EmitLog("FreeRDP focus-in skipped after session connected: " +
                             focusMessage);
                     }
                     const SurfaceSnapshot snapshot = SurfaceSnapshotValue();
                     if (snapshot.width > 0 && snapshot.height > 0) {
                         std::string resizeMessage;
-                        if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-                            "session connected", resizeMessage)) {
-                            EmitLog(resizeMessage);
-                        } else {
-                            EmitLog("display-control resize skipped after session connected: " +
-                                resizeMessage);
-                        }
+                        (void)RequestDynamicDesktopResize(snapshot.width, snapshot.height,
+                            "session connected", resizeMessage);
                     }
                 },
                 [this](FreerdpRuntimeApi* api, rdpContext* context) {
@@ -460,7 +419,6 @@ struct RdpSession::Impl {
                 EmitLog("graphics fallback retry: " + attemptParams.graphicsMode + " -> " +
                     graphicsModes[attempt + 1]);
                 EmitState("Negotiating");
-                EmitLog("state=Negotiating");
                 continue;
             }
 

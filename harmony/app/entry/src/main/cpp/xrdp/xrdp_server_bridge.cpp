@@ -249,22 +249,12 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
             state.lastDisconnectReason = "backend session-disconnect event";
         }
     }
-    if (event->type != XRDP_OHOS_BACKEND_EVENT_FRAME_ACK) {
-        BridgeLogger::Debug("xrdp backend callback: count=" + std::to_string(count) +
-            " type=" + XrdpBackendEventTypeName(event->type) +
-            " version=" + std::to_string(event->version) +
-            " desktop=" + std::to_string(event->width) + "x" + std::to_string(event->height) +
+    if (event->type == XRDP_OHOS_BACKEND_EVENT_SESSION_CONNECT ||
+        event->type == XRDP_OHOS_BACKEND_EVENT_SESSION_DISCONNECT) {
+        BridgeLogger::Info("xrdp backend " + std::string(XrdpBackendEventTypeName(event->type)) +
+            ": desktop=" + std::to_string(event->width) + "x" + std::to_string(event->height) +
             " bpp=" + std::to_string(event->bpp) +
-            " connected=" + std::to_string(event->connected) +
-            " suppress=" + std::to_string(event->suppress) +
-            " rect=(" + std::to_string(event->left) + "," + std::to_string(event->top) +
-            "," + std::to_string(event->right) + "," + std::to_string(event->bottom) + ")" +
-            " frameId=" + std::to_string(event->frame_id) +
-            " sourceSeq=" + std::to_string(event->source_sequence) +
-            " ackFromAcquire=" + std::to_string(
-                (event->ack_us > event->capture_acquire_us && event->capture_acquire_us != 0) ?
-                    (event->ack_us - event->capture_acquire_us) / 1000.0 : 0.0) + "ms" +
-            " flags=" + std::to_string(event->flags));
+            " connected=" + std::to_string(event->connected));
     }
 
 }

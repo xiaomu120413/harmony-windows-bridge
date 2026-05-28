@@ -256,22 +256,14 @@ void RdpSessionChannels::AttachDisplayControl(DispClientContext* disp)
         }
         activeDisp_ = disp;
     }
-    EmitLog(detail[0] != '\0' ? detail.data() :
-        "display-control connected to FreeRDP OHOS resize manager");
-
     if (callbacks_.surfaceSnapshot == nullptr) {
         return;
     }
     const SurfaceSnapshot snapshot = callbacks_.surfaceSnapshot();
     if (snapshot.width > 0 && snapshot.height > 0) {
         std::string resizeMessage;
-        if (RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-            "display-control connected", resizeMessage)) {
-            EmitLog(resizeMessage);
-        } else {
-            EmitLog("display-control resize skipped after display-control connected: " +
-                resizeMessage);
-        }
+        (void)RequestDynamicDesktopResize(snapshot.width, snapshot.height,
+            "display-control connected", resizeMessage);
     }
 }
 
@@ -284,7 +276,6 @@ void RdpSessionChannels::DetachDisplayControl(DispClientContext* disp)
             activeApi_->ohosSessionDetachDisplayControl(activeOhosSession_, activeDisp_);
         }
         activeDisp_ = nullptr;
-        EmitLog("display-control disconnected from FreeRDP OHOS resize manager");
     }
 }
 
@@ -320,7 +311,9 @@ void RdpSessionChannels::AttachGraphicsPipeline(RdpgfxClientContext* gfx)
         }
     }
 
-    EmitLog(message);
+    if (!attached) {
+        EmitLog(message);
+    }
     if (attached && callbacks_.requestSurfaceRepaint != nullptr) {
         callbacks_.requestSurfaceRepaint("rdpgfx connected");
     }
@@ -328,13 +321,9 @@ void RdpSessionChannels::AttachGraphicsPipeline(RdpgfxClientContext* gfx)
 
 void RdpSessionChannels::DetachGraphicsPipeline(RdpgfxClientContext* gfx)
 {
-    bool detached = false;
     {
         std::lock_guard<std::mutex> lock(activeMutex_);
-        detached = DetachGraphicsPipelineLocked(gfx);
-    }
-    if (detached) {
-        EmitLog("rdpgfx disconnected from FreeRDP GDI graphics pipeline");
+        (void)DetachGraphicsPipelineLocked(gfx);
     }
 }
 
