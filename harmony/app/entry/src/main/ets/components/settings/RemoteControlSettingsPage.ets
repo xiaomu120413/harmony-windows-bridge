@@ -591,18 +591,18 @@ export struct RemoteControlSettingsPage {
           this.xrdpServerCard()
 
           SettingsSectionTitle({
-            title: SettingsText.REMOTE_ACCESS_SECTION,
-            subtitle: SettingsText.REMOTE_ACCESS_SECTION_DESC,
-            isDark: this.isDark
-          })
-          this.remoteAccessCard()
-
-          SettingsSectionTitle({
             title: SettingsText.REMOTE_SCREEN_SECTION,
             subtitle: SettingsText.REMOTE_SCREEN_SECTION_DESC,
             isDark: this.isDark
           })
           this.screenRecordingCard()
+
+          SettingsSectionTitle({
+            title: SettingsText.REMOTE_ACCESS_SECTION,
+            subtitle: SettingsText.REMOTE_ACCESS_SECTION_DESC,
+            isDark: this.isDark
+          })
+          this.remoteAccessCard()
 
           SettingsSectionTitle({
             title: SettingsText.REMOTE_FILES_SECTION,

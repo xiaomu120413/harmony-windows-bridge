@@ -75,7 +75,7 @@ export class SettingsText {
   static readonly REMOTE_SERVER_MESSAGE_STOPPED: string = '服务未启动，可点击启动服务。'
   static readonly REMOTE_SERVER_MESSAGE_EXITED: string = '服务已退出，可尝试重新启动。'
   static readonly REMOTE_SERVER_MESSAGE_FAILED: string = '服务状态读取失败。'
-  static readonly REMOTE_ACCESS_SECTION: string = '验证码门禁'
+  static readonly REMOTE_ACCESS_SECTION: string = '验证码登录'
   static readonly REMOTE_ACCESS_SECTION_DESC: string = '控制主控端连接当前设备时，是否需要验证码登录。'
   static readonly REMOTE_ACCESS_GATE_TITLE: string = '主控连接验证码'
   static readonly REMOTE_ACCESS_GATE_DESC: string = '开启后，主控端连接当前设备需要输入当前验证码；切换后会重启被控服务生效。'

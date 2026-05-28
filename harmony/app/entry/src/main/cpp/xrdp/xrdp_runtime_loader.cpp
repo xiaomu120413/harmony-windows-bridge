@@ -345,10 +345,7 @@ bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& 
             const int rc = state.backend.setEventCallbackFn(OnXrdpBackendEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
         }
-        if (state.backend.primeInputAuthorizationFn != nullptr) {
-            const int rc = state.backend.primeInputAuthorizationFn("xrdp server ensure");
-            result.logs.push_back("xrdp OHOS input authorization prime rc=" + std::to_string(rc));
-        }
+        result.logs.push_back("xrdp OHOS input authorization deferred until client session connect");
         return true;
     }
 
@@ -440,10 +437,7 @@ bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& 
         } else {
             result.logs.push_back("xrdp OHOS backend event callback symbol missing in: " + candidate);
         }
-        if (primeInputAuthorizationFn != nullptr) {
-            const int rc = primeInputAuthorizationFn("xrdp server start");
-            result.logs.push_back("xrdp OHOS input authorization prime rc=" + std::to_string(rc));
-        }
+        result.logs.push_back("xrdp OHOS input authorization deferred until client session connect");
         return true;
     }
 
