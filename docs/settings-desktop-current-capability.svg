@@ -98,12 +98,12 @@
         <rect x="18" y="22" width="40" height="40" rx="11" fill="#EAF3FF"/>
         <rect x="30" y="33" width="16" height="14" rx="3" stroke="#0A84FF" stroke-width="2"/>
         <text x="74" y="36" class="font rowTitle">Remote Control</text>
-        <text x="74" y="56" class="font rowSub">xrdp service, access code, screen permission.</text>
+        <text x="74" y="56" class="font rowSub">xrdp service, screen permission, access code.</text>
         <line x1="18" y1="82" x2="342" y2="82" stroke="#EEF0F4"/>
         <text x="18" y="112" class="font label">Service</text>
         <text x="342" y="112" text-anchor="end" class="font value">Listening on 3390</text>
-        <text x="18" y="138" class="font label">Access gate</text>
-        <text x="342" y="138" text-anchor="end" class="font value">Off</text>
+        <text x="18" y="138" class="font label">Screen permission</text>
+        <text x="342" y="138" text-anchor="end" class="font value">Granted</text>
       </g>
 
       <g transform="translate(800 220)">
@@ -160,7 +160,7 @@
         <text x="174" y="172" text-anchor="middle" class="font rowTitle">Start</text>
       </g>
 
-      <g transform="translate(408 88)">
+      <g transform="translate(788 88)">
         <rect width="352" height="212" rx="14" fill="#F8FAFC" stroke="#E4E7EC"/>
         <text x="18" y="32" class="font section">Access Code Gate</text>
         <rect x="292" y="20" width="42" height="24" rx="12" fill="#D0D5DD"/>
@@ -175,7 +175,7 @@
         <text x="81" y="176" text-anchor="middle" class="font rowTitle">Regenerate</text>
       </g>
 
-      <g transform="translate(788 88)">
+      <g transform="translate(408 88)">
         <rect width="352" height="212" rx="14" fill="#F8FAFC" stroke="#E4E7EC"/>
         <text x="18" y="32" class="font section">Screen Permission</text>
         <text x="18" y="62" class="font label">Current state</text>

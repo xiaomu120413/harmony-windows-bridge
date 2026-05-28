@@ -2,11 +2,13 @@ import { common, ConfigurationConstant } from '@kit.AbilityKit'
 
 export type SettingsAppearanceMode = 'system' | 'light' | 'dark'
 export type SettingsAccentName = 'blue' | 'purple' | 'green' | 'amber' | 'cyan' | 'orange' | 'indigo'
+export type SettingsStatusTone = 'ok' | 'warning' | 'danger' | 'info' | 'neutral'
 export const SETTINGS_STORAGE_SYSTEM_DARK: string = 'settingsSystemDark'
 export const SETTINGS_STORAGE_APPEARANCE_MODE: string = 'settingsAppearanceMode'
 
 export class SettingsResources {
   static readonly ARROW_LEFT_ICON: Resource = $r('app.media.arrow_left')
+  static readonly APP_ICON: Resource = $r('app.media.icon')
   static readonly CHECK_ICON: Resource = $r('app.media.check')
   static readonly DASHBOARD_ICON: Resource = $r('app.media.dashboard')
   static readonly SETTINGS_ICON: Resource = $r('app.media.settings')
@@ -152,6 +154,10 @@ export class SettingsTheme {
     return isDark ? '#20232A' : '#F8FAFC'
   }
 
+  static inputBackground(isDark: boolean): string {
+    return isDark ? '#15171C' : '#F8FAFC'
+  }
+
   static primaryText(isDark: boolean): string {
     return isDark ? '#F8FAFC' : '#101828'
   }
@@ -259,11 +265,236 @@ export class SettingsTheme {
 
   static shadow(isDark: boolean, hovered: boolean): ShadowOptions {
     return {
-      radius: hovered ? 28 : 10,
-      color: isDark ? (hovered ? '#52000000' : '#24000000') : (hovered ? '#1A111827' : '#0A111827'),
+      radius: hovered ? 16 : 6,
+      color: isDark ? (hovered ? '#44000000' : '#1A000000') : (hovered ? '#12111827' : '#06111827'),
       offsetX: 0,
-      offsetY: hovered ? 14 : 3
+      offsetY: hovered ? 8 : 2
     }
+  }
+
+  static statusText(isDark: boolean, tone: SettingsStatusTone): string {
+    if (tone === 'ok') {
+      return isDark ? '#86EFAC' : '#15803D'
+    }
+    if (tone === 'warning') {
+      return isDark ? '#FCD34D' : '#B45309'
+    }
+    if (tone === 'danger') {
+      return isDark ? '#FCA5A5' : '#B91C1C'
+    }
+    if (tone === 'info') {
+      return isDark ? '#93C5FD' : '#0A84FF'
+    }
+    return isDark ? '#D1D5DB' : '#475467'
+  }
+
+  static statusBackground(isDark: boolean, tone: SettingsStatusTone): string {
+    if (tone === 'ok') {
+      return isDark ? '#173F2A' : '#EAF8EF'
+    }
+    if (tone === 'warning') {
+      return isDark ? '#4A3718' : '#FFF4D6'
+    }
+    if (tone === 'danger') {
+      return isDark ? '#4A1F1F' : '#FEECEC'
+    }
+    if (tone === 'info') {
+      return isDark ? '#173A5E' : '#EAF3FF'
+    }
+    return isDark ? '#242932' : '#F2F4F7'
+  }
+
+  static statusBorder(isDark: boolean, tone: SettingsStatusTone): string {
+    if (tone === 'ok') {
+      return isDark ? '#24563A' : '#C8EBD5'
+    }
+    if (tone === 'warning') {
+      return isDark ? '#6B531E' : '#F6D98B'
+    }
+    if (tone === 'danger') {
+      return isDark ? '#733232' : '#F5B8B8'
+    }
+    if (tone === 'info') {
+      return isDark ? '#24517C' : '#B8DBFF'
+    }
+    return SettingsTheme.borderColor(isDark)
+  }
+}
+
+@Component
+export struct SettingsStatusChip {
+  @Prop text: string = ''
+  @Prop tone: SettingsStatusTone = 'neutral'
+  @Prop isDark: boolean = false
+
+  build() {
+    Row({ space: 6 }) {
+      Circle()
+        .width(7)
+        .height(7)
+        .fill(SettingsTheme.statusText(this.isDark, this.tone))
+
+      Text(this.text)
+        .fontSize(11)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(SettingsTheme.statusText(this.isDark, this.tone))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .height(28)
+    .padding({ left: 10, right: 10 })
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(SettingsTheme.statusBackground(this.isDark, this.tone))
+    .borderRadius(14)
+    .border({
+      width: 1,
+      color: SettingsTheme.statusBorder(this.isDark, this.tone)
+    })
+  }
+}
+
+@Component
+export struct SettingsDesktopNavItem {
+  @Prop title: string = ''
+  @Prop description: string = ''
+  @Prop value: string = ''
+  @Prop iconResource: Resource = SettingsResources.SETTINGS_ICON
+  @Prop accentName: SettingsAccentName = SettingsAccent.BLUE
+  @Prop isDark: boolean = false
+  @Prop selected: boolean = false
+  onPress: () => void = () => {
+  }
+  @State private hovered: boolean = false
+  @State private pressed: boolean = false
+
+  private setHovered(hovered: boolean): void {
+    this.hovered = hovered
+  }
+
+  build() {
+    Row({ space: 10 }) {
+      Column() {
+        Image(this.iconResource)
+          .width(17)
+          .height(17)
+          .fillColor(this.selected ? Color.White : SettingsTheme.accentColor(this.isDark, this.accentName))
+          .draggable(false)
+      }
+      .width(32)
+      .height(32)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .borderRadius(10)
+      .backgroundColor(this.selected ? SettingsTheme.accentColor(this.isDark, this.accentName) :
+        SettingsTheme.accentBackground(this.isDark, this.accentName))
+
+      Text(this.title)
+        .fontSize(14)
+        .fontWeight(this.selected ? FontWeight.Bold : FontWeight.Medium)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+    }
+    .alignItems(VerticalAlign.Center)
+    .width('100%')
+    .height(46)
+    .padding({ left: 10, right: 10 })
+    .backgroundColor(SettingsTheme.transparentButton(this.selected || this.hovered, this.pressed, this.isDark))
+    .borderRadius(12)
+    .onHover((isHover: boolean) => {
+      this.setHovered(isHover)
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.pressed = true
+        return
+      }
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressed = false
+      }
+    })
+    .onClick(() => {
+      this.pressed = false
+      this.onPress()
+    })
+  }
+}
+
+@Component
+export struct SettingsKeyValueRow {
+  @Prop label: string = ''
+  @Prop value: string = ''
+  @Prop isDark: boolean = false
+  @Prop tone: SettingsStatusTone = 'neutral'
+
+  build() {
+    Row() {
+      Text(this.label)
+        .fontSize(12)
+        .fontColor(SettingsTheme.mutedText(this.isDark))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+
+      Text(this.value)
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(this.tone === 'neutral' ? SettingsTheme.primaryText(this.isDark) :
+          SettingsTheme.statusText(this.isDark, this.tone))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .textAlign(TextAlign.End)
+        .margin({ left: 12 })
+    }
+    .alignItems(VerticalAlign.Center)
+    .width('100%')
+    .height(32)
+  }
+}
+
+@Component
+export struct SettingsCompactButton {
+  @Prop text: string = ''
+  @Prop isDark: boolean = false
+  @Prop busy: boolean = false
+  @Prop primary: boolean = false
+  onPress: () => void = () => {
+  }
+  @State private hovered: boolean = false
+  @State private pressed: boolean = false
+
+  build() {
+    Button(this.text)
+      .type(ButtonType.Normal)
+      .height(34)
+      .borderRadius(10)
+      .padding({ left: 14, right: 14 })
+      .backgroundColor(this.primary ? '#0A84FF' : SettingsTheme.subtleButton(this.isDark, this.hovered,
+        this.pressed || this.busy))
+      .fontColor(this.primary ? Color.White : SettingsTheme.primaryText(this.isDark))
+      .fontSize(12)
+      .stateEffect(false)
+      .opacity(this.busy ? 0.7 : 1)
+      .onHover((isHover: boolean) => {
+        this.hovered = isHover
+      })
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.pressed = true
+          return
+        }
+        if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.pressed = false
+        }
+      })
+      .onClick(() => {
+        if (this.busy) {
+          return
+        }
+        this.pressed = false
+        this.onPress()
+      })
   }
 }
 

@@ -1,0 +1,234 @@
+<svg width="1800" height="1320" viewBox="0 0 1800 1320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .font { font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
+    .h1 { font-size: 34px; font-weight: 800; fill: #101828; }
+    .h2 { font-size: 23px; font-weight: 800; fill: #111827; }
+    .h3 { font-size: 17px; font-weight: 800; fill: #111827; }
+    .body { font-size: 14px; fill: #475467; }
+    .muted { font-size: 12px; fill: #667085; }
+    .small { font-size: 11px; fill: #667085; }
+    .label { font-size: 12px; font-weight: 700; fill: #344054; }
+    .value { font-size: 13px; font-weight: 800; fill: #111827; }
+    .chip { font-size: 11px; font-weight: 800; }
+    .mono { font-family: Consolas, "Courier New", monospace; font-size: 13px; fill: #344054; }
+  </style>
+
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#101828" flood-opacity="0.10"/>
+    </filter>
+    <linearGradient id="pageBg" x1="0" y1="0" x2="1800" y2="1320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F8FA"/>
+      <stop offset="1" stop-color="#EFF4F8"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1800" height="1320" fill="url(#pageBg)"/>
+  <text x="900" y="58" text-anchor="middle" class="font h1">木枢电脑端界面设计稿 v3</text>
+  <text x="900" y="90" text-anchor="middle" class="font body">这版把首页和设置页放进同一套产品语言里，后续实现应以它为准，而不是只重排设置页。</text>
+
+  <g transform="translate(90 128)">
+    <text x="0" y="0" class="font h2">01 首页：连接与状态合并</text>
+    <text x="0" y="27" class="font body">当前首页不能只保留表单，需要一起改成电脑端工作台：左侧连接，右侧状态，顶部保留设置入口。</text>
+
+    <rect x="0" y="58" width="770" height="520" rx="28" fill="#111827" filter="url(#shadow)"/>
+    <rect x="14" y="14" width="742" height="492" rx="22" transform="translate(0 58)" fill="#F6F8FA"/>
+
+    <g transform="translate(28 86)">
+      <rect width="714" height="58" rx="16" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <image x="9" y="10" width="38" height="38" href="../harmony/app/entry/src/main/resources/base/media/icon.png"/>
+      <text x="58" y="25" class="font h3">鸿蒙与 Windows 局域网连接工具</text>
+      <text x="52" y="43" class="font small">连接 Windows 主机，也管理当前设备的被控能力</text>
+      <rect x="586" y="11" width="106" height="36" rx="12" fill="#F8FAFC" stroke="#E4E7EC"/>
+      <circle cx="607" cy="29" r="5" fill="#F59E0B"/>
+      <text x="621" y="34" class="font label">设置</text>
+    </g>
+
+    <g transform="translate(28 164)">
+      <rect width="408" height="386" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="22" y="35" class="font h2">连接 Windows 电脑</text>
+      <text x="22" y="59" class="font body">填写目标主机信息后发起 RDP 连接</text>
+
+      <text x="22" y="101" class="font label">Host</text>
+      <rect x="22" y="114" width="364" height="44" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="38" y="142" class="font mono">192.168.1.20</text>
+
+      <g transform="translate(22 176)">
+        <text x="0" y="0" class="font label">Port</text>
+        <rect x="0" y="13" width="112" height="44" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+        <text x="16" y="41" class="font mono">3389</text>
+        <text x="128" y="0" class="font label">Username</text>
+        <rect x="128" y="13" width="236" height="44" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+        <text x="144" y="41" class="font mono">administrator</text>
+      </g>
+
+      <text x="22" y="259" class="font label">Password</text>
+      <rect x="22" y="272" width="364" height="44" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="38" y="300" class="font mono">••••••••</text>
+
+      <rect x="22" y="334" width="364" height="40" rx="12" fill="#0A84FF"/>
+      <text x="204" y="359" text-anchor="middle" class="font chip" fill="#FFFFFF">连接</text>
+    </g>
+
+    <g transform="translate(452 164)">
+      <rect width="290" height="186" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="20" y="34" class="font h3">当前设备状态</text>
+      <text x="20" y="56" class="font muted">首页直接暴露影响连接的关键状态</text>
+      <g transform="translate(20 82)">
+        <rect width="250" height="38" rx="10" fill="#F0FDF4" stroke="#BBF7D0"/>
+        <circle cx="18" cy="19" r="5" fill="#16A34A"/>
+        <text x="34" y="24" class="font value">被控服务 3390</text>
+        <text x="188" y="24" class="font chip" fill="#15803D">已启动</text>
+      </g>
+      <g transform="translate(20 130)">
+        <rect width="250" height="38" rx="10" fill="#FFFBEB" stroke="#FDE68A"/>
+        <circle cx="18" cy="19" r="5" fill="#F59E0B"/>
+        <text x="34" y="24" class="font value">录屏权限</text>
+        <text x="188" y="24" class="font chip" fill="#B45309">待授权</text>
+      </g>
+    </g>
+
+    <g transform="translate(452 366)">
+      <rect width="290" height="184" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="20" y="34" class="font h3">连接日志</text>
+      <text x="20" y="57" class="font muted">不做大段说明，只保留最近反馈</text>
+      <line x1="20" y1="78" x2="270" y2="78" stroke="#EAECF0"/>
+      <text x="20" y="106" class="font mono">16:27  HAP installed</text>
+      <text x="20" y="134" class="font mono">16:27  EntryAbility started</text>
+      <text x="20" y="162" class="font mono">waiting for connection...</text>
+    </g>
+  </g>
+
+  <g transform="translate(940 128)">
+    <text x="0" y="0" class="font h2">02 设置首页：状态总览优先</text>
+    <text x="0" y="27" class="font body">进入设置后先看状态和入口，不直接堆完整表单；子页面再承载具体操作。</text>
+
+    <rect x="0" y="58" width="770" height="520" rx="28" fill="#111827" filter="url(#shadow)"/>
+    <rect x="14" y="14" width="742" height="492" rx="22" transform="translate(0 58)" fill="#F6F8FA"/>
+
+    <g transform="translate(28 86)">
+      <rect width="166" height="464" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="20" y="34" class="font h3">设置</text>
+      <g transform="translate(16 78)">
+        <rect width="134" height="44" rx="12" fill="#E8F7FF"/>
+        <circle cx="22" cy="22" r="12" fill="#D9F1FF"/>
+        <text x="44" y="27" class="font label" fill="#075985">概览</text>
+      </g>
+      <g transform="translate(16 134)">
+        <rect width="134" height="44" rx="12" fill="#FFFFFF"/>
+        <circle cx="22" cy="22" r="12" fill="#ECFDF5"/>
+        <text x="44" y="27" class="font label">基础设置</text>
+      </g>
+      <g transform="translate(16 190)">
+        <rect width="134" height="44" rx="12" fill="#FFFFFF"/>
+        <circle cx="22" cy="22" r="12" fill="#EFF6FF"/>
+        <text x="44" y="27" class="font label">远控设置</text>
+      </g>
+      <g transform="translate(16 246)">
+        <rect width="134" height="44" rx="12" fill="#FFFFFF"/>
+        <circle cx="22" cy="22" r="12" fill="#F5F3FF"/>
+        <text x="44" y="27" class="font label">项目帮助</text>
+      </g>
+    </g>
+
+    <g transform="translate(218 86)">
+      <rect width="524" height="464" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="24" y="42" class="font h2">设置概览</text>
+      <text x="24" y="67" class="font body">先确认当前状态，再进入具体设置项。</text>
+
+      <rect x="24" y="96" width="428" height="82" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+      <text x="44" y="127" class="font label">当前状态</text>
+      <rect x="44" y="141" width="74" height="24" rx="12" fill="#DCFCE7"/>
+      <text x="81" y="157" text-anchor="middle" class="font chip" fill="#166534">服务正常</text>
+      <rect x="128" y="141" width="86" height="24" rx="12" fill="#FEF3C7"/>
+      <text x="171" y="157" text-anchor="middle" class="font chip" fill="#92400E">录屏待授权</text>
+      <text x="310" y="156" class="font mono">port 3390</text>
+
+      <g transform="translate(24 202)">
+        <rect width="228" height="96" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="18" y="30" class="font h3">基础设置</text>
+        <text x="18" y="54" class="font muted">跟随系统 / 本机 IP</text>
+        <text x="18" y="78" class="font chip" fill="#0891B2">进入</text>
+      </g>
+      <g transform="translate(248 202)">
+        <rect width="228" height="96" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="18" y="30" class="font h3">远控设置</text>
+        <text x="18" y="54" class="font muted">服务 / 录屏 / 验证码</text>
+        <text x="18" y="78" class="font chip" fill="#2563EB">进入</text>
+      </g>
+      <g transform="translate(24 318)">
+        <rect width="428" height="96" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="18" y="30" class="font h3">项目帮助</text>
+        <text x="18" y="55" class="font muted">连接说明、证书策略、故障排查、项目信息</text>
+        <text x="18" y="79" class="font chip" fill="#7C3AED">查看帮助</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(90 760)">
+    <text x="0" y="0" class="font h2">03 设置子页面：远控设置示例</text>
+    <text x="0" y="27" class="font body">子页面以“状态 + 操作”卡片为主，支持后续增加更多设置项；电脑端优先两列，窄屏再降级单列。</text>
+
+    <rect x="0" y="58" width="1620" height="460" rx="28" fill="#111827" filter="url(#shadow)"/>
+    <rect x="14" y="14" width="1592" height="432" rx="22" transform="translate(0 58)" fill="#F6F8FA"/>
+
+    <g transform="translate(28 86)">
+      <rect width="180" height="404" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="22" y="36" class="font h3">设置</text>
+      <rect x="18" y="82" width="144" height="44" rx="14" fill="#EFF6FF"/>
+      <text x="52" y="109" class="font label" fill="#1D4ED8">远控设置</text>
+      <circle cx="34" cy="104" r="8" fill="#22C55E"/>
+    </g>
+
+    <g transform="translate(236 86)">
+      <rect width="1356" height="404" rx="18" fill="#FFFFFF" stroke="#E5E7EB"/>
+      <text x="24" y="42" class="font h2">远控设置</text>
+      <text x="24" y="68" class="font body">管理当前设备作为被控端时的服务、授权和连接门禁。</text>
+
+      <g transform="translate(24 102)">
+        <rect width="636" height="126" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="20" y="32" class="font h3">被控服务</text>
+        <text x="20" y="57" class="font muted">主控端连接当前设备时使用该监听端口。</text>
+        <text x="20" y="94" class="font mono">已启动 / 3390</text>
+        <rect x="526" y="74" width="86" height="34" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+        <text x="569" y="96" text-anchor="middle" class="font label">刷新</text>
+      </g>
+
+      <g transform="translate(684 102)">
+        <rect width="636" height="126" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="20" y="32" class="font h3">录屏权限</text>
+        <text x="20" y="57" class="font muted">授权后，主控端才能接收当前桌面视频流。</text>
+        <rect x="20" y="77" width="82" height="26" rx="13" fill="#FEF3C7"/>
+        <text x="61" y="94" text-anchor="middle" class="font chip" fill="#92400E">未授权</text>
+        <rect x="526" y="74" width="86" height="34" rx="10" fill="#0A84FF"/>
+        <text x="569" y="96" text-anchor="middle" class="font label" fill="#FFFFFF">去授权</text>
+      </g>
+
+      <g transform="translate(24 252)">
+        <rect width="636" height="126" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="20" y="32" class="font h3">主控连接验证码</text>
+        <text x="20" y="57" class="font muted">开启后，主控端连接当前设备需要输入验证码。</text>
+        <text x="20" y="94" class="font mono">默认关闭</text>
+        <rect x="550" y="78" width="44" height="24" rx="12" fill="#E4E7EC"/>
+        <circle cx="562" cy="90" r="9" fill="#FFFFFF"/>
+      </g>
+
+      <g transform="translate(684 252)">
+        <rect width="636" height="126" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+        <text x="20" y="32" class="font h3">鸿蒙共享目录</text>
+        <text x="20" y="57" class="font muted">远程桌面中通过 \\tsclient\Downloads 访问共享目录。</text>
+        <rect x="490" y="74" width="122" height="34" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+        <text x="551" y="96" text-anchor="middle" class="font label">打开目录</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(90 1240)">
+    <rect width="1620" height="48" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+    <text x="22" y="30" class="font body">开发口径：下一轮实现需要同时改首页和设置页。首页不是营销页，而是桌面工作台；设置页只做状态和管理，不重复首页连接表单。</text>
+  </g>
+</svg>

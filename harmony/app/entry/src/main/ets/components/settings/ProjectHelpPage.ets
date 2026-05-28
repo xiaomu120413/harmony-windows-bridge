@@ -101,15 +101,7 @@ export struct ProjectHelpPage {
       Scroll() {
         Column() {
           SettingsSectionTitle({
-            title: SettingsText.PROJECT_HELP_ABOUT_SECTION,
-            subtitle: SettingsText.ABOUT_SECTION_PROJECT_DESC,
-            isDark: this.isDark
-          })
-
-          this.aboutInfoCard()
-
-          SettingsSectionTitle({
-            title: SettingsText.PROJECT_HELP_USAGE_SECTION,
+            title: SettingsText.USAGE_SECTION_PREP,
             subtitle: SettingsText.USAGE_SECTION_PREP_DESC,
             isDark: this.isDark
           })
@@ -125,6 +117,18 @@ export struct ProjectHelpPage {
             isDark: this.isDark
           })
           SettingsInfoCard({
+            title: SettingsText.REMOTE_FILES_FEATURE_TITLE,
+            body: SettingsText.REMOTE_FILES_FEATURE_DESC,
+            isDark: this.isDark
+          })
+
+          SettingsSectionTitle({
+            title: SettingsText.USAGE_SECTION_SECURITY,
+            subtitle: SettingsText.USAGE_SECTION_SECURITY_DESC,
+            isDark: this.isDark
+          })
+
+          SettingsInfoCard({
             title: SettingsText.USAGE_CERT_TITLE,
             body: SettingsText.USAGE_CERT_BODY,
             isDark: this.isDark
@@ -134,6 +138,14 @@ export struct ProjectHelpPage {
             body: SettingsText.USAGE_TROUBLESHOOT_BODY,
             isDark: this.isDark
           })
+
+          SettingsSectionTitle({
+            title: SettingsText.PROJECT_HELP_ABOUT_SECTION,
+            subtitle: SettingsText.ABOUT_SECTION_PROJECT_DESC,
+            isDark: this.isDark
+          })
+
+          this.aboutInfoCard()
         }
         .alignItems(HorizontalAlign.Start)
         .padding({ left: 20, right: 20, bottom: 24 })
