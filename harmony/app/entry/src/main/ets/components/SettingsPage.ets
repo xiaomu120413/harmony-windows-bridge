@@ -100,8 +100,8 @@ export struct SettingsPage {
             description: SettingsText.REMOTE_CONTROL_ENTRY_DESC,
             iconResource: SettingsResources.DASHBOARD_ICON,
             accentName: SettingsAccent.BLUE,
-            value: this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON :
-              SettingsText.REMOTE_ACCESS_GATE_OFF,
+            value: this.xrdpServerBusy ? SettingsText.REMOTE_SERVER_BUSY :
+              (this.xrdpServerRunning ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED),
             isDark: this.isDarkMode(),
             onPress: () => {
               this.pageName = SettingsRoute.REMOTE_CONTROL

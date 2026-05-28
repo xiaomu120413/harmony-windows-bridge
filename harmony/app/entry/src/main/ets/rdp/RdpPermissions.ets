@@ -37,6 +37,9 @@ interface PermissionRequestState {
 
 type PermissionGrantChecker = () => boolean
 type PermissionRequestFactory = (context: common.UIAbilityContext) => Promise<boolean>
+type PermissionRequestResolver = (granted: boolean) => void
+
+const SCREEN_RECORDING_PERMISSION_PROMPT_DELAY_MS: number = 3000
 
 export class RdpPermissionManager {
   private delegate: RdpPermissionDelegate
@@ -44,6 +47,8 @@ export class RdpPermissionManager {
   private microphonePermission: PermissionRequestState = { request: null, requested: false }
   private locationPermission: PermissionRequestState = { request: null, requested: false }
   private screenRecordingPermission: PermissionRequestState = { request: null, requested: false }
+  private screenRecordingPermissionPromptDelayTimer: number | null = null
+  private screenRecordingPermissionPromptDelayResolve: PermissionRequestResolver | null = null
 
   constructor(delegate: RdpPermissionDelegate) {
     this.delegate = delegate
@@ -89,7 +94,28 @@ export class RdpPermissionManager {
     )
   }
 
+  ensureScreenRecordingPermission(trigger: string): Promise<boolean> {
+    return this.ensurePermission(
+      this.screenRecordingPermission,
+      'Screen recording',
+      trigger,
+      (): boolean => this.hasScreenRecordingPermission(),
+      (context: common.UIAbilityContext): Promise<boolean> =>
+        this.openScreenRecordingPermissionOnSettingAfterDelay(context),
+      true
+    )
+  }
+
   requestScreenRecordingPermission(trigger: string): Promise<boolean> {
+    if (this.hasScreenRecordingPermission()) {
+      this.delegate.log(`Screen recording permission granted: ${trigger}`)
+      return Promise.resolve(true)
+    }
+    if (this.screenRecordingPermission.request !== null &&
+      this.screenRecordingPermissionPromptDelayTimer !== null) {
+      this.openPendingScreenRecordingPermissionPrompt(trigger)
+      return this.screenRecordingPermission.request
+    }
     return this.ensurePermission(
       this.screenRecordingPermission,
       'Screen recording',
@@ -165,6 +191,63 @@ export class RdpPermissionManager {
         this.delegate.log(`${label} setting request failed: ${JSON.stringify(error)}`)
         return false
       })
+  }
+
+  private openScreenRecordingPermissionOnSettingAfterDelay(context: common.UIAbilityContext): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.screenRecordingPermissionPromptDelayResolve = resolve
+      this.screenRecordingPermissionPromptDelayTimer = setTimeout((): void => {
+        const delayedResolve = this.screenRecordingPermissionPromptDelayResolve
+        this.clearScreenRecordingPermissionPromptDelay()
+        if (delayedResolve === null) {
+          return
+        }
+        if (this.hasScreenRecordingPermission()) {
+          delayedResolve(true)
+          return
+        }
+        this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording')
+          .then((granted: boolean) => {
+            delayedResolve(granted)
+          })
+          .catch((error: Error) => {
+            this.delegate.log(`Screen recording setting request failed: ${JSON.stringify(error)}`)
+            delayedResolve(false)
+          })
+      }, SCREEN_RECORDING_PERMISSION_PROMPT_DELAY_MS)
+    })
+  }
+
+  private openPendingScreenRecordingPermissionPrompt(trigger: string): void {
+    const delayedResolve = this.screenRecordingPermissionPromptDelayResolve
+    if (delayedResolve === null) {
+      return
+    }
+    const context = this.delegate.getContext()
+    this.clearScreenRecordingPermissionPromptDelay()
+    if (context === null) {
+      this.delegate.log(`Screen recording permission request skipped: no UIAbilityContext`)
+      delayedResolve(false)
+      return
+    }
+
+    this.delegate.log(`Screen recording permission requested immediately: ${trigger}`)
+    this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording')
+      .then((granted: boolean) => {
+        delayedResolve(granted)
+      })
+      .catch((error: Error) => {
+        this.delegate.log(`Screen recording setting request failed: ${JSON.stringify(error)}`)
+        delayedResolve(false)
+      })
+  }
+
+  private clearScreenRecordingPermissionPromptDelay(): void {
+    if (this.screenRecordingPermissionPromptDelayTimer !== null) {
+      clearTimeout(this.screenRecordingPermissionPromptDelayTimer)
+    }
+    this.screenRecordingPermissionPromptDelayTimer = null
+    this.screenRecordingPermissionPromptDelayResolve = null
   }
 
   private requestRuntimePermissions(context: common.UIAbilityContext, label: string, permissions: Permissions[],

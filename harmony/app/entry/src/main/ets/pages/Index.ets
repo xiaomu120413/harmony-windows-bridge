@@ -50,6 +50,7 @@ struct Index {
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
   private xrdpServerController: XrdpServerController | null = null
+  private xrdpServerStartRequest: Promise<XrdpServerStatus> | null = null
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -298,7 +299,7 @@ struct Index {
   }
 
   private startXrdpServerFromSettings(): Promise<XrdpServerStatus> {
-    return this.ensureXrdpServerStarted('remote control settings button')
+    return this.ensureXrdpServerStarted('remote control settings button', false, true)
   }
 
   private setRemoteAccessCodeGateFromSettings(enabled: boolean): string {
@@ -324,28 +325,48 @@ struct Index {
     }
   }
 
-  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false): Promise<XrdpServerStatus> {
+  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false,
+    requestScreenRecordingImmediately: boolean = false): Promise<XrdpServerStatus> {
+    if (this.xrdpServerStartRequest !== null && !restartIfRunning) {
+      if (requestScreenRecordingImmediately) {
+        this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`)
+          .catch((error: Error) => {
+            this.appendLog(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
+          })
+      }
+      return this.xrdpServerStartRequest
+    }
     if (this.xrdpServerStartRequested && !restartIfRunning) {
       return Promise.resolve(this.currentXrdpServerStatus())
     }
     this.xrdpServerStartRequested = true
     this.xrdpServerBusy = true
-    return Promise.resolve()
-      .then((): XrdpServerStatus => {
-        this.refreshScreenRecordingPermissionState()
-        return this.startXrdpServerListener(trigger, restartIfRunning)
+    const screenRecordingPermissionRequest = requestScreenRecordingImmediately ?
+      this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`) :
+      this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
+    this.xrdpServerStartRequest = screenRecordingPermissionRequest
+      .then((granted: boolean) => {
+        const allowed = granted || this.refreshScreenRecordingPermissionState()
+        this.screenRecordingPermissionGranted = allowed
+        if (!allowed) {
+          this.appendLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
+          return this.refreshXrdpServerDiagnostics()
+        }
+        return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
       })
       .catch((error: Error) => {
-        this.appendLog(`xrdp start failed: ${JSON.stringify(error)}`)
+        this.appendLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
         return this.refreshXrdpServerDiagnostics()
       })
       .finally(() => {
         this.xrdpServerStartRequested = false
         this.xrdpServerBusy = false
+        this.xrdpServerStartRequest = null
       })
+    return this.xrdpServerStartRequest
   }
 
-  private startXrdpServerListener(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
+  private startXrdpServerAfterPermissions(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
     const status = this.getXrdpServerController().start(this.xrdpServerStartOptions(restartIfRunning), trigger)
     return this.applyXrdpServerStatus(status)
   }
