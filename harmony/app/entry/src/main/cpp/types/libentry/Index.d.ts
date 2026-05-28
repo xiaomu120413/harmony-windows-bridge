@@ -36,6 +36,7 @@ export interface NativeXrdpServerResult extends NativeCommandResult {
 declare const rdpNative: {
   connect(params: NativeConnectParams): NativeCommandResult;
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
+  getXrdpServerDiagnostics(): NativeXrdpServerResult;
   releaseAllKeys(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

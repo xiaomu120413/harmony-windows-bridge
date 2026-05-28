@@ -31,6 +31,7 @@ struct XrdpServerCommandResult {
 };
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
+XrdpServerCommandResult GetXrdpServerDiagnostics();
 bool SubmitXrdpRgbaFrame(const RgbaFrame& frame, std::string& message);
 
 } // namespace rdp_bridge

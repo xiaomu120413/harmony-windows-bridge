@@ -1,4 +1,3 @@
-import { bundleManager } from '@kit.AbilityKit'
 import {
   SettingsAccent,
   SettingsFeatureCard,
@@ -16,27 +15,15 @@ export struct AboutPage {
   @Prop isDark: boolean = false
   @State private cardHovered: boolean = false
   @State private cardPressed: boolean = false
-  @State private versionValue: string = SettingsText.EMPTY_VALUE
-
-  aboutToAppear(): void {
-    this.loadBundleInfo()
-  }
-
-  private loadBundleInfo(): void {
-    try {
-      const bundleInfo = bundleManager.getBundleInfoForSelfSync(
-        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION
-      )
-      this.versionValue = `${bundleInfo.versionName} (${bundleInfo.versionCode})`
-    } catch (_error) {
-      this.versionValue = SettingsText.EMPTY_VALUE
-    }
-  }
 
   private setCardHovered(hovered: boolean): void {
     SettingsTheme.animate(this.getUIContext(), () => {
       this.cardHovered = hovered
     })
+  }
+
+  private isUrl(value: string): boolean {
+    return value.startsWith('http://') || value.startsWith('https://')
   }
 
   @Builder
@@ -47,11 +34,17 @@ export struct AboutPage {
         .fontColor(SettingsTheme.mutedText(this.isDark))
         .width('100%')
         .margin({ bottom: 4 })
-      Text(value)
-        .fontSize(14)
-        .fontColor(SettingsTheme.secondaryText(this.isDark))
-        .width('100%')
-        .lineHeight(20)
+      if (this.isUrl(value)) {
+        Hyperlink(value, value)
+          .color(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
+          .width('100%')
+      } else {
+        Text(value)
+          .fontSize(14)
+          .fontColor(SettingsTheme.secondaryText(this.isDark))
+          .width('100%')
+          .lineHeight(20)
+      }
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
@@ -71,7 +64,7 @@ export struct AboutPage {
         Column() {
           SettingsFeatureCard({
             title: SettingsText.PRODUCT_NAME,
-            body: SettingsText.PRODUCT_DESC,
+            body: SettingsText.HOME_TITLE,
             meta: SettingsText.ABOUT_OVERVIEW_META,
             iconResource: SettingsResources.INFO_ICON,
             accentName: SettingsAccent.AMBER,
@@ -85,7 +78,6 @@ export struct AboutPage {
           })
 
           Column() {
-            this.aboutInfoRow(SettingsText.ABOUT_VERSION_LABEL, this.versionValue)
             this.aboutInfoRow(SettingsText.ABOUT_GITHUB_LABEL, SettingsText.ABOUT_GITHUB_VALUE)
             this.aboutInfoRow(SettingsText.ABOUT_FREERDP_ADAPTATION_LABEL,
               SettingsText.ABOUT_FREERDP_ADAPTATION_VALUE)

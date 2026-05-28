@@ -1,0 +1,258 @@
+<svg width="1800" height="1620" viewBox="0 0 1800 1620" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .font { font-family: "Segoe UI", Arial, sans-serif; }
+    .pageTitle { font-size: 28px; font-weight: 700; fill: #101828; }
+    .caption { font-size: 15px; fill: #667085; }
+    .title { font-size: 24px; font-weight: 700; fill: #111827; }
+    .sub { font-size: 13px; fill: #667085; }
+    .section { font-size: 15px; font-weight: 700; fill: #344054; }
+    .rowTitle { font-size: 14px; font-weight: 700; fill: #111827; }
+    .rowDesc { font-size: 12px; fill: #667085; }
+    .label { font-size: 12px; fill: #667085; }
+    .value { font-size: 13px; font-weight: 700; fill: #111827; }
+    .chip { font-size: 11px; font-weight: 700; }
+  </style>
+
+  <rect width="1800" height="1620" fill="#F3F5F8"/>
+  <text x="900" y="60" text-anchor="middle" class="font pageTitle">Desktop Settings Subpages</text>
+  <text x="900" y="94" text-anchor="middle" class="font caption">Detailed subpage layout based on the current settings entries: Basic, Remote Control, Help and Project.</text>
+
+  <g transform="translate(120 132)">
+    <rect width="1560" height="438" rx="24" fill="#111827"/>
+    <rect x="14" y="14" width="1532" height="410" rx="17" fill="#F6F7F9"/>
+
+    <g transform="translate(36 34)">
+      <rect width="260" height="342" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <text x="20" y="34" class="font title">Settings</text>
+      <text x="20" y="58" class="font sub">Current entries, desktop shell</text>
+      <rect x="20" y="78" width="220" height="36" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+      <circle cx="39" cy="96" r="7" stroke="#98A2B3" stroke-width="2"/>
+      <path d="M44 101L49 106" stroke="#98A2B3" stroke-width="2" stroke-linecap="round"/>
+      <text x="62" y="101" class="font label">Search settings</text>
+
+      <g transform="translate(20 134)">
+        <rect width="220" height="42" rx="10" fill="#E8FAFC"/>
+        <text x="14" y="26" class="font rowTitle" fill="#0891B2">Basic Settings</text>
+        <text x="204" y="26" text-anchor="end" class="font rowDesc" fill="#0891B2">System</text>
+      </g>
+      <text x="34" y="204" class="font rowTitle">Remote Control</text>
+      <text x="218" y="204" text-anchor="end" class="font rowDesc">Ready</text>
+      <text x="34" y="248" class="font rowTitle">Help and Project</text>
+      <line x1="20" y1="274" x2="240" y2="274" stroke="#EEF0F4"/>
+      <text x="20" y="304" class="font label">Reserved</text>
+      <text x="20" y="327" class="font rowDesc">Display, Input, Security, Files</text>
+    </g>
+
+    <g transform="translate(326 34)">
+      <rect width="1170" height="342" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <g transform="translate(28 26)">
+        <text x="0" y="0" class="font title">Basic Settings</text>
+        <text x="0" y="25" class="font sub">Use the current theme and network features, with space for future connection defaults.</text>
+        <g transform="translate(880 -4)">
+          <rect width="102" height="28" rx="14" fill="#E8FAFC"/>
+          <text x="51" y="18" text-anchor="middle" class="font chip" fill="#0891B2">System theme</text>
+          <rect x="114" width="90" height="28" rx="14" fill="#EAF8EF"/>
+          <text x="159" y="18" text-anchor="middle" class="font chip" fill="#15803D">IP ready</text>
+        </g>
+      </g>
+
+      <g transform="translate(28 82)">
+        <rect width="350" height="210" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Appearance</text>
+        <text x="18" y="56" class="font rowDesc">Same options as today, presented as stable rows.</text>
+        <g transform="translate(18 78)">
+          <rect width="314" height="44" rx="10" fill="#FFFFFF" stroke="#0A84FF"/>
+          <text x="14" y="27" class="font rowTitle">Follow system</text>
+          <circle cx="290" cy="22" r="8" fill="#0A84FF"/>
+          <path d="M286 22L289 25L296 18" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g transform="translate(18 132)">
+          <rect width="150" height="42" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="75" y="26" text-anchor="middle" class="font rowTitle">Light</text>
+          <rect x="164" width="150" height="42" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="239" y="26" text-anchor="middle" class="font rowTitle">Dark</text>
+        </g>
+      </g>
+
+      <g transform="translate(404 82)">
+        <rect width="350" height="210" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Local Network</text>
+        <text x="18" y="56" class="font rowDesc">Keep the current IP card, make refresh secondary.</text>
+        <line x1="18" y1="76" x2="332" y2="76" stroke="#E5E7EB"/>
+        <text x="18" y="104" class="font label">Interface</text>
+        <text x="142" y="104" class="font value">wlan0</text>
+        <text x="18" y="134" class="font label">IP address</text>
+        <text x="142" y="134" class="font value">192.168.1.24/24</text>
+        <rect x="18" y="158" width="96" height="32" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <text x="66" y="179" text-anchor="middle" class="font label" fill="#111827">Refresh</text>
+      </g>
+
+      <g transform="translate(780 82)">
+        <rect width="350" height="210" rx="14" fill="#F8FAFC" stroke="#D0D5DD" stroke-dasharray="6 6"/>
+        <text x="18" y="32" class="font section">Future Defaults</text>
+        <text x="18" y="56" class="font rowDesc">Reserved area for items likely to move here.</text>
+        <g transform="translate(18 82)">
+          <rect width="314" height="36" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="14" y="23" class="font rowTitle">Default resolution</text>
+          <text x="298" y="23" text-anchor="end" class="font rowDesc">1400x900</text>
+        </g>
+        <g transform="translate(18 128)">
+          <rect width="314" height="36" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="14" y="23" class="font rowTitle">Certificate policy</text>
+          <text x="298" y="23" text-anchor="end" class="font rowDesc">TOFU</text>
+        </g>
+      </g>
+    </g>
+
+    <text x="780" y="458" text-anchor="middle" class="font" font-size="14" font-weight="700" fill="#344054">Subpage 1: Basic settings keeps current functions and adds a reserved defaults column</text>
+  </g>
+
+  <g transform="translate(120 628)">
+    <rect width="1560" height="438" rx="24" fill="#111827"/>
+    <rect x="14" y="14" width="1532" height="410" rx="17" fill="#F6F7F9"/>
+
+    <g transform="translate(36 34)">
+      <rect width="260" height="342" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <text x="20" y="34" class="font title">Settings</text>
+      <text x="20" y="58" class="font sub">Current entries, desktop shell</text>
+      <rect x="20" y="78" width="220" height="36" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+      <text x="42" y="101" class="font label">Search settings</text>
+      <text x="34" y="160" class="font rowTitle">Basic Settings</text>
+      <g transform="translate(20 184)">
+        <rect width="220" height="42" rx="10" fill="#EAF3FF"/>
+        <text x="14" y="26" class="font rowTitle" fill="#0A84FF">Remote Control</text>
+        <text x="204" y="26" text-anchor="end" class="font rowDesc" fill="#0A84FF">Ready</text>
+      </g>
+      <text x="34" y="260" class="font rowTitle">Help and Project</text>
+      <line x1="20" y1="286" x2="240" y2="286" stroke="#EEF0F4"/>
+      <text x="20" y="318" class="font rowDesc">Future: Security, Files, Logs</text>
+    </g>
+
+    <g transform="translate(326 34)">
+      <rect width="1170" height="342" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <g transform="translate(28 26)">
+        <text x="0" y="0" class="font title">Remote Control</text>
+        <text x="0" y="25" class="font sub">This page should be the strongest desktop page: status summary, grouped controls, clear actions.</text>
+        <g transform="translate(786 -4)">
+          <rect width="108" height="28" rx="14" fill="#EAF8EF"/>
+          <circle cx="18" cy="14" r="4" fill="#16A34A"/>
+          <text x="34" y="18" class="font chip" fill="#15803D">xrdp ready</text>
+          <rect x="120" width="88" height="28" rx="14" fill="#FFF4D6"/>
+          <text x="164" y="18" text-anchor="middle" class="font chip" fill="#B45309">Gate off</text>
+          <rect x="220" width="104" height="28" rx="14" fill="#E8FAFC"/>
+          <text x="272" y="18" text-anchor="middle" class="font chip" fill="#0891B2">Screen OK</text>
+        </g>
+      </g>
+
+      <g transform="translate(28 82)">
+        <rect width="350" height="210" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Controlled Service</text>
+        <text x="18" y="58" class="font rowTitle">Local xrdp port</text>
+        <text x="18" y="80" class="font rowDesc">3390, listening for Windows RDP</text>
+        <line x1="18" y1="104" x2="332" y2="104" stroke="#E5E7EB"/>
+        <text x="18" y="132" class="font label">State</text>
+        <text x="132" y="132" class="font value">Listening</text>
+        <text x="18" y="160" class="font label">Active session</text>
+        <text x="132" y="160" class="font value">No</text>
+        <rect x="236" y="122" width="96" height="32" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <text x="284" y="143" text-anchor="middle" class="font label" fill="#111827">Refresh</text>
+      </g>
+
+      <g transform="translate(404 82)">
+        <rect width="350" height="210" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Access Gate</text>
+        <text x="18" y="58" class="font rowTitle">Windows connection code</text>
+        <text x="18" y="80" class="font rowDesc">Require a code before remote access.</text>
+        <rect x="290" y="28" width="42" height="24" rx="12" fill="#D0D5DD"/>
+        <circle cx="302" cy="40" r="9" fill="#FFFFFF"/>
+        <line x1="18" y1="104" x2="332" y2="104" stroke="#E5E7EB"/>
+        <text x="18" y="132" class="font label">Current code</text>
+        <text x="132" y="132" class="font value">Disabled</text>
+        <rect x="18" y="158" width="120" height="32" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <text x="78" y="179" text-anchor="middle" class="font label" fill="#111827">Regenerate</text>
+      </g>
+
+      <g transform="translate(780 82)">
+        <rect width="350" height="210" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Permissions and Files</text>
+        <g transform="translate(18 56)">
+          <rect width="314" height="44" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="14" y="27" class="font rowTitle">Screen recording</text>
+          <text x="298" y="27" text-anchor="end" class="font rowDesc">Granted</text>
+        </g>
+        <g transform="translate(18 112)">
+          <rect width="314" height="44" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="14" y="27" class="font rowTitle">Downloads share</text>
+          <text x="298" y="27" text-anchor="end" class="font rowDesc">Open</text>
+        </g>
+        <g transform="translate(18 168)">
+          <rect width="314" height="24" rx="10" fill="#FFFFFF" stroke="#D0D5DD" stroke-dasharray="6 6"/>
+          <text x="14" y="17" class="font label">Reserved: clipboard, audio, location permissions</text>
+        </g>
+      </g>
+    </g>
+
+    <text x="780" y="458" text-anchor="middle" class="font" font-size="14" font-weight="700" fill="#344054">Subpage 2: Remote control gets status chips and action-oriented group panels</text>
+  </g>
+
+  <g transform="translate(120 1124)">
+    <rect width="1560" height="370" rx="24" fill="#111827"/>
+    <rect x="14" y="14" width="1532" height="342" rx="17" fill="#F6F7F9"/>
+
+    <g transform="translate(36 34)">
+      <rect width="260" height="274" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <text x="20" y="34" class="font title">Settings</text>
+      <rect x="20" y="62" width="220" height="36" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+      <text x="42" y="85" class="font label">Search settings</text>
+      <text x="34" y="136" class="font rowTitle">Basic Settings</text>
+      <text x="34" y="182" class="font rowTitle">Remote Control</text>
+      <g transform="translate(20 206)">
+        <rect width="220" height="42" rx="10" fill="#F3E8FF"/>
+        <text x="14" y="26" class="font rowTitle" fill="#7C3AED">Help and Project</text>
+      </g>
+    </g>
+
+    <g transform="translate(326 34)">
+      <rect width="1170" height="274" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <g transform="translate(28 26)">
+        <text x="0" y="0" class="font title">Help and Project</text>
+        <text x="0" y="25" class="font sub">Current help and about content becomes searchable, grouped, and easier to scan.</text>
+        <g transform="translate(760 -4)">
+          <rect width="360" height="34" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+          <circle cx="20" cy="17" r="7" stroke="#98A2B3" stroke-width="2"/>
+          <path d="M25 22L30 27" stroke="#98A2B3" stroke-width="2" stroke-linecap="round"/>
+          <text x="44" y="22" class="font label">Search help, errors, project links</text>
+        </g>
+      </g>
+
+      <g transform="translate(28 82)">
+        <rect width="340" height="150" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Connection Guide</text>
+        <text x="18" y="62" class="font rowTitle">Before connecting</text>
+        <text x="18" y="84" class="font rowDesc">Windows RDP switch, network, account rights</text>
+        <text x="18" y="116" class="font rowTitle">Connection form</text>
+        <text x="18" y="138" class="font rowDesc">Host, port, username, password</text>
+      </g>
+
+      <g transform="translate(394 82)">
+        <rect width="340" height="150" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Troubleshooting</text>
+        <text x="18" y="62" class="font rowTitle">Connection failure checklist</text>
+        <text x="18" y="84" class="font rowDesc">Port 3389, firewall, OS version, credentials</text>
+        <text x="18" y="116" class="font rowTitle">Certificate policy</text>
+        <text x="18" y="138" class="font rowDesc">Current default uses TOFU</text>
+      </g>
+
+      <g transform="translate(760 82)">
+        <rect width="360" height="150" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font section">Project Information</text>
+        <text x="18" y="62" class="font rowTitle">Product and license</text>
+        <text x="18" y="84" class="font rowDesc">MIT license, FreeRDP and xrdp adaptation links</text>
+        <rect x="18" y="104" width="324" height="28" rx="10" fill="#FFFFFF" stroke="#D0D5DD" stroke-dasharray="6 6"/>
+        <text x="34" y="123" class="font label">Reserved: logs export, feedback, error code index</text>
+      </g>
+    </g>
+
+    <text x="780" y="390" text-anchor="middle" class="font" font-size="14" font-weight="700" fill="#344054">Subpage 3: Help and project page becomes a compact searchable knowledge area</text>
+  </g>
+</svg>

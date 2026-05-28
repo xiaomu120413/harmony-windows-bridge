@@ -1,23 +1,60 @@
-import { AboutPage } from './settings/AboutPage'
-import { AppearancePage } from './settings/AppearancePage'
-import { NetworkInfoPage } from './settings/NetworkInfoPage'
+import { BasicSettingsPage } from './settings/BasicSettingsPage'
+import { ProjectHelpPage } from './settings/ProjectHelpPage'
+import { RemoteControlSettingsPage } from './settings/RemoteControlSettingsPage'
+import { XrdpServerStatus } from '../rdp/XrdpServerController'
 import { SettingsRoute, SettingsText } from './settings/SettingsConstants'
 import {
   SettingsAccent,
   SettingsAppearanceMode,
-  SettingsFeatureCard,
   SettingsListItem,
   SettingsPageHeader,
   SettingsResources,
-  SettingsSectionTitle,
   SettingsTheme
 } from './settings/SettingsUi'
-import { UsageGuidePage } from './settings/UsageGuidePage'
 
 @Component
 export struct SettingsPage {
   onClose: () => void = () => {
   }
+  onRemoteAccessCodeGateChange: (enabled: boolean) => string = (_enabled: boolean) => {
+    return ''
+  }
+  onRemoteAccessCodeRegenerate: () => string = () => {
+    return ''
+  }
+  onRequestScreenRecordingPermission: () => Promise<boolean> = () => {
+    return Promise.resolve(false)
+  }
+  onRefreshScreenRecordingPermission: () => boolean = () => {
+    return false
+  }
+  onRefreshXrdpServerStatus: () => XrdpServerStatus = () => {
+    return {
+      running: false,
+      state: 'Stopped',
+      port: 3390,
+      message: ''
+    }
+  }
+  onStartXrdpServer: () => Promise<XrdpServerStatus> = () => {
+    const status: XrdpServerStatus = {
+      running: false,
+      state: 'Stopped',
+      port: 3390,
+      message: ''
+    }
+    return Promise.resolve(status)
+  }
+  onOpenRemoteFilesDirectory: () => void = () => {
+  }
+  @Prop remoteAccessCode: string = '000000'
+  @Prop remoteAccessCodeGateEnabled: boolean = false
+  @Prop screenRecordingPermissionGranted: boolean = false
+  @Prop xrdpServerRunning: boolean = false
+  @Prop xrdpServerState: string = 'Stopped'
+  @Prop xrdpServerPort: number = 3390
+  @Prop xrdpServerMessage: string = ''
+  @Prop xrdpServerBusy: boolean = false
   @State private pageName: string = SettingsRoute.SETTINGS
   @State private appearanceMode: SettingsAppearanceMode = SettingsTheme.getStoredAppearanceMode()
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
@@ -47,69 +84,37 @@ export struct SettingsPage {
 
       Scroll() {
         Column() {
-          SettingsFeatureCard({
-            title: SettingsText.SETTINGS_OVERVIEW_TITLE,
-            body: SettingsText.SETTINGS_OVERVIEW_BODY,
-            meta: SettingsText.SETTINGS_OVERVIEW_META,
-            iconResource: SettingsResources.DASHBOARD_ICON,
-            accentName: SettingsAccent.BLUE,
-            isDark: this.isDarkMode()
-          })
-
-          SettingsSectionTitle({
-            title: SettingsText.SETTINGS_SECTION_GENERAL,
-            subtitle: SettingsText.SETTINGS_SECTION_GENERAL_DESC,
-            isDark: this.isDarkMode()
-          })
-
           SettingsListItem({
-            title: SettingsText.APPEARANCE_ENTRY_TITLE,
-            description: SettingsText.APPEARANCE_ENTRY_DESC,
-            iconResource: this.appearanceMode === 'dark' ? SettingsResources.MOON_ICON :
-              this.appearanceMode === 'light' ? SettingsResources.SUN_ICON : SettingsResources.SYSTEM_ICON,
-            accentName: this.appearanceMode === 'dark' ? SettingsAccent.INDIGO :
-              this.appearanceMode === 'light' ? SettingsAccent.ORANGE : SettingsAccent.CYAN,
+            title: SettingsText.BASIC_SETTINGS_ENTRY_TITLE,
+            description: SettingsText.BASIC_SETTINGS_ENTRY_DESC,
+            iconResource: SettingsResources.SETTINGS_ICON,
+            accentName: SettingsAccent.CYAN,
             value: SettingsText.appearanceValue(this.appearanceMode),
             isDark: this.isDarkMode(),
             onPress: () => {
-              this.pageName = SettingsRoute.APPEARANCE
+              this.pageName = SettingsRoute.BASIC
             }
           })
           SettingsListItem({
-            title: SettingsText.USAGE_ENTRY_TITLE,
-            description: SettingsText.USAGE_ENTRY_DESC,
+            title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
+            description: SettingsText.REMOTE_CONTROL_ENTRY_DESC,
+            iconResource: SettingsResources.DASHBOARD_ICON,
+            accentName: SettingsAccent.BLUE,
+            value: this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON :
+              SettingsText.REMOTE_ACCESS_GATE_OFF,
+            isDark: this.isDarkMode(),
+            onPress: () => {
+              this.pageName = SettingsRoute.REMOTE_CONTROL
+            }
+          })
+          SettingsListItem({
+            title: SettingsText.PROJECT_HELP_ENTRY_TITLE,
+            description: SettingsText.PROJECT_HELP_ENTRY_DESC,
             iconResource: SettingsResources.HELP_ICON,
             accentName: SettingsAccent.PURPLE,
             isDark: this.isDarkMode(),
             onPress: () => {
-              this.pageName = SettingsRoute.USAGE
-            }
-          })
-          SettingsListItem({
-            title: SettingsText.NETWORK_ENTRY_TITLE,
-            description: SettingsText.NETWORK_ENTRY_DESC,
-            iconResource: SettingsResources.NETWORK_ICON,
-            accentName: SettingsAccent.GREEN,
-            isDark: this.isDarkMode(),
-            onPress: () => {
-              this.pageName = SettingsRoute.NETWORK
-            }
-          })
-
-          SettingsSectionTitle({
-            title: SettingsText.SETTINGS_SECTION_PROJECT,
-            subtitle: SettingsText.SETTINGS_SECTION_PROJECT_DESC,
-            isDark: this.isDarkMode()
-          })
-
-          SettingsListItem({
-            title: SettingsText.ABOUT_ENTRY_TITLE,
-            description: SettingsText.ABOUT_ENTRY_DESC,
-            iconResource: SettingsResources.INFO_ICON,
-            accentName: SettingsAccent.AMBER,
-            isDark: this.isDarkMode(),
-            onPress: () => {
-              this.pageName = SettingsRoute.ABOUT
+              this.pageName = SettingsRoute.PROJECT_HELP
             }
           })
         }
@@ -125,8 +130,8 @@ export struct SettingsPage {
 
   build() {
     Column() {
-      if (this.pageName === SettingsRoute.APPEARANCE) {
-        AppearancePage({
+      if (this.pageName === SettingsRoute.BASIC) {
+        BasicSettingsPage({
           onModeChange: (mode: SettingsAppearanceMode) => {
             this.appearanceMode = mode
           },
@@ -134,22 +139,30 @@ export struct SettingsPage {
             this.pageName = SettingsRoute.SETTINGS
           }
         })
-      } else if (this.pageName === SettingsRoute.USAGE) {
-        UsageGuidePage({
+      } else if (this.pageName === SettingsRoute.REMOTE_CONTROL) {
+        RemoteControlSettingsPage({
           isDark: this.isDarkMode(),
+          remoteAccessCode: this.remoteAccessCode,
+          remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+          screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+          xrdpServerRunning: this.xrdpServerRunning,
+          xrdpServerState: this.xrdpServerState,
+          xrdpServerPort: this.xrdpServerPort,
+          xrdpServerMessage: this.xrdpServerMessage,
+          xrdpServerBusy: this.xrdpServerBusy,
+          onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
+          onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
+          onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,
+          onRefreshScreenRecordingPermission: this.onRefreshScreenRecordingPermission,
+          onRefreshXrdpServerStatus: this.onRefreshXrdpServerStatus,
+          onStartXrdpServer: this.onStartXrdpServer,
+          onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
           onBack: () => {
             this.pageName = SettingsRoute.SETTINGS
           }
         })
-      } else if (this.pageName === SettingsRoute.NETWORK) {
-        NetworkInfoPage({
-          isDark: this.isDarkMode(),
-          onBack: () => {
-            this.pageName = SettingsRoute.SETTINGS
-          }
-        })
-      } else if (this.pageName === SettingsRoute.ABOUT) {
-        AboutPage({
+      } else if (this.pageName === SettingsRoute.PROJECT_HELP) {
+        ProjectHelpPage({
           isDark: this.isDarkMode(),
           onBack: () => {
             this.pageName = SettingsRoute.SETTINGS
