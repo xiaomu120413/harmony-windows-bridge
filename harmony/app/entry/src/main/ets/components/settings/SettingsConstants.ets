@@ -10,25 +10,15 @@ export class SettingsRoute {
   static readonly PROJECT_HELP: string = 'projectHelp'
 }
 
+export class SettingsRemoteControlSection {
+  static readonly SERVER: string = 'server'
+  static readonly SCREEN: string = 'screen'
+  static readonly ACCESS: string = 'access'
+  static readonly FILES: string = 'files'
+}
+
 export class SettingsText {
   static readonly SETTINGS_BUTTON: string = '设置'
-  static readonly HOME_HOST_PLACEHOLDER: string = 'Windows host'
-  static readonly HOME_PORT_PLACEHOLDER: string = 'Port'
-  static readonly HOME_USERNAME_PLACEHOLDER: string = 'Username'
-  static readonly HOME_PASSWORD_PLACEHOLDER: string = 'Password'
-  static readonly HOME_CONNECT_BUTTON: string = 'Connect'
-  static readonly HOME_PRODUCT_NAME: string = '鸿蒙与 Windows 局域网连接工具'
-  static readonly HOME_PRODUCT_SUBTITLE: string = '连接 Windows 主机，也管理当前设备的被控能力'
-  static readonly HOME_CONNECT_TITLE: string = '连接 Windows 电脑'
-  static readonly HOME_CONNECT_SUBTITLE: string = '填写目标主机信息后发起 RDP 连接'
-  static readonly HOME_STATUS_TITLE: string = '当前设备状态'
-  static readonly HOME_STATUS_SUBTITLE: string = '影响远程访问和被控连接的关键状态'
-  static readonly HOME_REMOTE_SERVICE_LABEL: string = '被控服务'
-  static readonly HOME_SCREEN_PERMISSION_LABEL: string = '录屏权限'
-  static readonly HOME_ACCESS_GATE_LABEL: string = '验证码'
-  static readonly HOME_SHARED_DIR_LABEL: string = '共享目录'
-  static readonly HOME_SHARED_DIR_READY: string = '已配置'
-
   static readonly SETTINGS_TITLE: string = '设置'
   static readonly SETTINGS_SUBTITLE: string = '按基础设置、远控设置和项目帮助分组'
   static readonly SETTINGS_OVERVIEW_TITLE: string = '设置概览'

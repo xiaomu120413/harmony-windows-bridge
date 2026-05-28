@@ -18,7 +18,7 @@ import {
 } from '../rdp/WindowsConnectionStore'
 import { HomePage } from '../components/home/HomePage'
 import { SettingsPage } from '../components/SettingsPage'
-import { SettingsText } from '../components/settings/SettingsConstants'
+import { SettingsRoute, SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsTheme } from '../components/settings/SettingsUi'
 import rdpNative, {
   NativeCommandResult
@@ -46,6 +46,8 @@ struct Index {
   @State private xrdpServerBusy: boolean = false
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
+  @State private settingsInitialPageName: string = SettingsRoute.SETTINGS
+  @State private settingsRemoteControlSection: string = ''
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
@@ -441,6 +443,14 @@ struct Index {
       })
   }
 
+  private openSettingsFromHome(remoteControlSection: string): void {
+    this.refreshScreenRecordingPermissionState()
+    this.refreshXrdpServerDiagnostics()
+    this.settingsRemoteControlSection = remoteControlSection
+    this.settingsInitialPageName = remoteControlSection.length > 0 ? SettingsRoute.REMOTE_CONTROL : SettingsRoute.SETTINGS
+    this.showSettings = true
+  }
+
   private handleNativePermissionRequest(requestIdText: string, label: string, trigger: string,
     ensurePermission: (trigger: string) => Promise<boolean>,
     completeRequest: (requestId: number, granted: boolean) => NativeCommandResult): void {
@@ -757,6 +767,8 @@ struct Index {
         this.buildSessionPage()
       } else if (this.showSettings) {
         SettingsPage({
+          initialPageName: this.settingsInitialPageName,
+          initialRemoteControlSection: this.settingsRemoteControlSection,
           remoteAccessCode: this.remoteAccessCode,
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
@@ -774,6 +786,8 @@ struct Index {
           onOpenRemoteFilesDirectory: (): void => this.openRemoteFilesDirectoryFromSettings(),
           onClose: () => {
             this.showSettings = false
+            this.settingsInitialPageName = SettingsRoute.SETTINGS
+            this.settingsRemoteControlSection = ''
           }
         })
       } else {
@@ -823,10 +837,8 @@ struct Index {
           onConnect: (): void => {
             this.connectNative()
           },
-          onOpenSettings: (): void => {
-            this.refreshScreenRecordingPermissionState()
-            this.refreshXrdpServerDiagnostics()
-            this.showSettings = true
+          onOpenSettings: (remoteControlSection: string): void => {
+            this.openSettingsFromHome(remoteControlSection)
           }
         })
       }
