@@ -15,7 +15,14 @@ import {
 } from '../rdp/XrdpServerController'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsText } from '../components/settings/SettingsConstants'
-import { SettingsAccent, SettingsAppearanceMode, SettingsResources, SettingsTheme } from '../components/settings/SettingsUi'
+import {
+  SettingsAccent,
+  SettingsAppearanceMode,
+  SettingsResources,
+  SettingsStatusChip,
+  SettingsStatusTone,
+  SettingsTheme
+} from '../components/settings/SettingsUi'
 import rdpNative, {
   NativeCommandResult
 } from 'libentry.so'
@@ -480,6 +487,19 @@ struct Index {
     })
   }
 
+  private settingsButtonStatusColor(): string {
+    if (this.xrdpServerBusy) {
+      return SettingsTheme.statusText(this.isAppDark(), 'info')
+    }
+    if (!this.screenRecordingPermissionGranted) {
+      return SettingsTheme.statusText(this.isAppDark(), 'warning')
+    }
+    if (!this.xrdpServerRunning) {
+      return SettingsTheme.statusText(this.isAppDark(), 'neutral')
+    }
+    return SettingsTheme.statusText(this.isAppDark(), 'ok')
+  }
+
   private getAppearanceMode(): SettingsAppearanceMode {
     return SettingsTheme.normalizeAppearanceMode(this.appearanceMode)
   }
@@ -495,112 +515,411 @@ struct Index {
     return this.systemDark
   }
 
+  private homeXrdpStatusTone(): SettingsStatusTone {
+    if (this.xrdpServerBusy) {
+      return 'info'
+    }
+    if (this.xrdpServerState === 'Failed' || this.xrdpServerState === 'Exited') {
+      return 'danger'
+    }
+    if (this.xrdpServerRunning) {
+      return 'ok'
+    }
+    return 'neutral'
+  }
+
+  private homeXrdpStatusText(): string {
+    if (this.xrdpServerBusy) {
+      return SettingsText.REMOTE_SERVER_BUSY
+    }
+    const status = this.xrdpServerRunning ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED
+    return `${status} / ${this.xrdpServerPort}`
+  }
+
+  private homeScreenStatusTone(): SettingsStatusTone {
+    return this.screenRecordingPermissionGranted ? 'ok' : 'warning'
+  }
+
+  private homeScreenStatusText(): string {
+    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
+      SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
+  }
+
+  private homeAccessStatusTone(): SettingsStatusTone {
+    return this.remoteAccessCodeGateEnabled ? 'ok' : 'neutral'
+  }
+
+  private homeAccessStatusText(): string {
+    return this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
+  }
+
+  private homeFeedbackText(): string {
+    if (this.xrdpServerMessage.length > 0) {
+      return this.xrdpServerMessage
+    }
+    return SettingsText.HOME_FEEDBACK_IDLE
+  }
+
+  @Builder
+  private buildSettingsButton() {
+    Row({ space: 6 }) {
+      Image(SettingsResources.SETTINGS_ICON)
+        .width(18)
+        .height(18)
+        .fillColor(SettingsTheme.accentColor(this.isAppDark(), SettingsAccent.BLUE))
+        .draggable(false)
+
+      Text(SettingsText.SETTINGS_BUTTON)
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+        .maxLines(1)
+
+      Circle()
+        .width(7)
+        .height(7)
+        .fill(this.settingsButtonStatusColor())
+    }
+    .width(96)
+    .height(38)
+    .alignItems(VerticalAlign.Center)
+    .justifyContent(FlexAlign.Center)
+    .borderRadius(12)
+    .backgroundColor(SettingsTheme.subtleButton(this.isAppDark(), this.settingsButtonHovered,
+      this.settingsButtonPressed))
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark())
+    })
+    .scale({
+      x: this.settingsButtonPressed ? 0.98 : 1,
+      y: this.settingsButtonPressed ? 0.98 : 1
+    })
+    .onHover((isHover: boolean) => {
+      this.setSettingsButtonHovered(isHover)
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.settingsButtonPressed = true
+        return
+      }
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.settingsButtonPressed = false
+      }
+    })
+    .onClick(() => {
+      this.settingsButtonPressed = false
+      this.refreshScreenRecordingPermissionState()
+      this.refreshXrdpServerDiagnostics()
+      this.showSettings = true
+    })
+  }
+
+  @Builder
+  private buildHomeHeader() {
+    Row() {
+      Row({ space: 12 }) {
+        Column() {
+          Image(SettingsResources.APP_ICON)
+            .width(38)
+            .height(38)
+            .draggable(false)
+        }
+        .width(38)
+        .height(38)
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .borderRadius(10)
+
+        Column({ space: 3 }) {
+          Text(SettingsText.HOME_PRODUCT_NAME)
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+          Text(SettingsText.HOME_PRODUCT_SUBTITLE)
+            .fontSize(12)
+            .fontColor(SettingsTheme.mutedText(this.isAppDark()))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+      }
+      .layoutWeight(1)
+      .alignItems(VerticalAlign.Center)
+
+      this.buildSettingsButton()
+    }
+    .width('100%')
+    .height(62)
+    .padding({ left: 18, right: 18 })
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+    .borderRadius(16)
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark())
+    })
+  }
+
+  @Builder
+  private homeTextField(label: string, value: string, onChange: (value: string) => void) {
+    Column({ space: 8 }) {
+      Text(label)
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SettingsTheme.secondaryText(this.isAppDark()))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+
+      TextInput({ placeholder: label, text: value })
+        .height(42)
+        .width('100%')
+        .fontSize(14)
+        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+        .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
+        .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
+        .borderRadius(10)
+        .border({
+          width: 1,
+          color: SettingsTheme.borderColor(this.isAppDark()),
+          style: BorderStyle.Solid
+        })
+        .onChange(onChange)
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private homePasswordField() {
+    Column({ space: 8 }) {
+      Text(SettingsText.HOME_PASSWORD_PLACEHOLDER)
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SettingsTheme.secondaryText(this.isAppDark()))
+        .maxLines(1)
+        .width('100%')
+
+      TextInput({ placeholder: SettingsText.HOME_PASSWORD_PLACEHOLDER, text: this.password })
+        .type(InputType.Password)
+        .height(42)
+        .width('100%')
+        .fontSize(14)
+        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+        .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
+        .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
+        .borderRadius(10)
+        .border({
+          width: 1,
+          color: SettingsTheme.borderColor(this.isAppDark()),
+          style: BorderStyle.Solid
+        })
+        .onChange((value: string) => {
+          this.password = value
+        })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private buildConnectionCard() {
+    Column({ space: 16 }) {
+      Column({ space: 4 }) {
+        Text(SettingsText.HOME_CONNECT_TITLE)
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+          .width('100%')
+        Text(SettingsText.HOME_CONNECT_SUBTITLE)
+          .fontSize(13)
+          .fontColor(SettingsTheme.mutedText(this.isAppDark()))
+          .lineHeight(20)
+          .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .width('100%')
+
+      this.homeTextField(SettingsText.HOME_HOST_PLACEHOLDER, this.host, (value: string) => {
+        this.host = value
+      })
+
+      Row({ space: 12 }) {
+        Column() {
+          this.homeTextField(SettingsText.HOME_PORT_PLACEHOLDER, this.port, (value: string) => {
+            this.port = value
+          })
+        }
+        .width(120)
+
+        Column() {
+          this.homeTextField(SettingsText.HOME_USERNAME_PLACEHOLDER, this.username, (value: string) => {
+            this.username = value
+          })
+        }
+        .layoutWeight(1)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
+
+      this.homePasswordField()
+
+      Button(SettingsText.HOME_CONNECT_BUTTON)
+        .type(ButtonType.Normal)
+        .height(42)
+        .width('100%')
+        .borderRadius(12)
+        .backgroundColor('#0A84FF')
+        .fontColor(Color.White)
+        .stateEffect(false)
+        .onClick(() => {
+          this.connectNative()
+        })
+    }
+    .width('100%')
+    .padding(20)
+    .alignItems(HorizontalAlign.Start)
+    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+    .borderRadius(18)
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark())
+    })
+  }
+
+  @Builder
+  private homeStatusLine(label: string, value: string, tone: SettingsStatusTone) {
+    Row() {
+      Text(label)
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+
+      SettingsStatusChip({
+        text: value,
+        tone: tone,
+        isDark: this.isAppDark()
+      })
+    }
+    .width('100%')
+    .height(42)
+    .padding({ left: 12, right: 10 })
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
+    .borderRadius(12)
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark())
+    })
+  }
+
+  @Builder
+  private buildHomeStatusPanel() {
+    Column({ space: 12 }) {
+      Column({ space: 4 }) {
+        Text(SettingsText.HOME_STATUS_TITLE)
+          .fontSize(17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+          .width('100%')
+        Text(SettingsText.HOME_STATUS_SUBTITLE)
+          .fontSize(12)
+          .fontColor(SettingsTheme.mutedText(this.isAppDark()))
+          .lineHeight(18)
+          .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .width('100%')
+
+      this.homeStatusLine(SettingsText.HOME_REMOTE_SERVICE_LABEL, this.homeXrdpStatusText(), this.homeXrdpStatusTone())
+      this.homeStatusLine(SettingsText.HOME_SCREEN_PERMISSION_LABEL, this.homeScreenStatusText(),
+        this.homeScreenStatusTone())
+      this.homeStatusLine(SettingsText.HOME_ACCESS_GATE_LABEL, this.homeAccessStatusText(), this.homeAccessStatusTone())
+      this.homeStatusLine(SettingsText.HOME_SHARED_DIR_LABEL, SettingsText.HOME_SHARED_DIR_READY, 'ok')
+    }
+    .width('100%')
+    .padding(18)
+    .alignItems(HorizontalAlign.Start)
+    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+    .borderRadius(18)
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark())
+    })
+  }
+
+  @Builder
+  private buildHomeFeedbackPanel() {
+    Column({ space: 12 }) {
+      Column({ space: 4 }) {
+        Text(SettingsText.HOME_FEEDBACK_TITLE)
+          .fontSize(17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
+          .width('100%')
+        Text(SettingsText.HOME_FEEDBACK_SUBTITLE)
+          .fontSize(12)
+          .fontColor(SettingsTheme.mutedText(this.isAppDark()))
+          .lineHeight(18)
+          .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .width('100%')
+
+      Text(this.homeFeedbackText())
+        .fontSize(13)
+        .fontColor(SettingsTheme.secondaryText(this.isAppDark()))
+        .lineHeight(20)
+        .width('100%')
+        .padding(12)
+        .backgroundColor(SettingsTheme.inputBackground(this.isAppDark()))
+        .borderRadius(12)
+        .border({
+          width: 1,
+          color: SettingsTheme.borderColor(this.isAppDark())
+        })
+    }
+    .width('100%')
+    .padding(18)
+    .alignItems(HorizontalAlign.Start)
+    .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
+    .borderRadius(18)
+    .border({
+      width: 1,
+      color: SettingsTheme.borderColor(this.isAppDark())
+    })
+  }
+
   @Builder
   private buildConnectPage() {
     Scroll() {
-      Column() {
-        Row() {
-          Text(SettingsText.HOME_TITLE)
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-            .lineHeight(26)
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
+      Column({ space: 16 }) {
+        this.buildHomeHeader()
 
-          Row({ space: 6 }) {
-            Image(SettingsResources.SETTINGS_ICON)
-              .width(18)
-              .height(18)
-              .fillColor(SettingsTheme.accentColor(this.isAppDark(), SettingsAccent.BLUE))
-              .draggable(false)
-
-            Text(SettingsText.SETTINGS_BUTTON)
-              .fontSize(14)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-              .maxLines(1)
+        Row({ space: 16 }) {
+          Column() {
+            this.buildConnectionCard()
           }
-            .width(86)
-            .height(40)
-            .alignItems(VerticalAlign.Center)
-            .justifyContent(FlexAlign.Center)
-            .borderRadius(SettingsTheme.CARD_RADIUS)
-            .backgroundColor(SettingsTheme.subtleButton(this.isAppDark(), this.settingsButtonHovered,
-              this.settingsButtonPressed))
-            .border({
-              width: 1,
-              color: SettingsTheme.borderColor(this.isAppDark())
-            })
-            .margin({ left: 12 })
-            .scale({
-              x: this.settingsButtonPressed ? 0.98 : 1,
-              y: this.settingsButtonPressed ? 0.98 : 1
-            })
-            .onHover((isHover: boolean) => {
-              this.setSettingsButtonHovered(isHover)
-            })
-            .onTouch((event: TouchEvent) => {
-              if (event.type === TouchType.Down) {
-                this.settingsButtonPressed = true
-                return
-              }
-              if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-                this.settingsButtonPressed = false
-              }
-            })
-            .onClick(() => {
-              this.settingsButtonPressed = false
-              this.refreshScreenRecordingPermissionState()
-              this.refreshXrdpServerDiagnostics()
-              this.showSettings = true
-            })
-        }
-          .alignItems(VerticalAlign.Center)
-          .width('100%')
-          .margin({ bottom: 18 })
+          .layoutWeight(1)
 
-        this.inputField(SettingsText.HOME_HOST_PLACEHOLDER, this.host, (value: string) => {
-          this.host = value
-        })
-        this.inputField(SettingsText.HOME_PORT_PLACEHOLDER, this.port, (value: string) => {
-          this.port = value
-        })
-        this.inputField(SettingsText.HOME_USERNAME_PLACEHOLDER, this.username, (value: string) => {
-          this.username = value
-        })
-        TextInput({ placeholder: SettingsText.HOME_PASSWORD_PLACEHOLDER, text: this.password })
-          .type(InputType.Password)
-          .height(44)
-          .width('100%')
-          .margin({ bottom: 12 })
-          .fontSize(14)
-          .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-          .placeholderColor(SettingsTheme.mutedText(this.isAppDark()))
-          .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-          .borderRadius(SettingsTheme.CARD_RADIUS)
-          .border({
-            width: 1,
-            color: SettingsTheme.borderColor(this.isAppDark()),
-            style: BorderStyle.Solid
-          })
-          .onChange((value: string) => {
-            this.password = value
-          })
-        Button(SettingsText.HOME_CONNECT_BUTTON)
-          .type(ButtonType.Normal)
-          .height(44)
-          .width('100%')
-          .borderRadius(SettingsTheme.BUTTON_RADIUS)
-          .backgroundColor('#0A84FF')
-          .fontColor(Color.White)
-          .stateEffect(false)
-          .onClick(() => {
-            this.connectNative()
-          })
+          Column({ space: 16 }) {
+            this.buildHomeStatusPanel()
+            this.buildHomeFeedbackPanel()
+          }
+          .width(330)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
       }
-      .padding(20)
+      .width('100%')
+      .padding(18)
     }
     .layoutWeight(1)
   }

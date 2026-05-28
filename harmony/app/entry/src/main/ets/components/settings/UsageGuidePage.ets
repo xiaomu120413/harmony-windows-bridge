@@ -52,8 +52,8 @@ export struct UsageGuidePage {
             isDark: this.isDark
           })
           SettingsInfoCard({
-            title: SettingsText.USAGE_REMOTE_FILES_TITLE,
-            body: SettingsText.USAGE_REMOTE_FILES_BODY,
+            title: SettingsText.REMOTE_FILES_FEATURE_TITLE,
+            body: SettingsText.REMOTE_FILES_FEATURE_DESC,
             isDark: this.isDark
           })
 

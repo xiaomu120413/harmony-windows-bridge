@@ -196,7 +196,7 @@ export struct RemoteControlSettingsPage {
     }
     const status = this.localXrdpServerRunning ? SettingsText.REMOTE_SERVER_RUNNING :
       SettingsText.REMOTE_SERVER_STOPPED
-    return `${status} · 端口 ${this.localXrdpServerPort}`
+    return `${status} / ${this.localXrdpServerPort}`
   }
 
   private xrdpServerActionText(): string {
@@ -582,33 +582,16 @@ export struct RemoteControlSettingsPage {
       })
 
       Scroll() {
-        Column() {
+        Column({ space: 14 }) {
           SettingsSectionTitle({
-            title: SettingsText.REMOTE_SERVER_SECTION,
-            subtitle: SettingsText.REMOTE_SERVER_SECTION_DESC,
+            title: SettingsText.REMOTE_CONTROL_TITLE,
+            subtitle: SettingsText.REMOTE_CONTROL_SUBTITLE,
             isDark: this.isDark
           })
+
           this.xrdpServerCard()
-
-          SettingsSectionTitle({
-            title: SettingsText.REMOTE_SCREEN_SECTION,
-            subtitle: SettingsText.REMOTE_SCREEN_SECTION_DESC,
-            isDark: this.isDark
-          })
           this.screenRecordingCard()
-
-          SettingsSectionTitle({
-            title: SettingsText.REMOTE_ACCESS_SECTION,
-            subtitle: SettingsText.REMOTE_ACCESS_SECTION_DESC,
-            isDark: this.isDark
-          })
           this.remoteAccessCard()
-
-          SettingsSectionTitle({
-            title: SettingsText.REMOTE_FILES_SECTION,
-            subtitle: SettingsText.REMOTE_FILES_SECTION_DESC,
-            isDark: this.isDark
-          })
           this.remoteFilesCard()
         }
         .alignItems(HorizontalAlign.Start)

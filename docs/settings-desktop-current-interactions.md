@@ -202,6 +202,15 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 2. 调用 `refreshScreenRecordingState()`。
 3. 调用 `refreshXrdpServerStatus()`。
 
+当前实现里建议展示顺序调整为：
+
+1. xrdp 服务
+2. 录屏权限
+3. 验证码门禁
+4. 远程文件
+
+原因：`startXrdpServerFromSettings()` 现在会通过 `ensureXrdpServerStarted('remote control settings button', false, true)` 立即请求录屏权限，录屏权限是启动被控服务的前置条件，所以视觉顺序也应先讲清楚权限，再讲访问门禁。
+
 ### xrdp 服务卡
 
 显示字段：
@@ -224,9 +233,10 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 1. 若 busy，直接返回。
 2. 设置 `localXrdpServerBusy = true`。
 3. 调用 `onStartXrdpServer()`。
-4. 成功：`applyXrdpServerStatus(status)`，并刷新录屏权限。
-5. 失败：刷新当前 xrdp 状态。
-6. finally：`localXrdpServerBusy = false`。
+4. 当前 `Index.startXrdpServerFromSettings()` 会调用 `ensureXrdpServerStarted('remote control settings button', false, true)`，这意味着点击启动会立即触发录屏权限请求，而不是只做静默检查。
+5. 成功：`applyXrdpServerStatus(status)`，并刷新录屏权限。
+6. 失败：刷新当前 xrdp 状态。
+7. finally：`localXrdpServerBusy = false`。
 
 ### 验证码门禁卡
 
@@ -242,7 +252,7 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 2. 本地立即更新 `localGateEnabled`。
 3. 调用 `onRemoteAccessCodeGateChange(enabled)`。
 4. 若返回了新的验证码，则更新 `localAccessCode`。
-5. 显示提示：切换后会重启或刷新 xrdp 生效（如果当前实现已经这样做）。
+5. 当前 `Index.setRemoteAccessCodeGateEnabled(enabled)` 会调用 `ensureXrdpServerStarted(..., true)`，即切换门禁后会按重启被控服务的路径生效。
 
 重新生成按钮：
 
