@@ -18,17 +18,9 @@ export interface NativeCommandResult {
 
 export interface NativeXrdpServerParams {
   appFilesDir?: string;
-  runtimeRoot?: string;
-  hnpRoot?: string;
-  libraryPath?: string;
-  libDir?: string;
-  modulePath?: string;
-  configPath?: string;
-  sharePath?: string;
   accessCode?: string;
   accessCodeGateEnabled?: boolean;
   restartIfRunning?: boolean;
-  port?: number | string;
 }
 
 export interface NativeXrdpServerResult extends NativeCommandResult {
@@ -41,34 +33,9 @@ export interface NativeXrdpServerResult extends NativeCommandResult {
   port: number;
 }
 
-export interface NativeXrdpDiagnosticsResult {
-  ok: boolean;
-  running: boolean;
-  activeMstscSession: boolean;
-  port: number;
-  sessionWidth: number;
-  sessionHeight: number;
-  sessionBpp: number;
-  backendEventCount: number;
-  inputEventCount: number;
-  state: string;
-  message: string;
-  lastBackendEvent: string;
-  lastDisconnectReason: string;
-  libraryPath: string;
-  backendLibraryPath: string;
-  runtimeRoot: string;
-  configPath: string;
-  modulePath: string;
-  sharePath: string;
-  logPath: string;
-  logs: string[];
-}
-
 declare const rdpNative: {
   connect(params: NativeConnectParams): NativeCommandResult;
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
-  getXrdpServerDiagnostics(): NativeXrdpDiagnosticsResult;
   releaseAllKeys(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
