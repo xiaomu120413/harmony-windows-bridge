@@ -6,13 +6,18 @@ import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
+import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
+import {
+  XrdpServerController,
+  XrdpServerDisplayMessages,
+  XrdpServerStartOptions,
+  XrdpServerStatus
+} from '../rdp/XrdpServerController'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAccent, SettingsAppearanceMode, SettingsResources, SettingsTheme } from '../components/settings/SettingsUi'
 import rdpNative, {
-  NativeCommandResult,
-  NativeXrdpServerParams,
-  NativeXrdpServerResult
+  NativeCommandResult
 } from 'libentry.so'
 
 @Entry
@@ -26,6 +31,12 @@ struct Index {
   private certPolicy: string = 'tofu'
   @State private remoteAccessCode: string = '000000'
   @State private remoteAccessCodeGateEnabled: boolean = false
+  @State private screenRecordingPermissionGranted: boolean = false
+  @State private xrdpServerRunning: boolean = false
+  @State private xrdpServerState: string = 'Stopped'
+  @State private xrdpServerPort: number = 3390
+  @State private xrdpServerMessage: string = ''
+  @State private xrdpServerBusy: boolean = false
   @State private showSession: boolean = false
   @State private showSettings: boolean = false
   @State private settingsButtonHovered: boolean = false
@@ -38,6 +49,7 @@ struct Index {
   private remoteAccessCodeInitialized: boolean = false
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
+  private xrdpServerController: XrdpServerController | null = null
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -57,7 +69,14 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerNativeCallbacks()
+    this.refreshScreenRecordingPermissionState()
+    this.refreshXrdpServerDiagnostics()
     this.ensureXrdpServerStarted('page appear')
+  }
+
+  onPageShow(): void {
+    this.refreshScreenRecordingPermissionState()
+    this.refreshXrdpServerDiagnostics()
   }
 
   aboutToDisappear(): void {
@@ -86,6 +105,27 @@ struct Index {
       this.permissionManager = new RdpPermissionManager(delegate)
     }
     return this.permissionManager
+  }
+
+  private getXrdpServerController(): XrdpServerController {
+    if (this.xrdpServerController === null) {
+      this.xrdpServerController = new XrdpServerController(
+        this.xrdpServerDisplayMessages(),
+        (line: string): void => this.appendLog(line),
+        (lines: string[]): void => this.appendNativeLogs(lines)
+      )
+    }
+    return this.xrdpServerController
+  }
+
+  private xrdpServerDisplayMessages(): XrdpServerDisplayMessages {
+    return {
+      active: SettingsText.REMOTE_SERVER_MESSAGE_ACTIVE,
+      listening: SettingsText.REMOTE_SERVER_MESSAGE_LISTENING,
+      stopped: SettingsText.REMOTE_SERVER_MESSAGE_STOPPED,
+      exited: SettingsText.REMOTE_SERVER_MESSAGE_EXITED,
+      failed: SettingsText.REMOTE_SERVER_MESSAGE_FAILED
+    }
   }
 
   private registerNativeCallbacks(): void {
@@ -165,6 +205,16 @@ struct Index {
     return context.filesDir
   }
 
+  private openRemoteFilesDirectoryFromSettings(): void {
+    RemoteFilesDirectory.openSharedDirectory(
+      this.getUiAbilityContext(),
+      (line: string): void => this.appendLog(line)
+    )
+      .catch((error: Error) => {
+        this.appendLog(`remote files directory open failed: ${JSON.stringify(error)}`)
+      })
+  }
+
   private handleNativePermissionRequest(requestIdText: string, label: string, trigger: string,
     ensurePermission: (trigger: string) => Promise<boolean>,
     completeRequest: (requestId: number, granted: boolean) => NativeCommandResult): void {
@@ -198,7 +248,74 @@ struct Index {
     return this.remoteAccessCode
   }
 
-  private xrdpParams(restartIfRunning: boolean = false): NativeXrdpServerParams {
+  private hasScreenRecordingPermission(): boolean {
+    return this.getPermissionManager().hasScreenRecordingPermission()
+  }
+
+  private refreshScreenRecordingPermissionState(): boolean {
+    this.screenRecordingPermissionGranted = this.hasScreenRecordingPermission()
+    return this.screenRecordingPermissionGranted
+  }
+
+  private requestScreenRecordingPermissionFromSettings(): Promise<boolean> {
+    return this.getPermissionManager().requestScreenRecordingPermission('remote control settings')
+      .then((granted: boolean) => {
+        const allowed = granted || this.refreshScreenRecordingPermissionState()
+        this.screenRecordingPermissionGranted = allowed
+        if (!allowed) {
+          return false
+        }
+        return this.ensureXrdpServerStarted('screen recording permission granted')
+          .then((_status: XrdpServerStatus) => {
+            return this.refreshScreenRecordingPermissionState()
+          })
+      })
+      .catch((error: Error) => {
+        this.appendLog(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
+        return this.refreshScreenRecordingPermissionState()
+      })
+  }
+
+  private currentXrdpServerStatus(): XrdpServerStatus {
+    return {
+      running: this.xrdpServerRunning,
+      state: this.xrdpServerState,
+      port: this.xrdpServerPort,
+      message: this.xrdpServerMessage
+    }
+  }
+
+  private applyXrdpServerStatus(status: XrdpServerStatus): XrdpServerStatus {
+    this.xrdpServerRunning = status.running
+    this.xrdpServerState = status.state
+    this.xrdpServerPort = status.port
+    this.xrdpServerMessage = status.message
+    return status
+  }
+
+  private refreshXrdpServerDiagnostics(): XrdpServerStatus {
+    return this.applyXrdpServerStatus(this.getXrdpServerController().diagnostics())
+  }
+
+  private startXrdpServerFromSettings(): Promise<XrdpServerStatus> {
+    return this.ensureXrdpServerStarted('remote control settings button')
+  }
+
+  private setRemoteAccessCodeGateFromSettings(enabled: boolean): string {
+    this.setRemoteAccessCodeGateEnabled(enabled)
+    return this.remoteAccessCode
+  }
+
+  private regenerateRemoteAccessCodeFromSettings(): string {
+    this.remoteAccessCode = this.generateRemoteAccessCode()
+    this.remoteAccessCodeInitialized = true
+    if (this.remoteAccessCodeGateEnabled) {
+      this.ensureXrdpServerStarted('access code regenerated', true)
+    }
+    return this.remoteAccessCode
+  }
+
+  private xrdpServerStartOptions(restartIfRunning: boolean = false): XrdpServerStartOptions {
     return {
       appFilesDir: this.getAppFilesDir(),
       accessCode: this.remoteAccessCodeGateEnabled ? this.ensureRemoteAccessCode() : '',
@@ -207,38 +324,35 @@ struct Index {
     }
   }
 
-  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false): void {
+  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false): Promise<XrdpServerStatus> {
     if (this.xrdpServerStartRequested && !restartIfRunning) {
-      return
+      return Promise.resolve(this.currentXrdpServerStatus())
     }
     this.xrdpServerStartRequested = true
-    this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
+    this.xrdpServerBusy = true
+    return this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
       .then((granted: boolean) => {
-        if (!granted) {
-          this.xrdpServerStartRequested = false
+        const allowed = granted || this.refreshScreenRecordingPermissionState()
+        this.screenRecordingPermissionGranted = allowed
+        if (!allowed) {
           this.appendLog(`xrdp start skipped: screen recording permission denied: ${trigger}`)
-          return
+          return this.refreshXrdpServerDiagnostics()
         }
-        this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
+        return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
       })
       .catch((error: Error) => {
-        this.xrdpServerStartRequested = false
         this.appendLog(`xrdp permission check failed: ${JSON.stringify(error)}`)
+        return this.refreshXrdpServerDiagnostics()
+      })
+      .finally(() => {
+        this.xrdpServerStartRequested = false
+        this.xrdpServerBusy = false
       })
   }
 
-  private startXrdpServerAfterPermissions(trigger: string, restartIfRunning: boolean): void {
-    try {
-      const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams(restartIfRunning))
-      this.appendLog(`${result.message}: ${trigger}`)
-      this.appendNativeLogs(result.logs)
-      if (!result.ok) {
-        this.xrdpServerStartRequested = false
-      }
-    } catch (error) {
-      this.xrdpServerStartRequested = false
-      this.appendLog(`xrdp ensure start failed: ${JSON.stringify(error)}`)
-    }
+  private startXrdpServerAfterPermissions(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
+    const status = this.getXrdpServerController().start(this.xrdpServerStartOptions(restartIfRunning), trigger)
+    return this.applyXrdpServerStatus(status)
   }
 
   private setRemoteAccessCodeGateEnabled(enabled: boolean): void {
@@ -422,46 +536,14 @@ struct Index {
             })
             .onClick(() => {
               this.settingsButtonPressed = false
+              this.refreshScreenRecordingPermissionState()
+              this.refreshXrdpServerDiagnostics()
               this.showSettings = true
             })
         }
           .alignItems(VerticalAlign.Center)
           .width('100%')
           .margin({ bottom: 18 })
-
-        Row() {
-          Column() {
-            Text('xrdp 验证码门禁')
-              .fontSize(15)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(SettingsTheme.primaryText(this.isAppDark()))
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-            Text(this.remoteAccessCodeGateEnabled ? `验证码 ${this.remoteAccessCode}` : '默认关闭')
-              .fontSize(12)
-              .fontColor(SettingsTheme.mutedText(this.isAppDark()))
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-          }
-          .layoutWeight(1)
-
-          Toggle({ type: ToggleType.Switch, isOn: this.remoteAccessCodeGateEnabled })
-            .onChange((enabled: boolean) => {
-              this.setRemoteAccessCodeGateEnabled(enabled)
-            })
-        }
-          .height(52)
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          .padding({ left: 12, right: 12 })
-          .margin({ bottom: 12 })
-          .borderRadius(SettingsTheme.CARD_RADIUS)
-          .backgroundColor(SettingsTheme.cardBackground(this.isAppDark()))
-          .border({
-            width: 1,
-            color: SettingsTheme.borderColor(this.isAppDark()),
-            style: BorderStyle.Solid
-          })
 
         this.inputField(SettingsText.HOME_HOST_PLACEHOLDER, this.host, (value: string) => {
           this.host = value
@@ -566,6 +648,21 @@ struct Index {
         this.buildSessionPage()
       } else if (this.showSettings) {
         SettingsPage({
+          remoteAccessCode: this.remoteAccessCode,
+          remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+          screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+          xrdpServerRunning: this.xrdpServerRunning,
+          xrdpServerState: this.xrdpServerState,
+          xrdpServerPort: this.xrdpServerPort,
+          xrdpServerMessage: this.xrdpServerMessage,
+          xrdpServerBusy: this.xrdpServerBusy,
+          onRemoteAccessCodeGateChange: (enabled: boolean): string => this.setRemoteAccessCodeGateFromSettings(enabled),
+          onRemoteAccessCodeRegenerate: (): string => this.regenerateRemoteAccessCodeFromSettings(),
+          onRequestScreenRecordingPermission: (): Promise<boolean> => this.requestScreenRecordingPermissionFromSettings(),
+          onRefreshScreenRecordingPermission: (): boolean => this.refreshScreenRecordingPermissionState(),
+          onRefreshXrdpServerStatus: (): XrdpServerStatus => this.refreshXrdpServerDiagnostics(),
+          onStartXrdpServer: (): Promise<XrdpServerStatus> => this.startXrdpServerFromSettings(),
+          onOpenRemoteFilesDirectory: (): void => this.openRemoteFilesDirectoryFromSettings(),
           onClose: () => {
             this.showSettings = false
           }

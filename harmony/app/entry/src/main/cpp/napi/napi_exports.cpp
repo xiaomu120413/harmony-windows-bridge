@@ -150,6 +150,12 @@ napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
     return MakeXrdpServerResult(env, rdp_bridge::StartXrdpServer(params));
 }
 
+napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return MakeXrdpServerResult(env, rdp_bridge::GetXrdpServerDiagnostics());
+}
+
 napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
 {
     (void)info;
@@ -314,6 +320,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
     napi_property_descriptor desc[] = {
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

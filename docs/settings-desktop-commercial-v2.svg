@@ -1,0 +1,280 @@
+<svg width="1900" height="1500" viewBox="0 0 1900 1500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .font { font-family: "Segoe UI", Arial, sans-serif; }
+    .headline { font-size: 30px; font-weight: 700; fill: #101828; }
+    .caption { font-size: 15px; fill: #667085; }
+    .screenTitle { font-size: 22px; font-weight: 700; fill: #101828; }
+    .title { font-size: 18px; font-weight: 700; fill: #111827; }
+    .section { font-size: 13px; font-weight: 700; fill: #475467; }
+    .label { font-size: 12px; fill: #667085; }
+    .body { font-size: 13px; fill: #475467; }
+    .rowTitle { font-size: 13px; font-weight: 700; fill: #111827; }
+    .rowSub { font-size: 12px; fill: #667085; }
+    .value { font-size: 13px; font-weight: 700; fill: #111827; }
+    .chip { font-size: 11px; font-weight: 700; }
+    .mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; fill: #475467; }
+  </style>
+
+  <rect width="1900" height="1500" fill="#F3F5F8"/>
+  <text x="950" y="58" text-anchor="middle" class="font headline">Commercial Desktop Settings V2</text>
+  <text x="950" y="92" text-anchor="middle" class="font caption">Productized desktop layout: persistent navigation, compact status system, operational controls, diagnostics, and growth-ready settings taxonomy.</text>
+
+  <g transform="translate(92 130)">
+    <rect width="1716" height="88" rx="18" fill="#FFFFFF" stroke="#E4E7EC"/>
+    <g transform="translate(28 24)">
+      <rect width="40" height="40" rx="10" fill="#0A84FF"/>
+      <path d="M13 24L20 14L27 24H22V29H18V24H13Z" fill="white"/>
+      <text x="56" y="17" class="font" font-size="18" font-weight="700" fill="#101828">MuHub Desktop</text>
+      <text x="56" y="38" class="font label">Remote desktop control and diagnostics</text>
+    </g>
+    <g transform="translate(1150 24)">
+      <rect width="126" height="40" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="63" y="25" text-anchor="middle" class="font rowTitle">Test Port</text>
+      <rect x="138" width="126" height="40" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="201" y="25" text-anchor="middle" class="font rowTitle">Logs</text>
+      <rect x="276" width="132" height="40" rx="10" fill="#FFFFFF" stroke="#D0D5DD"/>
+      <circle cx="300" cy="20" r="7" stroke="#0A84FF" stroke-width="2"/>
+      <path d="M300 8V12M300 28V32M288 20H292M308 20H312" stroke="#0A84FF" stroke-width="1.8" stroke-linecap="round"/>
+      <text x="342" y="25" text-anchor="middle" class="font rowTitle">Settings</text>
+      <circle cx="397" cy="8" r="4" fill="#16A34A"/>
+    </g>
+  </g>
+
+  <g transform="translate(92 252)">
+    <rect width="1716" height="1050" rx="24" fill="#111827"/>
+    <rect x="14" y="14" width="1688" height="1022" rx="18" fill="#F6F7F9"/>
+
+    <g transform="translate(34 34)">
+      <rect width="288" height="954" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <text x="22" y="36" class="font screenTitle">Settings</text>
+      <text x="22" y="60" class="font label">System, security, access, logs</text>
+
+      <g transform="translate(22 84)">
+        <rect width="244" height="38" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="19" cy="19" r="7" stroke="#98A2B3" stroke-width="2"/>
+        <path d="M24 24L29 29" stroke="#98A2B3" stroke-width="2" stroke-linecap="round"/>
+        <text x="42" y="24" class="font label">Search settings</text>
+      </g>
+
+      <text x="22" y="154" class="font section">GENERAL</text>
+      <g transform="translate(22 170)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Basic</text>
+        <text x="224" y="26" text-anchor="end" class="font rowSub">System</text>
+      </g>
+      <g transform="translate(22 218)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Connection Defaults</text>
+      </g>
+
+      <text x="22" y="292" class="font section">REMOTE ACCESS</text>
+      <g transform="translate(22 308)">
+        <rect width="244" height="46" rx="10" fill="#EAF3FF"/>
+        <text x="14" y="28" class="font rowTitle" fill="#0A84FF">Controlled Service</text>
+        <circle cx="224" cy="23" r="5" fill="#16A34A"/>
+      </g>
+      <g transform="translate(22 360)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Access Gate</text>
+        <text x="224" y="26" text-anchor="end" class="font rowSub">Off</text>
+      </g>
+      <g transform="translate(22 408)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Permissions</text>
+        <text x="224" y="26" text-anchor="end" class="font rowSub">OK</text>
+      </g>
+      <g transform="translate(22 456)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">File Sharing</text>
+      </g>
+
+      <text x="22" y="530" class="font section">OPERATIONS</text>
+      <g transform="translate(22 546)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Diagnostics</text>
+        <text x="224" y="26" text-anchor="end" class="font rowSub">2 warnings</text>
+      </g>
+      <g transform="translate(22 594)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Logs</text>
+      </g>
+      <g transform="translate(22 642)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Updates</text>
+      </g>
+
+      <text x="22" y="716" class="font section">ABOUT</text>
+      <g transform="translate(22 732)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Help Center</text>
+      </g>
+      <g transform="translate(22 780)">
+        <rect width="244" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="26" class="font rowTitle">Project and Licenses</text>
+      </g>
+
+      <g transform="translate(22 864)">
+        <rect width="244" height="66" rx="12" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <text x="14" y="24" class="font rowTitle">Device status</text>
+        <circle cx="16" cy="46" r="4" fill="#16A34A"/>
+        <text x="28" y="50" class="font rowSub">Ready for remote access</text>
+      </g>
+    </g>
+
+    <g transform="translate(350 34)">
+      <rect width="1304" height="112" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <g transform="translate(28 28)">
+        <text x="0" y="0" class="font screenTitle">Controlled Service</text>
+        <text x="0" y="26" class="font body">Manage xrdp service, gate policy, required permissions, and operational health for this device.</text>
+      </g>
+      <g transform="translate(790 30)">
+        <rect width="116" height="28" rx="14" fill="#EAF8EF"/>
+        <circle cx="18" cy="14" r="4" fill="#16A34A"/>
+        <text x="34" y="18" class="font chip" fill="#15803D">Listening</text>
+        <rect x="128" width="94" height="28" rx="14" fill="#FFF4D6"/>
+        <text x="175" y="18" text-anchor="middle" class="font chip" fill="#B45309">Gate off</text>
+        <rect x="234" width="110" height="28" rx="14" fill="#E8FAFC"/>
+        <text x="289" y="18" text-anchor="middle" class="font chip" fill="#0891B2">Screen OK</text>
+        <rect x="356" width="118" height="28" rx="14" fill="#F2F4F7"/>
+        <text x="415" y="18" text-anchor="middle" class="font chip" fill="#475467">No session</text>
+      </g>
+      <g transform="translate(1034 70)">
+        <rect width="118" height="32" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+        <text x="59" y="21" text-anchor="middle" class="font rowTitle">Refresh</text>
+        <rect x="130" width="118" height="32" rx="10" fill="#0A84FF"/>
+        <text x="189" y="21" text-anchor="middle" class="font rowTitle" fill="#FFFFFF">Restart</text>
+      </g>
+    </g>
+
+    <g transform="translate(350 176)">
+      <rect width="416" height="262" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <text x="22" y="34" class="font title">Service Runtime</text>
+      <text x="22" y="58" class="font body">Operational state and endpoint identity.</text>
+      <line x1="22" y1="82" x2="394" y2="82" stroke="#E4E7EC"/>
+      <text x="22" y="112" class="font label">State</text>
+      <text x="172" y="112" class="font value">Listening</text>
+      <text x="22" y="144" class="font label">Port</text>
+      <text x="172" y="144" class="font value">3390</text>
+      <text x="22" y="176" class="font label">Session</text>
+      <text x="172" y="176" class="font value">No active session</text>
+      <text x="22" y="208" class="font label">Local address</text>
+      <text x="172" y="208" class="font value">192.168.1.24</text>
+      <rect x="22" y="226" width="372" height="18" rx="9" fill="#EAF8EF"/>
+    </g>
+
+    <g transform="translate(790 176)">
+      <rect width="416" height="262" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <text x="22" y="34" class="font title">Access Gate</text>
+      <text x="22" y="58" class="font body">Control whether Windows clients need a code.</text>
+      <rect x="352" y="26" width="42" height="24" rx="12" fill="#D0D5DD"/>
+      <circle cx="364" cy="38" r="9" fill="#FFFFFF"/>
+      <line x1="22" y1="82" x2="394" y2="82" stroke="#E4E7EC"/>
+      <text x="22" y="112" class="font label">Current code</text>
+      <text x="172" y="112" class="font value">Disabled</text>
+      <text x="22" y="144" class="font label">Policy</text>
+      <text x="172" y="144" class="font value">Allow direct connection</text>
+      <rect x="22" y="176" width="126" height="34" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="85" y="198" text-anchor="middle" class="font rowTitle">Regenerate</text>
+      <rect x="160" y="176" width="146" height="34" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="233" y="198" text-anchor="middle" class="font rowTitle">Copy Code</text>
+      <rect x="22" y="226" width="372" height="18" rx="9" fill="#FFF4D6"/>
+    </g>
+
+    <g transform="translate(1230 176)">
+      <rect width="424" height="262" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <text x="22" y="34" class="font title">Permissions</text>
+      <text x="22" y="58" class="font body">Required capabilities for controlled mode.</text>
+      <g transform="translate(22 84)">
+        <rect width="380" height="44" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="20" cy="22" r="5" fill="#16A34A"/>
+        <text x="38" y="27" class="font rowTitle">Screen recording</text>
+        <text x="360" y="27" text-anchor="end" class="font rowSub">Granted</text>
+      </g>
+      <g transform="translate(22 138)">
+        <rect width="380" height="44" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="20" cy="22" r="5" fill="#16A34A"/>
+        <text x="38" y="27" class="font rowTitle">Pasteboard</text>
+        <text x="360" y="27" text-anchor="end" class="font rowSub">Ask on use</text>
+      </g>
+      <g transform="translate(22 192)">
+        <rect width="380" height="44" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="20" cy="22" r="5" fill="#F59E0B"/>
+        <text x="38" y="27" class="font rowTitle">Microphone</text>
+        <text x="360" y="27" text-anchor="end" class="font rowSub">Optional</text>
+      </g>
+    </g>
+
+    <g transform="translate(350 466)">
+      <rect width="856" height="236" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <text x="22" y="34" class="font title">Diagnostics</text>
+      <text x="22" y="58" class="font body">Show actionable health checks instead of raw text only.</text>
+
+      <g transform="translate(22 86)">
+        <rect width="390" height="44" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="20" cy="22" r="5" fill="#16A34A"/>
+        <text x="38" y="27" class="font rowTitle">Service process</text>
+        <text x="370" y="27" text-anchor="end" class="font rowSub">Running</text>
+      </g>
+      <g transform="translate(436 86)">
+        <rect width="398" height="44" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="20" cy="22" r="5" fill="#16A34A"/>
+        <text x="38" y="27" class="font rowTitle">TCP listener</text>
+        <text x="378" y="27" text-anchor="end" class="font rowSub">0.0.0.0:3390</text>
+      </g>
+      <g transform="translate(22 140)">
+        <rect width="390" height="44" rx="10" fill="#FFF8E8" stroke="#F5D897"/>
+        <circle cx="20" cy="22" r="5" fill="#F59E0B"/>
+        <text x="38" y="27" class="font rowTitle">Windows firewall hint</text>
+        <text x="370" y="27" text-anchor="end" class="font rowSub">User action</text>
+      </g>
+      <g transform="translate(436 140)">
+        <rect width="398" height="44" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+        <circle cx="20" cy="22" r="5" fill="#16A34A"/>
+        <text x="38" y="27" class="font rowTitle">Shared folder</text>
+        <text x="378" y="27" text-anchor="end" class="font rowSub">Ready</text>
+      </g>
+    </g>
+
+    <g transform="translate(1230 466)">
+      <rect width="424" height="236" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <text x="22" y="34" class="font title">File Sharing</text>
+      <text x="22" y="58" class="font body">Current fixed directory, with future extensibility.</text>
+      <text x="22" y="94" class="font label">Remote path</text>
+      <rect x="22" y="106" width="380" height="36" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+      <text x="38" y="129" class="font mono">\\tsclient\\Downloads</text>
+      <text x="22" y="170" class="font label">Local directory</text>
+      <rect x="22" y="182" width="260" height="34" rx="10" fill="#F8FAFC" stroke="#E4E7EC"/>
+      <text x="38" y="204" class="font rowSub">Downloads/com.muhub.desktop</text>
+      <rect x="292" y="182" width="110" height="34" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <text x="347" y="204" text-anchor="middle" class="font rowTitle">Open</text>
+    </g>
+
+    <g transform="translate(350 732)">
+      <rect width="1304" height="256" rx="16" fill="#FFFFFF" stroke="#E4E7EC"/>
+      <g transform="translate(22 28)">
+        <text x="0" y="0" class="font title">Activity and Logs</text>
+        <text x="0" y="24" class="font body">For commercial support, logs should be visible, filterable, and exportable.</text>
+        <g transform="translate(990 -8)">
+          <rect width="94" height="32" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+          <text x="47" y="21" text-anchor="middle" class="font rowTitle">Copy</text>
+          <rect x="106" width="118" height="32" rx="10" fill="#F8FAFC" stroke="#D0D5DD"/>
+          <text x="165" y="21" text-anchor="middle" class="font rowTitle">Export</text>
+        </g>
+      </g>
+
+      <g transform="translate(22 76)">
+        <rect width="1260" height="150" rx="12" fill="#0F1720"/>
+        <text x="18" y="30" class="font" font-size="12" fill="#9CA3AF">12:03:11  INFO  xrdp service is listening on 0.0.0.0:3390</text>
+        <text x="18" y="58" class="font" font-size="12" fill="#D1D5DB">12:03:18  INFO  screen recording permission confirmed</text>
+        <text x="18" y="86" class="font" font-size="12" fill="#FCD34D">12:03:21  WARN  access gate is disabled; remote clients can connect directly</text>
+        <text x="18" y="114" class="font" font-size="12" fill="#D1D5DB">12:03:24  INFO  shared folder prepared: Downloads/com.muhub.desktop</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(92 1340)">
+    <rect width="1716" height="88" rx="18" fill="#FFFFFF" stroke="#E4E7EC"/>
+    <text x="28" y="34" class="font title">Implementation notes</text>
+    <text x="28" y="61" class="font body">Use this V2 as the commercial desktop target: quieter surfaces, denser rows, status chips, grouped controls, diagnostics, and exportable logs. Chinese copy can replace these labels during implementation.</text>
+  </g>
+</svg>

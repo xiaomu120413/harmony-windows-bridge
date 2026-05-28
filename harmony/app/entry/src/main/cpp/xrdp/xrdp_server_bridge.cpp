@@ -120,7 +120,7 @@ XrdpServerDiagnostics SnapshotXrdpDiagnosticsLocked(const XrdpServerState& state
     XrdpServerDiagnostics diagnostics;
     diagnostics.running = state.running.load();
     diagnostics.activeMstscSession = state.activeMstscSession;
-    diagnostics.port = state.port;
+    diagnostics.port = state.port == 0 ? kDefaultPort : state.port;
     diagnostics.sessionWidth = state.sessionWidth;
     diagnostics.sessionHeight = state.sessionHeight;
     diagnostics.sessionBpp = state.sessionBpp;
@@ -402,6 +402,25 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
     }
     EmitHilogInfo(result.message);
+    return result;
+}
+
+XrdpServerCommandResult GetXrdpServerDiagnostics()
+{
+    XrdpServerCommandResult result;
+    std::lock_guard<std::mutex> lock(ServerState().mutex);
+    const XrdpServerDiagnostics diagnostics = SnapshotXrdpDiagnosticsLocked(ServerState());
+    result.ok = diagnostics.running;
+    result.state = diagnostics.state;
+    result.message = diagnostics.message;
+    result.logs = diagnostics.logs;
+    result.libraryPath = diagnostics.libraryPath;
+    result.runtimeRoot = diagnostics.runtimeRoot;
+    result.configPath = diagnostics.configPath;
+    result.modulePath = diagnostics.modulePath;
+    result.logPath = diagnostics.logPath;
+    result.activeMstscSession = diagnostics.activeMstscSession;
+    result.port = diagnostics.port;
     return result;
 }
 

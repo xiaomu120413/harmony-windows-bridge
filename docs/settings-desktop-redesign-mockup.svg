@@ -1,0 +1,181 @@
+<svg width="1800" height="1180" viewBox="0 0 1800 1180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .font { font-family: "Segoe UI", Arial, sans-serif; }
+    .caption { font-size: 14px; fill: #667085; }
+    .small { font-size: 12px; fill: #667085; }
+    .title { font-size: 24px; font-weight: 700; fill: #111827; }
+    .h2 { font-size: 16px; font-weight: 700; fill: #344054; }
+    .rowTitle { font-size: 14px; font-weight: 700; fill: #111827; }
+    .rowDesc { font-size: 12px; fill: #667085; }
+    .chipText { font-size: 11px; font-weight: 700; }
+  </style>
+
+  <rect width="1800" height="1180" fill="#F3F5F8"/>
+  <text x="900" y="62" text-anchor="middle" class="font" font-size="30" font-weight="700" fill="#101828">Desktop-first Settings Redesign</text>
+  <text x="900" y="96" text-anchor="middle" class="font" font-size="16" fill="#667085">A quiet desktop control surface: top toolbar entry, persistent settings navigation, wide two-column detail panels.</text>
+
+  <g transform="translate(110 142)">
+    <rect width="1580" height="420" rx="26" fill="#111827"/>
+    <rect x="14" y="14" width="1552" height="392" rx="18" fill="#F6F7F9"/>
+
+    <g transform="translate(42 44)">
+      <text x="0" y="0" class="font" font-size="22" font-weight="700" fill="#111827">Home workspace</text>
+      <text x="0" y="25" class="font caption">Settings is a toolbar action, not a visual card inside the form.</text>
+
+      <g transform="translate(1180 -14)">
+        <rect width="118" height="40" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <circle cx="24" cy="20" r="7" stroke="#0A84FF" stroke-width="2"/>
+        <path d="M24 8V12M24 28V32M12 20H16M32 20H36M15 11L18 14M30 26L33 29M33 11L30 14M18 26L15 29" stroke="#0A84FF" stroke-width="1.8" stroke-linecap="round"/>
+        <text x="47" y="25" class="font" font-size="14" font-weight="700" fill="#111827">Settings</text>
+        <circle cx="106" cy="8" r="4" fill="#16A34A"/>
+      </g>
+    </g>
+
+    <g transform="translate(42 104)">
+      <rect width="840" height="250" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <text x="24" y="38" class="font h2">Connection</text>
+      <text x="24" y="62" class="font small">The main page stays focused on connecting. Diagnostics move into settings.</text>
+
+      <g transform="translate(24 88)">
+        <rect width="372" height="44" rx="9" fill="#F9FAFB" stroke="#E5E7EB"/>
+        <text x="14" y="28" class="font small">Windows host</text>
+        <rect x="396" width="160" height="44" rx="9" fill="#F9FAFB" stroke="#E5E7EB"/>
+        <text x="410" y="28" class="font small">Port</text>
+        <rect x="580" width="212" height="44" rx="9" fill="#F9FAFB" stroke="#E5E7EB"/>
+        <text x="594" y="28" class="font small">Username</text>
+      </g>
+
+      <g transform="translate(24 148)">
+        <rect width="556" height="44" rx="9" fill="#F9FAFB" stroke="#E5E7EB"/>
+        <text x="14" y="28" class="font small">Password</text>
+        <rect x="604" width="188" height="44" rx="10" fill="#0A84FF"/>
+        <text x="698" y="28" text-anchor="middle" class="font" font-size="14" font-weight="700" fill="#FFFFFF">Connect</text>
+      </g>
+    </g>
+
+    <g transform="translate(922 104)">
+      <rect width="586" height="250" rx="14" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <text x="24" y="38" class="font h2">Runtime overview</text>
+      <text x="24" y="62" class="font small">A compact summary can remain visible without turning settings into a card.</text>
+
+      <g transform="translate(24 90)">
+        <rect width="538" height="44" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <circle cx="22" cy="22" r="5" fill="#16A34A"/>
+        <text x="42" y="27" class="font rowTitle">xrdp service</text>
+        <text x="512" y="27" text-anchor="end" class="font rowDesc">Ready on 3390</text>
+      </g>
+      <g transform="translate(24 144)">
+        <rect width="538" height="44" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <circle cx="22" cy="22" r="5" fill="#F59E0B"/>
+        <text x="42" y="27" class="font rowTitle">Access gate</text>
+        <text x="512" y="27" text-anchor="end" class="font rowDesc">Off by default</text>
+      </g>
+      <g transform="translate(24 198)">
+        <rect width="538" height="28" rx="9" fill="#FFFFFF" stroke="#D0D5DD" stroke-dasharray="5 5"/>
+        <text x="14" y="19" class="font small">Reserved: test port, logs, local device identity, quick diagnostics</text>
+      </g>
+    </g>
+
+    <text x="790" y="454" text-anchor="middle" class="font" font-size="14" font-weight="700" fill="#344054">Desktop home: settings is a top toolbar action with a tiny status dot</text>
+  </g>
+
+  <g transform="translate(110 650)">
+    <rect width="1580" height="420" rx="26" fill="#111827"/>
+    <rect x="14" y="14" width="1552" height="392" rx="18" fill="#F6F7F9"/>
+
+    <g transform="translate(34 34)">
+      <rect width="278" height="324" rx="16" fill="#FFFFFF" stroke="#E7EAF0"/>
+      <text x="20" y="35" class="font" font-size="22" font-weight="700" fill="#111827">Settings</text>
+      <text x="20" y="58" class="font small">Search and categories</text>
+
+      <g transform="translate(20 78)">
+        <rect width="238" height="38" rx="10" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <circle cx="20" cy="19" r="7" stroke="#98A2B3" stroke-width="2"/>
+        <path d="M25 24L30 29" stroke="#98A2B3" stroke-width="2" stroke-linecap="round"/>
+        <text x="42" y="24" class="font small">Search settings</text>
+      </g>
+
+      <g transform="translate(20 136)">
+        <rect width="238" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="27" class="font rowTitle">Basic</text>
+        <text x="218" y="27" text-anchor="end" class="font rowDesc">System</text>
+      </g>
+      <g transform="translate(20 186)">
+        <rect width="238" height="42" rx="10" fill="#EAF3FF"/>
+        <text x="14" y="27" class="font rowTitle" fill="#0A84FF">Remote Control</text>
+        <text x="218" y="27" text-anchor="end" class="font rowDesc" fill="#0A84FF">Ready</text>
+      </g>
+      <g transform="translate(20 236)">
+        <rect width="238" height="42" rx="10" fill="#F8FAFC"/>
+        <text x="14" y="27" class="font rowTitle">Help and Project</text>
+      </g>
+      <g transform="translate(20 292)">
+        <text x="0" y="0" class="font small">Reserved groups</text>
+        <text x="0" y="23" class="font rowDesc">Display, Input, Security, Files</text>
+      </g>
+    </g>
+
+    <g transform="translate(342 34)">
+      <rect width="1188" height="324" rx="16" fill="#FFFFFF" stroke="#E7EAF0"/>
+
+      <g transform="translate(28 28)">
+        <text x="0" y="0" class="font title">Remote Control</text>
+        <text x="0" y="25" class="font caption">Desktop detail area uses cards for functional groups, not one huge vertical list.</text>
+
+        <g transform="translate(868 -6)">
+          <rect width="110" height="28" rx="14" fill="#EAF8EF"/>
+          <circle cx="18" cy="14" r="4" fill="#16A34A"/>
+          <text x="34" y="18" class="font chipText" fill="#15803D">Service ready</text>
+          <rect x="122" width="92" height="28" rx="14" fill="#FFF4D6"/>
+          <text x="168" y="18" text-anchor="middle" class="font chipText" fill="#B45309">Gate off</text>
+        </g>
+      </g>
+
+      <g transform="translate(28 82)">
+        <rect width="360" height="188" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font h2">Service</text>
+        <text x="18" y="58" class="font rowTitle">Local xrdp port</text>
+        <text x="18" y="80" class="font rowDesc">3390, listening for Windows RDP</text>
+        <rect x="18" y="108" width="110" height="32" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <text x="73" y="129" text-anchor="middle" class="font small" fill="#111827">Refresh</text>
+        <rect x="142" y="108" width="112" height="32" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <text x="198" y="129" text-anchor="middle" class="font small" fill="#111827">Restart</text>
+        <rect x="18" y="154" width="322" height="18" rx="9" fill="#EAF8EF"/>
+      </g>
+
+      <g transform="translate(414 82)">
+        <rect width="360" height="188" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font h2">Access gate</text>
+        <text x="18" y="58" class="font rowTitle">Connection code</text>
+        <text x="18" y="80" class="font rowDesc">Require code before accepting access</text>
+        <rect x="298" y="28" width="42" height="24" rx="12" fill="#D0D5DD"/>
+        <circle cx="310" cy="40" r="9" fill="#FFFFFF"/>
+        <line x1="18" y1="106" x2="340" y2="106" stroke="#E5E7EB"/>
+        <text x="18" y="134" class="font small">Current code</text>
+        <text x="132" y="135" class="font rowTitle">Disabled</text>
+        <rect x="232" y="116" width="108" height="32" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+        <text x="286" y="137" text-anchor="middle" class="font small" fill="#111827">Regenerate</text>
+      </g>
+
+      <g transform="translate(800 82)">
+        <rect width="332" height="188" rx="14" fill="#F8FAFC" stroke="#E7EAF0"/>
+        <text x="18" y="32" class="font h2">Permissions and files</text>
+        <g transform="translate(18 54)">
+          <rect width="296" height="42" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="14" y="26" class="font rowTitle">Screen recording</text>
+          <text x="276" y="26" text-anchor="end" class="font rowDesc">Granted</text>
+        </g>
+        <g transform="translate(18 106)">
+          <rect width="296" height="42" rx="10" fill="#FFFFFF" stroke="#E5E7EB"/>
+          <text x="14" y="26" class="font rowTitle">Downloads share</text>
+          <text x="276" y="26" text-anchor="end" class="font rowDesc">Open</text>
+        </g>
+        <g transform="translate(18 160)">
+          <rect width="296" height="18" rx="9" fill="#FFFFFF" stroke="#D0D5DD" stroke-dasharray="5 5"/>
+        </g>
+      </g>
+    </g>
+
+    <text x="790" y="454" text-anchor="middle" class="font" font-size="14" font-weight="700" fill="#344054">Desktop settings: persistent left navigation plus wide functional panels</text>
+  </g>
+</svg>
