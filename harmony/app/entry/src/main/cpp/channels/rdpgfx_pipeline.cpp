@@ -270,7 +270,7 @@ BOOL OhosRdpgfxAvc444SurfaceCommandCallback(
 BOOL OhosRdpgfxAvc444EndFrameCallback(
     const FREERDP_OHOS_RDPGFX_FRAME_INFO *frame, void *) {
   const uint64_t count = ++g_avc444EndFrameCallbackCount;
-  const bool shouldLog = count <= 20U || (count % 60U) == 0U;
+  const bool shouldLog = count <= 3U || (count % 600U) == 0U;
   if (shouldLog) {
     LogThroughCallbacks(
         "AVC444 GPU bridge EndFrame callback enter: frame=" +
@@ -290,43 +290,6 @@ BOOL OhosRdpgfxAvc444EndFrameCallback(
   }
   return handled ? TRUE : FALSE;
 }
-
-void OhosRdpgfxAvc444OutputStateCallback(BOOL active, const char *reason,
-                                         void *) {
-  SharedAvc444GpuCompositor().SetOutputActive(active != FALSE,
-                                              SafeCString(reason));
-  if (active) {
-    const RenderOutputOwner previous =
-        ExchangeRenderOutputOwner(RenderOutputOwner::Avc444Gpu);
-    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-    if (previous != RenderOutputOwner::Avc444Gpu) {
-      if (callbacks.stopRenderPipeline != nullptr) {
-        callbacks.stopRenderPipeline();
-      }
-      if (callbacks.releaseRenderTarget != nullptr) {
-        callbacks.releaseRenderTarget(
-            "before AVC444 GPU output takeover after " + SafeCString(reason));
-      }
-    }
-    LogThroughCallbacks(
-        "AVC444 GPU output owner activated by FreeRDP policy: previous=" +
-        RenderOutputOwnerName(previous) + " reason=" + SafeCString(reason));
-    return;
-  }
-
-  const RenderOutputOwner previous =
-      ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
-  if (previous == RenderOutputOwner::Avc444Gpu) {
-    RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-    if (callbacks.startRenderPipeline != nullptr) {
-      callbacks.startRenderPipeline();
-    }
-  }
-  LogThroughCallbacks(
-      "AVC444 GPU output owner released by FreeRDP policy: previous=" +
-      RenderOutputOwnerName(previous) + " reason=" + SafeCString(reason));
-}
-
 
 } // namespace
 
@@ -450,6 +413,9 @@ bool ConfigureGraphicsPipelineChannel(
   RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
   Avc444GpuCompositorCallbacks avc444Callbacks;
   avc444Callbacks.decoderSurfaceTarget = callbacks.decoderSurfaceTarget;
+  avc444Callbacks.stopRenderPipeline = callbacks.stopRenderPipeline;
+  avc444Callbacks.startRenderPipeline = callbacks.startRenderPipeline;
+  avc444Callbacks.releaseRenderTarget = callbacks.releaseRenderTarget;
   SharedAvc444GpuCompositor().Configure(g_avc444GpuCompositorConfigured.load(),
                                         log, std::move(avc444Callbacks));
   ResetRdpgfxDiagnosticsStats();
@@ -533,7 +499,6 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext *gfx) {
   config.avc420SurfaceCommand = OhosRdpgfxAvc420SurfaceCommandCallback;
   config.avc444SurfaceCommand = OhosRdpgfxAvc444SurfaceCommandCallback;
   config.avc444EndFrame = OhosRdpgfxAvc444EndFrameCallback;
-  config.avc444OutputState = OhosRdpgfxAvc444OutputStateCallback;
 
   std::array<char, 256> message{};
   if (api.ohosRdpgfxBridgeAttach == nullptr ||

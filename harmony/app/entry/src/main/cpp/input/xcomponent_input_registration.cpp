@@ -80,7 +80,8 @@ bool SendNativePointer(const LocalPointerEvent& event, const std::string& label,
 
     static std::atomic_uint32_t inputLogCount{0};
     const uint32_t logIndex = inputLogCount.fetch_add(1);
-    if (forceLog || !ok || logIndex < 80 || (logIndex % 200) == 0) {
+    (void)logIndex;
+    if (forceLog || !ok) {
         EmitInputLog("XComponent native input " + label +
             ": action=" + LocalPointerActionName(event.action) +
             " buttons=" + std::to_string(event.buttons) +

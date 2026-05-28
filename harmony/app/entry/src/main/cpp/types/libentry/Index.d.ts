@@ -13,7 +13,6 @@ export interface NativeCommandResult {
   ok: boolean;
   state: string;
   message: string;
-  logs: string[];
 }
 
 export interface NativeXrdpServerParams {

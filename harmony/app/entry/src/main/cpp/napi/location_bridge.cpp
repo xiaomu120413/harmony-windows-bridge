@@ -58,7 +58,7 @@ BOOL RequestLocationPermissionForFreeRdp(void* userData, UINT32 timeoutMs)
 {
     (void)userData;
     if (!g_locationPermissionRequests.IsSet()) {
-        EmitHilogError("OHOS location permission request skipped: ETS callback is not registered");
+        BridgeLogger::Error("OHOS location permission request skipped: ETS callback is not registered");
         return FALSE;
     }
 
@@ -80,7 +80,7 @@ BOOL RequestLocationPermissionForFreeRdp(void* userData, UINT32 timeoutMs)
         g_locationPermissionGranted = false;
     }
 
-    EmitHilogInfo("OHOS location permission requested by RDP location channel");
+    BridgeLogger::Info("OHOS location permission requested by RDP location channel");
     g_locationPermissionRequests.Emit(std::to_string(requestId));
 
     std::unique_lock<std::mutex> lock(g_locationPermissionMutex);
@@ -91,7 +91,7 @@ BOOL RequestLocationPermissionForFreeRdp(void* userData, UINT32 timeoutMs)
         });
     const bool granted = completed && g_locationPermissionGranted;
     if (!completed) {
-        EmitHilogError("OHOS location permission request timed out");
+        BridgeLogger::Error("OHOS location permission request timed out");
     }
 
     if (g_pendingLocationPermissionRequestId == requestId) {

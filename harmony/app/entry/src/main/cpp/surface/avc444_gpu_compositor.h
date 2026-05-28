@@ -17,6 +17,9 @@ class Avc444GpuCompositorImpl;
 
 struct Avc444GpuCompositorCallbacks {
     std::function<DecoderSurfaceTarget()> decoderSurfaceTarget;
+    std::function<void()> startRenderPipeline;
+    std::function<void()> stopRenderPipeline;
+    std::function<void(const std::string&)> releaseRenderTarget;
 };
 
 class Avc444GpuCompositor {

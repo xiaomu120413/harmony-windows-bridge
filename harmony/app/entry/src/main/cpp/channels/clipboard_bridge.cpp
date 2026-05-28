@@ -93,7 +93,7 @@ private:
         if (log_) {
             log_(line);
         } else {
-            EmitHilogInfo(line);
+            BridgeLogger::Debug(line);
         }
     }
 

@@ -45,7 +45,7 @@ BOOL RequestMicrophonePermissionForAudin(void* userData, UINT32 timeoutMs)
 {
     (void)userData;
     if (!g_microphonePermissionRequests.IsSet()) {
-        EmitHilogError("OHOS microphone permission request skipped: ETS callback is not registered");
+        BridgeLogger::Error("OHOS microphone permission request skipped: ETS callback is not registered");
         return FALSE;
     }
 
@@ -71,7 +71,7 @@ BOOL RequestMicrophonePermissionForAudin(void* userData, UINT32 timeoutMs)
         g_microphonePermissionGranted = false;
     }
 
-    EmitHilogInfo("OHOS microphone permission requested by remote audin channel");
+    BridgeLogger::Info("OHOS microphone permission requested by remote audin channel");
     g_microphonePermissionRequests.Emit(std::to_string(requestId));
 
     const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : kDefaultMicrophonePermissionTimeoutMs;
@@ -83,7 +83,7 @@ BOOL RequestMicrophonePermissionForAudin(void* userData, UINT32 timeoutMs)
         });
     const bool granted = completed && g_microphonePermissionGranted;
     if (!completed) {
-        EmitHilogError("OHOS microphone permission request timed out");
+        BridgeLogger::Error("OHOS microphone permission request timed out");
     }
 
     if (g_pendingMicrophonePermissionRequestId == requestId) {

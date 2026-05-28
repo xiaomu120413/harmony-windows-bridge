@@ -74,7 +74,8 @@ void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent
 
     static std::atomic_uint32_t mouseLogCount{0};
     const uint32_t logIndex = mouseLogCount.fetch_add(1);
-    if (!ok || logIndex < 60 || (logIndex % 200) == 0 ||
+    (void)logIndex;
+    if (!ok ||
         mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_PRESS ||
         mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_RELEASE) {
         EmitInputLog("XComponent native mouse: action=" +

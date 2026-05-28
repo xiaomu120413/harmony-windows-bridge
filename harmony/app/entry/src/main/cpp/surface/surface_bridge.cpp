@@ -379,7 +379,7 @@ private:
         if (sink) {
             sink(line);
         } else {
-            EmitHilogInfo(line);
+            BridgeLogger::Debug(line);
         }
     }
 

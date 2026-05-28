@@ -25,6 +25,7 @@ public:
     bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
         const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs);
+    std::string DebugSummary() const;
 
     static bool CommandLcIsValid(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command);
     static std::string RectText(const RECTANGLE_16* rect);
