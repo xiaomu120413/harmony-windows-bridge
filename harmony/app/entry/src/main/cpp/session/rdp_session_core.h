@@ -20,6 +20,7 @@ struct RdpSessionCallbacks {
     std::function<void()> startRenderPipeline;
     std::function<void()> stopRenderPipeline;
     std::function<void(const std::string&)> requestSurfaceRepaint;
+    std::function<std::string()> renderStats;
 };
 
 class RdpSession {

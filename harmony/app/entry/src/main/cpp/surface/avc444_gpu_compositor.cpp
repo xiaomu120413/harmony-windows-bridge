@@ -1,6 +1,7 @@
 #include "surface/avc444_gpu_compositor.h"
 
 #include "surface/avc444_gpu_compositor_internal.h"
+#include "surface/render_output_owner.h"
 
 #include <memory>
 #include <mutex>
@@ -20,6 +21,7 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     if (impl_) {
         impl_->Destroy();
     }
+    ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
     std::lock_guard<std::mutex> lock(mutex_);
     enabled_ = enabled;
     log_ = std::move(log);
@@ -45,8 +47,25 @@ void Avc444GpuCompositor::Reset()
 
 std::string Avc444GpuCompositor::Diagnostics() const
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return diagnostics_;
+    std::lock_guard<std::mutex> processLock(processingMutex_);
+    std::string diagnostics;
+    Avc444GpuCompositorCallbacks callbacks;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        diagnostics = diagnostics_;
+        callbacks = callbacks_;
+    }
+    if (impl_ != nullptr) {
+        diagnostics += " | ";
+        diagnostics += impl_->DebugSummary();
+    }
+    if (callbacks.decoderSurfaceTarget != nullptr) {
+        const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+        diagnostics += " | callbackTarget=window:";
+        diagnostics += target.window != nullptr ? "yes" : "no";
+        diagnostics += ",size:" + std::to_string(target.width) + "x" + std::to_string(target.height);
+    }
+    return diagnostics;
 }
 
 void Avc444GpuCompositor::SetOutputActive(bool active, const std::string& reason)
@@ -85,7 +104,7 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
             return false;
         }
         candidate = ++candidates_;
-        shouldLogCommand = candidate <= 12 || (candidate % 120) == 0;
+        shouldLogCommand = candidate <= 3 || (candidate % 600) == 0;
 
         frameOpen = command->frameOpen ? true : false;
         lcValid = Avc444GpuCompositorImpl::CommandLcIsValid(command);
@@ -152,9 +171,29 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         }
         consumed = impl_ != nullptr &&
             impl_->ProcessCommand(command, callbacks, outputActive, logs);
+        if (consumed && !outputActive) {
+            const RenderOutputOwner previousOwner =
+                ExchangeRenderOutputOwner(RenderOutputOwner::Avc444Gpu);
+            if (previousOwner != RenderOutputOwner::Avc444Gpu) {
+                if (callbacks.stopRenderPipeline != nullptr) {
+                    callbacks.stopRenderPipeline();
+                }
+                if (callbacks.releaseRenderTarget != nullptr) {
+                    callbacks.releaseRenderTarget(
+                        "before AVC444 GPU compositor SurfaceCommand takeover");
+                }
+                logs.push_back("AVC444 GPU compositor claimed render output ownership at "
+                    "SurfaceCommand before suppressing FreeRDP GDI: previousOwner=" +
+                    RenderOutputOwnerName(previousOwner) + " outputOwner=avc444-gpu");
+            }
+            outputActive = true;
+            logs.push_back("AVC444 GPU compositor is authoritative after queued update; "
+                "GDI is suppressed now and present is deferred until the matching frame boundary");
+        }
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            diagnostics_ = "avc444 gpu compositor: enabled=yes policyActive=" +
+            outputActive_ = outputActive;
+            diagnostics_ = "avc444 gpu compositor: enabled=yes active=" +
                 std::string(outputActive_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
@@ -193,7 +232,8 @@ bool Avc444GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
             impl_->PresentEndFrame(frame, callbacks, outputActive, logs);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            diagnostics_ = "avc444 gpu compositor: enabled=yes policyActive=" +
+            outputActive_ = outputActive;
+            diagnostics_ = "avc444 gpu compositor: enabled=yes active=" +
                 std::string(outputActive_ ? "yes" : "no") +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +

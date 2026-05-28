@@ -1,10 +1,10 @@
 #include "napi/native_bridge_context.h"
 
 #include "common/bridge_log.h"
+#include "common/string_utils.h"
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_runtime.h"
 #include "input/xcomponent_input_bridge.h"
-#include "common/string_utils.h"
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
 #include "xrdp/xrdp_server_bridge.h"
@@ -26,7 +26,7 @@ RdpSession g_session;
 
 void EmitNativeLog(const std::string& line)
 {
-    EmitHilogInfo(line);
+    BridgeLogger::Debug(line);
 }
 
 class ResizeCoordinator {
@@ -225,6 +225,11 @@ void RequestSurfaceRepaint(const std::string& reason)
     }
 }
 
+std::string BuildRenderStatsLog()
+{
+    return g_frameRenderer.BuildStatsLog();
+}
+
 void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason)
 {
     static std::atomic_uint32_t resizeLogCount{0};
@@ -266,6 +271,7 @@ void ConfigureRdpSessionCallbacks()
             EmitNativeLog(line);
         },
         [](const std::string& message) {
+            BridgeLogger::Error(message);
             g_events.error.Emit(message);
         },
         []() {
@@ -275,6 +281,7 @@ void ConfigureRdpSessionCallbacks()
         StartRenderPipeline,
         StopRenderPipeline,
         RequestSurfaceRepaint,
+        BuildRenderStatsLog,
     });
 }
 

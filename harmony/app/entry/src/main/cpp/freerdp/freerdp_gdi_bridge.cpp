@@ -81,7 +81,7 @@ void EmitGdiLog(const std::string& line)
     if (callbacks.log) {
         callbacks.log(line);
     } else {
-        EmitHilogInfo(line);
+        BridgeLogger::Debug(line);
     }
 }
 

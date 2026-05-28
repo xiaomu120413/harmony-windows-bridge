@@ -79,7 +79,7 @@ bool EventSink::IsSet()
 void EventSink::Emit(const std::string& value)
 {
     if (mirrorToHilog_.load()) {
-        EmitHilogInfo(value);
+        BridgeLogger::Debug(value);
     }
 
     napi_threadsafe_function current = nullptr;

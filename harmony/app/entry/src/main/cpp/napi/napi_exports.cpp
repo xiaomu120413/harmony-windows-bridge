@@ -85,7 +85,6 @@ void SetXrdpCommonResult(napi_env env, napi_value result, const XrdpServerComman
     SetString(env, result, "logPath", command.logPath);
     SetBool(env, result, "activeMstscSession", command.activeMstscSession);
     SetUint32(env, result, "port", command.port);
-    SetNamed(env, result, "logs", MakeStringArray(env, command.logs));
 }
 
 napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& command)
@@ -93,6 +92,13 @@ napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& com
     napi_value result = MakeObject(env);
     SetXrdpCommonResult(env, result, command);
     return result;
+}
+
+void EmitDebugLogs(const std::vector<std::string>& logs)
+{
+    for (const std::string& line : logs) {
+        BridgeLogger::Debug(line);
+    }
 }
 
 std::string RedactedEndpointLog(const ConnectParams& params)
@@ -108,23 +114,22 @@ std::string RedactedValueLog(const char* name, const std::string& value)
 napi_value Connect(napi_env env, napi_callback_info info)
 {
     ConnectParams params = ReadConnectParams(env, info);
-    std::vector<std::string> logs = {"native connect invoked"};
+    BridgeLogger::Debug("native connect invoked");
 
     napi_value result = MakeObject(env);
     if (params.host.empty() || params.port.empty() || params.username.empty() || params.password.empty()) {
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
         SetString(env, result, "message", "host, port, username, and password are required");
-        logs.push_back("parameter validation failed");
-        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        BridgeLogger::Error("native connect parameter validation failed");
         return result;
     }
 
-    logs.push_back(RedactedEndpointLog(params));
-    logs.push_back(RedactedValueLog("username", params.username));
-    logs.push_back("certPolicy=" + params.certPolicy);
-    logs.push_back(RedactedValueLog("appFilesDir", params.appFilesDir));
-    logs.push_back("starting native worker");
+    BridgeLogger::Debug(RedactedEndpointLog(params));
+    BridgeLogger::Debug(RedactedValueLog("username", params.username));
+    BridgeLogger::Debug("certPolicy=" + params.certPolicy);
+    BridgeLogger::Debug(RedactedValueLog("appFilesDir", params.appFilesDir));
+    BridgeLogger::Debug("starting native worker");
 
     std::string message;
     bool started = BridgeSession().Connect(params, message);
@@ -132,22 +137,23 @@ napi_value Connect(napi_env env, napi_callback_info info)
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
         SetString(env, result, "message", message);
-        logs.push_back("native worker start failed");
-        SetNamed(env, result, "logs", MakeStringArray(env, logs));
+        BridgeLogger::Error("native worker start failed: " + message);
         return result;
     }
 
     SetBool(env, result, "ok", true);
     SetString(env, result, "state", "Resolving");
     SetString(env, result, "message", message);
-    SetNamed(env, result, "logs", MakeStringArray(env, logs));
+    BridgeLogger::Info(message);
     return result;
 }
 
 napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
 {
     const XrdpServerParams params = ReadXrdpServerParams(env, info);
-    return MakeXrdpServerResult(env, rdp_bridge::StartXrdpServer(params));
+    XrdpServerCommandResult result = rdp_bridge::StartXrdpServer(params);
+    EmitDebugLogs(result.logs);
+    return MakeXrdpServerResult(env, result);
 }
 
 napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info info)
@@ -159,17 +165,19 @@ napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info info)
 napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
 {
     (void)info;
-    std::vector<std::string> logs = {"native release all keys invoked"};
+    BridgeLogger::Debug("native release all keys invoked");
     std::string message;
     const bool ok = BridgeSession().ReleaseAllKeys(message);
-    EmitHilogInfo(message);
+    if (ok) {
+        BridgeLogger::Debug(message);
+    } else {
+        BridgeLogger::Error(message);
+    }
 
     napi_value result = MakeObject(env);
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Connected" : "Disconnected");
     SetString(env, result, "message", message);
-    logs.push_back(message);
-    SetNamed(env, result, "logs", MakeStringArray(env, logs));
     return result;
 }
 
@@ -183,9 +191,11 @@ napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& si
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Idle" : "Failed");
     SetString(env, result, "message", ok ? "callback registered" : "callback must be a function");
-    SetNamed(env, result, "logs", MakeStringArray(env, {
-        ok ? std::string(name) + " registered" : std::string(name) + " registration failed"
-    }));
+    if (ok) {
+        BridgeLogger::Debug(std::string(name) + " registered");
+    } else {
+        BridgeLogger::Error(std::string(name) + " registration failed");
+    }
     return result;
 }
 
@@ -230,7 +240,7 @@ napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info i
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
         SetString(env, result, "message", "clipboard permission completion requires an object argument");
-        SetNamed(env, result, "logs", MakeStringArray(env, {"parameter validation failed"}));
+        BridgeLogger::Error("clipboard permission completion parameter validation failed");
         return result;
     }
 
@@ -242,10 +252,13 @@ napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info i
     SetString(env, result, "state", ok ? "Updated" : "Failed");
     SetString(env, result, "message", ok ? "clipboard permission result accepted" :
         "clipboard permission request is not pending");
-    SetNamed(env, result, "logs", MakeStringArray(env, {
-        "requestId=" + std::to_string(requestId) +
-            " granted=" + std::string(granted ? "true" : "false")
-    }));
+    const std::string logLine = "clipboard permission completion requestId=" + std::to_string(requestId) +
+        " granted=" + std::string(granted ? "true" : "false");
+    if (ok) {
+        BridgeLogger::Debug(logLine);
+    } else {
+        BridgeLogger::Error(logLine + " failed: request is not pending");
+    }
     return result;
 }
 
@@ -262,7 +275,7 @@ napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info in
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
         SetString(env, result, "message", "location permission completion requires an object argument");
-        SetNamed(env, result, "logs", MakeStringArray(env, {"parameter validation failed"}));
+        BridgeLogger::Error("location permission completion parameter validation failed");
         return result;
     }
 
@@ -274,10 +287,13 @@ napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info in
     SetString(env, result, "state", ok ? "Updated" : "Failed");
     SetString(env, result, "message", ok ? "location permission result accepted" :
         "location permission request is not pending");
-    SetNamed(env, result, "logs", MakeStringArray(env, {
-        "requestId=" + std::to_string(requestId) +
-            " granted=" + std::string(granted ? "true" : "false")
-    }));
+    const std::string logLine = "location permission completion requestId=" + std::to_string(requestId) +
+        " granted=" + std::string(granted ? "true" : "false");
+    if (ok) {
+        BridgeLogger::Debug(logLine);
+    } else {
+        BridgeLogger::Error(logLine + " failed: request is not pending");
+    }
     return result;
 }
 
@@ -294,7 +310,7 @@ napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info 
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
         SetString(env, result, "message", "microphone permission completion requires an object argument");
-        SetNamed(env, result, "logs", MakeStringArray(env, {"parameter validation failed"}));
+        BridgeLogger::Error("microphone permission completion parameter validation failed");
         return result;
     }
 
@@ -306,10 +322,13 @@ napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info 
     SetString(env, result, "state", ok ? "Updated" : "Failed");
     SetString(env, result, "message", ok ? "microphone permission result accepted" :
         "microphone permission request is not pending");
-    SetNamed(env, result, "logs", MakeStringArray(env, {
-        "requestId=" + std::to_string(requestId) +
-            " granted=" + std::string(granted ? "true" : "false")
-    }));
+    const std::string logLine = "microphone permission completion requestId=" + std::to_string(requestId) +
+        " granted=" + std::string(granted ? "true" : "false");
+    if (ok) {
+        BridgeLogger::Debug(logLine);
+    } else {
+        BridgeLogger::Error(logLine + " failed: request is not pending");
+    }
     return result;
 }
 

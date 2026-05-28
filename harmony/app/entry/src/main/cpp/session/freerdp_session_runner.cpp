@@ -3,6 +3,7 @@
 #include "common/bridge_log.h"
 #include "channels/audio_diagnostics.h"
 #include "channels/clipboard_bridge.h"
+#include "channels/rdpgfx_diagnostics.h"
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/graphics_config.h"
@@ -62,7 +63,7 @@ struct OhosSessionAdapter {
     HarmonyClipboardBridge clipboardBridge;
     bool activeSet = false;
     bool connected = false;
-    std::chrono::steady_clock::time_point nextAudioDiagnosticsLog =
+    std::chrono::steady_clock::time_point nextDiagnosticsLog =
         std::chrono::steady_clock::now() + std::chrono::seconds(10);
 
     void EmitLog(const std::string& line)
@@ -121,11 +122,24 @@ struct OhosSessionAdapter {
     {
         pumpInput(&api, context);
         const auto now = std::chrono::steady_clock::now();
-        if (now >= nextAudioDiagnosticsLog) {
-            EmitHilogInfo("FreeRDP audio diagnostics: " + BuildOHAudioStatsLog());
-            nextAudioDiagnosticsLog = now + std::chrono::seconds(10);
+        if (now >= nextDiagnosticsLog) {
+            BridgeLogger::DebugPublic("FreeRDP health: connected=" +
+                std::string(connected ? "yes" : "no") + " mode=" + graphicsConfig.mode +
+                " | " + BuildGraphicsPipelineStatsLog());
+            BridgeLogger::DebugPublic("FreeRDP render health: " + BuildRenderStatsLog());
+            BridgeLogger::DebugPublic("FreeRDP audio health: " + BuildOHAudioStatsLog());
+            nextDiagnosticsLog = now + std::chrono::seconds(10);
         }
         return true;
+    }
+
+    std::string BuildRenderStatsLog() const
+    {
+        if (callbacks.renderStats == nullptr) {
+            return "render stats unavailable";
+        }
+        const std::string stats = callbacks.renderStats();
+        return stats.empty() ? "render stats unavailable" : stats;
     }
 
     bool ShouldContinue() const
@@ -269,7 +283,6 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     if (detail[0] != '\0') {
         log(detail.data());
     }
-
     const GraphicsPipelineConfig graphicsConfig = ToGraphicsPipelineConfig(prepared.graphics);
     freerdpOhosSession* session = api.ohosSessionNew();
     if (session == nullptr) {

@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <sstream>
@@ -31,11 +33,75 @@ constexpr int64_t kOutputTimeoutUs = 12000;
 constexpr int64_t kFollowupOutputTimeoutUs = 6000;
 constexpr int64_t kOutputSyncDeadlineUs = 120000;
 constexpr uint32_t kOutputSyncMaxAttempts = 32;
+constexpr const char* kGpuReadbackEnv = "FREERDP_BRIDGE_GPU_READBACK";
 
 bool ShouldLogFrequent(uint64_t count)
 {
-    return count <= 20U || (count % 60U) == 0U;
+    return count <= 3U || (count % 600U) == 0U;
 }
+
+bool IsGpuReadbackEnabled()
+{
+    static const bool enabled = []() {
+        const char* value = std::getenv(kGpuReadbackEnv);
+        return value != nullptr && value[0] == '1';
+    }();
+    return enabled;
+}
+
+uint64_t NowMicros()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
+struct TimingBucket {
+    uint64_t count = 0;
+    uint64_t totalUs = 0;
+    uint64_t maxUs = 0;
+
+    void Add(uint64_t valueUs)
+    {
+        ++count;
+        totalUs += valueUs;
+        maxUs = std::max(maxUs, valueUs);
+    }
+
+    void Reset()
+    {
+        count = 0;
+        totalUs = 0;
+        maxUs = 0;
+    }
+
+    std::string Text(const char* name) const
+    {
+        std::ostringstream out;
+        out << name << ":";
+        if (count == 0) {
+            out << "0/0/0";
+        } else {
+            out << (totalUs / count) << "/" << maxUs << "/" << count;
+        }
+        return out.str();
+    }
+};
+
+class ScopedTiming {
+public:
+    explicit ScopedTiming(TimingBucket& bucket) : bucket_(bucket), startUs_(NowMicros()) {}
+    ScopedTiming(TimingBucket& bucket, uint64_t startUs) : bucket_(bucket), startUs_(startUs) {}
+
+    ~ScopedTiming()
+    {
+        const uint64_t nowUs = NowMicros();
+        bucket_.Add(nowUs >= startUs_ ? nowUs - startUs_ : 0);
+    }
+
+private:
+    TimingBucket& bucket_;
+    uint64_t startUs_ = 0;
+};
 
 uint32_t ReadBe32(const uint8_t* data)
 {
@@ -665,7 +731,7 @@ public:
             }
 
             ++outputs_;
-            if (outputs_ <= 8 || (outputs_ % 120) == 0) {
+            if (outputs_ <= 3 || (outputs_ % 600) == 0) {
                 logs.push_back("AVC444 GPU " + role_ + " decoded output: pts=" +
                     std::to_string(pts) +
                     " nativeFormat=" + NativeBufferFormatName(
@@ -682,7 +748,7 @@ public:
         }
 
         ++noOutput_;
-        if (noOutput_ <= 8 || (noOutput_ % 120) == 0) {
+        if (noOutput_ <= 3 || (noOutput_ % 600) == 0) {
             logs.push_back("AVC444 GPU " + role_ + " synchronous output wait timed out: pts=" +
                 std::to_string(pts) + " waitedUs=" + std::to_string(waitedUs) +
                 " budgetUs=" + std::to_string(kOutputSyncDeadlineUs) +
@@ -1044,6 +1110,7 @@ public:
         presentProgram_ = 0;
         hasLuma_ = false;
         hasChroma_ = false;
+        lastFramebufferSample_ = "readback:disabled";
     }
 
     bool Ensure(OHNativeWindow* window, uint32_t targetWidth, uint32_t targetHeight,
@@ -1205,7 +1272,8 @@ public:
             << ",surface:" << surfaceWidth_ << "x" << surfaceHeight_
             << ",luma:" << (hasLuma_ ? "yes" : "no")
             << ",chroma:" << (hasChroma_ ? "yes" : "no")
-            << ",source:mapped-plane";
+            << ",source:mapped-plane"
+            << "," << lastFramebufferSample_;
         return out.str();
     }
 
@@ -1417,6 +1485,11 @@ public:
             eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             return false;
         }
+        if (logSuccess && IsGpuReadbackEnabled()) {
+            lastFramebufferSample_ = SampleFramebuffer(viewport);
+        } else if (logSuccess) {
+            lastFramebufferSample_ = "readback:disabled";
+        }
         if (!eglSwapBuffers(display_, surface_)) {
             logs.push_back("AVC444 GPU present swap failed eglError=" +
                 Hex32(static_cast<uint32_t>(eglGetError())));
@@ -1437,12 +1510,96 @@ public:
                 " " + std::to_string(viewport.width) + "x" + std::to_string(viewport.height) +
                 " letterboxLTRB=" + std::to_string(leftBar) + "," +
                 std::to_string(topBar) + "," + std::to_string(rightBar) + "," +
-                std::to_string(bottomBar));
+                std::to_string(bottomBar) + " " + lastFramebufferSample_);
         }
         return true;
     }
 
 private:
+    struct PixelSample {
+        const char* name = "";
+        uint32_t x = 0;
+        uint32_t y = 0;
+        std::array<uint8_t, 4> rgba {};
+    };
+
+    static std::string PixelText(const PixelSample& sample)
+    {
+        return std::string(sample.name) + "=" +
+            std::to_string(static_cast<uint32_t>(sample.rgba[0])) + "/" +
+            std::to_string(static_cast<uint32_t>(sample.rgba[1])) + "/" +
+            std::to_string(static_cast<uint32_t>(sample.rgba[2])) + "/" +
+            std::to_string(static_cast<uint32_t>(sample.rgba[3])) + "@" +
+            std::to_string(sample.x) + "," + std::to_string(sample.y);
+    }
+
+    std::string SampleFramebuffer(const RenderViewport& viewport) const
+    {
+        if (viewport.width == 0 || viewport.height == 0) {
+            return "readback=invalid";
+        }
+
+        const uint32_t viewportY = targetHeight_ - viewport.y - viewport.height;
+        const uint32_t minX = viewport.x;
+        const uint32_t maxX = viewport.x + viewport.width - 1U;
+        const uint32_t minY = viewportY;
+        const uint32_t maxY = viewportY + viewport.height - 1U;
+        auto pointX = [&](uint32_t numerator, uint32_t denominator) {
+            return std::min(maxX, minX + (viewport.width * numerator) / denominator);
+        };
+        auto pointY = [&](uint32_t numerator, uint32_t denominator) {
+            return std::min(maxY, minY + (viewport.height * numerator) / denominator);
+        };
+
+        std::array<PixelSample, 5> samples {{
+            {"c", pointX(1, 2), pointY(1, 2), {}},
+            {"lt", pointX(1, 4), pointY(3, 4), {}},
+            {"rt", pointX(3, 4), pointY(3, 4), {}},
+            {"lb", pointX(1, 4), pointY(1, 4), {}},
+            {"rb", pointX(3, 4), pointY(1, 4), {}},
+        }};
+
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        for (PixelSample& sample : samples) {
+            glReadPixels(static_cast<GLint>(sample.x), static_cast<GLint>(sample.y), 1, 1,
+                GL_RGBA, GL_UNSIGNED_BYTE, sample.rgba.data());
+        }
+        const GLenum error = glGetError();
+        if (error != GL_NO_ERROR) {
+            return "readback=failed:" + Hex32(static_cast<uint32_t>(error));
+        }
+
+        uint32_t nonBlack = 0;
+        uint32_t maxRgb = 0;
+        uint32_t sumR = 0;
+        uint32_t sumG = 0;
+        uint32_t sumB = 0;
+        for (const PixelSample& sample : samples) {
+            const uint32_t r = sample.rgba[0];
+            const uint32_t g = sample.rgba[1];
+            const uint32_t b = sample.rgba[2];
+            sumR += r;
+            sumG += g;
+            sumB += b;
+            maxRgb = std::max(maxRgb, std::max(r, std::max(g, b)));
+            if (r + g + b > 24U) {
+                ++nonBlack;
+            }
+        }
+
+        std::ostringstream out;
+        out << "readback=ok"
+            << ",nonBlack:" << nonBlack << "/" << samples.size()
+            << ",maxRgb:" << maxRgb
+            << ",avg:" << (sumR / samples.size()) << "/"
+            << (sumG / samples.size()) << "/"
+            << (sumB / samples.size());
+        for (const PixelSample& sample : samples) {
+            out << "," << PixelText(sample);
+        }
+        return out.str();
+    }
+
     bool MakeCurrent(std::vector<std::string>& logs)
     {
         if (display_ == EGL_NO_DISPLAY || surface_ == EGL_NO_SURFACE ||
@@ -1875,6 +2032,7 @@ private:
     GLuint presentProgram_ = 0;
     bool hasLuma_ = false;
     bool hasChroma_ = false;
+    std::string lastFramebufferSample_ = "readback:disabled";
 };
 
 
@@ -1911,6 +2069,16 @@ struct Avc444GpuCompositorImpl::State {
     uint32_t pendingFrameId = 0;
     uint32_t pendingSurfaceWidth = 0;
     uint32_t pendingSurfaceHeight = 0;
+    uint64_t lastProcessStartUs = 0;
+    TimingBucket commandTiming;
+    TimingBucket commandIntervalTiming;
+    TimingBucket offscreenEnsureTiming;
+    TimingBucket lumaDecodeTiming;
+    TimingBucket chromaDecodeTiming;
+    TimingBucket lumaApplyTiming;
+    TimingBucket chromaApplyTiming;
+    TimingBucket windowEnsureTiming;
+    TimingBucket presentTiming;
 
     void Destroy()
     {
@@ -1932,12 +2100,29 @@ struct Avc444GpuCompositorImpl::State {
         pendingFrameId = 0;
         pendingSurfaceWidth = 0;
         pendingSurfaceHeight = 0;
+        lastProcessStartUs = 0;
+        commandTiming.Reset();
+        commandIntervalTiming.Reset();
+        offscreenEnsureTiming.Reset();
+        lumaDecodeTiming.Reset();
+        chromaDecodeTiming.Reset();
+        lumaApplyTiming.Reset();
+        chromaApplyTiming.Reset();
+        windowEnsureTiming.Reset();
+        presentTiming.Reset();
     }
 
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
         const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs)
     {
+        const uint64_t processStartUs = NowMicros();
+        ScopedTiming commandTimer(commandTiming, processStartUs);
+        if (lastProcessStartUs != 0 && processStartUs >= lastProcessStartUs) {
+            commandIntervalTiming.Add(processStartUs - lastProcessStartUs);
+        }
+        lastProcessStartUs = processStartUs;
+
         const bool codecV1 = command->codecId == RDPGFX_CODECID_AVC444;
         const bool codecV2 = command->codecId == RDPGFX_CODECID_AVC444v2;
         if (!codecV1 && !codecV2) {
@@ -2025,8 +2210,12 @@ struct Avc444GpuCompositorImpl::State {
                 "waiting for cached SPS/PPS or fresh parameter sets to bootstrap");
         }
 
-        if ((needsLuma || needsChroma) &&
-            !renderer.Ensure(nullptr, 0, 0, command->width, command->height, logs)) {
+        bool offscreenReady = true;
+        if (needsLuma || needsChroma) {
+            ScopedTiming timing(offscreenEnsureTiming);
+            offscreenReady = renderer.Ensure(nullptr, 0, 0, command->width, command->height, logs);
+        }
+        if (!offscreenReady) {
             if (!outputActive) {
                 logs.push_back("AVC444 GPU compositor offscreen renderer unavailable before decode; keeping GDI");
                 return false;
@@ -2052,8 +2241,11 @@ struct Avc444GpuCompositorImpl::State {
                 return fail("single avc444 decoder init before luma");
             }
             const int64_t pts = static_cast<int64_t>(++streamPts);
-            const DecodeResult decode =
-                avcDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
+            DecodeResult decode = DecodeResult::Failed;
+            {
+                ScopedTiming timing(lumaDecodeTiming);
+                decode = avcDecoder.Decode(packet.data, packet.size, pts, lumaFrame, logs);
+            }
             if (decode != DecodeResult::Decoded) {
                 if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor luma warm-up decode " +
@@ -2089,8 +2281,11 @@ struct Avc444GpuCompositorImpl::State {
                 return fail("single avc444 decoder init before chroma");
             }
             const int64_t pts = static_cast<int64_t>(++streamPts);
-            const DecodeResult decode =
-                avcDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
+            DecodeResult decode = DecodeResult::Failed;
+            {
+                ScopedTiming timing(chromaDecodeTiming);
+                decode = avcDecoder.Decode(packet.data, packet.size, pts, chromaFrame, logs);
+            }
             if (decode != DecodeResult::Decoded) {
                 if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor chroma warm-up decode " +
@@ -2125,8 +2320,13 @@ struct Avc444GpuCompositorImpl::State {
                 }
                 return fail("luma mapped-plane output");
             }
-            if (!renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
-                    command->stream1.numRegionRects, logs)) {
+            bool lumaApplied = false;
+            {
+                ScopedTiming timing(lumaApplyTiming);
+                lumaApplied = renderer.ApplyLuma(lumaFrame, command->stream1.regionRects,
+                    command->stream1.numRegionRects, logs);
+            }
+            if (!lumaApplied) {
                 rendererStateTouched = true;
                 if (!outputActive) {
                     logs.push_back("AVC444 GPU compositor luma offscreen update failed; keeping GDI");
@@ -2150,11 +2350,15 @@ struct Avc444GpuCompositorImpl::State {
                 }
                 return fail("chroma mapped-plane output");
             }
-            const bool chromaApplied = codecV1 ?
-                renderer.ApplyChromaV1(chromaFrame, chromaStream->regionRects,
-                    chromaStream->numRegionRects, logs) :
-                renderer.ApplyChromaV2(chromaFrame, chromaStream->regionRects,
-                    chromaStream->numRegionRects, logs);
+            bool chromaApplied = false;
+            {
+                ScopedTiming timing(chromaApplyTiming);
+                chromaApplied = codecV1 ?
+                    renderer.ApplyChromaV1(chromaFrame, chromaStream->regionRects,
+                        chromaStream->numRegionRects, logs) :
+                    renderer.ApplyChromaV2(chromaFrame, chromaStream->regionRects,
+                        chromaStream->numRegionRects, logs);
+            }
             if (!chromaApplied) {
                 rendererStateTouched = true;
                 if (!outputActive) {
@@ -2343,8 +2547,13 @@ struct Avc444GpuCompositorImpl::State {
             return outputActive;
         };
 
-        if (!renderer.Ensure(target.window, target.width, target.height,
-                pendingSurfaceWidth, pendingSurfaceHeight, logs)) {
+        bool windowReady = false;
+        {
+            ScopedTiming timing(windowEnsureTiming);
+            windowReady = renderer.Ensure(target.window, target.width, target.height,
+                pendingSurfaceWidth, pendingSurfaceHeight, logs);
+        }
+        if (!windowReady) {
             return failPresent("renderer window attach");
         }
 
@@ -2361,7 +2570,12 @@ struct Avc444GpuCompositorImpl::State {
                 " " + renderer.DebugState());
         }
 
-        if (!renderer.Present(logs, logPresentSummary)) {
+        bool presentOk = false;
+        {
+            ScopedTiming timing(presentTiming);
+            presentOk = renderer.Present(logs, logPresentSummary);
+        }
+        if (!presentOk) {
             return failPresent("draw/swap");
         }
 
@@ -2413,6 +2627,35 @@ struct Avc444GpuCompositorImpl::State {
         return PresentQueuedUpdate("EndFrame", frameId, activeFrameId, matchedFrame,
             callbacks, outputActive, logs);
     }
+
+    std::string DebugSummary() const
+    {
+        std::ostringstream out;
+        out << "impl=queued:" << queuedPresents
+            << ",presented:" << presented
+            << ",failures:" << failures
+            << ",ignored:" << ignoredUpdates
+            << ",endCallbacks:" << endFrameCallbacks
+            << ",skipNoPending:" << endFrameSkipNoPending
+            << ",mismatch:" << endFrameMismatches
+            << ",attempts:" << endFramePresentAttempts
+            << ",pending:" << (pendingPresent ? "yes" : "no")
+            << ",pendingFrame:" << pendingFrameId
+            << ",pendingSize:" << pendingSurfaceWidth << "x" << pendingSurfaceHeight
+            << ",lastCmdAgeUs:" << (lastProcessStartUs == 0 ? 0 : NowMicros() - lastProcessStartUs)
+            << ",timingUs(avg/max/count)="
+            << commandTiming.Text("cmd") << ";"
+            << commandIntervalTiming.Text("cmdGap") << ";"
+            << offscreenEnsureTiming.Text("offEns") << ";"
+            << lumaDecodeTiming.Text("lDec") << ";"
+            << chromaDecodeTiming.Text("cDec") << ";"
+            << lumaApplyTiming.Text("lApply") << ";"
+            << chromaApplyTiming.Text("cApply") << ";"
+            << windowEnsureTiming.Text("winEns") << ";"
+            << presentTiming.Text("present")
+            << "," << renderer.DebugState();
+        return out.str();
+    }
 };
 
 
@@ -2425,6 +2668,11 @@ void Avc444GpuCompositorImpl::Destroy()
     if (state_) {
         state_->Destroy();
     }
+}
+
+std::string Avc444GpuCompositorImpl::DebugSummary() const
+{
+    return state_ == nullptr ? "impl=null" : state_->DebugSummary();
 }
 
 bool Avc444GpuCompositorImpl::ProcessCommand(

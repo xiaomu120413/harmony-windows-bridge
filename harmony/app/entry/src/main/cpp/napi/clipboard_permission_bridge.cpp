@@ -46,7 +46,7 @@ BOOL RequestClipboardPermissionForPasteboard(void* userData, UINT32 timeoutMs)
 {
     (void)userData;
     if (!g_clipboardPermissionRequests.IsSet()) {
-        EmitHilogError("OHOS clipboard permission request skipped: ETS callback is not registered");
+        BridgeLogger::Error("OHOS clipboard permission request skipped: ETS callback is not registered");
         return FALSE;
     }
 
@@ -72,7 +72,7 @@ BOOL RequestClipboardPermissionForPasteboard(void* userData, UINT32 timeoutMs)
         g_clipboardPermissionGranted = false;
     }
 
-    EmitHilogInfo("OHOS clipboard permission requested by cliprdr pasteboard read");
+    BridgeLogger::Info("OHOS clipboard permission requested by cliprdr pasteboard read");
     g_clipboardPermissionRequests.Emit(std::to_string(requestId));
 
     const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : kDefaultClipboardPermissionTimeoutMs;
@@ -84,7 +84,7 @@ BOOL RequestClipboardPermissionForPasteboard(void* userData, UINT32 timeoutMs)
         });
     const bool granted = completed && g_clipboardPermissionGranted;
     if (!completed) {
-        EmitHilogError("OHOS clipboard permission request timed out");
+        BridgeLogger::Error("OHOS clipboard permission request timed out");
     }
 
     if (g_pendingClipboardPermissionRequestId == requestId) {

@@ -318,9 +318,6 @@ void RdpSessionInput::Drain(FreerdpRuntimeApi* api, rdpContext* context,
     }
     std::array<char, 256> detail {};
     const BOOL ok = queueApi_->ohosInputQueueDrain(queue_, context, detail.data(), detail.size());
-    if (detail[0] != '\0' && log != nullptr) {
-        log(detail.data());
-    }
     if (!ok && detail[0] != '\0') {
         LogInputFailure(detail.data(), log);
     }

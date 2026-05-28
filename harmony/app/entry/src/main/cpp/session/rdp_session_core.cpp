@@ -1,13 +1,13 @@
 ﻿#include "session/rdp_session_core.h"
 
 #include "channels/rdpgfx_pipeline.h"
-#include "freerdp/freerdp_gdi_bridge.h"
-#include "session/freerdp_session_runner.h"
-#include "freerdp/graphics_config.h"
 #include "common/net_utils.h"
+#include "common/string_utils.h"
+#include "freerdp/freerdp_gdi_bridge.h"
+#include "freerdp/graphics_config.h"
+#include "session/freerdp_session_runner.h"
 #include "session/rdp_session_channels.h"
 #include "session/rdp_session_input.h"
-#include "common/string_utils.h"
 
 #include <atomic>
 #include <chrono>

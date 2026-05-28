@@ -183,7 +183,7 @@ bool RestartXrdpServerIfRequested(XrdpServerState& state, const XrdpServerParams
         result.ok = false;
         result.state = "Failed";
         result.message = "xrdp server restart requested but stop API is unavailable";
-        EmitHilogError(result.message);
+        BridgeLogger::Error(result.message);
         return false;
     }
 
@@ -197,7 +197,7 @@ bool RestartXrdpServerIfRequested(XrdpServerState& state, const XrdpServerParams
         result.ok = false;
         result.state = "Stopping";
         result.message = "xrdp server is still stopping";
-        EmitHilogError(result.message);
+        BridgeLogger::Error(result.message);
         return false;
     }
     return true;
@@ -250,7 +250,7 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
         }
     }
     if (event->type != XRDP_OHOS_BACKEND_EVENT_FRAME_ACK) {
-        EmitHilogInfo("xrdp backend callback: count=" + std::to_string(count) +
+        BridgeLogger::Debug("xrdp backend callback: count=" + std::to_string(count) +
             " type=" + XrdpBackendEventTypeName(event->type) +
             " version=" + std::to_string(event->version) +
             " desktop=" + std::to_string(event->width) + "x" + std::to_string(event->height) +
@@ -284,14 +284,14 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         result.ok = false;
         result.state = "Failed";
         result.message = "xrdp runtime directories are not writable";
-        EmitHilogError(result.message);
+        BridgeLogger::Error(result.message);
         return result;
     }
     if (!PrepareSecureRuntimeConfig(params, paths, port, result.logs)) {
         result.ok = false;
         result.state = "Failed";
         result.message = "xrdp TLS runtime config could not be prepared";
-        EmitHilogError(result.message);
+        BridgeLogger::Error(result.message);
         return result;
     }
     if (!PathExists(paths.configPath)) {
@@ -325,14 +325,14 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             result.ok = false;
             result.state = "Failed";
             result.message = "xrdp embedded server library could not be loaded";
-            EmitHilogError(result.message);
+            BridgeLogger::Error(result.message);
             return result;
         }
         if (!LoadBackendLocked(paths, result)) {
             result.ok = false;
             result.state = "Failed";
             result.message = "xrdp OHOS backend could not be loaded";
-            EmitHilogError(result.message);
+            BridgeLogger::Error(result.message);
             return result;
         }
     }
@@ -387,7 +387,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         if (resetFn != nullptr) {
             resetFn("xrdp server exit");
         }
-        EmitHilogInfo(exitMessage);
+        BridgeLogger::Info(exitMessage);
     }).detach();
 
     result.ok = true;
@@ -401,7 +401,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         result.activeMstscSession = diagnostics.activeMstscSession;
         result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
     }
-    EmitHilogInfo(result.message);
+    BridgeLogger::Info(result.message);
     return result;
 }
 
