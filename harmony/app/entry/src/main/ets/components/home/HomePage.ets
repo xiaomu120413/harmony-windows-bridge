@@ -605,7 +605,7 @@ export struct HomePage {
         .width('100%')
       }
     }
-    .width('32%')
+    .width('34%')
     .height('100%')
     .padding({ left: 22, right: 22, top: 24, bottom: 24 })
     .alignItems(HorizontalAlign.Start)
@@ -891,6 +891,7 @@ export struct HomePage {
       })
     }
     .width('100%')
+    .margin({ top: 6 })
     .alignItems(VerticalAlign.Center)
   }
 
