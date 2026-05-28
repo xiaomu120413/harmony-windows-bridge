@@ -443,6 +443,9 @@ build_zlib() {
   fi
 
   local build="$BUILD_DIR/zlib-$ZLIB_VERSION"
+  if [[ "$FORCE_REBUILD" == "1" ]]; then
+    safe_rm_rf "$build"
+  fi
   log "build zlib $ZLIB_VERSION for $OHOS_ARCH"
   cmake -S "$SRC_DIR/zlib-$ZLIB_VERSION" -B "$build" "${cmake_common_args[@]}" \
     -DBUILD_SHARED_LIBS=ON \
@@ -459,9 +462,13 @@ build_cjson() {
   fi
 
   local build="$BUILD_DIR/cjson-$CJSON_VERSION"
+  if [[ "$FORCE_REBUILD" == "1" ]]; then
+    safe_rm_rf "$build"
+  fi
   log "build cJSON $CJSON_VERSION for $OHOS_ARCH"
   cmake -S "$SRC_DIR/cJSON-$CJSON_VERSION" -B "$build" "${cmake_common_args[@]}" \
     -DBUILD_SHARED_LIBS=ON \
+    -DENABLE_CUSTOM_COMPILER_FLAGS=OFF \
     -DENABLE_CJSON_TEST=OFF \
     -DENABLE_CJSON_UTILS=OFF \
     -DENABLE_TARGET_EXPORT=ON \
@@ -482,6 +489,9 @@ build_uriparser() {
   fi
 
   local build="$BUILD_DIR/uriparser-$URIPARSER_VERSION"
+  if [[ "$FORCE_REBUILD" == "1" ]]; then
+    safe_rm_rf "$build"
+  fi
   log "build uriparser $URIPARSER_VERSION for $OHOS_ARCH"
   cmake -S "$SRC_DIR/uriparser-$URIPARSER_VERSION" -B "$build" "${cmake_common_args[@]}" \
     -DBUILD_SHARED_LIBS=ON \
