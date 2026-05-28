@@ -20,13 +20,13 @@ class HomeResources {
 
 @Component
 export struct HomePage {
-  @Prop host: string = ''
-  @Prop port: string = '3389'
-  @Prop username: string = ''
-  @Prop password: string = ''
+  @Link host: string
+  @Link port: string
+  @Link username: string
+  @Link password: string
   @Prop connectionProfiles: WindowsConnectionProfile[] = []
   @Prop selectedConnectionProfileId: string = ''
-  @Prop rememberPassword: boolean = false
+  @Link rememberPassword: boolean
   @Prop isDark: boolean = false
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
@@ -609,17 +609,16 @@ export struct HomePage {
   }
 
   @Builder
-  private buildTextField(label: string, value: string, onChange: (value: string) => void,
-    password: boolean = false) {
+  private buildHostField() {
     Row({ space: 30 }) {
-      Text(label)
+      Text('Windows host')
         .fontSize(16)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .textAlign(TextAlign.End)
         .width(190)
         .maxLines(1)
-      TextInput({ placeholder: label, text: value })
-        .type(password ? InputType.Password : InputType.Normal)
+      TextInput({ placeholder: 'Windows host', text: $$this.host })
+        .type(InputType.Normal)
         .height(48)
         .layoutWeight(1)
         .fontSize(16)
@@ -632,7 +631,109 @@ export struct HomePage {
           color: this.mutedBorderColor(),
           style: BorderStyle.Solid
         })
-        .onChange(onChange)
+        .onChange((value: string) => {
+          this.host = value
+          this.onHostChange(value)
+        })
+    }
+    .width('100%')
+    .height(52)
+    .alignItems(VerticalAlign.Center)
+  }
+
+  @Builder
+  private buildPortField() {
+    Row({ space: 30 }) {
+      Text('Port')
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .textAlign(TextAlign.End)
+        .width(190)
+        .maxLines(1)
+      TextInput({ placeholder: 'Port', text: $$this.port })
+        .type(InputType.Normal)
+        .height(48)
+        .layoutWeight(1)
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .placeholderColor(SettingsTheme.mutedText(this.isDark))
+        .backgroundColor(this.fieldBackground())
+        .borderRadius(6)
+        .border({
+          width: 1,
+          color: this.mutedBorderColor(),
+          style: BorderStyle.Solid
+        })
+        .onChange((value: string) => {
+          this.port = value
+          this.onPortChange(value)
+        })
+    }
+    .width('100%')
+    .height(52)
+    .alignItems(VerticalAlign.Center)
+  }
+
+  @Builder
+  private buildUsernameField() {
+    Row({ space: 30 }) {
+      Text('Username')
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .textAlign(TextAlign.End)
+        .width(190)
+        .maxLines(1)
+      TextInput({ placeholder: 'Username', text: $$this.username })
+        .type(InputType.Normal)
+        .height(48)
+        .layoutWeight(1)
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .placeholderColor(SettingsTheme.mutedText(this.isDark))
+        .backgroundColor(this.fieldBackground())
+        .borderRadius(6)
+        .border({
+          width: 1,
+          color: this.mutedBorderColor(),
+          style: BorderStyle.Solid
+        })
+        .onChange((value: string) => {
+          this.username = value
+          this.onUsernameChange(value)
+        })
+    }
+    .width('100%')
+    .height(52)
+    .alignItems(VerticalAlign.Center)
+  }
+
+  @Builder
+  private buildPasswordField() {
+    Row({ space: 30 }) {
+      Text('Password')
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .textAlign(TextAlign.End)
+        .width(190)
+        .maxLines(1)
+      TextInput({ placeholder: 'Password', text: $$this.password })
+        .type(InputType.Password)
+        .height(48)
+        .layoutWeight(1)
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .placeholderColor(SettingsTheme.mutedText(this.isDark))
+        .backgroundColor(this.fieldBackground())
+        .borderRadius(6)
+        .border({
+          width: 1,
+          color: this.mutedBorderColor(),
+          style: BorderStyle.Solid
+        })
+        .onChange((value: string) => {
+          this.password = value
+          this.onPasswordChange(value)
+        })
     }
     .width('100%')
     .height(52)
@@ -650,6 +751,7 @@ export struct HomePage {
         .maxLines(1)
       Toggle({ type: ToggleType.Switch, isOn: this.rememberPassword })
         .onChange((enabled: boolean) => {
+          this.rememberPassword = enabled
           this.onRememberPasswordChange(enabled)
         })
     }
@@ -770,6 +872,8 @@ export struct HomePage {
         this.onDeleteProfile()
       })
       this.buildActionButton('clearPassword', '清除密码', HomeResources.LOCK_ICON, 'warning', () => {
+        this.password = ''
+        this.rememberPassword = false
         this.onPasswordChange('')
         this.onRememberPasswordChange(false)
       })
@@ -782,6 +886,20 @@ export struct HomePage {
   }
 
   @Builder
+  private buildConnectionFormFields() {
+    Column({ space: 12 }) {
+      this.buildHostField()
+      this.buildPortField()
+      this.buildUsernameField()
+      this.buildPasswordField()
+      this.buildRememberRow()
+      this.buildConnectButton()
+    }
+    .width('100%')
+    .padding({ top: 2, bottom: 6 })
+  }
+
+  @Builder
   private buildConnectionDetails() {
     Column({ space: 14 }) {
       Text('连接详情')
@@ -791,18 +909,7 @@ export struct HomePage {
         .width('100%')
         .maxLines(1)
 
-      Column({ space: 12 }) {
-        this.buildTextField('Windows host', this.host, this.onHostChange)
-        this.buildTextField('Port', this.port, this.onPortChange)
-        this.buildTextField('Username', this.username, this.onUsernameChange)
-        this.buildTextField('Password', this.password, (value: string) => {
-          this.onPasswordChange(value)
-        }, true)
-        this.buildRememberRow()
-        this.buildConnectButton()
-      }
-      .width('100%')
-      .padding({ top: 2, bottom: 6 })
+      this.buildConnectionFormFields()
 
       Divider()
         .height(1)

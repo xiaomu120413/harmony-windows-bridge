@@ -70,7 +70,7 @@ export class WindowsConnectionStore {
     const host = input.host.trim()
     const port = WindowsConnectionStore.normalizePort(input.port)
     const username = input.username.trim()
-    if (host.length === 0 || username.length === 0) {
+    if (host.length === 0) {
       return null
     }
 
@@ -341,14 +341,13 @@ export class WindowsConnectionStore {
   }
 
   private static sanitizeProfile(profile: WindowsConnectionProfile): WindowsConnectionProfile | null {
-    if (!profile || typeof profile.id !== 'string' || typeof profile.host !== 'string' ||
-      typeof profile.username !== 'string') {
+    if (!profile || typeof profile.id !== 'string' || typeof profile.host !== 'string') {
       return null
     }
 
     const host = profile.host.trim()
-    const username = profile.username.trim()
-    if (profile.id.length === 0 || host.length === 0 || username.length === 0) {
+    const username = typeof profile.username === 'string' ? profile.username.trim() : ''
+    if (profile.id.length === 0 || host.length === 0) {
       return null
     }
 
@@ -376,6 +375,9 @@ export class WindowsConnectionStore {
     }
     for (const profile of profiles) {
       if (profile.host === host && profile.port === port && profile.username === username) {
+        return profile
+      }
+      if (username.length > 0 && profile.host === host && profile.port === port && profile.username.length === 0) {
         return profile
       }
     }
