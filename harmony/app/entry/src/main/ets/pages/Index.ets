@@ -11,7 +11,6 @@ import { SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAccent, SettingsAppearanceMode, SettingsResources, SettingsTheme } from '../components/settings/SettingsUi'
 import rdpNative, {
   NativeCommandResult,
-  NativeXrdpDiagnosticsResult,
   NativeXrdpServerParams,
   NativeXrdpServerResult
 } from 'libentry.so'
@@ -196,8 +195,7 @@ struct Index {
       appFilesDir: this.getAppFilesDir(),
       accessCode: this.remoteAccessCodeGateEnabled ? this.ensureRemoteAccessCode() : '',
       accessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
-      restartIfRunning: restartIfRunning,
-      port: 3390
+      restartIfRunning: restartIfRunning
     }
   }
 
@@ -210,7 +208,6 @@ struct Index {
       const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.xrdpParams(restartIfRunning))
       this.appendLog(`${result.message}: ${trigger}`)
       this.appendNativeLogs(result.logs)
-      this.appendXrdpDiagnostics(`ensure ${trigger}`)
       if (!result.ok) {
         this.xrdpServerStartRequested = false
       }
@@ -229,19 +226,6 @@ struct Index {
       this.ensureRemoteAccessCode()
     }
     this.ensureXrdpServerStarted(enabled ? 'access code gate enabled' : 'access code gate disabled', true)
-  }
-
-  private appendXrdpDiagnostics(trigger: string): void {
-    try {
-      const diagnostics: NativeXrdpDiagnosticsResult = rdpNative.getXrdpServerDiagnostics()
-      this.appendLog(`xrdp diagnostics: ${trigger} state=${diagnostics.state} running=${diagnostics.running}` +
-        ` activeMstsc=${diagnostics.activeMstscSession} port=${diagnostics.port}` +
-        ` session=${diagnostics.sessionWidth}x${diagnostics.sessionHeight} bpp=${diagnostics.sessionBpp}` +
-        ` lastEvent=${diagnostics.lastBackendEvent} disconnect=${diagnostics.lastDisconnectReason}`)
-      this.appendNativeLogs(diagnostics.logs)
-    } catch (error) {
-      this.appendLog(`xrdp diagnostics failed: ${JSON.stringify(error)}`)
-    }
   }
 
   private connectNative(): void {

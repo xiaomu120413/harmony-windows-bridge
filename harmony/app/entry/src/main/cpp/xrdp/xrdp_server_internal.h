@@ -96,10 +96,8 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
     uint32_t port, std::string& ini, std::vector<std::string>& logs);
 bool PrepareSecureRuntimeConfig(const XrdpServerParams& params,
     const XrdpResolvedPaths& paths, uint32_t port, std::vector<std::string>& logs);
-bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
-    XrdpServerCommandResult& result);
-bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
-    XrdpServerCommandResult& result);
+bool LoadServerLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& result);
+bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& result);
 void FillPathResult(XrdpServerCommandResult& result, const XrdpResolvedPaths& paths);
 
 } // namespace xrdp_bridge_internal

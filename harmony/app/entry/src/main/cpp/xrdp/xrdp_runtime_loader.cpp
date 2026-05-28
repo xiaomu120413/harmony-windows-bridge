@@ -13,6 +13,8 @@ namespace rdp_bridge {
 namespace xrdp_bridge_internal {
 namespace {
 
+constexpr const char* kDefaultHnpRoot = "/data/service/hnp/xrdp.org/xrdp_0.1.0";
+
 std::string HexFlags(uint32_t flags)
 {
     std::ostringstream stream;
@@ -123,59 +125,41 @@ std::string ResolveNativeLibDir()
 
 std::string ResolveRuntimeRoot(const XrdpServerParams& params)
 {
-    if (!params.runtimeRoot.empty()) {
-        return TrimTrailingSlash(params.runtimeRoot);
-    }
     if (!params.appFilesDir.empty()) {
         return JoinPath(TrimTrailingSlash(params.appFilesDir), "xrdp");
     }
     return kDefaultRuntimeRoot;
 }
 
-std::string ResolveHnpChild(const std::string& hnpRoot, const std::string& child)
+std::string ResolveDefaultHnpChild(const std::string& child)
 {
-    if (hnpRoot.empty()) {
-        return "";
-    }
-    const std::string root = TrimTrailingSlash(hnpRoot);
-    const std::string direct = JoinPath(root, child);
+    const std::string direct = JoinPath(kDefaultHnpRoot, child);
     if (PathExists(direct)) {
         return direct;
     }
-    return JoinPath(JoinPath(root, "xrdp"), child);
+    return JoinPath(JoinPath(kDefaultHnpRoot, "xrdp"), child);
 }
 
-std::vector<std::string> BuildLibraryCandidates(const XrdpServerParams& params, const XrdpResolvedPaths& paths)
+std::vector<std::string> BuildLibraryCandidates(const XrdpResolvedPaths& paths)
 {
     std::vector<std::string> candidates;
-    AddUnique(candidates, params.libraryPath);
     AddUnique(candidates, paths.libraryPath);
     AddUnique(candidates, JoinPath(paths.nativeLibDir, kServerLibraryName));
     AddUnique(candidates, JoinPath(paths.modulePath, kServerLibraryName));
     AddUnique(candidates, JoinPath(JoinPath(paths.runtimeRoot, "lib"), kServerLibraryName));
-
-    if (!params.hnpRoot.empty()) {
-        AddUnique(candidates, ResolveHnpChild(params.hnpRoot, "lib/libxrdpserver.so"));
-    }
-
-    AddUnique(candidates, "/data/service/hnp/xrdp.org/xrdp_0.1.0/lib/libxrdpserver.so");
+    AddUnique(candidates, ResolveDefaultHnpChild("lib/libxrdpserver.so"));
     AddUnique(candidates, "/data/app/bin/libxrdpserver.so");
     AddUnique(candidates, kServerLibraryName);
     return candidates;
 }
 
-std::vector<std::string> BuildBackendCandidates(const XrdpServerParams& params, const XrdpResolvedPaths& paths)
+std::vector<std::string> BuildBackendCandidates(const XrdpResolvedPaths& paths)
 {
     std::vector<std::string> candidates;
     AddUnique(candidates, JoinPath(paths.modulePath, kBackendLibraryName));
     AddUnique(candidates, JoinPath(paths.nativeLibDir, kBackendLibraryName));
     AddUnique(candidates, JoinPath(JoinPath(paths.runtimeRoot, "lib"), kBackendLibraryName));
-
-    if (!params.hnpRoot.empty()) {
-        AddUnique(candidates, ResolveHnpChild(params.hnpRoot, "lib/libxrdpohos.so"));
-    }
-
-    AddUnique(candidates, "/data/service/hnp/xrdp.org/xrdp_0.1.0/lib/libxrdpohos.so");
+    AddUnique(candidates, ResolveDefaultHnpChild("lib/libxrdpohos.so"));
     AddUnique(candidates, kBackendLibraryName);
     return candidates;
 }
@@ -228,20 +212,19 @@ XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params)
     XrdpResolvedPaths paths;
     paths.runtimeRoot = ResolveRuntimeRoot(params);
     paths.nativeLibDir = ResolveNativeLibDir();
-    paths.libDir = !params.libDir.empty() ? TrimTrailingSlash(params.libDir) : paths.nativeLibDir;
+    paths.libDir = paths.nativeLibDir;
 
     const std::string nativeXrdpRoot = JoinPath(paths.nativeLibDir, "xrdp");
-    const std::string hnpLibDir = ResolveHnpChild(params.hnpRoot, "lib");
-    const std::string hnpConfigPath = ResolveHnpChild(params.hnpRoot, "config/xrdp.ini");
-    const std::string hnpSharePath = ResolveHnpChild(params.hnpRoot, "share");
+    const std::string hnpLibDirCandidate = ResolveDefaultHnpChild("lib");
+    const std::string hnpLibDir = IsDirectory(hnpLibDirCandidate) ? hnpLibDirCandidate : "";
+    const std::string hnpConfigPath = ResolveDefaultHnpChild("config/xrdp.ini");
+    const std::string hnpSharePath = ResolveDefaultHnpChild("share");
 
-    paths.libraryPath = params.libraryPath;
-    if (paths.libraryPath.empty() && !paths.libDir.empty()) {
+    if (!paths.libDir.empty()) {
         paths.libraryPath = JoinPath(paths.libDir, kServerLibraryName);
     }
 
-    paths.modulePath = !params.modulePath.empty() ? TrimTrailingSlash(params.modulePath) : "";
-    if (paths.modulePath.empty() && !paths.libDir.empty() && PathExists(JoinPath(paths.libDir, kBackendLibraryName))) {
+    if (!paths.libDir.empty() && PathExists(JoinPath(paths.libDir, kBackendLibraryName))) {
         paths.modulePath = paths.libDir;
     }
     if (paths.modulePath.empty() && !hnpLibDir.empty()) {
@@ -251,8 +234,7 @@ XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params)
         paths.modulePath = JoinPath(paths.runtimeRoot, "lib");
     }
 
-    paths.packagedConfigPath = params.configPath;
-    if (paths.packagedConfigPath.empty() && PathExists(JoinPath(nativeXrdpRoot, "config/xrdp.ini"))) {
+    if (PathExists(JoinPath(nativeXrdpRoot, "config/xrdp.ini"))) {
         paths.packagedConfigPath = JoinPath(nativeXrdpRoot, "config/xrdp.ini");
     }
     if (paths.packagedConfigPath.empty() && PathExists(hnpConfigPath)) {
@@ -262,8 +244,7 @@ XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params)
     paths.tlsCertificatePath = JoinPath(paths.runtimeRoot, "config/cert.pem");
     paths.tlsKeyPath = JoinPath(paths.runtimeRoot, "config/key.pem");
 
-    paths.sharePath = !params.sharePath.empty() ? TrimTrailingSlash(params.sharePath) : "";
-    if (paths.sharePath.empty() && IsDirectory(JoinPath(nativeXrdpRoot, "share"))) {
+    if (IsDirectory(JoinPath(nativeXrdpRoot, "share"))) {
         paths.sharePath = JoinPath(nativeXrdpRoot, "share");
     }
     if (paths.sharePath.empty() && IsDirectory(hnpSharePath)) {
@@ -294,8 +275,7 @@ bool PrepareRuntime(const XrdpResolvedPaths& paths, std::vector<std::string>& lo
     return ok;
 }
 
-bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
-    XrdpServerCommandResult& result)
+bool LoadServerLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& result)
 {
     XrdpServerState& state = ServerState();
     if (state.loaded.handle != nullptr && state.loaded.mainFn != nullptr && state.loaded.stopFn != nullptr) {
@@ -304,7 +284,7 @@ bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& p
         return true;
     }
 
-    for (const std::string& candidate : BuildLibraryCandidates(params, paths)) {
+    for (const std::string& candidate : BuildLibraryCandidates(paths)) {
         if (candidate != kServerLibraryName && !PathExists(candidate)) {
             result.logs.push_back("xrdp server library candidate missing: " + candidate);
             continue;
@@ -339,8 +319,7 @@ bool LoadServerLocked(const XrdpServerParams& params, const XrdpResolvedPaths& p
     return false;
 }
 
-bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& paths,
-    XrdpServerCommandResult& result)
+bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& result)
 {
     XrdpServerState& state = ServerState();
     if (state.backend.handle != nullptr && state.backend.getAbiInfoFn != nullptr) {
@@ -373,7 +352,7 @@ bool LoadBackendLocked(const XrdpServerParams& params, const XrdpResolvedPaths& 
         return true;
     }
 
-    for (const std::string& candidate : BuildBackendCandidates(params, paths)) {
+    for (const std::string& candidate : BuildBackendCandidates(paths)) {
         if (candidate != kBackendLibraryName && !PathExists(candidate)) {
             result.logs.push_back("xrdp OHOS backend candidate missing: " + candidate);
             continue;

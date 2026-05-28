@@ -23,6 +23,31 @@ XrdpServerState& ServerState()
 
 namespace {
 
+struct XrdpServerDiagnostics {
+    bool ok = true;
+    bool running = false;
+    bool activeMstscSession = false;
+    uint32_t port = 0;
+    uint32_t sessionWidth = 0;
+    uint32_t sessionHeight = 0;
+    uint32_t sessionBpp = 0;
+    uint32_t backendEventCount = 0;
+    uint32_t inputEventCount = 0;
+    int lastExitCode = 0;
+    std::string state;
+    std::string message;
+    std::string lastBackendEvent;
+    std::string lastDisconnectReason;
+    std::string libraryPath;
+    std::string backendLibraryPath;
+    std::string runtimeRoot;
+    std::string configPath;
+    std::string modulePath;
+    std::string sharePath;
+    std::string logPath;
+    std::vector<std::string> logs;
+};
+
 std::string BoolText(bool value)
 {
     return value ? "true" : "false";
@@ -251,7 +276,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     XrdpServerCommandResult result;
     XrdpServerState& state = ServerState();
     const XrdpResolvedPaths paths = ResolvePaths(params);
-    const uint32_t port = params.port == 0 ? kDefaultPort : params.port;
+    const uint32_t port = kDefaultPort;
     FillPathResult(result, paths);
     result.port = port;
 
@@ -296,14 +321,14 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
             return result;
         }
-        if (!LoadServerLocked(params, paths, result)) {
+        if (!LoadServerLocked(paths, result)) {
             result.ok = false;
             result.state = "Failed";
             result.message = "xrdp embedded server library could not be loaded";
             EmitHilogError(result.message);
             return result;
         }
-        if (!LoadBackendLocked(params, paths, result)) {
+        if (!LoadBackendLocked(paths, result)) {
             result.ok = false;
             result.state = "Failed";
             result.message = "xrdp OHOS backend could not be loaded";
@@ -378,12 +403,6 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     }
     EmitHilogInfo(result.message);
     return result;
-}
-
-XrdpServerDiagnostics GetXrdpServerDiagnostics()
-{
-    std::lock_guard<std::mutex> lock(ServerState().mutex);
-    return SnapshotXrdpDiagnosticsLocked(ServerState());
 }
 
 bool SubmitXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
