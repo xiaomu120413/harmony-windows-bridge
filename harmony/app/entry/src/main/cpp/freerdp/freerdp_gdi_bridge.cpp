@@ -52,13 +52,7 @@ bool QueueGdiFrame(const RgbaFrame& frame, std::string& message, bool forceRende
 
 void StartGdiRenderPipeline()
 {
-    static std::atomic_uint32_t skipLogCount{0};
     if (IsAvc444GpuRenderOutputOwner()) {
-        const uint32_t count = ++skipLogCount;
-        if (count <= 3 || count % 60 == 0) {
-            EmitGdiLog("GDI render pipeline start skipped: outputOwner=" +
-                CurrentRenderOutputOwnerName() + " count=" + std::to_string(count));
-        }
         return;
     }
     GdiBridgeCallbacks callbacks = SnapshotGdiBridgeCallbacks();
@@ -232,15 +226,7 @@ BOOL HarmonyEndPaint(rdpContext* context)
 
     rdpGdi* gdi = context->gdi;
     if (IsAvc444GpuRenderOutputOwner()) {
-        static std::atomic_uint32_t skipLogCount{0};
         ClearGdiInvalidRegion(gdi);
-        const uint32_t count = ++skipLogCount;
-        if (count <= 3 || count % 120 == 0) {
-            EmitGdiLog("FreeRDP GDI EndPaint skipped: outputOwner=" +
-                CurrentRenderOutputOwnerName() +
-                " because AVC444 GPU compositor owns the XComponent count=" +
-                std::to_string(count));
-        }
         return TRUE;
     }
     if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
@@ -265,18 +251,15 @@ BOOL HarmonyEndPaint(rdpContext* context)
         CaptureGdiDirtyStats(gdi),
     };
     g_rdpPrimaryFrameReady.store(true);
-    const uint32_t frameCount = ++g_freerdpRenderedFrameCount;
+    ++g_freerdpRenderedFrameCount;
     std::string queueMessage;
     if (!QueueGdiFrame(frame, queueMessage)) {
         const uint32_t skipCount = ++g_freerdpRenderSkipCount;
-        if (skipCount <= 3 || skipCount % 120 == 0) {
+        if (skipCount == 1 || skipCount % 300 == 0) {
             EmitGdiLog("FreeRDP GDI frame queue skipped: " + queueMessage);
         }
     } else {
         g_freerdpRenderSkipCount.store(0);
-        if (frameCount <= 3 || frameCount % 60 == 0) {
-            EmitGdiLog("FreeRDP GDI frame queued: " + queueMessage);
-        }
     }
 
     ClearGdiInvalidRegion(gdi);
@@ -312,7 +295,6 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     } else {
         StartGdiRenderPipeline();
     }
-    EmitGdiLog("FreeRDP desktop resized: " + std::to_string(width) + "x" + std::to_string(height));
     return TRUE;
 }
 
@@ -345,10 +327,8 @@ BOOL HarmonyPostConnect(freerdp* instance)
         const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);
         if (width > 0 && height > 0) {
             SetRdpDesktopSize(width, height);
-            EmitGdiLog("FreeRDP desktop size: " + std::to_string(width) + "x" + std::to_string(height));
         }
     }
-    EmitGdiLog("FreeRDP GDI callbacks registered");
     return TRUE;
 }
 
@@ -363,7 +343,6 @@ void HarmonyPostDisconnect(freerdp* instance)
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     if (api.gdiFree != nullptr) {
         api.gdiFree(instance);
-        EmitGdiLog("FreeRDP GDI resources released");
     }
     ClearRdpDesktopSize();
 }

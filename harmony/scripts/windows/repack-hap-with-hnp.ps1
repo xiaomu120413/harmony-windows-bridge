@@ -122,7 +122,7 @@ if ([string]::IsNullOrWhiteSpace($SigningPassword)) {
   }
 }
 
-& $JavaPath -jar $HapSignToolJar sign-app `
+$signOutput = & $JavaPath -jar $HapSignToolJar sign-app `
   -mode localSign `
   -keyAlias "openharmony application release" `
   -keyPwd $SigningPassword `
@@ -134,8 +134,9 @@ if ([string]::IsNullOrWhiteSpace($SigningPassword)) {
   -keystorePwd $SigningPassword `
   -outFile $signedHnp `
   -compatibleVersion $CompatibleVersion `
-  -signCode 1
+  -signCode 1 2>&1
 if ($LASTEXITCODE -ne 0) {
+  $signOutput | ForEach-Object { Write-Error $_ }
   throw "hap-sign-tool failed with exit code $LASTEXITCODE"
 }
 
@@ -159,4 +160,5 @@ if (Test-Path -LiteralPath $nativeRuntimeSource) {
 Copy-Item -LiteralPath $unsignedHnp -Destination $unsignedDefault -Force
 Copy-Item -LiteralPath $signedHnp -Destination $signedDefault -Force
 
-Get-Item -LiteralPath $signedDefault | Select-Object FullName, Length
+$signedDefaultItem = Get-Item -LiteralPath $signedDefault
+Write-Host ("signed HAP: {0} bytes={1}" -f $signedDefaultItem.FullName, $signedDefaultItem.Length)

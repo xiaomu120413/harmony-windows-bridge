@@ -33,17 +33,13 @@ class ResizeCoordinator {
 public:
     void Reset(const std::string& reason)
     {
-        bool cleared = false;
+        (void)reason;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (pending_) {
                 pending_ = false;
                 skippedFrameCount_ = 0;
-                cleared = true;
             }
-        }
-        if (cleared) {
-            EmitNativeLog("resize target cleared after " + reason);
         }
     }
 
@@ -53,18 +49,13 @@ public:
             return;
         }
 
-        uint64_t generation = 0;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             pending_ = true;
             targetWidth_ = width;
             targetHeight_ = height;
             skippedFrameCount_ = 0;
-            generation = ++generation_;
         }
-        EmitNativeLog("resize target pending after " + reason + ": target=" +
-            std::to_string(width) + "x" + std::to_string(height) +
-            " generation=" + std::to_string(generation));
     }
 
     bool ShouldQueueFrame(const RgbaFrame& frame, std::string& message)
@@ -119,7 +110,6 @@ private:
     bool pending_ = false;
     uint32_t targetWidth_ = 0;
     uint32_t targetHeight_ = 0;
-    uint64_t generation_ = 0;
     uint32_t skippedFrameCount_ = 0;
 };
 
@@ -127,18 +117,13 @@ ResizeCoordinator g_resizeCoordinator;
 
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
-    static std::atomic_uint32_t xrdpQueuedLogCount{0};
     static std::atomic_uint32_t xrdpSkippedLogCount{0};
 
     std::string xrdpMessage;
-    if (SubmitXrdpRgbaFrame(frame, xrdpMessage)) {
-        const uint32_t count = ++xrdpQueuedLogCount;
-        if (count <= 3 || count % 60 == 0) {
-            EmitNativeLog("xrdp video frame queued from surface render: " + xrdpMessage);
-        }
-    } else if (!xrdpMessage.empty() && xrdpMessage != "xrdp server is not running") {
+    if (!SubmitXrdpRgbaFrame(frame, xrdpMessage) &&
+        !xrdpMessage.empty() && xrdpMessage != "xrdp server is not running") {
         const uint32_t count = ++xrdpSkippedLogCount;
-        if (count <= 3 || count % 120 == 0) {
+        if (count == 1 || count % 300 == 0) {
             EmitNativeLog("xrdp video frame skipped from surface render: " + xrdpMessage +
                 " count=" + std::to_string(count));
         }
@@ -157,9 +142,6 @@ bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool fo
         message = resizeMessage;
         return false;
     }
-    if (!resizeMessage.empty()) {
-        EmitNativeLog(resizeMessage);
-    }
     return g_frameRenderer.Enqueue(frame, message, forceRender);
 }
 
@@ -173,13 +155,7 @@ void DropPendingRenderFrame(const std::string& reason)
 
 void StartRenderPipeline()
 {
-    static std::atomic_uint32_t skipLogCount{0};
     if (IsAvc444GpuRenderOutputOwner()) {
-        const uint32_t count = ++skipLogCount;
-        if (count <= 3 || count % 60 == 0) {
-            EmitNativeLog("GDI render pipeline start skipped: outputOwner=" +
-                CurrentRenderOutputOwnerName() + " count=" + std::to_string(count));
-        }
         return;
     }
     g_frameRenderer.SetCallbacks(RenderSurfaceRgbaFrame, EmitNativeLog);
@@ -203,26 +179,8 @@ DecoderSurfaceTarget SnapshotDecoderSurfaceTarget()
 
 void RequestSurfaceRepaint(const std::string& reason)
 {
-    static std::atomic_uint32_t repaintLogCount{0};
-    static std::atomic_uint32_t repaintSkipLogCount{0};
     std::string message;
-    if (g_session.RequestCurrentFrameRender(reason, message)) {
-        const uint32_t count = ++repaintLogCount;
-        if (count <= 3 || count % 30 == 0) {
-            EmitNativeLog("Surface repaint queued after " + reason + ": " + message +
-                " count=" + std::to_string(count));
-        }
-        return;
-    }
-
-    if (message.empty()) {
-        return;
-    }
-    const uint32_t skipCount = ++repaintSkipLogCount;
-    if (skipCount <= 3 || skipCount % 30 == 0) {
-        EmitNativeLog("Surface repaint skipped after " + reason + ": " + message +
-            " count=" + std::to_string(skipCount));
-    }
+    (void)g_session.RequestCurrentFrameRender(reason, message);
 }
 
 std::string BuildRenderStatsLog()
@@ -232,22 +190,8 @@ std::string BuildRenderStatsLog()
 
 void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason)
 {
-    static std::atomic_uint32_t resizeLogCount{0};
-    static std::atomic_uint32_t resizeSkipLogCount{0};
     std::string message;
-    if (g_session.RequestDynamicDesktopResize(width, height, reason, message)) {
-        const uint32_t count = ++resizeLogCount;
-        if (count <= 3 || count % 30 == 0) {
-            EmitNativeLog(message + " count=" + std::to_string(count));
-        }
-        return;
-    }
-
-    const uint32_t skipCount = ++resizeSkipLogCount;
-    if (skipCount <= 3 || skipCount % 30 == 0) {
-        EmitNativeLog("display-control resize skipped after " + reason + ": " + message +
-            " count=" + std::to_string(skipCount));
-    }
+    (void)g_session.RequestDynamicDesktopResize(width, height, reason, message);
 }
 
 void ConfigureRdpgfxPipelineCallbacks()
@@ -363,16 +307,8 @@ bool RegisterNativeXComponent(napi_env env, napi_value exports)
     int32_t rc = OH_NativeXComponent_RegisterCallback(component, &callback);
     const bool ok = rc == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
     const XComponentInputRegisterResult inputRc = RegisterXComponentInputCallbacks(component);
+    (void)inputRc;
     g_surface.Register(component, ok);
-    if (ok) {
-        EmitNativeLog("XComponent callback registered: " + g_surface.Snapshot().id +
-            " mouseRc=" + std::to_string(inputRc.mouseRc) +
-            " focusRc=" + std::to_string(inputRc.focusRc) +
-            " blurRc=" + std::to_string(inputRc.blurRc) +
-            " keyRc=" + std::to_string(inputRc.keyRc) +
-            " softKeyboardRc=" + std::to_string(inputRc.softKeyboardRc) +
-            " axisRc=" + std::to_string(inputRc.axisRc));
-    }
     return ok;
 }
 

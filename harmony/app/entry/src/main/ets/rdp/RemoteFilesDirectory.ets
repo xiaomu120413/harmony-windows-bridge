@@ -23,13 +23,11 @@ export class RemoteFilesDirectory {
       const targetDir = RemoteFilesDirectory.sharedDirectoryPath(downloadDir)
       if (RemoteFilesDirectory.isDirectory(targetDir)) {
         AppStorage.setOrCreate<string>(REMOTE_FILES_SHARED_DIR_STORAGE_KEY, targetDir)
-        RdpLogger.info(`download drive directory ready: ${targetDir}`)
         return
       }
 
       fileIo.mkdirSync(targetDir)
       AppStorage.setOrCreate<string>(REMOTE_FILES_SHARED_DIR_STORAGE_KEY, targetDir)
-      RdpLogger.info(`download drive directory created: ${targetDir}`)
     } catch (exception) {
       RdpLogger.error(`prepare download drive directory failed: ${JSON.stringify(exception)}`)
     }

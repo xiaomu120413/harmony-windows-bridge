@@ -9,6 +9,36 @@
 #include <client/OHOS/ohos_clipboard.h>
 
 namespace rdp_bridge {
+namespace {
+
+bool IsClipboardLog(const std::string& line)
+{
+    return line.find("clipboard") != std::string::npos ||
+        line.find("cliprdr") != std::string::npos ||
+        line.find("Pasteboard") != std::string::npos;
+}
+
+bool HasClipboardProblemKeyword(const std::string& line)
+{
+    if (line.find("format probe") != std::string::npos ||
+        line.find("stats:") != std::string::npos) {
+        return false;
+    }
+    return line.find("failed") != std::string::npos ||
+        line.find("denied") != std::string::npos ||
+        line.find("error") != std::string::npos ||
+        line.find("invalid") != std::string::npos ||
+        line.find("unavailable") != std::string::npos ||
+        line.find("unsupported") != std::string::npos ||
+        line.find("too large") != std::string::npos;
+}
+
+bool ShouldForwardClipboardLog(const std::string& line)
+{
+    return !IsClipboardLog(line) || HasClipboardProblemKeyword(line);
+}
+
+} // namespace
 
 struct HarmonyClipboardBridge::Impl {
 public:
@@ -90,6 +120,9 @@ private:
 
     void Log(const std::string& line)
     {
+        if (!ShouldForwardClipboardLog(line)) {
+            return;
+        }
         if (log_) {
             log_(line);
         } else {

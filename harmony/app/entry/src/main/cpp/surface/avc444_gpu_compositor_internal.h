@@ -19,6 +19,8 @@ public:
 
     void Destroy();
 
+    bool Prewarm(uint32_t surfaceWidth, uint32_t surfaceHeight,
+        std::vector<std::string>& logs);
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC444_COMMAND_INFO* command,
         const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs);

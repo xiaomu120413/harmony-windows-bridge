@@ -71,7 +71,6 @@ BOOL RequestMicrophonePermissionForAudin(void* userData, UINT32 timeoutMs)
         g_microphonePermissionGranted = false;
     }
 
-    BridgeLogger::Info("OHOS microphone permission requested by remote audin channel");
     g_microphonePermissionRequests.Emit(std::to_string(requestId));
 
     const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : kDefaultMicrophonePermissionTimeoutMs;
@@ -105,11 +104,7 @@ void RegisterMicrophonePermissionBridge(FreerdpRuntimeApi& api,
         return;
     }
 
-    if (api.audinOhosSetPermissionCallback(RequestMicrophonePermissionForAudin, nullptr)) {
-        if (log) {
-            log("FreeRDP audin OHOS permission callback registered");
-        }
-    } else if (log) {
+    if (!api.audinOhosSetPermissionCallback(RequestMicrophonePermissionForAudin, nullptr) && log) {
         log("FreeRDP audin OHOS permission callback registration failed");
     }
 }

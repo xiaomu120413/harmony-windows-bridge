@@ -12,7 +12,6 @@ bool IsModifierPressed(uint64_t modifiers, ArkUI_ModifierKeyName modifier)
 
 void OnXComponentFocusEvent(OH_NativeXComponent*, void*)
 {
-    EmitInputLog("XComponent focused for native input");
 }
 
 void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
@@ -24,9 +23,8 @@ void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
     }
 
     std::string message;
-    if (g_inputSession != nullptr && g_inputSession->ReleaseAllKeys(message)) {
-        EmitInputLog("XComponent blurred; " + message);
-    } else {
+    if (g_inputSession != nullptr && !g_inputSession->ReleaseAllKeys(message) &&
+        message != "no active FreeRDP session") {
         EmitInputLog("XComponent blurred; release keys skipped: " + message);
     }
 }

@@ -101,20 +101,9 @@ void EmitDebugLogs(const std::vector<std::string>& logs)
     }
 }
 
-std::string RedactedEndpointLog(const ConnectParams& params)
-{
-    return params.port.empty() ? "target=<redacted>" : "target=<redacted>:" + params.port;
-}
-
-std::string RedactedValueLog(const char* name, const std::string& value)
-{
-    return std::string(name) + "=" + (value.empty() ? "<empty>" : "<redacted>");
-}
-
 napi_value Connect(napi_env env, napi_callback_info info)
 {
     ConnectParams params = ReadConnectParams(env, info);
-    BridgeLogger::Debug("native connect invoked");
 
     napi_value result = MakeObject(env);
     if (params.host.empty() || params.port.empty() || params.username.empty() || params.password.empty()) {
@@ -124,12 +113,6 @@ napi_value Connect(napi_env env, napi_callback_info info)
         BridgeLogger::Error("native connect parameter validation failed");
         return result;
     }
-
-    BridgeLogger::Debug(RedactedEndpointLog(params));
-    BridgeLogger::Debug(RedactedValueLog("username", params.username));
-    BridgeLogger::Debug("certPolicy=" + params.certPolicy);
-    BridgeLogger::Debug(RedactedValueLog("appFilesDir", params.appFilesDir));
-    BridgeLogger::Debug("starting native worker");
 
     std::string message;
     bool started = BridgeSession().Connect(params, message);
@@ -144,7 +127,6 @@ napi_value Connect(napi_env env, napi_callback_info info)
     SetBool(env, result, "ok", true);
     SetString(env, result, "state", "Resolving");
     SetString(env, result, "message", message);
-    BridgeLogger::Info(message);
     return result;
 }
 
@@ -152,7 +134,9 @@ napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
 {
     const XrdpServerParams params = ReadXrdpServerParams(env, info);
     XrdpServerCommandResult result = rdp_bridge::StartXrdpServer(params);
-    EmitDebugLogs(result.logs);
+    if (!result.ok) {
+        EmitDebugLogs(result.logs);
+    }
     return MakeXrdpServerResult(env, result);
 }
 
@@ -165,24 +149,22 @@ napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info info)
 napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
 {
     (void)info;
-    BridgeLogger::Debug("native release all keys invoked");
     std::string message;
     const bool ok = BridgeSession().ReleaseAllKeys(message);
-    if (ok) {
-        BridgeLogger::Debug(message);
-    } else {
+    const bool noActiveSession = !ok && message == "no active FreeRDP session";
+    if (!ok && !noActiveSession) {
         BridgeLogger::Error(message);
     }
 
     napi_value result = MakeObject(env);
-    SetBool(env, result, "ok", ok);
+    SetBool(env, result, "ok", ok || noActiveSession);
     SetString(env, result, "state", ok ? "Connected" : "Disconnected");
     SetString(env, result, "message", message);
     return result;
 }
 
 napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name,
-    bool mirrorToHilog = false)
+    bool mirrorToHilog = false, bool logRegistration = false)
 {
     napi_value callback = GetFirstArgument(env, info);
     bool ok = callback != nullptr && sink.Set(env, callback, name, mirrorToHilog);
@@ -192,7 +174,9 @@ napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& si
     SetString(env, result, "state", ok ? "Idle" : "Failed");
     SetString(env, result, "message", ok ? "callback registered" : "callback must be a function");
     if (ok) {
-        BridgeLogger::Debug(std::string(name) + " registered");
+        if (logRegistration) {
+            BridgeLogger::Debug(std::string(name) + " registered");
+        }
     } else {
         BridgeLogger::Error(std::string(name) + " registration failed");
     }
@@ -212,19 +196,19 @@ napi_value OnError(napi_env env, napi_callback_info info)
 napi_value OnMicrophonePermissionRequest(napi_env env, napi_callback_info info)
 {
     return RegisterCallback(env, info, MicrophonePermissionRequestSink(),
-        "rdpMicrophonePermissionRequestCallback", true);
+        "rdpMicrophonePermissionRequestCallback");
 }
 
 napi_value OnClipboardPermissionRequest(napi_env env, napi_callback_info info)
 {
     return RegisterCallback(env, info, ClipboardPermissionRequestSink(),
-        "rdpClipboardPermissionRequestCallback", true);
+        "rdpClipboardPermissionRequestCallback");
 }
 
 napi_value OnLocationPermissionRequest(napi_env env, napi_callback_info info)
 {
     return RegisterCallback(env, info, LocationPermissionRequestSink(),
-        "rdpLocationPermissionRequestCallback", true);
+        "rdpLocationPermissionRequestCallback");
 }
 
 napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info info)
@@ -254,9 +238,7 @@ napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info i
         "clipboard permission request is not pending");
     const std::string logLine = "clipboard permission completion requestId=" + std::to_string(requestId) +
         " granted=" + std::string(granted ? "true" : "false");
-    if (ok) {
-        BridgeLogger::Debug(logLine);
-    } else {
+    if (!ok) {
         BridgeLogger::Error(logLine + " failed: request is not pending");
     }
     return result;
@@ -289,9 +271,7 @@ napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info in
         "location permission request is not pending");
     const std::string logLine = "location permission completion requestId=" + std::to_string(requestId) +
         " granted=" + std::string(granted ? "true" : "false");
-    if (ok) {
-        BridgeLogger::Debug(logLine);
-    } else {
+    if (!ok) {
         BridgeLogger::Error(logLine + " failed: request is not pending");
     }
     return result;
@@ -324,9 +304,7 @@ napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info 
         "microphone permission request is not pending");
     const std::string logLine = "microphone permission completion requestId=" + std::to_string(requestId) +
         " granted=" + std::string(granted ? "true" : "false");
-    if (ok) {
-        BridgeLogger::Debug(logLine);
-    } else {
+    if (!ok) {
         BridgeLogger::Error(logLine + " failed: request is not pending");
     }
     return result;
