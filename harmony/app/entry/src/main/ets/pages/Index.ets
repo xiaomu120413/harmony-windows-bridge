@@ -58,6 +58,7 @@ struct Index {
   private xrdpServerStartRequest: Promise<XrdpServerStatus> | null = null
   private windowsConnectionStore: WindowsConnectionStore | null = null
   private connectionProfilesLoaded: boolean = false
+  private connectionProfileSaveTimer: number | null = null
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -81,7 +82,12 @@ struct Index {
     this.refreshXrdpServerDiagnostics()
   }
 
+  onPageHide(): void {
+    this.flushConnectionProfileSave()
+  }
+
   aboutToDisappear(): void {
+    this.flushConnectionProfileSave()
     this.releaseActiveModifiers()
   }
 
@@ -158,7 +164,7 @@ struct Index {
       return
     }
 
-    const selectedProfile = this.findConnectionProfile(snapshot.selectedProfileId)
+    const selectedProfile = this.findConnectionProfileIn(snapshot.profiles, snapshot.selectedProfileId)
     if (selectedProfile === null) {
       this.rememberConnectionPassword = false
       if (clearWhenEmpty) {
@@ -171,7 +177,11 @@ struct Index {
   }
 
   private findConnectionProfile(profileId: string): WindowsConnectionProfile | null {
-    for (const profile of this.connectionProfiles) {
+    return this.findConnectionProfileIn(this.connectionProfiles, profileId)
+  }
+
+  private findConnectionProfileIn(profiles: WindowsConnectionProfile[], profileId: string): WindowsConnectionProfile | null {
+    for (const profile of profiles) {
       if (profile.id === profileId) {
         return profile
       }
@@ -192,6 +202,7 @@ struct Index {
   }
 
   private selectConnectionProfile(profileId: string): void {
+    this.clearConnectionProfileSaveTimer()
     if (profileId.length === 0) {
       this.startNewConnectionProfile()
       return
@@ -225,6 +236,7 @@ struct Index {
   }
 
   private startNewConnectionProfile(): void {
+    this.clearConnectionProfileSaveTimer()
     this.selectedConnectionProfileId = ''
     this.host = ''
     this.port = '3389'
@@ -235,6 +247,7 @@ struct Index {
   }
 
   private deleteSelectedConnectionProfile(): void {
+    this.clearConnectionProfileSaveTimer()
     if (this.selectedConnectionProfileId.length === 0) {
       this.startNewConnectionProfile()
       return
@@ -258,6 +271,34 @@ struct Index {
 
   private setRememberConnectionPassword(remember: boolean): void {
     this.rememberConnectionPassword = remember
+    this.scheduleConnectionProfileSave()
+  }
+
+  private scheduleConnectionProfileSave(): void {
+    if (this.host.trim().length === 0) {
+      return
+    }
+    this.clearConnectionProfileSaveTimer()
+    this.connectionProfileSaveTimer = setTimeout((): void => {
+      this.connectionProfileSaveTimer = null
+      this.saveCurrentConnectionProfile()
+    }, 450)
+  }
+
+  private clearConnectionProfileSaveTimer(): void {
+    if (this.connectionProfileSaveTimer !== null) {
+      clearTimeout(this.connectionProfileSaveTimer)
+      this.connectionProfileSaveTimer = null
+    }
+  }
+
+  private flushConnectionProfileSave(): void {
+    if (this.host.trim().length === 0) {
+      this.clearConnectionProfileSaveTimer()
+      return
+    }
+    this.clearConnectionProfileSaveTimer()
+    this.saveCurrentConnectionProfile()
   }
 
   private saveCurrentConnectionProfile(): void {
@@ -569,6 +610,7 @@ struct Index {
   }
 
   private connectNative(): void {
+    this.flushConnectionProfileSave()
     if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
       this.connected = false
       RdpLogger.warn('Missing host, username, or password')
@@ -582,7 +624,6 @@ struct Index {
     const password = this.password
     const appFilesDir = this.getAppFilesDir()
     this.connected = false
-    this.saveCurrentConnectionProfile()
     this.setSessionVisible(true)
     RdpLogger.info('Opening session surface')
     this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
@@ -737,13 +778,13 @@ struct Index {
         })
       } else {
         HomePage({
-          host: this.host,
-          port: this.port,
-          username: this.username,
-          password: this.password,
+          host: $host,
+          port: $port,
+          username: $username,
+          password: $password,
           connectionProfiles: this.connectionProfiles,
           selectedConnectionProfileId: this.selectedConnectionProfileId,
-          rememberPassword: this.rememberConnectionPassword,
+          rememberPassword: $rememberConnectionPassword,
           isDark: this.isAppDark(),
           xrdpServerBusy: this.xrdpServerBusy,
           xrdpServerState: this.xrdpServerState,
@@ -753,15 +794,19 @@ struct Index {
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
           onHostChange: (value: string): void => {
             this.host = value
+            this.scheduleConnectionProfileSave()
           },
           onPortChange: (value: string): void => {
             this.port = value
+            this.scheduleConnectionProfileSave()
           },
           onUsernameChange: (value: string): void => {
             this.username = value
+            this.scheduleConnectionProfileSave()
           },
           onPasswordChange: (value: string): void => {
             this.password = value
+            this.scheduleConnectionProfileSave()
           },
           onProfileSelect: (profileId: string): void => {
             this.selectConnectionProfile(profileId)
