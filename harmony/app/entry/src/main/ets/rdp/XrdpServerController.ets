@@ -2,6 +2,7 @@ import rdpNative, {
   NativeXrdpServerParams,
   NativeXrdpServerResult
 } from 'libentry.so'
+import { RdpLogger } from './RdpLogger'
 
 export interface XrdpServerStatus {
   running: boolean
@@ -25,18 +26,11 @@ export interface XrdpServerStartOptions {
   restartIfRunning: boolean
 }
 
-type XrdpLineLogger = (line: string) => void
-type XrdpNativeLogSink = (lines: string[]) => void
-
 export class XrdpServerController {
   private readonly messages: XrdpServerDisplayMessages
-  private readonly logLine: XrdpLineLogger
-  private readonly logNativeLines: XrdpNativeLogSink
 
-  constructor(messages: XrdpServerDisplayMessages, logLine: XrdpLineLogger, logNativeLines: XrdpNativeLogSink) {
+  constructor(messages: XrdpServerDisplayMessages) {
     this.messages = messages
-    this.logLine = logLine
-    this.logNativeLines = logNativeLines
   }
 
   diagnostics(): XrdpServerStatus {
@@ -44,7 +38,7 @@ export class XrdpServerController {
       const result: NativeXrdpServerResult = rdpNative.getXrdpServerDiagnostics()
       return this.toStatus(result)
     } catch (error) {
-      this.logLine(`xrdp diagnostics failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`xrdp diagnostics failed: ${JSON.stringify(error)}`)
       return this.failedStatus()
     }
   }
@@ -52,11 +46,9 @@ export class XrdpServerController {
   start(options: XrdpServerStartOptions, trigger: string): XrdpServerStatus {
     try {
       const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.toNativeParams(options))
-      this.logLine(`${result.message}: ${trigger}`)
-      this.logNativeLines(result.logs)
       return this.toStatus(result)
     } catch (error) {
-      this.logLine(`xrdp ensure start failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`xrdp ensure start failed: ${JSON.stringify(error)}`)
       return this.diagnostics()
     }
   }

@@ -6,27 +6,21 @@ import {
   READ_PASTEBOARD_PERMISSION,
   SCREEN_RECORDING_PERMISSION
 } from './RdpConstants'
+import { RdpLogger } from './RdpLogger'
 
 export interface RdpPermissionDelegate {
   getContext(): common.UIAbilityContext | null
-  log(line: string): void
 }
 
 export class RdpPermissionCallbackDelegate implements RdpPermissionDelegate {
   private readonly getContextCallback: () => common.UIAbilityContext | null
-  private readonly logCallback: (line: string) => void
 
-  constructor(getContext: () => common.UIAbilityContext | null, log: (line: string) => void) {
+  constructor(getContext: () => common.UIAbilityContext | null) {
     this.getContextCallback = getContext
-    this.logCallback = log
   }
 
   getContext(): common.UIAbilityContext | null {
     return this.getContextCallback()
-  }
-
-  log(line: string): void {
-    this.logCallback(line)
   }
 }
 
@@ -108,7 +102,7 @@ export class RdpPermissionManager {
 
   requestScreenRecordingPermission(trigger: string): Promise<boolean> {
     if (this.hasScreenRecordingPermission()) {
-      this.delegate.log(`Screen recording permission granted: ${trigger}`)
+      RdpLogger.info(`Screen recording permission granted: ${trigger}`)
       return Promise.resolve(true)
     }
     if (this.screenRecordingPermission.request !== null &&
@@ -134,20 +128,20 @@ export class RdpPermissionManager {
   private ensurePermission(state: PermissionRequestState, label: string, trigger: string,
     isGranted: PermissionGrantChecker, request: PermissionRequestFactory, requestOnce: boolean): Promise<boolean> {
     if (isGranted()) {
-      this.delegate.log(`${label} permission granted: ${trigger}`)
+      RdpLogger.info(`${label} permission granted: ${trigger}`)
       return Promise.resolve(true)
     }
     if (state.request !== null) {
       return state.request
     }
     if (requestOnce && state.requested) {
-      this.delegate.log(`${label} permission is not granted: ${trigger}`)
+      RdpLogger.warn(`${label} permission is not granted: ${trigger}`)
       return Promise.resolve(false)
     }
 
     const context = this.delegate.getContext()
     if (context === null) {
-      this.delegate.log(`${label} permission request skipped: no UIAbilityContext`)
+      RdpLogger.warn(`${label} permission request skipped: no UIAbilityContext`)
       return Promise.resolve(false)
     }
 
@@ -172,7 +166,7 @@ export class RdpPermissionManager {
       const status = atManager.checkAccessTokenSync(this.getSelfAccessTokenId(), permission)
       return status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED
     } catch (error) {
-      this.delegate.log(`${label} permission check failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`${label} permission check failed: ${JSON.stringify(error)}`)
       return false
     }
   }
@@ -184,11 +178,15 @@ export class RdpPermissionManager {
       .then((result: abilityAccessCtrl.SelectedResult) => {
         const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
           this.hasPermission(permission, label)
-        this.delegate.log(`${label} setting result: granted=${granted} result=${result}`)
+        if (granted) {
+          RdpLogger.info(`${label} setting result: granted=${granted} result=${result}`)
+        } else {
+          RdpLogger.warn(`${label} setting result: granted=${granted} result=${result}`)
+        }
         return granted
       })
       .catch((error: Error) => {
-        this.delegate.log(`${label} setting request failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`${label} setting request failed: ${JSON.stringify(error)}`)
         return false
       })
   }
@@ -211,7 +209,7 @@ export class RdpPermissionManager {
             delayedResolve(granted)
           })
           .catch((error: Error) => {
-            this.delegate.log(`Screen recording setting request failed: ${JSON.stringify(error)}`)
+            RdpLogger.error(`Screen recording setting request failed: ${JSON.stringify(error)}`)
             delayedResolve(false)
           })
       }, SCREEN_RECORDING_PERMISSION_PROMPT_DELAY_MS)
@@ -226,18 +224,18 @@ export class RdpPermissionManager {
     const context = this.delegate.getContext()
     this.clearScreenRecordingPermissionPromptDelay()
     if (context === null) {
-      this.delegate.log(`Screen recording permission request skipped: no UIAbilityContext`)
+      RdpLogger.warn(`Screen recording permission request skipped: no UIAbilityContext`)
       delayedResolve(false)
       return
     }
 
-    this.delegate.log(`Screen recording permission requested immediately: ${trigger}`)
+    RdpLogger.info(`Screen recording permission requested immediately: ${trigger}`)
     this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording')
       .then((granted: boolean) => {
         delayedResolve(granted)
       })
       .catch((error: Error) => {
-        this.delegate.log(`Screen recording setting request failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`Screen recording setting request failed: ${JSON.stringify(error)}`)
         delayedResolve(false)
       })
   }
@@ -265,11 +263,15 @@ export class RdpPermissionManager {
           }
         }
         granted = granted || isGranted()
-        this.delegate.log(`${label} permission request result: granted=${granted}`)
+        if (granted) {
+          RdpLogger.info(`${label} permission request result: granted=${granted}`)
+        } else {
+          RdpLogger.warn(`${label} permission request result: granted=${granted}`)
+        }
         return granted
       })
       .catch((error: Error) => {
-        this.delegate.log(`${label} permission request failed: ${JSON.stringify(error)}`)
+        RdpLogger.error(`${label} permission request failed: ${JSON.stringify(error)}`)
         return false
       })
   }

@@ -4,54 +4,53 @@ import {
   REMOTE_FILES_SHARED_DIR_NAME,
   REMOTE_FILES_SHARED_DIR_STORAGE_KEY
 } from '../components/settings/SettingsConstants'
+import { RdpLogger } from './RdpLogger'
 
 const FILE_MANAGER_BUNDLE_NAME = 'com.huawei.hmos.filemanager'
 const FILE_MANAGER_MAIN_ABILITY = 'MainAbility'
 const FILE_MANAGER_OPEN_DIRECTORY_MODE = 'openDirectory'
 const FILE_MANAGER_OPEN_DIRECTORY_URI = 'filemanager://openDirectory'
 
-type RemoteFilesLog = (line: string) => void
-
 export class RemoteFilesDirectory {
-  static prepareSharedDirectory(info: RemoteFilesLog, error: RemoteFilesLog): void {
+  static prepareSharedDirectory(): void {
     try {
       const downloadDir = Environment.getUserDownloadDir()
       if (downloadDir.length === 0) {
-        error('prepare download drive directory skipped: Download directory is empty')
+        RdpLogger.warn('prepare download drive directory skipped: Download directory is empty')
         return
       }
 
       const targetDir = RemoteFilesDirectory.sharedDirectoryPath(downloadDir)
       if (RemoteFilesDirectory.isDirectory(targetDir)) {
         AppStorage.setOrCreate<string>(REMOTE_FILES_SHARED_DIR_STORAGE_KEY, targetDir)
-        info(`download drive directory ready: ${targetDir}`)
+        RdpLogger.info(`download drive directory ready: ${targetDir}`)
         return
       }
 
       fileIo.mkdirSync(targetDir)
       AppStorage.setOrCreate<string>(REMOTE_FILES_SHARED_DIR_STORAGE_KEY, targetDir)
-      info(`download drive directory created: ${targetDir}`)
+      RdpLogger.info(`download drive directory created: ${targetDir}`)
     } catch (exception) {
-      error(`prepare download drive directory failed: ${JSON.stringify(exception)}`)
+      RdpLogger.error(`prepare download drive directory failed: ${JSON.stringify(exception)}`)
     }
   }
 
-  static async openSharedDirectory(context: common.UIAbilityContext | null, log: RemoteFilesLog): Promise<void> {
+  static async openSharedDirectory(context: common.UIAbilityContext | null): Promise<void> {
     if (context === null) {
-      log('remote files directory open skipped: no UIAbilityContext')
+      RdpLogger.warn('remote files directory open skipped: no UIAbilityContext')
       return
     }
 
     const storedDir = AppStorage.get<string>(REMOTE_FILES_SHARED_DIR_STORAGE_KEY) || ''
     if (!RemoteFilesDirectory.isDirectory(storedDir)) {
-      log('remote files directory open skipped: shared directory is not ready')
+      RdpLogger.warn('remote files directory open skipped: shared directory is not ready')
       return
     }
 
     try {
       await context.startAbility(RemoteFilesDirectory.openDirectoryWant(storedDir))
     } catch (exception) {
-      log(`remote files directory startAbility failed: ${JSON.stringify(exception)}`)
+      RdpLogger.error(`remote files directory startAbility failed: ${JSON.stringify(exception)}`)
     }
   }
 

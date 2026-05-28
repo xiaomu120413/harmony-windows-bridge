@@ -40,9 +40,6 @@ export default class EntryAbility extends UIAbility {
   }
 
   private ensureDownloadDriveDirectory(): void {
-    RemoteFilesDirectory.prepareSharedDirectory(
-      (line: string): void => console.info(`${TAG} ${line}`),
-      (line: string): void => console.error(`${TAG} ${line}`)
-    )
+    RemoteFilesDirectory.prepareSharedDirectory()
   }
 }
