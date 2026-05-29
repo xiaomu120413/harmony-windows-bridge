@@ -81,12 +81,20 @@ export struct HomePage {
     return this.isDark ? '#15171C' : '#FFFFFF'
   }
 
+  private searchBackground(): string {
+    return this.isDark ? '#10243A' : '#F2F8FF'
+  }
+
   private homeBorderColor(active: boolean = false): string {
     return active ? SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) : SettingsTheme.borderColor(this.isDark)
   }
 
   private mutedBorderColor(): string {
     return this.isDark ? '#303641' : '#D9DEE7'
+  }
+
+  private searchBorderColor(): string {
+    return this.isDark ? '#28567F' : '#C9E4FF'
   }
 
   private primaryButtonBackground(hovered: boolean, pressed: boolean): string {
@@ -114,7 +122,7 @@ export struct HomePage {
       return this.isDark ? '#162B46' : '#EDF6FF'
     }
     if (hovered) {
-      return this.isDark ? '#183252' : '#F2F8FF'
+      return this.isDark ? '#1E3B60' : '#EAF4FF'
     }
     return this.isDark ? '#14263D' : '#F7FBFF'
   }
@@ -124,7 +132,7 @@ export struct HomePage {
       return this.isDark ? '#20242B' : '#EEF2F7'
     }
     if (hovered) {
-      return this.isDark ? '#1D222A' : '#FAFCFF'
+      return this.isDark ? '#223043' : '#F2F8FF'
     }
     return this.fieldBackground()
   }
@@ -369,18 +377,18 @@ export struct HomePage {
   private buildNewDeviceButton() {
     Row({ space: 8 }) {
       Text('+')
-        .fontSize(22)
+        .fontSize(20)
         .fontColor(Color.White)
         .fontWeight(FontWeight.Regular)
-        .height(26)
+        .height(24)
       Text('新建设备')
-        .fontSize(15)
+        .fontSize(14)
         .fontColor(Color.White)
         .fontWeight(FontWeight.Bold)
         .maxLines(1)
     }
-    .width(150)
-    .height(48)
+    .width(136)
+    .height(44)
     .justifyContent(FlexAlign.Center)
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)
@@ -410,7 +418,7 @@ export struct HomePage {
       Image(HomeResources.SEARCH_ICON)
         .width(22)
         .height(22)
-        .fillColor(SettingsTheme.mutedText(this.isDark))
+        .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
         .draggable(false)
       TextInput({ placeholder: '搜索设备名称或地址', text: this.profileSearchText })
         .height(48)
@@ -424,15 +432,15 @@ export struct HomePage {
           this.profileSearchText = value
         })
     }
-    .width('100%')
+    .width('94%')
     .height(58)
     .padding({ left: 16, right: 10 })
     .alignItems(VerticalAlign.Center)
-    .backgroundColor(this.fieldBackground())
+    .backgroundColor(this.searchBackground())
     .borderRadius(8)
     .border({
       width: 1,
-      color: this.mutedBorderColor(),
+      color: this.searchBorderColor(),
       style: BorderStyle.Solid
     })
   }
@@ -440,13 +448,13 @@ export struct HomePage {
   @Builder
   private buildDeviceTag(text: string) {
     Text(text)
-      .fontSize(12)
+      .fontSize(10)
       .fontWeight(FontWeight.Medium)
       .fontColor(SettingsTheme.statusText(this.isDark, 'ok'))
-      .height(24)
-      .padding({ left: 9, right: 9 })
+      .height(18)
+      .padding({ left: 6, right: 6 })
       .backgroundColor(SettingsTheme.statusBackground(this.isDark, 'ok'))
-      .borderRadius(7)
+      .borderRadius(6)
       .maxLines(1)
   }
 
@@ -454,39 +462,40 @@ export struct HomePage {
   private buildDeviceIcon(selected: boolean) {
     Column() {
       Image(HomeResources.MONITOR_ICON)
-        .width(31)
-        .height(31)
+        .width(20)
+        .height(20)
         .fillColor(Color.White)
         .draggable(false)
     }
-    .width(60)
-    .height(60)
-    .borderRadius(30)
+    .width(36)
+    .height(36)
+    .borderRadius(18)
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .backgroundColor(selected ? SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) : '#8B9099')
+    .backgroundColor(selected ? SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) :
+      SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN))
   }
 
   @Builder
   private buildDeviceCard(profile: WindowsConnectionProfile) {
-    Row({ space: 18 }) {
+    Row({ space: 8 }) {
       this.buildDeviceIcon(this.isSelectedProfile(profile))
 
-      Column({ space: 8 }) {
+      Column({ space: 3 }) {
         Text(this.profileName(profile))
-          .fontSize(19)
+          .fontSize(14)
           .fontWeight(FontWeight.Bold)
           .fontColor(SettingsTheme.primaryText(this.isDark))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
         Text(this.profileAddress(profile))
-          .fontSize(15)
+          .fontSize(12)
           .fontColor(SettingsTheme.secondaryText(this.isDark))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Row({ space: 8 }) {
+        Row({ space: 6 }) {
           if (this.isSelectedProfile(profile)) {
             this.buildDeviceTag('最近连接')
           }
@@ -494,22 +503,22 @@ export struct HomePage {
             this.buildDeviceTag('已保存密码')
           }
         }
-        .height(24)
+        .height(18)
         .alignItems(VerticalAlign.Center)
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
       Image(HomeResources.CHEVRON_RIGHT_ICON)
-        .width(26)
-        .height(26)
+        .width(18)
+        .height(18)
         .fillColor(this.isSelectedProfile(profile) ? SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) :
           SettingsTheme.mutedText(this.isDark))
         .draggable(false)
     }
-    .width('100%')
-    .height(128)
-    .padding({ left: 22, right: 20 })
+    .width('94%')
+    .height(72)
+    .padding({ left: 10, right: 8 })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(this.isSelectedProfile(profile) ?
       this.activePanelBackground(this.hoveredProfileId === profile.id, this.pressedProfileId === profile.id) :
@@ -518,7 +527,7 @@ export struct HomePage {
     .border({
       width: this.isSelectedProfile(profile) ? 2 : 1,
       color: this.isSelectedProfile(profile) ? SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) :
-        this.mutedBorderColor()
+        (this.hoveredProfileId === profile.id ? this.searchBorderColor() : this.mutedBorderColor())
     })
     .shadow({
       radius: this.hoveredProfileId === profile.id ? 8 : 0,
@@ -561,8 +570,8 @@ export struct HomePage {
         .fontColor(SettingsTheme.mutedText(this.isDark))
         .maxLines(1)
     }
-    .width('100%')
-    .height(128)
+    .width('94%')
+    .height(90)
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(8)
@@ -585,30 +594,41 @@ export struct HomePage {
 
         this.buildNewDeviceButton()
       }
-      .width('100%')
+      .width('94%')
       .alignItems(VerticalAlign.Center)
 
       this.buildSearchBox()
 
-      if (!this.hasConnectionProfiles()) {
-        this.buildDeviceEmptyState('还没有保存的设备', '连接成功后会自动出现在这里')
-      } else if (this.visibleProfileCount() === 0) {
-        this.buildDeviceEmptyState('没有匹配设备', '换个设备名称或地址再试')
-      } else {
-        Column({ space: 18 }) {
-          ForEach(this.connectionProfiles, (profile: WindowsConnectionProfile) => {
-            if (this.profileVisible(profile)) {
-              this.buildDeviceCard(profile)
+      Scroll() {
+        Row() {
+          Column({ space: 10 }) {
+            if (!this.hasConnectionProfiles()) {
+              this.buildDeviceEmptyState('还没有保存的设备', '连接成功后会自动出现在这里')
+            } else if (this.visibleProfileCount() === 0) {
+              this.buildDeviceEmptyState('没有匹配设备', '换个设备名称或地址再试')
+            } else {
+              ForEach(this.connectionProfiles, (profile: WindowsConnectionProfile) => {
+                if (this.profileVisible(profile)) {
+                  this.buildDeviceCard(profile)
+                }
+              }, (profile: WindowsConnectionProfile) => profile.id)
             }
-          }, (profile: WindowsConnectionProfile) => profile.id)
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Center)
         }
         .width('100%')
+        .justifyContent(FlexAlign.Center)
       }
+      .width('100%')
+      .layoutWeight(1)
+      .scrollBar(BarState.Auto)
+      .scrollBarWidth(4)
     }
-    .width('33%')
+    .width('31%')
     .height('100%')
-    .padding({ left: 22, right: 22, top: 24, bottom: 24 })
-    .alignItems(HorizontalAlign.Start)
+    .padding({ left: 8, right: 8, top: 24, bottom: 24 })
+    .alignItems(HorizontalAlign.Center)
     .backgroundColor(this.panelBackground())
     .borderRadius(8)
     .border({
