@@ -11,6 +11,7 @@ export struct HomeHeader {
   }
   @State private settingsHovered: boolean = false
   @State private settingsPressed: boolean = false
+  private readonly headerSideWidth: number = 260
 
   private headerStatusTone(): SettingsStatusTone {
     if (this.xrdpServerBusy) {
@@ -95,7 +96,7 @@ export struct HomeHeader {
   build() {
     Row() {
       Row()
-        .width(380)
+        .width(this.headerSideWidth)
 
       Text('HarmonyOS 与 Windows 互联的局域网远程桌面工具')
         .fontSize(20)
@@ -114,7 +115,7 @@ export struct HomeHeader {
           .color(HomeTheme.borderColor(this.isDark))
         this.buildSettingsButton()
       }
-      .width(380)
+      .width(this.headerSideWidth)
       .justifyContent(FlexAlign.End)
       .alignItems(VerticalAlign.Center)
     }
