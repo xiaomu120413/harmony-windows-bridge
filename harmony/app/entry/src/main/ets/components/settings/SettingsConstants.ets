@@ -1,4 +1,4 @@
-import { SettingsAppearanceMode } from './SettingsUi'
+import { SettingsAppearanceMode } from './SettingsTypes'
 
 export const REMOTE_FILES_SHARED_DIR_STORAGE_KEY: string = 'remoteFilesSharedDirPath'
 export const REMOTE_FILES_SHARED_DIR_NAME: string = 'com.muhub.desktop'
@@ -18,9 +18,7 @@ export class SettingsRemoteControlSection {
 }
 
 export class SettingsText {
-  static readonly SETTINGS_BUTTON: string = '设置'
   static readonly SETTINGS_TITLE: string = '设置'
-  static readonly SETTINGS_SUBTITLE: string = '按基础设置、远控设置和项目帮助分组'
   static readonly SETTINGS_OVERVIEW_TITLE: string = '设置概览'
   static readonly SETTINGS_OVERVIEW_SUBTITLE: string = '查看当前外观、被控服务、权限和共享目录状态'
   static readonly SETTINGS_CURRENT_STATE: string = '当前状态'
