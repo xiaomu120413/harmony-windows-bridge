@@ -41,6 +41,10 @@ export struct XrdpServerCard {
     return this.running ? SettingsText.REMOTE_SERVER_REFRESH_ACTION : SettingsText.REMOTE_SERVER_START_ACTION
   }
 
+  private actionDisabled(): boolean {
+    return this.busy
+  }
+
   build() {
     Row({ space: 14 }) {
       Column() {
@@ -93,11 +97,17 @@ export struct XrdpServerCard {
         .type(ButtonType.Normal)
         .height(36)
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, this.busy))
-        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
+          SettingsTheme.subtleButton(this.isDark, false, false))
+        .fontColor(this.actionDisabled() ? SettingsTheme.disabledText(this.isDark) :
+          SettingsTheme.primaryText(this.isDark))
         .fontSize(12)
         .stateEffect(false)
+        .enabled(!this.actionDisabled())
         .onClick(() => {
+          if (this.actionDisabled()) {
+            return
+          }
           if (this.running) {
             this.onRefresh()
             return
@@ -265,6 +275,10 @@ export struct RemoteAccessCard {
     return this.gateEnabled ? this.accessCode : SettingsText.REMOTE_ACCESS_CODE_DISABLED
   }
 
+  private regenerateDisabled(): boolean {
+    return !this.gateEnabled
+  }
+
   build() {
     Column({ space: 14 }) {
       Row({ space: 14 }) {
@@ -326,11 +340,17 @@ export struct RemoteAccessCard {
           .type(ButtonType.Normal)
           .height(36)
           .borderRadius(SettingsTheme.BUTTON_RADIUS)
-          .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, false))
-          .fontColor(SettingsTheme.primaryText(this.isDark))
+          .backgroundColor(this.regenerateDisabled() ? SettingsTheme.disabledButton(this.isDark) :
+            SettingsTheme.subtleButton(this.isDark, false, false))
+          .fontColor(this.regenerateDisabled() ? SettingsTheme.disabledText(this.isDark) :
+            SettingsTheme.primaryText(this.isDark))
           .fontSize(12)
           .stateEffect(false)
+          .enabled(!this.regenerateDisabled())
           .onClick(() => {
+            if (this.regenerateDisabled()) {
+              return
+            }
             this.onRegenerate()
           })
       }
@@ -411,6 +431,10 @@ export struct ScreenRecordingCard {
     return this.granted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED : SettingsText.REMOTE_SCREEN_PERMISSION_ACTION
   }
 
+  private actionDisabled(): boolean {
+    return this.busy || this.granted
+  }
+
   build() {
     Row({ space: 14 }) {
       Column() {
@@ -452,11 +476,17 @@ export struct ScreenRecordingCard {
         .type(ButtonType.Normal)
         .height(36)
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, this.busy))
-        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
+          SettingsTheme.subtleButton(this.isDark, false, false))
+        .fontColor(this.actionDisabled() ? SettingsTheme.disabledText(this.isDark) :
+          SettingsTheme.primaryText(this.isDark))
         .fontSize(12)
         .stateEffect(false)
+        .enabled(!this.actionDisabled())
         .onClick(() => {
+          if (this.actionDisabled()) {
+            return
+          }
           this.onRequest()
         })
     }
