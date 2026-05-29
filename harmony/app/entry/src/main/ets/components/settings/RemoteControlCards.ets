@@ -48,7 +48,7 @@ export struct XrdpServerCard {
   build() {
     Row({ space: 14 }) {
       Column() {
-        Image(SettingsResources.DASHBOARD_ICON)
+        Image(SettingsResources.REMOTE_SERVICE_ICON)
           .width(SettingsTheme.ICON_SIZE)
           .height(SettingsTheme.ICON_SIZE)
           .fillColor(SettingsTheme.accentColor(this.isDark, this.running ? SettingsAccent.GREEN :
@@ -170,7 +170,7 @@ export struct RemoteFilesCard {
   build() {
     Row({ space: 14 }) {
       Column() {
-        Image(SettingsResources.HELP_ICON)
+        Image(SettingsResources.REMOTE_FILES_ICON)
           .width(SettingsTheme.ICON_SIZE)
           .height(SettingsTheme.ICON_SIZE)
           .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.PURPLE))
@@ -283,7 +283,7 @@ export struct RemoteAccessCard {
     Column({ space: 14 }) {
       Row({ space: 14 }) {
         Column() {
-          Image(SettingsResources.DASHBOARD_ICON)
+          Image(SettingsResources.REMOTE_ACCESS_ICON)
             .width(SettingsTheme.ICON_SIZE)
             .height(SettingsTheme.ICON_SIZE)
             .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
@@ -438,7 +438,7 @@ export struct ScreenRecordingCard {
   build() {
     Row({ space: 14 }) {
       Column() {
-        Image(SettingsResources.SETTINGS_ICON)
+        Image(SettingsResources.REMOTE_SCREEN_ICON)
           .width(SettingsTheme.ICON_SIZE)
           .height(SettingsTheme.ICON_SIZE)
           .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN))

@@ -69,11 +69,11 @@ export struct HomeDeviceList {
   @Builder
   private buildNewDeviceButton() {
     Row({ space: 8 }) {
-      Text('+')
-        .fontSize(20)
-        .fontColor(Color.White)
-        .fontWeight(FontWeight.Regular)
-        .height(24)
+      Image(HomeResources.ADD_DEVICE_ICON)
+        .width(20)
+        .height(20)
+        .fillColor(Color.White)
+        .draggable(false)
       Text('新建设备')
         .fontSize(14)
         .fontColor(Color.White)
