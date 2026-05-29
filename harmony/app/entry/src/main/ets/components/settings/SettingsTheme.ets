@@ -144,6 +144,10 @@ export class SettingsTheme {
     return isDark ? '#9CA3AF' : '#6B7280'
   }
 
+  static disabledText(isDark: boolean): string {
+    return isDark ? '#6B7280' : '#A0A7B2'
+  }
+
   static accentColor(isDark: boolean, accentName: SettingsAccentName): string {
     if (accentName === SettingsAccent.PURPLE) {
       return isDark ? '#C4B5FD' : '#7C3AED'
@@ -235,6 +239,10 @@ export class SettingsTheme {
       return isDark ? '#242932' : '#EEF2F7'
     }
     return isDark ? '#1D2128' : '#F2F4F7'
+  }
+
+  static disabledButton(isDark: boolean): string {
+    return isDark ? '#1A1D23' : '#F6F7F9'
   }
 
   static shadow(isDark: boolean, hovered: boolean): ShadowOptions {
