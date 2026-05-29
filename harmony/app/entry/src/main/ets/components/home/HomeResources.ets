@@ -1,5 +1,6 @@
 export class HomeResources {
   static readonly SEARCH_ICON: Resource = $r('app.media.home_search')
+  static readonly ADD_DEVICE_ICON: Resource = $r('app.media.home_add_device')
   static readonly MONITOR_ICON: Resource = $r('app.media.home_monitor')
   static readonly SHIELD_ICON: Resource = $r('app.media.home_shield')
   static readonly LOCK_ICON: Resource = $r('app.media.home_lock')

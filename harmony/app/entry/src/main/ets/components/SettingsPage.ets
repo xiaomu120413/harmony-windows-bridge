@@ -149,7 +149,7 @@ export struct SettingsPage {
       Column({ space: 8 }) {
         SettingsDesktopNavItem({
           title: SettingsText.SETTINGS_NAV_OVERVIEW,
-          iconResource: SettingsResources.DASHBOARD_ICON,
+          iconResource: SettingsResources.OVERVIEW_ICON,
           accentName: SettingsAccent.BLUE,
           selected: this.pageName === SettingsRoute.SETTINGS,
           isDark: this.isDarkMode(),
@@ -160,7 +160,7 @@ export struct SettingsPage {
         })
         SettingsDesktopNavItem({
           title: SettingsText.BASIC_SETTINGS_ENTRY_TITLE,
-          iconResource: SettingsResources.SETTINGS_ICON,
+          iconResource: SettingsResources.BASIC_ICON,
           accentName: SettingsAccent.CYAN,
           selected: this.pageName === SettingsRoute.BASIC,
           isDark: this.isDarkMode(),
@@ -171,7 +171,7 @@ export struct SettingsPage {
         })
         SettingsDesktopNavItem({
           title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
-          iconResource: SettingsResources.DASHBOARD_ICON,
+          iconResource: SettingsResources.REMOTE_CONTROL_ICON,
           accentName: SettingsAccent.BLUE,
           selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
           isDark: this.isDarkMode(),
@@ -182,7 +182,7 @@ export struct SettingsPage {
         })
         SettingsDesktopNavItem({
           title: SettingsText.PROJECT_HELP_ENTRY_TITLE,
-          iconResource: SettingsResources.HELP_ICON,
+          iconResource: SettingsResources.PROJECT_HELP_ICON,
           accentName: SettingsAccent.PURPLE,
           selected: this.pageName === SettingsRoute.PROJECT_HELP,
           isDark: this.isDarkMode(),
@@ -299,18 +299,18 @@ export struct SettingsPage {
 
       Column() {
         this.overviewEntry(SettingsText.BASIC_SETTINGS_ENTRY_TITLE, SettingsText.BASIC_SETTINGS_ENTRY_DESC,
-          SettingsResources.SETTINGS_ICON, SettingsAccent.CYAN, SettingsText.appearanceValue(this.appearanceMode),
+          SettingsResources.BASIC_ICON, SettingsAccent.CYAN, SettingsText.appearanceValue(this.appearanceMode),
           () => {
             this.pageName = SettingsRoute.BASIC
             this.remoteControlTargetSection = ''
           })
         this.overviewEntry(SettingsText.REMOTE_CONTROL_ENTRY_TITLE, SettingsText.REMOTE_CONTROL_ENTRY_DESC,
-          SettingsResources.DASHBOARD_ICON, SettingsAccent.BLUE, this.xrdpStatusText(), () => {
+          SettingsResources.REMOTE_CONTROL_ICON, SettingsAccent.BLUE, this.xrdpStatusText(), () => {
             this.pageName = SettingsRoute.REMOTE_CONTROL
             this.remoteControlTargetSection = ''
           })
         this.overviewEntry(SettingsText.PROJECT_HELP_ENTRY_TITLE, SettingsText.PROJECT_HELP_ENTRY_DESC,
-          SettingsResources.HELP_ICON, SettingsAccent.PURPLE, '', () => {
+          SettingsResources.PROJECT_HELP_ICON, SettingsAccent.PURPLE, '', () => {
             this.pageName = SettingsRoute.PROJECT_HELP
             this.remoteControlTargetSection = ''
           })

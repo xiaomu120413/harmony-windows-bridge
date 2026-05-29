@@ -64,13 +64,13 @@ export struct HomeStatusFooter {
   private buildStatusIcon(icon: Resource, tone: SettingsStatusTone) {
     Column() {
       Image(icon)
-        .width(24)
-        .height(24)
+        .width(20)
+        .height(20)
         .fillColor(SettingsTheme.statusText(this.isDark, tone))
         .draggable(false)
     }
-    .width(36)
-    .height(36)
+    .width(32)
+    .height(32)
     .borderRadius(8)
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
@@ -82,12 +82,12 @@ export struct HomeStatusFooter {
     Row({ space: 12 }) {
       this.buildStatusIcon(icon, tone)
       Text(label)
-        .fontSize(16)
+        .fontSize(15)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .maxLines(1)
       Text(value)
-        .fontSize(15)
+        .fontSize(14)
         .fontColor(SettingsTheme.secondaryText(this.isDark))
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -97,9 +97,9 @@ export struct HomeStatusFooter {
         .height(9)
         .fill(SettingsTheme.statusText(this.isDark, tone))
     }
-    .height(60)
+    .height(52)
     .layoutWeight(1)
-    .padding({ left: 16, right: 16 })
+    .padding({ left: 14, right: 14 })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(this.hoveredSection === section || this.pressedSection === section ?
       HomeTheme.inactivePanelBackground(this.isDark, this.hoveredSection === section, this.pressedSection === section) :
@@ -143,8 +143,8 @@ export struct HomeStatusFooter {
       this.buildStatusCard('共享目录', '已配置', HomeResources.LOCK_ICON, 'ok', SettingsRemoteControlSection.FILES)
     }
     .width('100%')
-    .height(82)
-    .padding({ left: 30, right: 30, top: 10, bottom: 12 })
+    .height(70)
+    .padding({ left: 30, right: 30, top: 8, bottom: 10 })
     .backgroundColor(HomeTheme.appBackground(this.isDark))
     .border({
       width: { top: 1 },

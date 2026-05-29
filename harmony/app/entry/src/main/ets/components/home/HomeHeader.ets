@@ -58,18 +58,18 @@ export struct HomeHeader {
   private buildSettingsButton() {
     Row({ space: 8 }) {
       Image(SettingsResources.SETTINGS_ICON)
-        .width(22)
-        .height(22)
+        .width(19)
+        .height(19)
         .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
         .draggable(false)
       Text('设置')
-        .fontSize(15)
+        .fontSize(14)
         .fontWeight(FontWeight.Medium)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .maxLines(1)
     }
-    .height(44)
-    .padding({ left: 14, right: 14 })
+    .height(38)
+    .padding({ left: 12, right: 12 })
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)
     .backgroundColor(HomeTheme.neutralButtonBackground(this.isDark, this.settingsHovered, this.settingsPressed))
@@ -97,11 +97,12 @@ export struct HomeHeader {
       Row()
         .width(380)
 
-      Text('连接 Windows 主机')
-        .fontSize(22)
+      Text('HarmonyOS 与 Windows 互联的局域网远程桌面工具')
+        .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
         .textAlign(TextAlign.Center)
         .layoutWeight(1)
 
@@ -109,7 +110,7 @@ export struct HomeHeader {
         this.buildHeaderStatus()
         Divider()
           .vertical(true)
-          .height(30)
+          .height(26)
           .color(HomeTheme.borderColor(this.isDark))
         this.buildSettingsButton()
       }
