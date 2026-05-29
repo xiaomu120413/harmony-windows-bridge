@@ -146,56 +146,53 @@ export struct SettingsPage {
       .width('100%')
       .margin({ bottom: 20 })
 
-      SettingsDesktopNavItem({
-        title: SettingsText.SETTINGS_NAV_OVERVIEW,
-        description: SettingsText.SETTINGS_CURRENT_STATE,
-        iconResource: SettingsResources.DASHBOARD_ICON,
-        accentName: SettingsAccent.BLUE,
-        selected: this.pageName === SettingsRoute.SETTINGS,
-        isDark: this.isDarkMode(),
-        onPress: () => {
-          this.pageName = SettingsRoute.SETTINGS
-          this.remoteControlTargetSection = ''
-        }
-      })
-      SettingsDesktopNavItem({
-        title: SettingsText.BASIC_SETTINGS_ENTRY_TITLE,
-        description: SettingsText.BASIC_SETTINGS_ENTRY_DESC,
-        value: SettingsText.appearanceValue(this.appearanceMode),
-        iconResource: SettingsResources.SETTINGS_ICON,
-        accentName: SettingsAccent.CYAN,
-        selected: this.pageName === SettingsRoute.BASIC,
-        isDark: this.isDarkMode(),
-        onPress: () => {
-          this.pageName = SettingsRoute.BASIC
-          this.remoteControlTargetSection = ''
-        }
-      })
-      SettingsDesktopNavItem({
-        title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
-        description: SettingsText.REMOTE_CONTROL_ENTRY_DESC,
-        value: this.xrdpStatusText(),
-        iconResource: SettingsResources.DASHBOARD_ICON,
-        accentName: SettingsAccent.BLUE,
-        selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
-        isDark: this.isDarkMode(),
-        onPress: () => {
-          this.pageName = SettingsRoute.REMOTE_CONTROL
-          this.remoteControlTargetSection = ''
-        }
-      })
-      SettingsDesktopNavItem({
-        title: SettingsText.PROJECT_HELP_ENTRY_TITLE,
-        description: SettingsText.PROJECT_HELP_ENTRY_DESC,
-        iconResource: SettingsResources.HELP_ICON,
-        accentName: SettingsAccent.PURPLE,
-        selected: this.pageName === SettingsRoute.PROJECT_HELP,
-        isDark: this.isDarkMode(),
-        onPress: () => {
-          this.pageName = SettingsRoute.PROJECT_HELP
-          this.remoteControlTargetSection = ''
-        }
-      })
+      Column({ space: 8 }) {
+        SettingsDesktopNavItem({
+          title: SettingsText.SETTINGS_NAV_OVERVIEW,
+          iconResource: SettingsResources.DASHBOARD_ICON,
+          accentName: SettingsAccent.BLUE,
+          selected: this.pageName === SettingsRoute.SETTINGS,
+          isDark: this.isDarkMode(),
+          onPress: () => {
+            this.pageName = SettingsRoute.SETTINGS
+            this.remoteControlTargetSection = ''
+          }
+        })
+        SettingsDesktopNavItem({
+          title: SettingsText.BASIC_SETTINGS_ENTRY_TITLE,
+          iconResource: SettingsResources.SETTINGS_ICON,
+          accentName: SettingsAccent.CYAN,
+          selected: this.pageName === SettingsRoute.BASIC,
+          isDark: this.isDarkMode(),
+          onPress: () => {
+            this.pageName = SettingsRoute.BASIC
+            this.remoteControlTargetSection = ''
+          }
+        })
+        SettingsDesktopNavItem({
+          title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
+          iconResource: SettingsResources.DASHBOARD_ICON,
+          accentName: SettingsAccent.BLUE,
+          selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
+          isDark: this.isDarkMode(),
+          onPress: () => {
+            this.pageName = SettingsRoute.REMOTE_CONTROL
+            this.remoteControlTargetSection = ''
+          }
+        })
+        SettingsDesktopNavItem({
+          title: SettingsText.PROJECT_HELP_ENTRY_TITLE,
+          iconResource: SettingsResources.HELP_ICON,
+          accentName: SettingsAccent.PURPLE,
+          selected: this.pageName === SettingsRoute.PROJECT_HELP,
+          isDark: this.isDarkMode(),
+          onPress: () => {
+            this.pageName = SettingsRoute.PROJECT_HELP
+            this.remoteControlTargetSection = ''
+          }
+        })
+      }
+      .width('100%')
     }
     .width(196)
     .height('100%')

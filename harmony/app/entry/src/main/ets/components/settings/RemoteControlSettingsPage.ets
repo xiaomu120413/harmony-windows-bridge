@@ -1,12 +1,16 @@
 import {
-  SettingsAccent,
   SettingsPageHeader,
-  SettingsResources,
   SettingsSectionTitle,
   SettingsTheme
 } from './SettingsUi'
 import { XrdpServerStatus } from '../../rdp/XrdpServerController'
-import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
+import { SettingsText } from './SettingsConstants'
+import {
+  RemoteAccessCard,
+  RemoteFilesCard,
+  ScreenRecordingCard,
+  XrdpServerCard
+} from './RemoteControlCards'
 
 @Component
 export struct RemoteControlSettingsPage {
@@ -61,14 +65,6 @@ export struct RemoteControlSettingsPage {
   @State private localXrdpServerPort: number = 3390
   @State private localXrdpServerMessage: string = ''
   @State private localXrdpServerBusy: boolean = false
-  @State private serverCardHovered: boolean = false
-  @State private serverCardPressed: boolean = false
-  @State private accessCardHovered: boolean = false
-  @State private accessCardPressed: boolean = false
-  @State private screenCardHovered: boolean = false
-  @State private screenCardPressed: boolean = false
-  @State private filesCardHovered: boolean = false
-  @State private filesCardPressed: boolean = false
   @State private screenPermissionBusy: boolean = false
 
   aboutToAppear(): void {
@@ -82,34 +78,6 @@ export struct RemoteControlSettingsPage {
     this.localXrdpServerBusy = this.xrdpServerBusy
     this.refreshScreenRecordingState()
     this.refreshXrdpServerStatus()
-  }
-
-  private setServerCardHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.serverCardHovered = hovered
-    })
-  }
-
-  private setAccessCardHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.accessCardHovered = hovered
-    })
-  }
-
-  private setScreenCardHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.screenCardHovered = hovered
-    })
-  }
-
-  private setFilesCardHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.filesCardHovered = hovered
-    })
-  }
-
-  private isTargetSection(section: string): boolean {
-    return this.targetSection === section
   }
 
   private setGateEnabled(enabled: boolean): void {
@@ -179,416 +147,6 @@ export struct RemoteControlSettingsPage {
       })
   }
 
-  private gateStatusText(): string {
-    return this.localGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
-  }
-
-  private accessCodeText(): string {
-    return this.localGateEnabled ? this.localAccessCode : SettingsText.REMOTE_ACCESS_CODE_DISABLED
-  }
-
-  private screenStatusText(): string {
-    if (this.screenPermissionBusy) {
-      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
-    }
-    return this.localScreenRecordingGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
-      SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
-  }
-
-  private xrdpServerStatusText(): string {
-    if (this.localXrdpServerBusy) {
-      return SettingsText.REMOTE_SERVER_BUSY
-    }
-    const status = this.localXrdpServerRunning ? SettingsText.REMOTE_SERVER_RUNNING :
-      SettingsText.REMOTE_SERVER_STOPPED
-    return `${status} / ${this.localXrdpServerPort}`
-  }
-
-  private xrdpServerActionText(): string {
-    if (this.localXrdpServerBusy) {
-      return SettingsText.REMOTE_SERVER_BUSY
-    }
-    return this.localXrdpServerRunning ? SettingsText.REMOTE_SERVER_REFRESH_ACTION :
-      SettingsText.REMOTE_SERVER_START_ACTION
-  }
-
-  @Builder
-  private xrdpServerCard() {
-    Row({ space: 14 }) {
-      Column() {
-        Image(SettingsResources.DASHBOARD_ICON)
-          .width(SettingsTheme.ICON_SIZE)
-          .height(SettingsTheme.ICON_SIZE)
-          .fillColor(SettingsTheme.accentColor(this.isDark, this.localXrdpServerRunning ? SettingsAccent.GREEN :
-            SettingsAccent.AMBER))
-          .draggable(false)
-      }
-      .width(SettingsTheme.ICON_TILE_SIZE)
-      .height(SettingsTheme.ICON_TILE_SIZE)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(SettingsTheme.accentBackground(this.isDark, this.localXrdpServerRunning ?
-        SettingsAccent.GREEN : SettingsAccent.AMBER))
-
-      Column({ space: 5 }) {
-        Text(SettingsText.REMOTE_SERVER_TITLE)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .width('100%')
-        Text(SettingsText.REMOTE_SERVER_DESC)
-          .fontSize(13)
-          .fontColor(SettingsTheme.mutedText(this.isDark))
-          .lineHeight(19)
-          .width('100%')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.xrdpServerStatusText())
-          .fontSize(12)
-          .fontColor(SettingsTheme.accentColor(this.isDark, this.localXrdpServerRunning ? SettingsAccent.GREEN :
-            SettingsAccent.AMBER))
-          .width('100%')
-        if (this.localXrdpServerMessage.length > 0) {
-          Text(this.localXrdpServerMessage)
-            .fontSize(12)
-            .fontColor(SettingsTheme.mutedText(this.isDark))
-            .lineHeight(18)
-            .width('100%')
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-      }
-      .layoutWeight(1)
-
-      Button(this.xrdpServerActionText())
-        .type(ButtonType.Normal)
-        .height(36)
-        .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, this.localXrdpServerBusy))
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .fontSize(12)
-        .stateEffect(false)
-        .onClick(() => {
-          if (this.localXrdpServerRunning) {
-            this.refreshXrdpServerStatus()
-            return
-          }
-          this.startXrdpServer()
-        })
-    }
-    .alignItems(VerticalAlign.Center)
-    .width('100%')
-    .padding(16)
-    .backgroundColor(this.serverCardHovered || this.serverCardPressed ||
-      this.isTargetSection(SettingsRemoteControlSection.SERVER) ?
-      SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: this.isTargetSection(SettingsRemoteControlSection.SERVER) ?
-        SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) : SettingsTheme.borderColor(this.isDark)
-    })
-    .shadow(SettingsTheme.shadow(this.isDark, this.serverCardHovered ||
-      this.isTargetSection(SettingsRemoteControlSection.SERVER)))
-    .translate({ y: this.serverCardHovered ? -5 : 0 })
-    .scale({
-      x: this.serverCardPressed ? 0.99 : this.serverCardHovered ? 1.012 : 1,
-      y: this.serverCardPressed ? 0.99 : this.serverCardHovered ? 1.012 : 1
-    })
-    .margin({ bottom: 12 })
-    .onHover((isHover: boolean) => {
-      this.setServerCardHovered(isHover)
-    })
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.serverCardPressed = true
-        return
-      }
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.serverCardPressed = false
-      }
-    })
-  }
-
-  @Builder
-  private remoteFilesCard() {
-    Row({ space: 14 }) {
-      Column() {
-        Image(SettingsResources.HELP_ICON)
-          .width(SettingsTheme.ICON_SIZE)
-          .height(SettingsTheme.ICON_SIZE)
-          .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.PURPLE))
-          .draggable(false)
-      }
-      .width(SettingsTheme.ICON_TILE_SIZE)
-      .height(SettingsTheme.ICON_TILE_SIZE)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(SettingsTheme.accentBackground(this.isDark, SettingsAccent.PURPLE))
-
-      Column({ space: 5 }) {
-        Text(SettingsText.REMOTE_FILES_FEATURE_TITLE)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .width('100%')
-        Text(SettingsText.REMOTE_FILES_FEATURE_DESC)
-          .fontSize(13)
-          .fontColor(SettingsTheme.mutedText(this.isDark))
-          .lineHeight(19)
-          .width('100%')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      }
-      .layoutWeight(1)
-
-      Button(SettingsText.REMOTE_FILES_FEATURE_ACTION)
-        .type(ButtonType.Normal)
-        .height(36)
-        .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, false))
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .fontSize(12)
-        .stateEffect(false)
-        .onClick(() => {
-          this.onOpenRemoteFilesDirectory()
-        })
-    }
-    .alignItems(VerticalAlign.Center)
-    .width('100%')
-    .padding(16)
-    .backgroundColor(this.filesCardHovered || this.filesCardPressed ||
-      this.isTargetSection(SettingsRemoteControlSection.FILES) ?
-      SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: this.isTargetSection(SettingsRemoteControlSection.FILES) ?
-        SettingsTheme.accentColor(this.isDark, SettingsAccent.PURPLE) : SettingsTheme.borderColor(this.isDark)
-    })
-    .shadow(SettingsTheme.shadow(this.isDark, this.filesCardHovered ||
-      this.isTargetSection(SettingsRemoteControlSection.FILES)))
-    .translate({ y: this.filesCardHovered ? -5 : 0 })
-    .scale({
-      x: this.filesCardPressed ? 0.99 : this.filesCardHovered ? 1.012 : 1,
-      y: this.filesCardPressed ? 0.99 : this.filesCardHovered ? 1.012 : 1
-    })
-    .margin({ bottom: 12 })
-    .onHover((isHover: boolean) => {
-      this.setFilesCardHovered(isHover)
-    })
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.filesCardPressed = true
-        return
-      }
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.filesCardPressed = false
-      }
-    })
-  }
-
-  @Builder
-  private remoteAccessCard() {
-    Column({ space: 14 }) {
-      Row({ space: 14 }) {
-        Column() {
-          Image(SettingsResources.DASHBOARD_ICON)
-            .width(SettingsTheme.ICON_SIZE)
-            .height(SettingsTheme.ICON_SIZE)
-            .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
-            .draggable(false)
-        }
-        .width(SettingsTheme.ICON_TILE_SIZE)
-        .height(SettingsTheme.ICON_TILE_SIZE)
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-        .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.accentBackground(this.isDark, SettingsAccent.BLUE))
-
-        Column({ space: 5 }) {
-          Text(SettingsText.REMOTE_ACCESS_GATE_TITLE)
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(SettingsTheme.primaryText(this.isDark))
-            .width('100%')
-          Text(SettingsText.REMOTE_ACCESS_GATE_DESC)
-            .fontSize(13)
-            .fontColor(SettingsTheme.mutedText(this.isDark))
-            .lineHeight(19)
-            .width('100%')
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        .layoutWeight(1)
-
-        Toggle({ type: ToggleType.Switch, isOn: this.localGateEnabled })
-          .onChange((enabled: boolean) => {
-            this.setGateEnabled(enabled)
-          })
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-
-      Row() {
-        Column({ space: 4 }) {
-          Text(SettingsText.REMOTE_ACCESS_CODE_LABEL)
-            .fontSize(12)
-            .fontColor(SettingsTheme.mutedText(this.isDark))
-            .width('100%')
-          Text(this.accessCodeText())
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(SettingsTheme.primaryText(this.isDark))
-            .width('100%')
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        .layoutWeight(1)
-
-        Button(SettingsText.REMOTE_ACCESS_CODE_ACTION)
-          .type(ButtonType.Normal)
-          .height(36)
-          .borderRadius(SettingsTheme.BUTTON_RADIUS)
-          .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, false))
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .fontSize(12)
-          .stateEffect(false)
-          .onClick(() => {
-            this.regenerateAccessCode()
-          })
-      }
-      .alignItems(VerticalAlign.Center)
-      .width('100%')
-
-      Text(this.gateStatusText())
-        .fontSize(12)
-        .fontColor(SettingsTheme.accentColor(this.isDark, this.localGateEnabled ? SettingsAccent.GREEN :
-          SettingsAccent.AMBER))
-        .width('100%')
-    }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .padding(16)
-    .backgroundColor(this.accessCardHovered || this.accessCardPressed ||
-      this.isTargetSection(SettingsRemoteControlSection.ACCESS) ?
-      SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: this.isTargetSection(SettingsRemoteControlSection.ACCESS) ?
-        SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE) : SettingsTheme.borderColor(this.isDark)
-    })
-    .shadow(SettingsTheme.shadow(this.isDark, this.accessCardHovered ||
-      this.isTargetSection(SettingsRemoteControlSection.ACCESS)))
-    .translate({ y: this.accessCardHovered ? -5 : 0 })
-    .scale({
-      x: this.accessCardPressed ? 0.99 : this.accessCardHovered ? 1.012 : 1,
-      y: this.accessCardPressed ? 0.99 : this.accessCardHovered ? 1.012 : 1
-    })
-    .margin({ bottom: 12 })
-    .onHover((isHover: boolean) => {
-      this.setAccessCardHovered(isHover)
-    })
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.accessCardPressed = true
-        return
-      }
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.accessCardPressed = false
-      }
-    })
-  }
-
-  @Builder
-  private screenRecordingCard() {
-    Row({ space: 14 }) {
-      Column() {
-        Image(SettingsResources.SETTINGS_ICON)
-          .width(SettingsTheme.ICON_SIZE)
-          .height(SettingsTheme.ICON_SIZE)
-          .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN))
-          .draggable(false)
-      }
-      .width(SettingsTheme.ICON_TILE_SIZE)
-      .height(SettingsTheme.ICON_TILE_SIZE)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(SettingsTheme.accentBackground(this.isDark, SettingsAccent.CYAN))
-
-      Column({ space: 5 }) {
-        Text(SettingsText.REMOTE_SCREEN_PERMISSION_TITLE)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .width('100%')
-        Text(SettingsText.REMOTE_SCREEN_PERMISSION_DESC)
-          .fontSize(13)
-          .fontColor(SettingsTheme.mutedText(this.isDark))
-          .lineHeight(19)
-          .width('100%')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.screenStatusText())
-          .fontSize(12)
-          .fontColor(SettingsTheme.accentColor(this.isDark, this.localScreenRecordingGranted ? SettingsAccent.GREEN :
-            SettingsAccent.AMBER))
-          .width('100%')
-      }
-      .layoutWeight(1)
-
-      Button(this.screenPermissionBusy ? SettingsText.REMOTE_SCREEN_PERMISSION_BUSY :
-        (this.localScreenRecordingGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
-          SettingsText.REMOTE_SCREEN_PERMISSION_ACTION))
-        .type(ButtonType.Normal)
-        .height(36)
-        .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, this.screenPermissionBusy))
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .fontSize(12)
-        .stateEffect(false)
-        .onClick(() => {
-          this.requestScreenRecordingPermission()
-        })
-    }
-    .alignItems(VerticalAlign.Center)
-    .width('100%')
-    .padding(16)
-    .backgroundColor(this.screenCardHovered || this.screenCardPressed ||
-      this.isTargetSection(SettingsRemoteControlSection.SCREEN) ?
-      SettingsTheme.cardHoverBackground(this.isDark) : SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: this.isTargetSection(SettingsRemoteControlSection.SCREEN) ?
-        SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN) : SettingsTheme.borderColor(this.isDark)
-    })
-    .shadow(SettingsTheme.shadow(this.isDark, this.screenCardHovered ||
-      this.isTargetSection(SettingsRemoteControlSection.SCREEN)))
-    .translate({ y: this.screenCardHovered ? -5 : 0 })
-    .scale({
-      x: this.screenCardPressed ? 0.99 : this.screenCardHovered ? 1.012 : 1,
-      y: this.screenCardPressed ? 0.99 : this.screenCardHovered ? 1.012 : 1
-    })
-    .margin({ bottom: 10 })
-    .onHover((isHover: boolean) => {
-      this.setScreenCardHovered(isHover)
-    })
-    .onTouch((event: TouchEvent) => {
-      if (event.type === TouchType.Down) {
-        this.screenCardPressed = true
-        return
-      }
-      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-        this.screenCardPressed = false
-      }
-    })
-  }
-
   build() {
     Column() {
       SettingsPageHeader({
@@ -606,10 +164,46 @@ export struct RemoteControlSettingsPage {
             isDark: this.isDark
           })
 
-          this.xrdpServerCard()
-          this.screenRecordingCard()
-          this.remoteAccessCard()
-          this.remoteFilesCard()
+          XrdpServerCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            running: this.localXrdpServerRunning,
+            busy: this.localXrdpServerBusy,
+            port: this.localXrdpServerPort,
+            message: this.localXrdpServerMessage,
+            onRefresh: (): void => {
+              this.refreshXrdpServerStatus()
+            },
+            onStart: (): void => {
+              this.startXrdpServer()
+            }
+          })
+          ScreenRecordingCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            granted: this.localScreenRecordingGranted,
+            busy: this.screenPermissionBusy,
+            onRequest: (): void => {
+              this.requestScreenRecordingPermission()
+            }
+          })
+          RemoteAccessCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            gateEnabled: this.localGateEnabled,
+            accessCode: this.localAccessCode,
+            onGateChange: (enabled: boolean): void => {
+              this.setGateEnabled(enabled)
+            },
+            onRegenerate: (): void => {
+              this.regenerateAccessCode()
+            }
+          })
+          RemoteFilesCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory
+          })
         }
         .alignItems(HorizontalAlign.Start)
         .padding({ left: 20, right: 20, bottom: 24 })
