@@ -28,6 +28,8 @@ export struct HomePage {
   @Prop connectionProfiles: WindowsConnectionProfile[] = []
   @Prop selectedConnectionProfileId: string = ''
   @Link rememberPassword: boolean
+  @Prop connectionFeedbackText: string = ''
+  @Prop connectionFeedbackTone: SettingsStatusTone = 'neutral'
   @Prop isDark: boolean = false
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
@@ -50,6 +52,8 @@ export struct HomePage {
   onDeleteProfile: () => void = () => {
   }
   onRememberPasswordChange: (remember: boolean) => void = (_remember: boolean) => {
+  }
+  onClearPassword: () => void = () => {
   }
   onConnect: () => void = () => {
   }
@@ -304,7 +308,7 @@ export struct HomePage {
       Image(SettingsResources.SETTINGS_ICON)
         .width(22)
         .height(22)
-        .fillColor(SettingsTheme.primaryText(this.isDark))
+        .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
         .draggable(false)
       Text('设置')
         .fontSize(15)
@@ -778,11 +782,23 @@ export struct HomePage {
         .textAlign(TextAlign.End)
         .width(190)
         .maxLines(1)
-      Toggle({ type: ToggleType.Switch, isOn: this.rememberPassword })
-        .onChange((enabled: boolean) => {
-          this.rememberPassword = enabled
-          this.onRememberPasswordChange(enabled)
-        })
+      Row({ space: 12 }) {
+        Toggle({ type: ToggleType.Switch, isOn: this.rememberPassword })
+          .onChange((enabled: boolean) => {
+            this.rememberPassword = enabled
+            this.onRememberPasswordChange(enabled)
+          })
+        if (this.connectionFeedbackText.length > 0) {
+          Text(this.connectionFeedbackText)
+            .fontSize(12)
+            .fontColor(SettingsTheme.statusText(this.isDark, this.connectionFeedbackTone))
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+        }
+      }
+      .layoutWeight(1)
+      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .height(44)
@@ -811,7 +827,7 @@ export struct HomePage {
         .alignItems(VerticalAlign.Center)
       }
       .type(ButtonType.Normal)
-      .height(52)
+      .height(48)
       .layoutWeight(1)
       .borderRadius(7)
       .backgroundColor(this.primaryButtonBackground(this.connectHovered, this.connectPressed))
@@ -835,7 +851,7 @@ export struct HomePage {
       })
     }
     .width('100%')
-    .height(56)
+    .height(52)
     .alignItems(VerticalAlign.Center)
   }
 
@@ -904,10 +920,7 @@ export struct HomePage {
         this.onDeleteProfile()
       })
       this.buildActionButton('clearPassword', '清除密码', HomeResources.LOCK_ICON, 'warning', () => {
-        this.password = ''
-        this.rememberPassword = false
-        this.onPasswordChange('')
-        this.onRememberPasswordChange(false)
+        this.onClearPassword()
       })
       this.buildActionButton('copyAddress', '复制地址', HomeResources.COPY_ICON, 'info', () => {
         this.copyCurrentAddress()

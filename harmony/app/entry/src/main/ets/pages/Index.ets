@@ -13,16 +13,26 @@ import {
 } from '../rdp/XrdpServerController'
 import {
   WindowsConnectionProfile,
+  WindowsConnectionSaveInput,
   WindowsConnectionSnapshot,
   WindowsConnectionStore
 } from '../rdp/WindowsConnectionStore'
 import { HomePage } from '../components/home/HomePage'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsRoute, SettingsText } from '../components/settings/SettingsConstants'
-import { SettingsAppearanceMode, SettingsTheme } from '../components/settings/SettingsUi'
+import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
 import rdpNative, {
   NativeCommandResult
 } from 'libentry.so'
+
+interface ConnectionValidationResult {
+  ok: boolean
+  message: string
+  host: string
+  port: string
+  username: string
+  password: string
+}
 
 @Entry
 @Component
@@ -51,6 +61,8 @@ struct Index {
   @State private remoteLoginWaiting: boolean = false
   @State private sessionNoticeTitle: string = ''
   @State private sessionNoticeSubtitle: string = ''
+  @State private connectionFeedbackText: string = ''
+  @State private connectionFeedbackTone: SettingsStatusTone = 'neutral'
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
@@ -63,7 +75,8 @@ struct Index {
   private xrdpServerStartRequest: Promise<XrdpServerStatus> | null = null
   private windowsConnectionStore: WindowsConnectionStore | null = null
   private connectionProfilesLoaded: boolean = false
-  private connectionProfileSaveTimer: number | null = null
+  private pendingConnectionProfileSave: WindowsConnectionSaveInput | null = null
+  private lastConnectionErrorMessage: string = ''
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -88,11 +101,9 @@ struct Index {
   }
 
   onPageHide(): void {
-    this.flushConnectionProfileSave()
   }
 
   aboutToDisappear(): void {
-    this.flushConnectionProfileSave()
     this.releaseActiveModifiers()
   }
 
@@ -207,7 +218,6 @@ struct Index {
   }
 
   private selectConnectionProfile(profileId: string): void {
-    this.clearConnectionProfileSaveTimer()
     if (profileId.length === 0) {
       this.startNewConnectionProfile()
       return
@@ -241,7 +251,6 @@ struct Index {
   }
 
   private startNewConnectionProfile(): void {
-    this.clearConnectionProfileSaveTimer()
     this.selectedConnectionProfileId = ''
     this.host = ''
     this.port = '3389'
@@ -249,10 +258,10 @@ struct Index {
     this.password = ''
     this.rememberConnectionPassword = false
     this.certPolicy = 'tofu'
+    this.clearConnectionFeedback()
   }
 
   private deleteSelectedConnectionProfile(): void {
-    this.clearConnectionProfileSaveTimer()
     if (this.selectedConnectionProfileId.length === 0) {
       this.startNewConnectionProfile()
       return
@@ -276,51 +285,15 @@ struct Index {
 
   private setRememberConnectionPassword(remember: boolean): void {
     this.rememberConnectionPassword = remember
-    this.scheduleConnectionProfileSave()
   }
 
-  private scheduleConnectionProfileSave(): void {
-    if (this.host.trim().length === 0) {
-      return
-    }
-    this.clearConnectionProfileSaveTimer()
-    this.connectionProfileSaveTimer = setTimeout((): void => {
-      this.connectionProfileSaveTimer = null
-      this.saveCurrentConnectionProfile()
-    }, 450)
-  }
-
-  private clearConnectionProfileSaveTimer(): void {
-    if (this.connectionProfileSaveTimer !== null) {
-      clearTimeout(this.connectionProfileSaveTimer)
-      this.connectionProfileSaveTimer = null
-    }
-  }
-
-  private flushConnectionProfileSave(): void {
-    if (this.host.trim().length === 0) {
-      this.clearConnectionProfileSaveTimer()
-      return
-    }
-    this.clearConnectionProfileSaveTimer()
-    this.saveCurrentConnectionProfile()
-  }
-
-  private saveCurrentConnectionProfile(): void {
+  private saveConnectionProfile(input: WindowsConnectionSaveInput): void {
     const store = this.getWindowsConnectionStore()
     if (store === null) {
       return
     }
 
-    store.saveProfile({
-      profileId: this.selectedConnectionProfileId,
-      host: this.host,
-      port: this.port,
-      username: this.username,
-      password: this.password,
-      certPolicy: this.certPolicy,
-      rememberPassword: this.rememberConnectionPassword
-    })
+    store.saveProfile(input)
       .then((profile: WindowsConnectionProfile | null) => {
         if (profile === null) {
           return
@@ -343,6 +316,187 @@ struct Index {
       .catch((error: Error) => {
         RdpLogger.warn(`windows connection profile save failed: ${JSON.stringify(error)}`)
       })
+  }
+
+  private persistPendingConnectionProfile(): void {
+    if (this.pendingConnectionProfileSave === null) {
+      return
+    }
+    const saveInput = this.pendingConnectionProfileSave
+    this.pendingConnectionProfileSave = null
+    this.saveConnectionProfile(saveInput)
+  }
+
+  private clearSelectedConnectionPassword(): void {
+    this.password = ''
+    this.rememberConnectionPassword = false
+    if (this.selectedConnectionProfileId.length === 0) {
+      this.setConnectionFeedback('已清空当前密码', 'neutral')
+      return
+    }
+
+    const store = this.getWindowsConnectionStore()
+    if (store === null) {
+      this.setConnectionFeedback('清除密码失败：存储不可用', 'danger')
+      return
+    }
+
+    store.clearPassword(this.selectedConnectionProfileId)
+      .then((snapshot: WindowsConnectionSnapshot) => {
+        this.deferUiUpdate(() => {
+          this.applyConnectionSnapshot(snapshot, true, false)
+          this.password = ''
+          this.rememberConnectionPassword = false
+          this.setConnectionFeedback('已清除保存的密码', 'ok')
+        })
+      })
+      .catch((error: Error) => {
+        this.setConnectionFeedback('清除密码失败', 'danger')
+        RdpLogger.warn(`windows connection password clear failed: ${JSON.stringify(error)}`)
+      })
+  }
+
+  private clearConnectionFeedback(): void {
+    this.connectionFeedbackText = ''
+    this.connectionFeedbackTone = 'neutral'
+  }
+
+  private setConnectionFeedback(text: string, tone: SettingsStatusTone): void {
+    this.connectionFeedbackText = text
+    this.connectionFeedbackTone = tone
+  }
+
+  private connectionFailureMessage(message: string, fallback: string = '连接失败'): string {
+    const detail = message.trim()
+    if (detail.length === 0) {
+      return fallback
+    }
+    return `连接失败：${detail}`
+  }
+
+  private errorMessage(error: Error): string {
+    if (error.message.length > 0) {
+      return error.message
+    }
+    const serialized = JSON.stringify(error)
+    return serialized.length > 0 && serialized !== '{}' ? serialized : ''
+  }
+
+  private validateConnectionForm(): ConnectionValidationResult {
+    const host = this.host.trim()
+    const port = this.port.trim()
+    const username = this.username.trim()
+    const password = this.password
+    const messages: string[] = []
+    const hostMessage = this.validateHost(host)
+    if (hostMessage.length > 0) {
+      messages.push(hostMessage)
+    }
+    const portMessage = this.validatePort(port)
+    if (portMessage.length > 0) {
+      messages.push(portMessage)
+    }
+    if (username.length === 0) {
+      messages.push('Username 必填')
+    }
+    if (password.trim().length === 0) {
+      messages.push('Password 必填')
+    }
+    if (messages.length > 0) {
+      return this.connectionValidationError(messages.join('；'), host, port, username, password)
+    }
+    return {
+      ok: true,
+      message: '',
+      host: host,
+      port: port,
+      username: username,
+      password: password
+    }
+  }
+
+  private connectionValidationError(message: string, host: string, port: string, username: string,
+    password: string): ConnectionValidationResult {
+    return {
+      ok: false,
+      message: message,
+      host: host,
+      port: port,
+      username: username,
+      password: password
+    }
+  }
+
+  private validateHost(host: string): string {
+    if (host.length === 0) {
+      return 'Host 必填'
+    }
+    if (host.length > 253) {
+      return 'Host 过长'
+    }
+    if (/\s/.test(host)) {
+      return 'Host 不能含空格'
+    }
+    if (host.indexOf('/') >= 0 || host.indexOf('\\') >= 0 || host.indexOf('://') >= 0) {
+      return 'Host 不要包含协议或路径'
+    }
+    if (host.indexOf(':') >= 0) {
+      return this.isValidIpv6Host(host) ? '' : 'Host 格式错误'
+    }
+    if (this.isIpv4Candidate(host)) {
+      return this.isValidIpv4Host(host) ? '' : 'Host IP 格式错误'
+    }
+    return this.isValidDnsHost(host) ? '' : 'Host 格式错误'
+  }
+
+  private validatePort(port: string): string {
+    if (port.length === 0) {
+      return 'Port 必填'
+    }
+    if (!/^[0-9]+$/.test(port)) {
+      return 'Port 只能是数字'
+    }
+    const portNumber = Number(port)
+    if (portNumber < 1 || portNumber > 65535) {
+      return 'Port 范围应为 1-65535'
+    }
+    return ''
+  }
+
+  private isIpv4Candidate(host: string): boolean {
+    return /^[0-9.]+$/.test(host) && host.indexOf('.') >= 0
+  }
+
+  private isValidIpv4Host(host: string): boolean {
+    const parts = host.split('.')
+    if (parts.length !== 4) {
+      return false
+    }
+    for (const part of parts) {
+      if (part.length === 0 || !/^[0-9]+$/.test(part)) {
+        return false
+      }
+      const value = Number(part)
+      if (value < 0 || value > 255 || Math.floor(value) !== value) {
+        return false
+      }
+    }
+    return true
+  }
+
+  private isValidIpv6Host(host: string): boolean {
+    return /^[0-9A-Fa-f:]+$/.test(host) && host.indexOf(':') >= 0 && host.split(':').length >= 3
+  }
+
+  private isValidDnsHost(host: string): boolean {
+    const labels = host.split('.')
+    const labelPattern = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
+    for (const label of labels) {
+      if (label.length === 0 || label.length > 63 || !labelPattern.test(label)) {
+        return false
+      }
+    }
+    return true
   }
 
   private xrdpServerDisplayMessages(): XrdpServerDisplayMessages {
@@ -373,9 +527,19 @@ struct Index {
           if (nextConnected && !wasConnected) {
             this.setSessionVisible(true)
             this.focusRemoteSurface()
+            this.lastConnectionErrorMessage = ''
+            this.setConnectionFeedback('连接成功', 'ok')
+            this.persistPendingConnectionProfile()
           }
           if (state === 'Failed') {
+            this.pendingConnectionProfileSave = null
+            this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
+              '连接失败，请检查 Host、账号或密码'), 'danger')
             RdpLogger.error(`Native state: ${state}`)
+          } else if ((state === 'Disconnected' || state === 'Idle') && this.pendingConnectionProfileSave !== null) {
+            this.pendingConnectionProfileSave = null
+            this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
+              '连接失败，未建立远程桌面会话'), 'danger')
           } else if (state === 'Connected' || state === 'Disconnected' ||
             state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady') {
             RdpLogger.info(`Native state: ${state}`)
@@ -387,6 +551,9 @@ struct Index {
           this.setSessionVisible(false)
           this.connected = false
           this.clearSessionNotice()
+          this.pendingConnectionProfileSave = null
+          this.lastConnectionErrorMessage = message
+          this.setConnectionFeedback(this.connectionFailureMessage(message), 'danger')
           RdpLogger.error(`Native error: ${message}`)
         })
       })
@@ -670,21 +837,37 @@ struct Index {
   }
 
   private connectNative(): void {
-    this.flushConnectionProfileSave()
-    if (!this.host.trim() || !this.username.trim() || !this.password.trim()) {
+    const validation = this.validateConnectionForm()
+    if (!validation.ok) {
       this.connected = false
-      RdpLogger.warn('Missing host, username, or password')
+      this.pendingConnectionProfileSave = null
+      this.setConnectionFeedback(validation.message, 'warning')
+      RdpLogger.warn(`Connection validation failed: ${validation.message}`)
       return
     }
 
     const policy = this.certPolicy
-    const host = this.host
-    const port = this.port
-    const username = this.username
-    const password = this.password
+    const host = validation.host
+    const port = validation.port
+    const username = validation.username
+    const password = validation.password
     const appFilesDir = this.getAppFilesDir()
+    this.host = host
+    this.port = port
+    this.username = username
+    this.pendingConnectionProfileSave = {
+      profileId: this.selectedConnectionProfileId,
+      host: host,
+      port: port,
+      username: username,
+      password: password,
+      certPolicy: policy,
+      rememberPassword: this.rememberConnectionPassword
+    }
+    this.lastConnectionErrorMessage = ''
     this.connected = false
     this.remoteLoginWaiting = false
+    this.setConnectionFeedback('正在连接...', 'info')
     this.sessionNoticeTitle = '正在连接远程桌面'
     this.sessionNoticeSubtitle = '正在建立 RDP 会话'
     this.setSessionVisible(true)
@@ -710,18 +893,30 @@ struct Index {
         appFilesDir: appFilesDir
       })
       if (result.ok) {
-        this.connected = result.state === 'Connected'
+        this.connected = this.isConnectedNativeState(result.state)
         this.setSessionVisible(true)
+        if (this.connected) {
+          this.lastConnectionErrorMessage = ''
+          this.setConnectionFeedback('连接成功', 'ok')
+          this.persistPendingConnectionProfile()
+        }
       } else {
         RdpLogger.error(result.message)
         this.setSessionVisible(false)
         this.connected = false
         this.clearSessionNotice()
+        this.pendingConnectionProfileSave = null
+        this.lastConnectionErrorMessage = result.message
+        this.setConnectionFeedback(this.connectionFailureMessage(result.message), 'danger')
       }
     } catch (error) {
       this.setSessionVisible(false)
       this.connected = false
       this.clearSessionNotice()
+      this.pendingConnectionProfileSave = null
+      this.lastConnectionErrorMessage = this.errorMessage(error as Error)
+      this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
+        '连接失败，请检查 Host、账号或密码'), 'danger')
       RdpLogger.error(`Native connect failed: ${JSON.stringify(error)}`)
     }
   }
@@ -885,6 +1080,8 @@ struct Index {
           connectionProfiles: this.connectionProfiles,
           selectedConnectionProfileId: this.selectedConnectionProfileId,
           rememberPassword: $rememberConnectionPassword,
+          connectionFeedbackText: this.connectionFeedbackText,
+          connectionFeedbackTone: this.connectionFeedbackTone,
           isDark: this.isAppDark(),
           xrdpServerBusy: this.xrdpServerBusy,
           xrdpServerState: this.xrdpServerState,
@@ -894,19 +1091,19 @@ struct Index {
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
           onHostChange: (value: string): void => {
             this.host = value
-            this.scheduleConnectionProfileSave()
+            this.clearConnectionFeedback()
           },
           onPortChange: (value: string): void => {
             this.port = value
-            this.scheduleConnectionProfileSave()
+            this.clearConnectionFeedback()
           },
           onUsernameChange: (value: string): void => {
             this.username = value
-            this.scheduleConnectionProfileSave()
+            this.clearConnectionFeedback()
           },
           onPasswordChange: (value: string): void => {
             this.password = value
-            this.scheduleConnectionProfileSave()
+            this.clearConnectionFeedback()
           },
           onProfileSelect: (profileId: string): void => {
             this.selectConnectionProfile(profileId)
@@ -919,6 +1116,9 @@ struct Index {
           },
           onRememberPasswordChange: (remember: boolean): void => {
             this.setRememberConnectionPassword(remember)
+          },
+          onClearPassword: (): void => {
+            this.clearSelectedConnectionPassword()
           },
           onConnect: (): void => {
             this.connectNative()
