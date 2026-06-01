@@ -22,6 +22,8 @@ Enabled delivery capabilities include:
 - `disp` display-control resize support.
 - `geometry` dynamic virtual channel registration. The current HAP does not
   consume region data or alter rendering/layout from this channel.
+- `rdpecam` dynamic virtual channel registration with OHOS CameraKit camera
+  enumeration/media capability discovery and ImageReceiver-based frame capture.
 - `rdpgfx-h264` with OHOS AVCodec-backed AVC444 GPU compositor and native GDI
   fallback.
 - `rdpsnd` playback and `audin` capture through OHOS audio backends.

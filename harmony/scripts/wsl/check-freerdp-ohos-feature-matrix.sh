@@ -171,7 +171,8 @@ prepare_cmake_args() {
     -DCHANNEL_TSMF=OFF
     -DCHANNEL_TSMF_CLIENT=OFF
     -DCHANNEL_AINPUT=OFF
-    -DCHANNEL_ECHO=OFF
+    -DCHANNEL_ECHO=ON
+    -DCHANNEL_ECHO_CLIENT=ON
     -DCHANNEL_ENCOMSP=OFF
     -DCHANNEL_GEOMETRY=ON
     -DCHANNEL_GEOMETRY_CLIENT=ON
@@ -182,7 +183,8 @@ prepare_cmake_args() {
     -DCHANNEL_RAIL=OFF
     -DCHANNEL_RDP2TCP=OFF
     -DCHANNEL_RDPEAR=OFF
-    -DCHANNEL_RDPECAM=OFF
+    -DCHANNEL_RDPECAM=ON
+    -DCHANNEL_RDPECAM_CLIENT=ON
     -DCHANNEL_RDPEI=OFF
     -DCHANNEL_RDPEMSC=OFF
     -DCHANNEL_RDPEWA=OFF
@@ -267,7 +269,7 @@ main() {
     printf '%s\n\n' "- Matrix build: \`$MATRIX_BUILD\`"
     printf '| Case | Status | Scope | Reason |\n'
     printf '| --- | --- | --- | --- |\n'
-    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, geometry, location, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel with OHOS native backend, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
+    printf '| `enhanced-runtime` | build-ok | Current committed profile: cliprdr, disp, geometry, echo, rdpecam with OHOS CameraKit/ImageReceiver backend, location, rdpgfx, rdpsnd with OHAudio, audin, rdpdr/drive, printer channel with OHOS native backend, FFmpeg, OpenH264; smartcard source/channel/PCSC and TSMF excluded from the delivery build | Proven by `harmony/scripts/wsl/build-freerdp-ohos.sh` |\n'
     printf '| `smartcard-pcsc` | skipped | Smartcard source, channel, and WinPR PCSC backend are excluded from the delivery build | Do not compile for prelaunch package |\n'
     printf '| `tsmf` | skipped | TSMF channel is excluded from the delivery build | Do not compile for prelaunch package |\n'
   } > "$MATRIX_DIR/report.md"

@@ -21,6 +21,10 @@
       "value": "Capture microphone audio for remote desktop audio input redirection."
     },
     {
+      "name": "camera_reason",
+      "value": "Capture camera video for remote desktop camera redirection."
+    },
+    {
       "name": "screen_recording_reason",
       "value": "Capture the local screen so xrdp can stream the HarmonyOS desktop to a remote desktop client."
     },

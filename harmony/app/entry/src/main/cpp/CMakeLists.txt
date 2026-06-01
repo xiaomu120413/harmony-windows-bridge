@@ -102,6 +102,7 @@ add_library(entry SHARED
     input/xcomponent_key.cpp
     input/xcomponent_mouse.cpp
     input/xcomponent_touch_gesture.cpp
+    napi/camera_permission_bridge.cpp
     napi/clipboard_permission_bridge.cpp
     napi/location_bridge.cpp
     session/freerdp_session_runner.cpp

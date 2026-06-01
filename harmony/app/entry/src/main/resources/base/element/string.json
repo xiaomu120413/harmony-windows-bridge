@@ -21,6 +21,10 @@
       "value": "采集麦克风音频，用于远程桌面音频输入重定向。"
     },
     {
+      "name": "camera_reason",
+      "value": "采集摄像头视频，用于远程桌面摄像头重定向。"
+    },
+    {
       "name": "screen_recording_reason",
       "value": "采集本机屏幕，用于通过 xrdp 将鸿蒙桌面传输到远程桌面客户端。"
     },

@@ -6,6 +6,7 @@
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/graphics_config.h"
+#include "napi/camera_permission_bridge.h"
 #include "napi/location_bridge.h"
 #include "napi/microphone_permission_bridge.h"
 #include "common/string_utils.h"
@@ -374,6 +375,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
         result.failed = true;
         return result;
     }
+    RegisterCameraPermissionBridge(api, log);
     RegisterMicrophonePermissionBridge(api, log);
 
     if (api.ohosSessionPrepareOptions == nullptr || api.ohosSessionNew == nullptr ||

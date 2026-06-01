@@ -1,6 +1,7 @@
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit'
 import {
   APPROXIMATE_LOCATION_PERMISSION,
+  CAMERA_PERMISSION,
   LOCATION_PERMISSION,
   MICROPHONE_PERMISSION,
   READ_PASTEBOARD_PERMISSION,
@@ -39,6 +40,7 @@ export class RdpPermissionManager {
   private delegate: RdpPermissionDelegate
   private pasteboardPermission: PermissionRequestState = { request: null, requested: false }
   private microphonePermission: PermissionRequestState = { request: null, requested: false }
+  private cameraPermission: PermissionRequestState = { request: null, requested: false }
   private locationPermission: PermissionRequestState = { request: null, requested: false }
   private screenRecordingPermission: PermissionRequestState = { request: null, requested: false }
   private screenRecordingPermissionPromptDelayTimer: number | null = null
@@ -70,6 +72,19 @@ export class RdpPermissionManager {
       (context: common.UIAbilityContext): Promise<boolean> =>
         this.requestRuntimePermissions(context, 'Microphone', [MICROPHONE_PERMISSION],
           (): boolean => this.hasPermission(MICROPHONE_PERMISSION, 'Microphone')),
+      false
+    )
+  }
+
+  ensureCameraPermission(trigger: string): Promise<boolean> {
+    return this.ensurePermission(
+      this.cameraPermission,
+      'Camera',
+      trigger,
+      (): boolean => this.hasPermission(CAMERA_PERMISSION, 'Camera'),
+      (context: common.UIAbilityContext): Promise<boolean> =>
+        this.requestRuntimePermissions(context, 'Camera', [CAMERA_PERMISSION],
+          (): boolean => this.hasPermission(CAMERA_PERMISSION, 'Camera')),
       false
     )
   }

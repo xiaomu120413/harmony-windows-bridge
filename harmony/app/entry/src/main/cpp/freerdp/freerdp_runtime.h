@@ -64,6 +64,8 @@ public:
     using AudinOhosGetDiagnosticsFn = const char* (*)();
     using AudinOhosPermissionRequestFn = BOOL (*)(void*, UINT32);
     using AudinOhosSetPermissionCallbackFn = BOOL (*)(AudinOhosPermissionRequestFn, void*);
+    using RdpecamOhosPermissionRequestFn = BOOL (*)(void*, UINT32);
+    using RdpecamOhosSetPermissionCallbackFn = BOOL (*)(RdpecamOhosPermissionRequestFn, void*);
     using OhosLocationPermissionRequestFn = BOOL (*)(void*, UINT32);
     using OhosLocationSetPermissionCallbackFn =
         BOOL (*)(OhosLocationPermissionRequestFn, void*);
@@ -174,6 +176,7 @@ public:
     RdpsndOhosGetDiagnosticsFn rdpsndOhosGetDiagnostics = nullptr;
     AudinOhosGetDiagnosticsFn audinOhosGetDiagnostics = nullptr;
     AudinOhosSetPermissionCallbackFn audinOhosSetPermissionCallback = nullptr;
+    RdpecamOhosSetPermissionCallbackFn rdpecamOhosSetPermissionCallback = nullptr;
     OhosLocationSetPermissionCallbackFn ohosLocationSetPermissionCallback = nullptr;
     RdpsndClientGetDiagnosticsFn rdpsndClientGetDiagnostics = nullptr;
     OhosClipboardNewFn ohosClipboardNew = nullptr;
