@@ -16,7 +16,6 @@
 #include <winpr/synch.h>
 
 #include <client/OHOS/ohos_clipboard.h>
-#include <client/OHOS/ohos_avc420_route.h>
 #include <client/OHOS/ohos_display.h>
 #include <client/OHOS/ohos_graphics.h>
 #include <client/OHOS/ohos_ime.h>
@@ -140,21 +139,6 @@ public:
         size_t);
     using OhosSessionGetDiagnosticsFn = const char* (*)(freerdpOhosSession*);
     using OhosAvcodecGetDiagnosticsFn = const char* (*)();
-    using OhosAvc420RouteNewFn = freerdpOhosAvc420Route* (*)();
-    using OhosAvc420RouteFreeFn = void (*)(freerdpOhosAvc420Route*);
-    using OhosAvc420RouteConfigureFn = BOOL (*)(
-        freerdpOhosAvc420Route*, const FREERDP_OHOS_AVC420_ROUTE_CONFIG*, char*, size_t);
-    using OhosAvc420RouteResetFn = void (*)(freerdpOhosAvc420Route*);
-    using OhosAvc420RouteSetArmedFn = BOOL (*)(freerdpOhosAvc420Route*, BOOL, char*, size_t);
-    using OhosAvc420RouteSetOutputTargetFn = BOOL (*)(
-        freerdpOhosAvc420Route*, const FREERDP_OHOS_AVC420_ROUTE_OUTPUT_TARGET*, char*, size_t);
-    using OhosAvc420RouteClearOutputTargetFn = BOOL (*)(freerdpOhosAvc420Route*, char*, size_t);
-    using OhosAvc420RouteBeginSurfaceFn = BOOL (*)(freerdpOhosAvc420Route*, char*, size_t);
-    using OhosAvc420RouteRefreshOutputTargetFn = BOOL (*)(
-        freerdpOhosAvc420Route*, const char*, char*, size_t);
-    using OhosAvc420RouteEndSurfaceFn = void (*)(freerdpOhosAvc420Route*);
-    using OhosAvc420RouteIsSurfaceActiveFn = BOOL (*)(freerdpOhosAvc420Route*);
-    using OhosAvc420RouteGetDiagnosticsFn = const char* (*)(freerdpOhosAvc420Route*);
     AbortConnectContextFn abortConnectContext = nullptr;
     GetLastErrorFn getLastError = nullptr;
     GetLastErrorTextFn getLastErrorName = nullptr;
@@ -226,18 +210,6 @@ public:
     OhosSessionResizeFn ohosSessionResize = nullptr;
     OhosSessionGetDiagnosticsFn ohosSessionGetDiagnostics = nullptr;
     OhosAvcodecGetDiagnosticsFn ohosAvcodecGetDiagnostics = nullptr;
-    OhosAvc420RouteNewFn ohosAvc420RouteNew = nullptr;
-    OhosAvc420RouteFreeFn ohosAvc420RouteFree = nullptr;
-    OhosAvc420RouteConfigureFn ohosAvc420RouteConfigure = nullptr;
-    OhosAvc420RouteResetFn ohosAvc420RouteReset = nullptr;
-    OhosAvc420RouteSetArmedFn ohosAvc420RouteSetArmed = nullptr;
-    OhosAvc420RouteSetOutputTargetFn ohosAvc420RouteSetOutputTarget = nullptr;
-    OhosAvc420RouteClearOutputTargetFn ohosAvc420RouteClearOutputTarget = nullptr;
-    OhosAvc420RouteBeginSurfaceFn ohosAvc420RouteBeginSurface = nullptr;
-    OhosAvc420RouteRefreshOutputTargetFn ohosAvc420RouteRefreshOutputTarget = nullptr;
-    OhosAvc420RouteEndSurfaceFn ohosAvc420RouteEndSurface = nullptr;
-    OhosAvc420RouteIsSurfaceActiveFn ohosAvc420RouteIsSurfaceActive = nullptr;
-    OhosAvc420RouteGetDiagnosticsFn ohosAvc420RouteGetDiagnostics = nullptr;
 
 private:
     template <typename Fn>
