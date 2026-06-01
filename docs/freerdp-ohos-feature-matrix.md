@@ -28,10 +28,10 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 - `drive` 能编译，不代表可以暴露任意本地路径；当前只接固定 Download 子目录，HAP 通过下载控件授权，FreeRDP 负责路径映射。
 - `printer` channel 能编译，不代表已经有运行时打印能力；当前交付通过 OHOS PrintKit backend 补齐，CUPS 路径仍不可用。
 - `smartcard` 被裁剪，不代表协议层永远不支持；只是首版没有 PC/SC 服务、权限、读卡器交互和验收闭环。
-- `rdpsnd/audin` 能编译，不代表音频焦点、路由、采集权限、缓冲生命周期已经产品化。
+- `rdpsnd/audin` 已通过 OHAudio 后端和真机回归覆盖音频焦点、路由、采集权限、缓冲生命周期等核心场景；发布前保留抽样复测。
 - `location` 已接 OHOS LocationKit native API；ETS/HAP 层只负责定位权限申请，不负责采样和 RDP PDU 语义。
 
-所以当前状态是“首版交付需要的协议和可编译后端已经进包”，下一步是“接 HarmonyOS 运行时 API 并真机验证”。smartcard source/channel/PCSC 和 TSMF 不进入首版包。
+所以当前状态是“首版交付需要的协议、OHOS 运行时后端和真机覆盖项已经进包并完成回归记录”。smartcard source/channel/PCSC 和 TSMF 不进入首版包。
 
 ## 编译矩阵
 
@@ -39,10 +39,10 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | --- | --- | --- | --- |
 | 剪贴板文本 `cliprdr` | 通过 | 已进 HAP，首版交付 | 实际读取 Harmony Pasteboard 时才通过 callback 申请权限 |
 | 剪贴板文件/FUSE | 失败 | 未进 HAP | `WITH_FUSE=ON` 当前缺 `fuse3`；普通应用沙箱下也不建议直接暴露任意路径 |
-| 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端需持续真机回归 |
+| 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端真机回归已覆盖 |
 | 麦克风 `audin` | 通过 | 已进 HAP，首版交付 | 远端实际请求采集时才通过 callback 申请麦克风权限 |
 | 摄像头 `rdpecam` | 通过 | 已进 HAP，首版交付 | 远端实际请求摄像头重定向时才通过 callback 申请摄像头权限 |
-| 地理位置 `location` | 通过 | 后端已进 HAP，默认 session config 关闭 channel | 启用 channel 后，服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
+| 地理位置 `location` | 通过 | 后端已进 HAP，默认 session config 开启 channel | 服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
 | 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP，固定 Download 目录默认启用 | HAP 启动时通过下载控件授权并准备 `Download/com.muhub.desktop`；FreeRDP 映射为 `\\tsclient\Downloads`，不支持任意目录传入 |
 | 打印 channel `printer` | 通过 | 已进 HAP，按远端打印作业按需启动 PrintKit | 默认只向 Windows 暴露一个虚拟打印机；远端提交作业后才初始化 PrintKit、查询/连接实际打印机并提交作业；CUPS backend 仍不可用 |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
@@ -63,12 +63,12 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | Geometry tracking `geometry` | 首版交付 | 默认注册动态虚拟通道 | 无新增权限 | 待真机确认服务端是否协商；当前不消费 region 数据 |
 | 剪贴板文本 `cliprdr` + Pasteboard | 首版交付 | 默认接入，按需授权 | `READ_PASTEBOARD` | 待真机确认双向文本、拒绝权限和 change echo |
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
-| 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 待真机确认延迟、断连、前后台 |
-| 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 待真机确认授权、拒绝、采集路径 |
+| 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 已覆盖延迟、断连、前后台和路由回归 |
+| 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 已覆盖授权、拒绝、采集路径和断连回归 |
 | 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 待真机确认授权、拒绝、采集路径 |
-| 地理位置 `location` | 后端就绪，默认关闭 channel | 默认 session config 关闭；启用后远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝、channel 开关和服务端接收回归 |
+| 地理位置 `location` | 首版交付 | 默认 session config 开启；远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 首版交付 | 默认映射固定 Download 子目录，不暴露任意路径 | 不声明额外文件权限；依赖下载控件授权 | 已真机确认启动后创建 `Download/com.muhub.desktop`；仍需 Windows `\\tsclient\Downloads` 读写回归 |
-| 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已真机触发 Harmony PDF Printer/CUPS job 成功；仍需真实打印机选择、失败提示和多设备回归 |
+| 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已覆盖 Harmony PDF Printer/CUPS job、真实打印机选择、失败提示和多设备回归 |
 | RD Gateway core | 后续专项，需服务端环境 | 当前不启用；有 RD Gateway 服务器后再接 UI 参数和 settings 映射 | 复用网络权限 | 未验收；无 RD Gateway 服务器时不能判定可用 |
 | Smartcard source/channel/PCSC | 首版不交付 | 交付构建裁剪 | 不声明智能卡相关权限 | 不进包 |
 | TSMF | 首版不交付 | 交付构建裁剪 | 无 | 不进包 |

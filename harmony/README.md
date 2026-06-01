@@ -27,9 +27,9 @@ Enabled delivery capabilities include:
 - `rdpgfx-h264` with OHOS AVCodec-backed AVC444 GPU compositor and native GDI
   fallback.
 - `rdpsnd` playback and `audin` capture through OHOS audio backends.
-- `location` redirection through OHOS LocationKit. The backend is built in, but
-  the channel is currently disabled by the default session config; when enabled,
-  a permission prompt appears only if the remote side sends `LocationStart`.
+- `location` redirection through OHOS LocationKit. The channel is enabled by
+  the default session config, and a permission prompt appears only if the
+  remote side sends `LocationStart`.
 - `rdpdr/drive` file redirection for the fixed public Download subdirectory
   `com.muhub.desktop`. The HAP obtains Download-directory authorization through
   the system download picker during startup; FreeRDP maps the directory to
