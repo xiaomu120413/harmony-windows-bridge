@@ -7,7 +7,7 @@
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
-- client channels：`cliprdr`、`drdynvc`、`disp`、`geometry`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、geometry 动态虚拟通道注册、麦克风采集、地理位置重定向、固定 Download 目录文件重定向和 OHOS PrintKit 打印后端；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`geometry` 当前只注册并接收协议层事件，不改变 HAP 渲染/布局策略；`drive` 默认只映射下载控件授权的 `Download/com.muhub.desktop`；`printer` 默认暴露一个虚拟打印机，但只在 Windows 提交打印作业时初始化/连接 PrintKit。
+- client channels：`cliprdr`、`drdynvc`、`disp`、`geometry`、`rdpecam`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、geometry 动态虚拟通道注册、摄像头重定向、麦克风采集、地理位置重定向后端、固定 Download 目录文件重定向和 OHOS PrintKit 打印后端；剪贴板/摄像头/麦克风/定位权限通过 HAP 通用权限桥按需申请，不在连接开始时主动弹权限；`location` 后端已构建但当前默认 session config 关闭 channel，启用后由服务端 `LocationStart` 触发定位权限。`geometry` 当前只注册并接收协议层事件，不改变 HAP 渲染/布局策略；`drive` 默认只映射下载控件授权的 `Download/com.muhub.desktop`；`printer` 默认暴露一个虚拟打印机，但只在 Windows 提交打印作业时初始化/连接 PrintKit。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - RD Gateway core 已编译进 FreeRDP runtime，但当前 HAP 没有 UI 参数、N-API 参数和 settings 映射；在没有 RD Gateway 服务端环境前不计入已适配能力。
@@ -41,7 +41,8 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 剪贴板文件/FUSE | 失败 | 未进 HAP | `WITH_FUSE=ON` 当前缺 `fuse3`；普通应用沙箱下也不建议直接暴露任意路径 |
 | 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端需持续真机回归 |
 | 麦克风 `audin` | 通过 | 已进 HAP，首版交付 | 远端实际请求采集时才通过 callback 申请麦克风权限 |
-| 地理位置 `location` | 通过 | 已进 HAP，首版交付 | 默认注册 channel；服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
+| 摄像头 `rdpecam` | 通过 | 已进 HAP，首版交付 | 远端实际请求摄像头重定向时才通过 callback 申请摄像头权限 |
+| 地理位置 `location` | 通过 | 后端已进 HAP，默认 session config 关闭 channel | 启用 channel 后，服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
 | 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP，固定 Download 目录默认启用 | HAP 启动时通过下载控件授权并准备 `Download/com.muhub.desktop`；FreeRDP 映射为 `\\tsclient\Downloads`，不支持任意目录传入 |
 | 打印 channel `printer` | 通过 | 已进 HAP，按远端打印作业按需启动 PrintKit | 默认只向 Windows 暴露一个虚拟打印机；远端提交作业后才初始化 PrintKit、查询/连接实际打印机并提交作业；CUPS backend 仍不可用 |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
@@ -64,7 +65,8 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 待真机确认延迟、断连、前后台 |
 | 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 待真机确认授权、拒绝、采集路径 |
-| 地理位置 `location` | 首版交付 | 默认接入，远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝和服务端接收回归 |
+| 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 待真机确认授权、拒绝、采集路径 |
+| 地理位置 `location` | 后端就绪，默认关闭 channel | 默认 session config 关闭；启用后远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝、channel 开关和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 首版交付 | 默认映射固定 Download 子目录，不暴露任意路径 | 不声明额外文件权限；依赖下载控件授权 | 已真机确认启动后创建 `Download/com.muhub.desktop`；仍需 Windows `\\tsclient\Downloads` 读写回归 |
 | 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已真机触发 Harmony PDF Printer/CUPS job 成功；仍需真实打印机选择、失败提示和多设备回归 |
 | RD Gateway core | 后续专项，需服务端环境 | 当前不启用；有 RD Gateway 服务器后再接 UI 参数和 settings 映射 | 复用网络权限 | 未验收；无 RD Gateway 服务器时不能判定可用 |
@@ -93,7 +95,7 @@ T00 已把后续任务的可重复验收口径整理到 `docs/freerdp-ohos-valid
 
 当前基线：
 
-- 地理位置功能保持默认 channel 行为；若连接后立即弹定位权限，触发源是服务端发起 `LocationStart`，不是打印链路依赖。
+- 地理位置后端已进包，但当前默认 session config 关闭 `location` channel；若后续启用后连接中弹定位权限，触发源应是服务端发起 `LocationStart`，不是打印链路依赖。
 - 文件重定向默认只共享系统下载目录下的 `com.muhub.desktop`；App 启动时用下载控件准备目录，RDP 连接时 FreeRDP 映射为 `\\tsclient\Downloads`。
 - 打印功能新增 OHOS PrintKit backend；连接时只注册虚拟打印机，远端提交打印作业后才进入 PrintKit。
 - 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat`
@@ -139,4 +141,4 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 - 当前 signed HAP 为 33,320,512 bytes，约 31.78 MiB；相对裁剪前工作区基线 88.27 MiB 减少约 56.49 MiB。
 - smartcard source/channel/PCSC 和 TSMF 不进入包，减少未闭环平台服务和 deprecated 通道带来的商业验收风险。
 - CUPS/FUSE 不进入包，避免把当前无法闭合的 Linux 服务模型带进普通 HarmonyOS 应用；打印交付路径使用 OHOS PrintKit backend。
-- 地理位置已进入默认 channel 集合；上架隐私材料和真机验收必须覆盖定位权限用途、拒绝授权行为和服务端触发时机。
+- 地理位置后端已进入包内能力集合，但默认 session config 关闭 channel；上架隐私材料和真机验收必须覆盖定位权限用途、拒绝授权行为、channel 开关和服务端触发时机。

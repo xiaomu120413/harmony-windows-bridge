@@ -34,6 +34,14 @@ interface ConnectionValidationResult {
   password: string
 }
 
+interface NativePermissionCallbackRegistration {
+  label: string
+  trigger: string
+  onRequest: (callback: (requestId: string) => void) => NativeCommandResult
+  ensurePermission: (trigger: string) => Promise<boolean>
+  completeRequest: (requestId: number, granted: boolean) => NativeCommandResult
+}
+
 @Entry
 @Component
 struct Index {
@@ -557,54 +565,7 @@ struct Index {
           RdpLogger.error(`Native error: ${message}`)
         })
       })
-      rdpNative.onMicrophonePermissionRequest((requestIdText: string) => {
-        this.deferUiUpdate(() => {
-          this.handleNativePermissionRequest(
-            requestIdText,
-            'Remote audio capture requested microphone permission',
-            'remote audio capture',
-            (trigger: string): Promise<boolean> => this.getPermissionManager().ensureMicrophonePermission(trigger),
-            (requestId: number, granted: boolean): NativeCommandResult =>
-              rdpNative.completeMicrophonePermissionRequest({ requestId: requestId, granted: granted })
-          )
-        })
-      })
-      rdpNative.onCameraPermissionRequest((requestIdText: string) => {
-        this.deferUiUpdate(() => {
-          this.handleNativePermissionRequest(
-            requestIdText,
-            'Remote camera redirection requested camera permission',
-            'remote camera redirection',
-            (trigger: string): Promise<boolean> => this.getPermissionManager().ensureCameraPermission(trigger),
-            (requestId: number, granted: boolean): NativeCommandResult =>
-              rdpNative.completeCameraPermissionRequest({ requestId: requestId, granted: granted })
-          )
-        })
-      })
-      rdpNative.onClipboardPermissionRequest((requestIdText: string) => {
-        this.deferUiUpdate(() => {
-          this.handleNativePermissionRequest(
-            requestIdText,
-            'Clipboard sync requested pasteboard permission',
-            'clipboard read',
-            (trigger: string): Promise<boolean> => this.getPermissionManager().ensurePasteboardReadPermission(trigger),
-            (requestId: number, granted: boolean): NativeCommandResult =>
-              rdpNative.completeClipboardPermissionRequest({ requestId: requestId, granted: granted })
-          )
-        })
-      })
-      rdpNative.onLocationPermissionRequest((requestIdText: string) => {
-        this.deferUiUpdate(() => {
-          this.handleNativePermissionRequest(
-            requestIdText,
-            'RDP location channel requested location permission',
-            'remote location redirection',
-            (trigger: string): Promise<boolean> => this.getPermissionManager().ensureLocationPermission(trigger),
-            (requestId: number, granted: boolean): NativeCommandResult =>
-              rdpNative.completeLocationPermissionRequest({ requestId: requestId, granted: granted })
-          )
-        })
-      })
+      this.registerNativePermissionCallbacks()
       this.callbacksRegistered = true
     } catch (error) {
       RdpLogger.error(`Native callback registration failed: ${JSON.stringify(error)}`)
@@ -680,6 +641,66 @@ struct Index {
     this.settingsRemoteControlSection = remoteControlSection
     this.settingsInitialPageName = remoteControlSection.length > 0 ? SettingsRoute.REMOTE_CONTROL : SettingsRoute.SETTINGS
     this.showSettings = true
+  }
+
+  private registerNativePermissionCallbacks(): void {
+    const registrations: NativePermissionCallbackRegistration[] = [
+      {
+        label: 'Remote audio capture requested microphone permission',
+        trigger: 'remote audio capture',
+        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
+          rdpNative.onMicrophonePermissionRequest(callback),
+        ensurePermission: (trigger: string): Promise<boolean> =>
+          this.getPermissionManager().ensureMicrophonePermission(trigger),
+        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
+          rdpNative.completeMicrophonePermissionRequest({ requestId: requestId, granted: granted })
+      },
+      {
+        label: 'Remote camera redirection requested camera permission',
+        trigger: 'remote camera redirection',
+        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
+          rdpNative.onCameraPermissionRequest(callback),
+        ensurePermission: (trigger: string): Promise<boolean> =>
+          this.getPermissionManager().ensureCameraPermission(trigger),
+        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
+          rdpNative.completeCameraPermissionRequest({ requestId: requestId, granted: granted })
+      },
+      {
+        label: 'Clipboard sync requested pasteboard permission',
+        trigger: 'clipboard read',
+        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
+          rdpNative.onClipboardPermissionRequest(callback),
+        ensurePermission: (trigger: string): Promise<boolean> =>
+          this.getPermissionManager().ensurePasteboardReadPermission(trigger),
+        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
+          rdpNative.completeClipboardPermissionRequest({ requestId: requestId, granted: granted })
+      },
+      {
+        label: 'RDP location channel requested location permission',
+        trigger: 'remote location redirection',
+        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
+          rdpNative.onLocationPermissionRequest(callback),
+        ensurePermission: (trigger: string): Promise<boolean> =>
+          this.getPermissionManager().ensureLocationPermission(trigger),
+        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
+          rdpNative.completeLocationPermissionRequest({ requestId: requestId, granted: granted })
+      }
+    ]
+
+    for (let i = 0; i < registrations.length; i++) {
+      const registration = registrations[i]
+      registration.onRequest((requestIdText: string) => {
+        this.deferUiUpdate(() => {
+          this.handleNativePermissionRequest(
+            requestIdText,
+            registration.label,
+            registration.trigger,
+            registration.ensurePermission,
+            registration.completeRequest
+          )
+        })
+      })
+    }
   }
 
   private handleNativePermissionRequest(requestIdText: string, label: string, trigger: string,

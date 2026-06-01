@@ -218,7 +218,10 @@ napi_value OnLocationPermissionRequest(napi_env env, napi_callback_info info)
         "rdpLocationPermissionRequestCallback");
 }
 
-napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info info)
+using CompletePermissionRequestFn = bool (*)(uint32_t, bool);
+
+napi_value CompletePermissionRequest(napi_env env, napi_callback_info info, const char* label,
+    CompletePermissionRequestFn complete)
 {
     napi_value arg = GetFirstArgument(env, info);
     napi_valuetype type = napi_undefined;
@@ -230,124 +233,47 @@ napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info i
     if (arg == nullptr || type != napi_object) {
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
-        SetString(env, result, "message", "clipboard permission completion requires an object argument");
-        BridgeLogger::Error("clipboard permission completion parameter validation failed");
+        SetString(env, result, "message",
+            std::string(label) + " permission completion requires an object argument");
+        BridgeLogger::Error(std::string(label) + " permission completion parameter validation failed");
         return result;
     }
 
     const uint32_t requestId = GetUint32Property(env, arg, "requestId");
     const bool granted = GetBoolProperty(env, arg, "granted");
-    const bool ok = CompleteClipboardPermissionRequestFromUi(requestId, granted);
+    const bool ok = complete(requestId, granted);
 
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Updated" : "Failed");
-    SetString(env, result, "message", ok ? "clipboard permission result accepted" :
-        "clipboard permission request is not pending");
-    const std::string logLine = "clipboard permission completion requestId=" + std::to_string(requestId) +
+    SetString(env, result, "message", ok ? std::string(label) + " permission result accepted" :
+        std::string(label) + " permission request is not pending");
+    const std::string logLine = std::string(label) + " permission completion requestId=" +
+        std::to_string(requestId) +
         " granted=" + std::string(granted ? "true" : "false");
     if (!ok) {
         BridgeLogger::Error(logLine + " failed: request is not pending");
     }
     return result;
+}
+
+napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info info)
+{
+    return CompletePermissionRequest(env, info, "clipboard", CompleteClipboardPermissionRequestFromUi);
 }
 
 napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info info)
 {
-    napi_value arg = GetFirstArgument(env, info);
-    napi_valuetype type = napi_undefined;
-    if (arg != nullptr) {
-        napi_typeof(env, arg, &type);
-    }
-
-    napi_value result = MakeObject(env);
-    if (arg == nullptr || type != napi_object) {
-        SetBool(env, result, "ok", false);
-        SetString(env, result, "state", "Failed");
-        SetString(env, result, "message", "location permission completion requires an object argument");
-        BridgeLogger::Error("location permission completion parameter validation failed");
-        return result;
-    }
-
-    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
-    const bool granted = GetBoolProperty(env, arg, "granted");
-    const bool ok = CompleteLocationPermissionRequestFromUi(requestId, granted);
-
-    SetBool(env, result, "ok", ok);
-    SetString(env, result, "state", ok ? "Updated" : "Failed");
-    SetString(env, result, "message", ok ? "location permission result accepted" :
-        "location permission request is not pending");
-    const std::string logLine = "location permission completion requestId=" + std::to_string(requestId) +
-        " granted=" + std::string(granted ? "true" : "false");
-    if (!ok) {
-        BridgeLogger::Error(logLine + " failed: request is not pending");
-    }
-    return result;
+    return CompletePermissionRequest(env, info, "location", CompleteLocationPermissionRequestFromUi);
 }
 
 napi_value CompleteCameraPermissionRequest(napi_env env, napi_callback_info info)
 {
-    napi_value arg = GetFirstArgument(env, info);
-    napi_valuetype type = napi_undefined;
-    if (arg != nullptr) {
-        napi_typeof(env, arg, &type);
-    }
-
-    napi_value result = MakeObject(env);
-    if (arg == nullptr || type != napi_object) {
-        SetBool(env, result, "ok", false);
-        SetString(env, result, "state", "Failed");
-        SetString(env, result, "message", "camera permission completion requires an object argument");
-        BridgeLogger::Error("camera permission completion parameter validation failed");
-        return result;
-    }
-
-    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
-    const bool granted = GetBoolProperty(env, arg, "granted");
-    const bool ok = CompleteCameraPermissionRequestFromUi(requestId, granted);
-
-    SetBool(env, result, "ok", ok);
-    SetString(env, result, "state", ok ? "Updated" : "Failed");
-    SetString(env, result, "message", ok ? "camera permission result accepted" :
-        "camera permission request is not pending");
-    const std::string logLine = "camera permission completion requestId=" + std::to_string(requestId) +
-        " granted=" + std::string(granted ? "true" : "false");
-    if (!ok) {
-        BridgeLogger::Error(logLine + " failed: request is not pending");
-    }
-    return result;
+    return CompletePermissionRequest(env, info, "camera", CompleteCameraPermissionRequestFromUi);
 }
 
 napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info info)
 {
-    napi_value arg = GetFirstArgument(env, info);
-    napi_valuetype type = napi_undefined;
-    if (arg != nullptr) {
-        napi_typeof(env, arg, &type);
-    }
-
-    napi_value result = MakeObject(env);
-    if (arg == nullptr || type != napi_object) {
-        SetBool(env, result, "ok", false);
-        SetString(env, result, "state", "Failed");
-        SetString(env, result, "message", "microphone permission completion requires an object argument");
-        BridgeLogger::Error("microphone permission completion parameter validation failed");
-        return result;
-    }
-
-    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
-    const bool granted = GetBoolProperty(env, arg, "granted");
-    const bool ok = CompleteMicrophonePermissionRequestFromUi(requestId, granted);
-
-    SetBool(env, result, "ok", ok);
-    SetString(env, result, "state", ok ? "Updated" : "Failed");
-    SetString(env, result, "message", ok ? "microphone permission result accepted" :
-        "microphone permission request is not pending");
-    const std::string logLine = "microphone permission completion requestId=" + std::to_string(requestId) +
-        " granted=" + std::string(granted ? "true" : "false");
-    if (!ok) {
-        BridgeLogger::Error(logLine + " failed: request is not pending");
-    }
-    return result;
+    return CompletePermissionRequest(env, info, "microphone", CompleteMicrophonePermissionRequestFromUi);
 }
 
 } // namespace

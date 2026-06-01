@@ -10,7 +10,7 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 - FreeRDP native bridge：ArkTS 通过 NAPI 调用 native 层，远程画面通过 `XComponent` surface 显示。
 - xrdp/MSTSC 路径：HAP 可随包携带 xrdp HNP，启动后监听本机 `3390`，配合 `hdc fport` 让 Windows MSTSC 反向控制 HarmonyOS 桌面。
 - 证书策略：支持 `TOFU` 和 `Strict`，用于测试和更严格的证书校验。
-- 权限回调：远程会话请求剪贴板、麦克风或地理位置时，由应用侧触发系统权限处理。
+- 权限回调：远程会话请求剪贴板、麦克风、摄像头或地理位置时，由应用侧通用权限桥触发系统权限处理。
 - 打印重定向：默认向 Windows 暴露虚拟打印机，Windows 实际提交打印作业时才启动 HarmonyOS PrintKit。
 - 设置页：包含深色模式、浅色模式、跟随系统、使用说明、本机 IP、关于项目和第三方开源组件信息。
 - 本地 Web Demo：用于在桌面侧先验证 RDP 网络、账号和 FreeRDP 可用性。

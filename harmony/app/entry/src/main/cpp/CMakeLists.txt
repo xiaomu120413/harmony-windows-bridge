@@ -116,6 +116,7 @@ add_library(entry SHARED
     napi/napi_event_sink.cpp
     napi/napi_exports.cpp
     napi/napi_utils.cpp
+    napi/permission_request_bridge.cpp
     session/rdp_session_core.cpp
     session/rdp_session_channels.cpp
     session/rdp_session_input.cpp
