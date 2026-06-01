@@ -7,6 +7,7 @@ export struct XrdpServerCard {
   @Prop targetSection: string = ''
   @Prop running: boolean = false
   @Prop busy: boolean = false
+  @Prop state: string = 'Stopped'
   @Prop port: number = 3390
   @Prop message: string = ''
   onRefresh: () => void = () => {
@@ -27,11 +28,7 @@ export struct XrdpServerCard {
   }
 
   private statusText(): string {
-    if (this.busy) {
-      return SettingsText.REMOTE_SERVER_BUSY
-    }
-    const status = this.running ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED
-    return `${status} / ${this.port}`
+    return SettingsText.remoteServerStatusText(this.running, this.busy, this.state, this.port)
   }
 
   private actionText(): string {

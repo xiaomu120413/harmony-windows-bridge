@@ -1,3 +1,4 @@
+import { SettingsText } from '../settings/SettingsConstants'
 import { SettingsAccent, SettingsResources, SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeTheme } from './HomeTheme'
 
@@ -5,8 +6,8 @@ import { HomeTheme } from './HomeTheme'
 export struct HomeHeader {
   @Prop isDark: boolean = false
   @Prop xrdpServerBusy: boolean = false
+  @Prop xrdpServerState: string = 'Stopped'
   @Prop xrdpServerRunning: boolean = false
-  @Prop screenRecordingPermissionGranted: boolean = false
   onOpenSettings: (remoteControlSection: string) => void = (_remoteControlSection: string) => {
   }
   @State private settingsHovered: boolean = false
@@ -14,29 +15,14 @@ export struct HomeHeader {
   private readonly headerSideWidth: number = 260
 
   private headerStatusTone(): SettingsStatusTone {
-    if (this.xrdpServerBusy) {
-      return 'info'
-    }
-    if (!this.screenRecordingPermissionGranted) {
-      return 'warning'
-    }
-    if (this.xrdpServerRunning) {
-      return 'ok'
-    }
-    return 'neutral'
+    return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
   }
 
   private headerStatusText(): string {
     if (this.xrdpServerBusy) {
-      return '处理中'
+      return SettingsText.REMOTE_SERVER_BUSY
     }
-    if (!this.screenRecordingPermissionGranted) {
-      return '待授权'
-    }
-    if (this.xrdpServerRunning) {
-      return '服务正常'
-    }
-    return '未启动'
+    return SettingsText.remoteServerStateLabel(this.xrdpServerRunning, this.xrdpServerState)
   }
 
   @Builder

@@ -47,7 +47,7 @@ WITH_OHOS_PASTEBOARD=OFF
 WITH_OHOS_PRINT=OFF
 WITH_OPENSLES=OFF
 CCACHE_LAUNCHER=""
-FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-print-location-no-smartcard-tsmf-v4"
+FREERDP_FEATURE_PROFILE="channels-codecs-ohos-avcodec-pasteboard-print-location-geometry-no-smartcard-tsmf-v1"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -747,7 +747,8 @@ build_freerdp() {
     -DCHANNEL_AINPUT=OFF \
     -DCHANNEL_ECHO=OFF \
     -DCHANNEL_ENCOMSP=OFF \
-    -DCHANNEL_GEOMETRY=OFF \
+    -DCHANNEL_GEOMETRY=ON \
+    -DCHANNEL_GEOMETRY_CLIENT=ON \
     -DCHANNEL_GFXREDIR=OFF \
     -DCHANNEL_LOCATION=ON \
     -DCHANNEL_LOCATION_CLIENT=ON \

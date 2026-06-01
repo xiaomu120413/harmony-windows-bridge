@@ -1,4 +1,4 @@
-import { SettingsAppearanceMode } from './SettingsTypes'
+import { SettingsAppearanceMode, SettingsStatusTone } from './SettingsTypes'
 
 export const REMOTE_FILES_SHARED_DIR_STORAGE_KEY: string = 'remoteFilesSharedDirPath'
 export const REMOTE_FILES_SHARED_DIR_NAME: string = 'com.muhub.desktop'
@@ -50,6 +50,8 @@ export class SettingsText {
   static readonly REMOTE_SERVER_STATUS_LABEL: string = '服务状态'
   static readonly REMOTE_SERVER_RUNNING: string = '已启动'
   static readonly REMOTE_SERVER_STOPPED: string = '未启动'
+  static readonly REMOTE_SERVER_EXITED: string = '已退出'
+  static readonly REMOTE_SERVER_FAILED: string = '启动失败'
   static readonly REMOTE_SERVER_BUSY: string = '处理中'
   static readonly REMOTE_SERVER_START_ACTION: string = '启动服务'
   static readonly REMOTE_SERVER_REFRESH_ACTION: string = '刷新'
@@ -126,6 +128,37 @@ static readonly USAGE_CERT_TITLE: string = '证书策略'
       return '浅色模式'
     }
     return '跟随系统'
+  }
+
+  static remoteServerStatusTone(running: boolean, busy: boolean, state: string): SettingsStatusTone {
+    if (busy) {
+      return 'info'
+    }
+    if (state === 'Failed' || state === 'Exited') {
+      return 'danger'
+    }
+    if (running) {
+      return 'ok'
+    }
+    return 'neutral'
+  }
+
+  static remoteServerStateLabel(running: boolean, state: string): string {
+    if (state === 'Failed') {
+      return SettingsText.REMOTE_SERVER_FAILED
+    }
+    if (state === 'Exited') {
+      return SettingsText.REMOTE_SERVER_EXITED
+    }
+    return running ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED
+  }
+
+  static remoteServerStatusText(running: boolean, busy: boolean, state: string, port: number): string {
+    if (busy) {
+      return SettingsText.REMOTE_SERVER_BUSY
+    }
+    const safePort = port > 0 ? port : 3390
+    return `${SettingsText.remoteServerStateLabel(running, state)} / ${safePort}`
   }
 
 }
