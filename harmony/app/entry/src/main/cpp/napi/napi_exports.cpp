@@ -4,6 +4,7 @@
 #include "napi/native_bridge_context.h"
 #include "common/bridge_types.h"
 #include "common/bridge_log.h"
+#include "napi/camera_permission_bridge.h"
 #include "napi/clipboard_permission_bridge.h"
 #include "napi/location_bridge.h"
 #include "napi/microphone_permission_bridge.h"
@@ -199,6 +200,12 @@ napi_value OnMicrophonePermissionRequest(napi_env env, napi_callback_info info)
         "rdpMicrophonePermissionRequestCallback");
 }
 
+napi_value OnCameraPermissionRequest(napi_env env, napi_callback_info info)
+{
+    return RegisterCallback(env, info, CameraPermissionRequestSink(),
+        "rdpCameraPermissionRequestCallback");
+}
+
 napi_value OnClipboardPermissionRequest(napi_env env, napi_callback_info info)
 {
     return RegisterCallback(env, info, ClipboardPermissionRequestSink(),
@@ -277,6 +284,39 @@ napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info in
     return result;
 }
 
+napi_value CompleteCameraPermissionRequest(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    napi_valuetype type = napi_undefined;
+    if (arg != nullptr) {
+        napi_typeof(env, arg, &type);
+    }
+
+    napi_value result = MakeObject(env);
+    if (arg == nullptr || type != napi_object) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "camera permission completion requires an object argument");
+        BridgeLogger::Error("camera permission completion parameter validation failed");
+        return result;
+    }
+
+    const uint32_t requestId = GetUint32Property(env, arg, "requestId");
+    const bool granted = GetBoolProperty(env, arg, "granted");
+    const bool ok = CompleteCameraPermissionRequestFromUi(requestId, granted);
+
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Updated" : "Failed");
+    SetString(env, result, "message", ok ? "camera permission result accepted" :
+        "camera permission request is not pending");
+    const std::string logLine = "camera permission completion requestId=" + std::to_string(requestId) +
+        " granted=" + std::string(granted ? "true" : "false");
+    if (!ok) {
+        BridgeLogger::Error(logLine + " failed: request is not pending");
+    }
+    return result;
+}
+
 napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
@@ -323,6 +363,8 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
+        {"onCameraPermissionRequest", nullptr, OnCameraPermissionRequest, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
         {"onClipboardPermissionRequest", nullptr, OnClipboardPermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
         {"onLocationPermissionRequest", nullptr, OnLocationPermissionRequest, nullptr, nullptr, nullptr,
@@ -330,6 +372,8 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"completeClipboardPermissionRequest", nullptr, CompleteClipboardPermissionRequest, nullptr, nullptr,
             nullptr, napi_default, nullptr},
         {"completeMicrophonePermissionRequest", nullptr, CompleteMicrophonePermissionRequest, nullptr, nullptr,
+            nullptr, napi_default, nullptr},
+        {"completeCameraPermissionRequest", nullptr, CompleteCameraPermissionRequest, nullptr, nullptr,
             nullptr, napi_default, nullptr},
         {"completeLocationPermissionRequest", nullptr, CompleteLocationPermissionRequest, nullptr, nullptr,
             nullptr, napi_default, nullptr},

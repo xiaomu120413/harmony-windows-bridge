@@ -101,6 +101,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
         LoadOptionalClientSymbol("freerdp_audin_ohos_get_diagnostics", audinOhosGetDiagnostics);
         LoadOptionalClientSymbol("freerdp_audin_ohos_set_permission_callback",
             audinOhosSetPermissionCallback);
+        LoadOptionalClientSymbol("freerdp_rdpecam_ohos_set_permission_callback",
+            rdpecamOhosSetPermissionCallback);
         LoadOptionalClientSymbol("freerdp_ohos_location_set_permission_callback",
             ohosLocationSetPermissionCallback);
         LoadOptionalClientSymbol("freerdp_rdpsnd_client_get_diagnostics", rdpsndClientGetDiagnostics);

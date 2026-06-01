@@ -569,6 +569,18 @@ struct Index {
           )
         })
       })
+      rdpNative.onCameraPermissionRequest((requestIdText: string) => {
+        this.deferUiUpdate(() => {
+          this.handleNativePermissionRequest(
+            requestIdText,
+            'Remote camera redirection requested camera permission',
+            'remote camera redirection',
+            (trigger: string): Promise<boolean> => this.getPermissionManager().ensureCameraPermission(trigger),
+            (requestId: number, granted: boolean): NativeCommandResult =>
+              rdpNative.completeCameraPermissionRequest({ requestId: requestId, granted: granted })
+          )
+        })
+      })
       rdpNative.onClipboardPermissionRequest((requestIdText: string) => {
         this.deferUiUpdate(() => {
           this.handleNativePermissionRequest(
