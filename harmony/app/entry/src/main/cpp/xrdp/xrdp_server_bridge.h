@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "common/bridge_types.h"
 #include "ohos/xrdp_ohos.h"
 
 namespace rdp_bridge {
@@ -32,6 +31,5 @@ struct XrdpServerCommandResult {
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
 XrdpServerCommandResult GetXrdpServerDiagnostics();
-bool SubmitXrdpRgbaFrame(const RgbaFrame& frame, std::string& message);
 
 } // namespace rdp_bridge

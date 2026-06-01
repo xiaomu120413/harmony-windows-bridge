@@ -81,6 +81,7 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics, const XrdpLoa
         " inputEvents=" + std::to_string(diagnostics.inputEventCount) +
         " encodedBackpressure=" + std::to_string(capture.encoded_backpressure_count) +
         " lastExitCode=" + std::to_string(diagnostics.lastExitCode));
+    diagnostics.logs.push_back("xrdp videoOwner=internal-capture externalFrameSubmit=disabled");
     if (captureStatus != XRDP_OHOS_BACKEND_STATUS_OK) {
         diagnostics.logs.push_back("xrdp capture diagnostics unavailable status=" +
             std::to_string(captureStatus));
@@ -384,7 +385,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     result.state = "Listening";
     result.message = "xrdp server start requested on port " + std::to_string(port);
     result.logs.push_back(result.message);
-    result.logs.push_back("xrdp raw screen capture waits for an active mstsc session");
+    result.logs.push_back("xrdp internal screen capture waits for an active mstsc session");
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         XrdpServerDiagnostics diagnostics = SnapshotXrdpDiagnosticsLocked(state);
@@ -412,42 +413,6 @@ XrdpServerCommandResult GetXrdpServerDiagnostics()
     result.activeMstscSession = diagnostics.activeMstscSession;
     result.port = diagnostics.port;
     return result;
-}
-
-bool SubmitXrdpRgbaFrame(const RgbaFrame& frame, std::string& message)
-{
-    XrdpCaptureSubmitFrameFn submitFn = nullptr;
-
-    {
-        std::lock_guard<std::mutex> lock(ServerState().mutex);
-        XrdpServerState& state = ServerState();
-        if (!state.running.load()) {
-            message = "xrdp server is not running";
-            return false;
-        }
-        submitFn = state.backend.captureSubmitFrameFn;
-    }
-
-    if (submitFn == nullptr) {
-        message = "xrdp capture frame submit API is not loaded";
-        return false;
-    }
-
-    xrdp_ohos_frame xrdpFrame {};
-    xrdpFrame.data = frame.data;
-    xrdpFrame.width = frame.width;
-    xrdpFrame.height = frame.height;
-    xrdpFrame.stride = frame.strideBytes;
-    xrdpFrame.format = XRDP_OHOS_FRAME_FORMAT_RGBA_8888;
-    xrdpFrame.source_sequence = frame.sequence;
-
-    const int status = submitFn(&xrdpFrame);
-    if (status != XRDP_OHOS_BACKEND_STATUS_OK) {
-        message = "xrdp capture frame submit status=" + std::to_string(status);
-        return false;
-    }
-    message = "xrdp capture frame submitted";
-    return true;
 }
 
 } // namespace rdp_bridge
