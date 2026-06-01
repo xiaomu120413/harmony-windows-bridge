@@ -27,9 +27,9 @@ Enabled delivery capabilities include:
 - `rdpgfx-h264` with OHOS AVCodec-backed AVC444 GPU compositor and native GDI
   fallback.
 - `rdpsnd` playback and `audin` capture through OHOS audio backends.
-- `location` redirection through OHOS LocationKit. The channel is registered by
-  default; a permission prompt appears only if the remote side sends
-  `LocationStart`.
+- `location` redirection through OHOS LocationKit. The backend is built in, but
+  the channel is currently disabled by the default session config; when enabled,
+  a permission prompt appears only if the remote side sends `LocationStart`.
 - `rdpdr/drive` file redirection for the fixed public Download subdirectory
   `com.muhub.desktop`. The HAP obtains Download-directory authorization through
   the system download picker during startup; FreeRDP maps the directory to
@@ -47,17 +47,21 @@ profile.
 
 - `ohos.permission.INTERNET`
 - `ohos.permission.GET_NETWORK_INFO`
+- `ohos.permission.CUSTOM_SCREEN_RECORDING`
 - `ohos.permission.PRINT`
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
+- `ohos.permission.CAMERA`
 - `ohos.permission.APPROXIMATELY_LOCATION`
 - `ohos.permission.LOCATION`
 
 Declaring a permission is not the same as prompting at connection start.
-Pasteboard, microphone and location prompts are driven by native callbacks when
-the matching RDP feature is used. The Download directory picker is invoked at app
-startup to authorize and prepare the fixed drive-redirection directory. `PRINT`
-is used by the lazy PrintKit job submission path.
+Pasteboard, microphone, camera and location prompts are driven by a shared native
+permission-request bridge when the matching RDP feature is used. Screen recording
+is requested before starting the local xrdp-controlled desktop stream. The
+Download directory picker is invoked at app startup to authorize and prepare the
+fixed drive-redirection directory. `PRINT` is used by the lazy PrintKit job
+submission path.
 
 ## Build
 

@@ -1,97 +1,31 @@
 #include "napi/microphone_permission_bridge.h"
 
-#include "common/bridge_log.h"
-
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
+#include "napi/permission_request_bridge.h"
 
 namespace rdp_bridge {
 namespace {
 
-constexpr uint32_t kDefaultMicrophonePermissionTimeoutMs = 60000;
-
-EventSink g_microphonePermissionRequests;
-std::mutex g_microphonePermissionMutex;
-std::condition_variable g_microphonePermissionCv;
-uint32_t g_nextMicrophonePermissionRequestId = 1;
-uint32_t g_pendingMicrophonePermissionRequestId = 0;
-bool g_microphonePermissionPending = false;
-bool g_microphonePermissionCompleted = false;
-bool g_microphonePermissionGranted = false;
+PermissionRequestBridge& MicrophonePermissionBridge()
+{
+    static PermissionRequestBridge bridge("microphone");
+    return bridge;
+}
 
 } // namespace
 
 EventSink& MicrophonePermissionRequestSink()
 {
-    return g_microphonePermissionRequests;
+    return MicrophonePermissionBridge().RequestSink();
 }
 
 bool CompleteMicrophonePermissionRequestFromUi(uint32_t requestId, bool granted)
 {
-    std::lock_guard<std::mutex> lock(g_microphonePermissionMutex);
-    if (!g_microphonePermissionPending ||
-        g_pendingMicrophonePermissionRequestId != requestId) {
-        return false;
-    }
-
-    g_microphonePermissionGranted = granted;
-    g_microphonePermissionCompleted = true;
-    g_microphonePermissionCv.notify_all();
-    return true;
+    return MicrophonePermissionBridge().CompleteFromUi(requestId, granted);
 }
 
 BOOL RequestMicrophonePermissionForAudin(void* userData, UINT32 timeoutMs)
 {
-    (void)userData;
-    if (!g_microphonePermissionRequests.IsSet()) {
-        BridgeLogger::Error("OHOS microphone permission request skipped: ETS callback is not registered");
-        return FALSE;
-    }
-
-    uint32_t requestId = 0;
-    {
-        std::unique_lock<std::mutex> lock(g_microphonePermissionMutex);
-        if (g_microphonePermissionPending) {
-            const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : kDefaultMicrophonePermissionTimeoutMs;
-            const bool completed = g_microphonePermissionCv.wait_for(lock,
-                std::chrono::milliseconds(waitMs), []() {
-                    return g_microphonePermissionCompleted;
-                });
-            return completed && g_microphonePermissionGranted ? TRUE : FALSE;
-        }
-
-        requestId = g_nextMicrophonePermissionRequestId++;
-        if (g_nextMicrophonePermissionRequestId == 0) {
-            g_nextMicrophonePermissionRequestId = 1;
-        }
-        g_pendingMicrophonePermissionRequestId = requestId;
-        g_microphonePermissionPending = true;
-        g_microphonePermissionCompleted = false;
-        g_microphonePermissionGranted = false;
-    }
-
-    g_microphonePermissionRequests.Emit(std::to_string(requestId));
-
-    const uint32_t waitMs = timeoutMs > 0 ? timeoutMs : kDefaultMicrophonePermissionTimeoutMs;
-    std::unique_lock<std::mutex> lock(g_microphonePermissionMutex);
-    const bool completed = g_microphonePermissionCv.wait_for(lock,
-        std::chrono::milliseconds(waitMs), [requestId]() {
-            return g_microphonePermissionCompleted &&
-                g_pendingMicrophonePermissionRequestId == requestId;
-        });
-    const bool granted = completed && g_microphonePermissionGranted;
-    if (!completed) {
-        BridgeLogger::Error("OHOS microphone permission request timed out");
-    }
-
-    if (g_pendingMicrophonePermissionRequestId == requestId) {
-        g_pendingMicrophonePermissionRequestId = 0;
-        g_microphonePermissionPending = false;
-        g_microphonePermissionCompleted = false;
-        g_microphonePermissionGranted = false;
-    }
-    return granted ? TRUE : FALSE;
+    return MicrophonePermissionBridge().Request(userData, timeoutMs);
 }
 
 void RegisterMicrophonePermissionBridge(FreerdpRuntimeApi& api,

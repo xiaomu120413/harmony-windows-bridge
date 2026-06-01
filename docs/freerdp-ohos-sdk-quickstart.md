@@ -117,13 +117,15 @@ void stop_session(struct app_state* app)
 HAP 必须在 `module.json5` 声明首版实际启用的权限：
 
 - `ohos.permission.PRINT`
+- `ohos.permission.CUSTOM_SCREEN_RECORDING`
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
+- `ohos.permission.CAMERA`
 - `ohos.permission.APPROXIMATELY_LOCATION`
 - `ohos.permission.LOCATION`
 
 声明权限不等于连接开始时弹窗。接入方应把权限弹窗放到 callback 内：
-读取 Pasteboard、远端实际打开 `audin` 采集或远端发起 `LocationStart` 时才请求用户授权。`PRINT` 用于远端打印作业到达后的 PrintKit 提交流程，连接开始时不应初始化或连接 PrintKit。
+读取 Pasteboard、远端实际打开 `audin` 采集、远端实际请求 `rdpecam` 摄像头或远端发起 `LocationStart` 时才请求用户授权。HAP 侧可以用统一 permission-request bridge 承接 native 请求，再映射到具体系统权限；对外仍可保留独立 callback 名以兼容既有集成。`CUSTOM_SCREEN_RECORDING` 用于启动本机 xrdp 被控桌面流前授权，`PRINT` 用于远端打印作业到达后的 PrintKit 提交流程，连接开始时不应初始化或连接 PrintKit。
 
 ```c
 static BOOL RequestPasteboard(void* userData, UINT32 timeoutMs)
@@ -183,7 +185,8 @@ Demo HAP 私有类型塞进 FreeRDP public API。
 - `rdpgfx-h264` 和 AVC444 GPU compositor
 - `rdpsnd` 播放
 - `audin` 麦克风采集，远端请求时按需申请麦克风权限
-- `location` 地理位置重定向，远端请求时按需申请定位权限
+- `rdpecam` 摄像头重定向，远端请求时按需申请摄像头权限
+- `location` 地理位置重定向后端已构建；当前默认 session config 关闭 channel，启用后远端请求时按需申请定位权限
 - `drive` 文件重定向，固定映射下载控件授权的 `Download/com.muhub.desktop` 为 `\\tsclient\Downloads`
 - `printer` 打印重定向，连接时只向 Windows 暴露虚拟打印机；Windows 提交打印作业时才初始化/查询/连接 PrintKit 并提交作业
 
@@ -200,7 +203,7 @@ SDK 接入方至少应验证：
 2. 连接开始不弹 Pasteboard 或麦克风权限。
 3. 触发剪贴板读取时才申请 Pasteboard 权限，拒绝后会话不崩溃。
 4. 远端请求音频采集时才申请麦克风权限，拒绝后 `audin` 明确失败且会话继续。
-5. 远端请求位置重定向时才申请定位权限，拒绝后 location sample 失败但会话继续。
+5. 启用 `location` channel 后，远端请求位置重定向时才申请定位权限，拒绝后 location sample 失败但会话继续。
 6. App 启动后能准备 `Download/com.muhub.desktop`；连接后 Windows 侧 `\\tsclient\Downloads` 能完成小文件读写。
 7. 连接开始不初始化 PrintKit；远端提交打印作业时才进入 OHOS printer backend，提交失败只影响本次打印作业。
 8. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
