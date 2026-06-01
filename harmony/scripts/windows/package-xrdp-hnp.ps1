@@ -5,13 +5,15 @@ param(
   [string]$HnpName = "xrdp",
   [string]$HnpVersion = "0.1.0",
   [string]$HnpCliPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\hnpcli.exe",
-  [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe"
+  [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe",
+  [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
+. (Join-Path $PSScriptRoot "build-cache.ps1")
 . (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1")
 $source = Resolve-Path (Join-Path $repoRoot $SourceRoot)
 $deps = Resolve-Path (Join-Path $repoRoot $DepsRoot)
@@ -19,6 +21,9 @@ $targetHnpRoot = Join-Path $repoRoot $TargetHnpRoot
 $targetAbiDir = Join-Path $targetHnpRoot "arm64-v8a"
 $stageRoot = Join-Path $source "hnp-stage"
 $stage = Join-Path $stageRoot $HnpName
+$cacheDir = Join-Path $repoRoot "harmony/out/.build-cache"
+$stampFile = Join-Path $cacheDir "package-xrdp-hnp.sha256"
+$targetHnp = Join-Path $targetAbiDir "$HnpName.hnp"
 
 $sysroot = Join-Path $source "sysroot"
 $xrdpLibSource = Join-Path $sysroot "lib/xrdp"
@@ -96,6 +101,40 @@ if (-not (Test-Path -LiteralPath $shareSource)) {
 Assert-PathInsideRepo $stageRoot
 Assert-PathInsideRepo $targetHnpRoot
 
+$openH264RealName = Get-OpenH264RealName $depsLibSource
+$keymapSource = Join-Path $repoRoot "harmony/third_party/xrdp/instfiles"
+$keygenSource = Join-Path $repoRoot "harmony/third_party/xrdp/keygen/keygen.c"
+$sourceInputs = @(
+  $PSCommandPath,
+  (Join-Path $PSScriptRoot "build-cache.ps1"),
+  (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1"),
+  $xrdpExecutable,
+  $embeddedServer,
+  (Join-Path $xrdpLibSource "libcommon.so.0.0.0"),
+  (Join-Path $xrdpLibSource "libipm.so.0.0.0"),
+  (Join-Path $xrdpLibSource "libtoml.so.1.0.0"),
+  (Join-Path $xrdpLibSource "libxrdp.so.0.0.0"),
+  (Join-Path $xrdpLibSource "libxrdpohos.so"),
+  (Join-Path $depsLibSource "libssl.so.3"),
+  (Join-Path $depsLibSource "libcrypto.so.3"),
+  (Join-Path $depsLibSource "libz.so.1.3.1"),
+  (Join-Path $depsLibSource $openH264RealName),
+  $configSource,
+  $shareSource,
+  $keymapSource,
+  $keygenSource
+)
+$fingerprint = Get-BuildCacheFingerprint `
+  -Root $repoRoot `
+  -Paths $sourceInputs `
+  -Extra @("package-xrdp-hnp:v1", "name=$HnpName", "version=$HnpVersion", "target=$TargetHnpRoot", "strip=$StripToolPath")
+
+if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs @($targetHnp))) {
+  $targetHnpItem = Get-Item -LiteralPath $targetHnp
+  Write-Host ("packaged HNP: cached {0} bytes={1}" -f $targetHnpItem.FullName, $targetHnpItem.Length)
+  return
+}
+
 Reset-Directory $stage
 New-Item -ItemType Directory -Force -Path $targetAbiDir | Out-Null
 
@@ -104,7 +143,6 @@ $stageConfig = Join-Path $stage "config"
 $stageLib = Join-Path $stage "lib"
 $stageShare = Join-Path $stage "share"
 New-Item -ItemType Directory -Force -Path $stageBin, $stageConfig, $stageLib, $stageShare | Out-Null
-$openH264RealName = Get-OpenH264RealName $depsLibSource
 
 Copy-Item -LiteralPath $xrdpExecutable -Destination (Join-Path $stageBin "xrdp") -Force
 Copy-Item -LiteralPath $embeddedServer -Destination (Join-Path $stageLib "libxrdpserver.so") -Force
@@ -174,7 +212,6 @@ Get-ChildItem -LiteralPath $stageLib -File | ForEach-Object {
   Strip-FileIfPossible $_.FullName
 }
 
-$targetHnp = Join-Path $targetAbiDir "$HnpName.hnp"
 if (Test-Path -LiteralPath $targetHnp) {
   Remove-Item -LiteralPath $targetHnp -Force
 }
@@ -189,4 +226,5 @@ if (-not (Test-Path -LiteralPath $targetHnp)) {
 }
 
 $targetHnpItem = Get-Item -LiteralPath $targetHnp
+Write-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint
 Write-Host ("packaged HNP: {0} bytes={1}" -f $targetHnpItem.FullName, $targetHnpItem.Length)

@@ -3,19 +3,23 @@ param(
   [string]$DepsRoot = "harmony/out/ohos-arm64",
   [string]$TargetLibRoot = "harmony/app/entry/libs/arm64-v8a",
   [string]$LegacyRawRoot = "harmony/app/entry/src/main/resources/rawfile/xrdp",
-  [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe"
+  [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe",
+  [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
+. (Join-Path $PSScriptRoot "build-cache.ps1")
 . (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1")
 $source = Resolve-Path (Join-Path $repoRoot $SourceRoot)
 $deps = Resolve-Path (Join-Path $repoRoot $DepsRoot)
 $targetLib = Join-Path $repoRoot $TargetLibRoot
 $legacyRaw = Join-Path $repoRoot $LegacyRawRoot
 $targetNativeRuntime = Join-Path $targetLib "xrdp"
+$cacheDir = Join-Path $repoRoot "harmony/out/.build-cache"
+$stampFile = Join-Path $cacheDir "sync-xrdp-runtime.sha256"
 
 $sysroot = Join-Path $source "sysroot"
 $xrdpLibSource = Join-Path $sysroot "lib/xrdp"
@@ -83,6 +87,76 @@ Assert-PathInsideRepo $targetLib
 Assert-PathInsideRepo $legacyRaw
 Assert-PathInsideRepo $targetNativeRuntime
 
+$targetNativeBin = Join-Path $targetNativeRuntime "bin"
+$targetNativeConfig = Join-Path $targetNativeRuntime "config"
+$targetNativeShare = Join-Path $targetNativeRuntime "share"
+$openH264RealName = Get-OpenH264RealName $depsLibSource
+
+$requiredLibs = @(
+  "libcommon.so.0",
+  "libipm.so.0",
+  "libtoml.so.1",
+  "libxrdp.so.0",
+  "libxrdpohos.so",
+  "libxrdpserver.so",
+  "libssl.so.3",
+  "libcrypto.so.3",
+  "libz.so.1",
+  "libopenh264.so.7"
+)
+
+$requiredNativeRuntimeFiles = @(
+  (Join-Path $targetNativeBin "xrdp"),
+  (Join-Path $targetNativeConfig "xrdp.ini"),
+  (Join-Path $targetNativeConfig "rsakeys.ini"),
+  (Join-Path $targetNativeConfig "km-00000409.toml"),
+  (Join-Path $targetNativeConfig "km-00000804.toml"),
+  (Join-Path $targetNativeConfig "xrdp_keyboard.toml"),
+  (Join-Path $targetNativeShare "sans-10.fv1")
+)
+
+$keymapSource = Join-Path $repoRoot "harmony/third_party/xrdp/instfiles"
+$keygenSource = Join-Path $repoRoot "harmony/third_party/xrdp/keygen/keygen.c"
+$sourceInputs = @(
+  $PSCommandPath,
+  (Join-Path $PSScriptRoot "build-cache.ps1"),
+  (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1"),
+  $xrdpExecutable,
+  $embeddedServer,
+  (Join-Path $xrdpLibSource "libcommon.so.0.0.0"),
+  (Join-Path $xrdpLibSource "libipm.so.0.0.0"),
+  (Join-Path $xrdpLibSource "libtoml.so.1.0.0"),
+  (Join-Path $xrdpLibSource "libxrdp.so.0.0.0"),
+  (Join-Path $xrdpLibSource "libxrdpohos.so"),
+  (Join-Path $depsLibSource "libssl.so.3"),
+  (Join-Path $depsLibSource "libcrypto.so.3"),
+  (Join-Path $depsLibSource "libz.so.1.3.1"),
+  (Join-Path $depsLibSource $openH264RealName),
+  $configSource,
+  $shareSource,
+  $keymapSource,
+  $keygenSource
+)
+$fingerprint = Get-BuildCacheFingerprint `
+  -Root $repoRoot `
+  -Paths $sourceInputs `
+  -Extra @("sync-xrdp-runtime:v1", "target=$TargetLibRoot", "strip=$StripToolPath")
+
+$requiredOutputs = @($requiredLibs | ForEach-Object { Join-Path $targetLib $_ }) + $requiredNativeRuntimeFiles
+if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs $requiredOutputs)) {
+  $syncedLibs = Get-ChildItem -File $targetLib | Where-Object {
+    $_.Name -like "libxrdp*" -or $_.Name -like "libcommon*" -or $_.Name -like "libipm*" -or $_.Name -like "libtoml*"
+  }
+  $syncedLibBytes = ($syncedLibs | Measure-Object -Property Length -Sum).Sum
+  $runtimeStats = Get-BuildCacheFileStats -Path $targetNativeRuntime
+  if ($null -eq $syncedLibBytes) {
+    $syncedLibBytes = 0
+  }
+  Write-Host ("synced xrdp runtime: cached libs={0} libBytes={1} files={2} fileBytes={3}" -f `
+    $syncedLibs.Count, [int64]$syncedLibBytes, $runtimeStats.Count, $runtimeStats.Bytes)
+  return
+}
+
 New-Item -ItemType Directory -Force -Path $targetLib | Out-Null
 if (Test-Path -LiteralPath $targetNativeRuntime) {
   Remove-Item -LiteralPath $targetNativeRuntime -Recurse -Force
@@ -95,9 +169,6 @@ if (Test-Path -LiteralPath $legacyRaw) {
   Remove-Item -LiteralPath $legacyRaw -Recurse -Force
 }
 
-$targetNativeBin = Join-Path $targetNativeRuntime "bin"
-$targetNativeConfig = Join-Path $targetNativeRuntime "config"
-$targetNativeShare = Join-Path $targetNativeRuntime "share"
 New-Item -ItemType Directory -Force -Path $targetNativeBin, $targetNativeConfig, $targetNativeShare | Out-Null
 
 $managedLibNames = @(
@@ -117,8 +188,6 @@ foreach ($name in $managedLibNames) {
     Remove-Item -LiteralPath $path -Force
   }
 }
-
-$openH264RealName = Get-OpenH264RealName $depsLibSource
 
 Copy-LibraryAs $xrdpLibSource "libcommon.so.0.0.0" "libcommon.so.0"
 Copy-LibraryAs $xrdpLibSource "libipm.so.0.0.0" "libipm.so.0"
@@ -141,19 +210,6 @@ Get-ChildItem -LiteralPath $shareSource -File | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $targetNativeShare -Force
 }
 
-$requiredLibs = @(
-  "libcommon.so.0",
-  "libipm.so.0",
-  "libtoml.so.1",
-  "libxrdp.so.0",
-  "libxrdpohos.so",
-  "libxrdpserver.so",
-  "libssl.so.3",
-  "libcrypto.so.3",
-  "libz.so.1",
-  "libopenh264.so.7"
-)
-
 foreach ($name in $requiredLibs) {
   $path = Join-Path $targetLib $name
   if (-not (Test-Path -LiteralPath $path)) {
@@ -163,16 +219,6 @@ foreach ($name in $requiredLibs) {
     Strip-FileIfPossible $path
   }
 }
-
-$requiredNativeRuntimeFiles = @(
-  (Join-Path $targetNativeBin "xrdp"),
-  (Join-Path $targetNativeConfig "xrdp.ini"),
-  (Join-Path $targetNativeConfig "rsakeys.ini"),
-  (Join-Path $targetNativeConfig "km-00000409.toml"),
-  (Join-Path $targetNativeConfig "km-00000804.toml"),
-  (Join-Path $targetNativeConfig "xrdp_keyboard.toml"),
-  (Join-Path $targetNativeShare "sans-10.fv1")
-)
 
 foreach ($path in $requiredNativeRuntimeFiles) {
   if (-not (Test-Path -LiteralPath $path)) {
@@ -193,5 +239,6 @@ if ($null -eq $syncedLibBytes) {
 if ($null -eq $syncedRuntimeBytes) {
   $syncedRuntimeBytes = 0
 }
+Write-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint
 Write-Host ("synced xrdp runtime: libs={0} libBytes={1} files={2} fileBytes={3}" -f `
   $syncedLibs.Count, [int64]$syncedLibBytes, $syncedRuntimeFiles.Count, [int64]$syncedRuntimeBytes)

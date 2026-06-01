@@ -6,13 +6,20 @@ param(
   [string]$JavaPath = "C:\Program Files\Huawei\DevEco Studio\jbr\bin\java.exe",
   [string]$AppPackingToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\app_packing_tool.jar",
   [string]$HapSignToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar",
-  [string]$SigningPassword = ""
+  [string]$SigningRoot = "tools/app",
+  [string]$KeyAlias = "muhub",
+  [string]$AppCertFileName = "muhub_debug.cer",
+  [string]$ProfileFileName = "muhub_debugDebug.p7b",
+  [string]$KeystoreFileName = "muhub.p12",
+  [string]$SigningPassword = "",
+  [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
+. (Join-Path $PSScriptRoot "build-cache.ps1")
 $moduleRootPath = Resolve-Path (Join-Path $repoRoot $ModuleRoot)
 $hnpSourceRootPath = Resolve-Path (Join-Path $repoRoot $HnpSourceRoot)
 $outputs = Join-Path $moduleRootPath "build/default/outputs/default"
@@ -75,6 +82,55 @@ foreach ($path in $requiredInputs) {
   }
 }
 
+$repoTools = Join-Path $repoRoot $SigningRoot
+$appCertFile = Join-Path $repoTools $AppCertFileName
+$profileFile = Join-Path $repoTools $ProfileFileName
+$keystoreFile = Join-Path $repoTools $KeystoreFileName
+
+foreach ($path in @($appCertFile, $profileFile, $keystoreFile)) {
+  if (-not (Test-Path -LiteralPath $path)) {
+    throw "Missing signing input: $path"
+  }
+}
+
+$fingerprintInputs = New-Object System.Collections.Generic.List[string]
+$fingerprintInputs.Add($PSCommandPath)
+$fingerprintInputs.Add((Join-Path $PSScriptRoot "build-cache.ps1"))
+$fingerprintInputs.Add($hnpSource)
+foreach ($path in $requiredInputs) {
+  if ($path -ne $libPath) {
+    $fingerprintInputs.Add($path)
+  }
+}
+$nativeRuntimeTargetFull = [System.IO.Path]::GetFullPath($nativeRuntimeTarget).TrimEnd('\', '/')
+Get-ChildItem -LiteralPath $libPath -Recurse -File | Where-Object {
+  -not $_.FullName.StartsWith($nativeRuntimeTargetFull, [System.StringComparison]::OrdinalIgnoreCase)
+} | ForEach-Object {
+  $fingerprintInputs.Add($_.FullName)
+}
+if (Test-Path -LiteralPath $nativeRuntimeSource) {
+  $fingerprintInputs.Add($nativeRuntimeSource)
+}
+foreach ($path in @($appCertFile, $profileFile, $keystoreFile)) {
+  $fingerprintInputs.Add($path)
+}
+
+$stampFile = Join-Path $outputs ".entry-default-signed-hnp.input.sha256"
+$fingerprint = Get-BuildCacheFingerprint `
+  -Root $repoRoot `
+  -Paths $fingerprintInputs.ToArray() `
+  -Extra @("repack-hap-with-hnp:v2", "hnp=$HnpPackage", "compatible=$CompatibleVersion", "libPath=$libPath",
+    "signingRoot=$SigningRoot", "keyAlias=$KeyAlias", "cert=$AppCertFileName", "profile=$ProfileFileName",
+    "keystore=$KeystoreFileName")
+
+if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs @($unsignedHnp, $signedHnp))) {
+  Copy-Item -LiteralPath $unsignedHnp -Destination $unsignedDefault -Force
+  Copy-Item -LiteralPath $signedHnp -Destination $signedDefault -Force
+  $signedDefaultItem = Get-Item -LiteralPath $signedDefault
+  Write-Host ("signed HAP: cached {0} bytes={1}" -f $signedDefaultItem.FullName, $signedDefaultItem.Length)
+  return
+}
+
 Reset-Directory $nativeOut
 Get-ChildItem -LiteralPath $hnpSourceRootPath | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $nativeOut -Recurse -Force
@@ -103,28 +159,17 @@ if ($LASTEXITCODE -ne 0) {
   throw "app_packing_tool failed with exit code $LASTEXITCODE"
 }
 
-$repoTools = Join-Path $repoRoot "tools/hapsigner"
-$appCertFile = Join-Path $repoTools "OpenHarmonyApplication.pem"
-$profileFile = Join-Path $repoTools "ohos_provision_debug.p7b"
-$keystoreFile = Join-Path $repoTools "OpenHarmony.p12"
-
-foreach ($path in @($appCertFile, $profileFile, $keystoreFile)) {
-  if (-not (Test-Path -LiteralPath $path)) {
-    throw "Missing signing input: $path"
-  }
-}
-
 if ([string]::IsNullOrWhiteSpace($SigningPassword)) {
   if (-not [string]::IsNullOrWhiteSpace($env:HAP_SIGN_PASSWORD)) {
     $SigningPassword = $env:HAP_SIGN_PASSWORD
   } else {
-    $SigningPassword = "123456"
+    throw "Missing signing password. Set HAP_SIGN_PASSWORD or pass -SigningPassword."
   }
 }
 
 $signOutput = & $JavaPath -jar $HapSignToolJar sign-app `
   -mode localSign `
-  -keyAlias "openharmony application release" `
+  -keyAlias $KeyAlias `
   -keyPwd $SigningPassword `
   -appCertFile $appCertFile `
   -profileFile $profileFile `
@@ -161,4 +206,5 @@ Copy-Item -LiteralPath $unsignedHnp -Destination $unsignedDefault -Force
 Copy-Item -LiteralPath $signedHnp -Destination $signedDefault -Force
 
 $signedDefaultItem = Get-Item -LiteralPath $signedDefault
+Write-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint
 Write-Host ("signed HAP: {0} bytes={1}" -f $signedDefaultItem.FullName, $signedDefaultItem.Length)
