@@ -29,7 +29,6 @@ set(FREERDP_REQUIRED_HEADERS
     ${FREERDP_OHOS_SYSROOT_INCLUDE}/freerdp3/freerdp/settings.h
     ${FREERDP_OHOS_SYSROOT_INCLUDE}/winpr3/winpr/synch.h)
 set(FREERDP_OHOS_REQUIRED_HEADERS
-    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_avc420_route.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_certificate.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_clipboard.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_display.h
