@@ -21,7 +21,7 @@
 
 - 架构：`arm64-v8a`。
 - 已关闭：`smartcard`, `PCSC`, `smartcard-pcsc`, `TSMF`, `CUPS`, `FUSE`。
-- 已启用：FreeRDP core、TLS/NLA、OpenSSL、zlib、cJSON、uriparser、RDPGFX、geometry dynamic channel、FFmpeg、OpenH264、OHOS AVCodec、OHOS Pasteboard、OHAudio、OHOS LocationKit location redirection、固定 Download 目录 `rdpdr/drive` redirection、OHOS PrintKit printer backend；OpenSLES 兼容路径随 OHOS SDK 能力启用。
+- 已启用：FreeRDP core、TLS/NLA、OpenSSL、zlib、cJSON、uriparser、RDPGFX、geometry dynamic channel、FFmpeg、OpenH264、OHOS AVCodec、OHOS Pasteboard、OHAudio、OHOS LocationKit location backend、固定 Download 目录 `rdpdr/drive` redirection、OHOS PrintKit printer backend；OpenSLES 兼容路径随 OHOS SDK 能力启用。
 - FFmpeg 当前 configure 关键项：`--enable-shared`, `--disable-static`, `--disable-programs`, `--disable-doc`, `--disable-debug`, `--disable-autodetect`, `--enable-zlib`，未开启 GPL/nonfree 开关。
 
 ## 发布包必须附带的材料

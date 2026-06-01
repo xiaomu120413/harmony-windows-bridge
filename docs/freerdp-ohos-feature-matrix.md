@@ -42,7 +42,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 音频播放 `rdpsnd` | 通过 | 已进 HAP | OHAudio 后端真机回归已覆盖 |
 | 麦克风 `audin` | 通过 | 已进 HAP，首版交付 | 远端实际请求采集时才通过 callback 申请麦克风权限 |
 | 摄像头 `rdpecam` | 通过 | 已进 HAP，首版交付 | 远端实际请求摄像头重定向时才通过 callback 申请摄像头权限 |
-| 地理位置 `location` | 通过 | 后端已进 HAP，默认 session config 开启 channel | 服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
+| 地理位置 `location` | 通过 | 后端已进 HAP，默认 session config 关闭 channel | 启用后，服务端发起 `LocationStart` 时通过 callback 申请定位权限，FreeRDP OHOS 后端用 LocationKit 采样并发送 PDU |
 | 文件重定向 `rdpdr/drive` | 通过 | 已进 HAP，固定 Download 目录默认启用 | HAP 启动时通过下载控件授权并准备 `Download/com.muhub.desktop`；FreeRDP 映射为 `\\tsclient\Downloads`，不支持任意目录传入 |
 | 打印 channel `printer` | 通过 | 已进 HAP，按远端打印作业按需启动 PrintKit | 默认只向 Windows 暴露一个虚拟打印机；远端提交作业后才初始化 PrintKit、查询/连接实际打印机并提交作业；CUPS backend 仍不可用 |
 | CUPS printer backend | 失败 | 未进 HAP | 缺 CUPS headers/libs；即使移植也要评估普通应用权限和打印服务模型 |
@@ -66,7 +66,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 已覆盖延迟、断连、前后台和路由回归 |
 | 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 已覆盖授权、拒绝、采集路径和断连回归 |
 | 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 待真机确认授权、拒绝、采集路径 |
-| 地理位置 `location` | 首版交付 | 默认 session config 开启；远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝和服务端接收回归 |
+| 地理位置 `location` | 后端就绪，默认关闭 channel | 默认 session config 关闭；启用后远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝、channel 开关和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 首版交付 | 默认映射固定 Download 子目录，不暴露任意路径 | 不声明额外文件权限；依赖下载控件授权 | 已真机确认启动后创建 `Download/com.muhub.desktop`；仍需 Windows `\\tsclient\Downloads` 读写回归 |
 | 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已覆盖 Harmony PDF Printer/CUPS job、真实打印机选择、失败提示和多设备回归 |
 | RD Gateway core | 后续专项，需服务端环境 | 当前不启用；有 RD Gateway 服务器后再接 UI 参数和 settings 映射 | 复用网络权限 | 未验收；无 RD Gateway 服务器时不能判定可用 |
