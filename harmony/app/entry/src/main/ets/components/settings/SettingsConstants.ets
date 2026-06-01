@@ -96,6 +96,9 @@ export class SettingsText {
 static readonly USAGE_CERT_TITLE: string = '证书策略'
   static readonly USAGE_CERT_BODY: string =
     '当前版本暂时固定使用 TOFU 证书策略，适合测试和内网首次连接，会在首次连接时信任目标证书。后续需要更严格校验时再开放策略选择入口。'
+  static readonly USAGE_WINDOWS_RDP_TITLE: string = 'Windows 远程桌面开关'
+  static readonly USAGE_WINDOWS_RDP_BODY: string =
+    '连接失败时，先在目标 Windows 的“设置 > 系统 > 远程桌面”确认远程桌面已开启，并允许当前账号远程登录。用户名建议按“设备名\\登录用户名”填写；首次开启远程桌面后，建议重启 Windows 再连接，避免服务和防火墙规则未即时生效。'
   static readonly USAGE_TROUBLESHOOT_TITLE: string = '常见排查'
   static readonly USAGE_TROUBLESHOOT_BODY: string =
     '连不上时优先确认本机 IP、目标 IP、同一网络、Windows 防火墙、远程桌面开关、账号权限和端口 3389 是否可达。'

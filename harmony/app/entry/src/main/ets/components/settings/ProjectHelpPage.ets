@@ -112,6 +112,11 @@ export struct ProjectHelpPage {
             isDark: this.isDark
           })
           SettingsInfoCard({
+            title: SettingsText.USAGE_WINDOWS_RDP_TITLE,
+            body: SettingsText.USAGE_WINDOWS_RDP_BODY,
+            isDark: this.isDark
+          })
+          SettingsInfoCard({
             title: SettingsText.USAGE_FORM_TITLE,
             body: SettingsText.USAGE_FORM_BODY,
             isDark: this.isDark
