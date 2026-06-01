@@ -82,26 +82,12 @@ export struct SettingsPage {
   }
 
   private xrdpStatusTone(): SettingsStatusTone {
-    if (this.xrdpServerBusy) {
-      return 'info'
-    }
-    if (this.xrdpServerState === 'Exited' || this.xrdpServerState === 'Failed') {
-      return 'danger'
-    }
-    if (this.xrdpServerRunning) {
-      return 'ok'
-    }
-    return 'neutral'
+    return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
   }
 
   private xrdpStatusText(): string {
-    if (this.xrdpServerBusy) {
-      return SettingsText.REMOTE_SERVER_BUSY
-    }
-    if (this.xrdpServerRunning) {
-      return `${SettingsText.REMOTE_SERVER_RUNNING} · ${this.xrdpServerPort}`
-    }
-    return SettingsText.REMOTE_SERVER_STOPPED
+    return SettingsText.remoteServerStatusText(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState,
+      this.xrdpServerPort)
   }
 
   private screenStatusTone(): SettingsStatusTone {

@@ -54,6 +54,7 @@ harmony/scripts/wsl/build-freerdp-ohos.sh
 - `OHOS_NDK_HOME` 指向 Linux 侧 HarmonyOS native SDK。
 - `OHOS_LLVM_HOME` 未设置时由脚本默认推导为 `$OHOS_NDK_HOME/llvm`。
 - 可选能力默认来自 `build-freerdp-ohos.sh`：`ENABLE_OHAUDIO=1`、`ENABLE_OHOS_AVCODEC=1`、`ENABLE_OHOS_PASTEBOARD=1`、`ENABLE_OHOS_PRINT=1`。
+- geometry channel 默认编译并注册为动态虚拟通道；当前只接入协议层 addin 和 session 请求，不消费 region 数据，也不改变 HAP 渲染或布局策略。
 - location channel 默认编译并注册，OHOS 后端通过 native LocationKit 采样；HAP 只负责定位权限申请。若远端在连接后主动发起 `LocationStart`，定位权限弹窗属于远端业务触发，不是打印链路依赖。
 - drive channel 默认只映射固定 Download 子目录。HAP 在启动后通过下载控件授权并准备 `Download/com.muhub.desktop`；FreeRDP 连接时把该目录注册为 `\\tsclient\Downloads`，不接收 ETS 传入的任意路径。
 - printer channel 默认暴露一个虚拟打印机；OHOS PrintKit 初始化、打印机查询/连接和 `StartPrintJob` 只在 Windows 提交打印作业时发生。
@@ -110,7 +111,7 @@ build_app projectPath=harmony/app
 
 每个任务完成后至少按影响范围选择以下检查。P0/P1 任务默认应覆盖 1-8。
 
-1. 启动 App，确认 `probe()` 能识别 FreeRDP runtime、channel loader、OpenSSL、FFmpeg/OpenH264、OHOS AVCodec/Pasteboard/OHAudio 能力状态，并确认系统下载目录下准备好了 `com.muhub.desktop`。
+1. 启动 App，确认 `probe()` 能识别 FreeRDP runtime、channel loader、OpenSSL、FFmpeg/OpenH264、OHOS AVCodec/Pasteboard/OHAudio 能力状态；构建 manifest/profile 包含 geometry，且 smartcard/TSMF excluded；系统下载目录下准备好了 `com.muhub.desktop`。
 2. 连接 Windows RDP，确认认证、连接状态、断开状态和错误提示正常。
 3. 验证画面：首帧、持续更新、窗口/桌面刷新、GDI fallback、`rdpgfx-h264` 与 AVC444 GPU compositor 日志。
 4. 验证指针：点击、拖拽、右键长按、双指纵向/横向滚轮，断开或页面销毁后无残留按下状态。
@@ -122,7 +123,8 @@ build_app projectPath=harmony/app
 10. 验证文件重定向：Windows 中打开 `\\tsclient\Downloads`，确认对应 HarmonyOS `Download/com.muhub.desktop`，并完成一个小文件读写回归。
 11. 验证打印：连接开始不初始化/连接 PrintKit；Windows 打印时生成临时 spool 文件并进入 OHOS printer backend，Harmony Print/虚拟 PDF 打印成功或失败都不影响 RDP 会话。
 12. 验证 display resize：连接前分辨率、连接后 resize 请求、服务端不支持时错误原因。
-13. 验证生命周期：快速连接/断开、页面切换、App 后台、网络失败、凭据错误、证书变化。
+13. 验证 geometry：动态通道协商和日志正常；当前不要求 region 数据影响画面布局。
+14. 验证生命周期：快速连接/断开、页面切换、App 后台、网络失败、凭据错误、证书变化。
 
 ## 本轮 T00 判定
 

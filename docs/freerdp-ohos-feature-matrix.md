@@ -7,7 +7,7 @@
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。
-- client channels：`cliprdr`、`drdynvc`、`disp`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、麦克风采集、地理位置重定向、固定 Download 目录文件重定向和 OHOS PrintKit 打印后端；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`drive` 默认只映射下载控件授权的 `Download/com.muhub.desktop`；`printer` 默认暴露一个虚拟打印机，但只在 Windows 提交打印作业时初始化/连接 PrintKit。
+- client channels：`cliprdr`、`drdynvc`、`disp`、`geometry`、`location`、`rdpgfx`、`rdpsnd`、`audin`、`rdpdr`、`drive`、`printer`。首版交付包含剪贴板文本、geometry 动态虚拟通道注册、麦克风采集、地理位置重定向、固定 Download 目录文件重定向和 OHOS PrintKit 打印后端；剪贴板/麦克风权限保持按需申请，不在连接开始时主动弹权限；地理位置默认注册 channel，服务端发起 `LocationStart` 时申请定位权限。`geometry` 当前只注册并接收协议层事件，不改变 HAP 渲染/布局策略；`drive` 默认只映射下载控件授权的 `Download/com.muhub.desktop`；`printer` 默认暴露一个虚拟打印机，但只在 Windows 提交打印作业时初始化/连接 PrintKit。
 - 软件编解码与硬解合成：FFmpeg、OpenH264、SWSCALE、OHOS AVCodec-backed AVC444 GPU compositor。
 - 音频短期验证后端：FreeRDP OpenSLES backend + OHOS NDK OpenSLES 兼容 shim。
 - RD Gateway core 已编译进 FreeRDP runtime，但当前 HAP 没有 UI 参数、N-API 参数和 settings 映射；在没有 RD Gateway 服务端环境前不计入已适配能力。
@@ -59,6 +59,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | RDPGFX/H.264 + AVC444 GPU compositor | 首版交付 | 默认 `rdpgfx-h264`，AVC444 GPU compositor 开启 | 无新增权限 | 待真机确认协商、首帧、resize、fallback |
 | GDI/software render | 保留 fallback | 图形失败时可回退 | 无新增权限 | 待真机确认失败场景不黑屏 |
 | 动态分辨率 `disp` | 首版交付 | 默认请求 | 无新增权限 | 待真机确认 resize 和服务端不支持提示 |
+| Geometry tracking `geometry` | 首版交付 | 默认注册动态虚拟通道 | 无新增权限 | 待真机确认服务端是否协商；当前不消费 region 数据 |
 | 剪贴板文本 `cliprdr` + Pasteboard | 首版交付 | 默认接入，按需授权 | `READ_PASTEBOARD` | 待真机确认双向文本、拒绝权限和 change echo |
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 待真机确认延迟、断连、前后台 |
@@ -120,17 +121,18 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 
 下一次连接真机后按这个顺序测：
 
-1. 启动 App，确认 `probe()` 能看到 FreeRDP runtime、client channel loader、FFmpeg/OpenH264/OpenSLES，并显示 smartcard/TSMF excluded。
+1. 启动 App，确认 `probe()` 能看到 FreeRDP runtime、client channel loader、FFmpeg/OpenH264/OHAudio；构建 manifest/profile 包含 geometry，且 smartcard/TSMF excluded。
 2. 连接 Windows，确认基础画面、鼠标、键盘仍正常。
 3. 观察 RDPGFX/H.264 是否被协商，并确认 AVC444 GPU compositor 日志为默认开启；如果没有，记录服务端能力和 FreeRDP 日志。
-4. 连接开始时不应立即弹 Pasteboard 权限；触发剪贴板读取时才申请权限，并验证文本同步。
-5. 播放 Windows 系统声音，观察 `rdpsnd` 日志、延迟、断连和后台行为。
-6. 连接开始时不应立即弹麦克风权限；远端实际请求音频采集时才申请权限，并验证 `audin` 采集路径。
-7. 连接到会请求位置重定向的服务端，确认 `LocationStart` 后申请定位权限；授权后能发送样本，拒绝后会话继续。
-8. 在 Windows 内打印，确认连接开始未初始化 PrintKit，提交作业后才生成 spool 文件并进入 OHOS printer backend；成功或失败都不影响 RDP 会话。
-9. 启动 App 后确认系统下载目录下存在 `com.muhub.desktop`；连接 Windows 后验证 `\\tsclient\Downloads` 能列出该目录内容并完成小文件读写。
-10. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
-11. 有 RD Gateway 服务端环境后再启动 RD Gateway 专项：补 UI 参数和 settings 映射，并验证网关认证、证书、错误提示和目标机透传。
+4. 检查 `geometry` 动态通道是否被服务端协商；当前只记录/接收，不要求影响画面布局。
+5. 连接开始时不应立即弹 Pasteboard 权限；触发剪贴板读取时才申请权限，并验证文本同步。
+6. 播放 Windows 系统声音，观察 `rdpsnd` 日志、延迟、断连和后台行为。
+7. 连接开始时不应立即弹麦克风权限；远端实际请求音频采集时才申请权限，并验证 `audin` 采集路径。
+8. 连接到会请求位置重定向的服务端，确认 `LocationStart` 后申请定位权限；授权后能发送样本，拒绝后会话继续。
+9. 在 Windows 内打印，确认连接开始未初始化 PrintKit，提交作业后才生成 spool 文件并进入 OHOS printer backend；成功或失败都不影响 RDP 会话。
+10. 启动 App 后确认系统下载目录下存在 `com.muhub.desktop`；连接 Windows 后验证 `\\tsclient\Downloads` 能列出该目录内容并完成小文件读写。
+11. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
+12. 有 RD Gateway 服务端环境后再启动 RD Gateway 专项：补 UI 参数和 settings 映射，并验证网关认证、证书、错误提示和目标机透传。
 
 ## 影响
 

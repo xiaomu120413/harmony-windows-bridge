@@ -89,8 +89,8 @@ export struct HomePage {
       HomeHeader({
         isDark: this.isDark,
         xrdpServerBusy: this.xrdpServerBusy,
+        xrdpServerState: this.xrdpServerState,
         xrdpServerRunning: this.xrdpServerRunning,
-        screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
         onOpenSettings: this.onOpenSettings
       })
       this.buildMain()

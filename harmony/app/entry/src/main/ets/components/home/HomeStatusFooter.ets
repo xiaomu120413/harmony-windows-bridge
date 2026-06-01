@@ -1,4 +1,4 @@
-import { SettingsRemoteControlSection } from '../settings/SettingsConstants'
+import { SettingsRemoteControlSection, SettingsText } from '../settings/SettingsConstants'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
 import { HomeTheme } from './HomeTheme'
@@ -18,24 +18,12 @@ export struct HomeStatusFooter {
   @State private pressedSection: string = ''
 
   private serviceStatusTone(): SettingsStatusTone {
-    if (this.xrdpServerBusy) {
-      return 'info'
-    }
-    if (this.xrdpServerState === 'Failed' || this.xrdpServerState === 'Exited') {
-      return 'danger'
-    }
-    if (this.xrdpServerRunning) {
-      return 'ok'
-    }
-    return 'neutral'
+    return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
   }
 
   private serviceStatusText(): string {
-    if (this.xrdpServerBusy) {
-      return '处理中'
-    }
-    const status = this.xrdpServerRunning ? '已启动' : '未启动'
-    return `${status} / ${this.xrdpServerPort}`
+    return SettingsText.remoteServerStatusText(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState,
+      this.xrdpServerPort)
   }
 
   private screenStatusTone(): SettingsStatusTone {

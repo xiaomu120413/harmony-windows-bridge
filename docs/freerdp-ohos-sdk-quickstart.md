@@ -179,6 +179,7 @@ Demo HAP 私有类型塞进 FreeRDP public API。
 - RDP/TLS/NLA
 - `cliprdr` 文本剪贴板，按需申请 Pasteboard 权限
 - `disp` 动态分辨率
+- `geometry` 动态虚拟通道，默认注册；当前不消费 region 数据
 - `rdpgfx-h264` 和 AVC444 GPU compositor
 - `rdpsnd` 播放
 - `audin` 麦克风采集，远端请求时按需申请麦克风权限
@@ -203,4 +204,5 @@ SDK 接入方至少应验证：
 6. App 启动后能准备 `Download/com.muhub.desktop`；连接后 Windows 侧 `\\tsclient\Downloads` 能完成小文件读写。
 7. 连接开始不初始化 PrintKit；远端提交打印作业时才进入 OHOS printer backend，提交失败只影响本次打印作业。
 8. Surface resize 后能发送 `disp` monitor layout；服务端不支持时有明确日志。
-9. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。
+9. `geometry` 通道协商不会改变现有画面布局；服务端不支持时会话继续。
+10. `rdpgfx-h264` 失败只在图形路径内 fallback，不掩盖认证、证书或网络错误。

@@ -169,6 +169,7 @@ export struct RemoteControlSettingsPage {
             targetSection: this.targetSection,
             running: this.localXrdpServerRunning,
             busy: this.localXrdpServerBusy,
+            state: this.localXrdpServerState,
             port: this.localXrdpServerPort,
             message: this.localXrdpServerMessage,
             onRefresh: (): void => {

@@ -20,6 +20,8 @@ Enabled delivery capabilities include:
 - RDP/TLS/NLA, TOFU/Strict certificate policy and app-local storage paths.
 - `cliprdr` text clipboard with Pasteboard permission requested on demand.
 - `disp` display-control resize support.
+- `geometry` dynamic virtual channel registration. The current HAP does not
+  consume region data or alter rendering/layout from this channel.
 - `rdpgfx-h264` with OHOS AVCodec-backed AVC444 GPU compositor and native GDI
   fallback.
 - `rdpsnd` playback and `audin` capture through OHOS audio backends.
