@@ -52,7 +52,7 @@ bool QueueGdiFrame(const RgbaFrame& frame, std::string& message, bool forceRende
 
 void StartGdiRenderPipeline()
 {
-    if (IsAvc444GpuRenderOutputOwner()) {
+    if (CurrentRenderOutputOwner() != RenderOutputOwner::Gdi) {
         return;
     }
     GdiBridgeCallbacks callbacks = SnapshotGdiBridgeCallbacks();

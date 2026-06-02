@@ -25,11 +25,18 @@ bool IsAvc444GpuRenderOutputOwner()
     return CurrentRenderOutputOwner() == RenderOutputOwner::Avc444Gpu;
 }
 
+bool IsAvc420GpuRenderOutputOwner()
+{
+    return CurrentRenderOutputOwner() == RenderOutputOwner::Avc420Gpu;
+}
+
 std::string RenderOutputOwnerName(RenderOutputOwner owner)
 {
     switch (owner) {
         case RenderOutputOwner::Avc444Gpu:
             return "avc444-gpu";
+        case RenderOutputOwner::Avc420Gpu:
+            return "avc420-gpu";
         case RenderOutputOwner::Gdi:
         default:
             return "gdi";
