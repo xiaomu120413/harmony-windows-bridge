@@ -95,6 +95,10 @@ private:
         size_t depthAfter = 0;
         size_t preservedCommands = 0;
         size_t preservedGdiFrames = 0;
+        size_t preservedEndFrames = 0;
+        uint32_t preservedEndFrameId = 0;
+        uint32_t preservedEndFrameActiveId = 0;
+        bool preservedEndFrameMatched = false;
 
         bool DidDrop() const
         {
@@ -109,7 +113,7 @@ private:
     void PauseOutputForTargetUnavailable(const std::string& reason,
         const Avc420GpuCompositorCallbacks& callbacks, std::vector<std::string>& logs);
     WorkerQueueDropCounts ClearWorkerQueueLocked();
-    WorkerQueueCompaction CompactNonDecoderWorkLocked();
+    WorkerQueueCompaction CompactWorkerBacklogLocked();
     void AccountDroppedWorkerTasks(const WorkerQueueDropCounts& drops);
     std::string WorkerBacklogText() const;
     bool DetachOutputActive(const std::string& reason,
