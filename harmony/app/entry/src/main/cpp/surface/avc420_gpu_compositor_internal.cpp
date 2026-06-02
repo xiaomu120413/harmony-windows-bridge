@@ -2333,6 +2333,94 @@ struct Avc420GpuCompositorImpl::State {
         return true;
     }
 
+    bool PresentGdiBackgroundAtEndFrame(uint32_t frameId, uint32_t activeFrameId,
+        bool matchedFrame, const Avc420GpuCompositorCallbacks& callbacks, bool outputActive,
+        std::vector<std::string>& logs)
+    {
+        if (!outputActive || !gdiBackgroundPendingPresent) {
+            return false;
+        }
+        if (!matchedFrame) {
+            if (ShouldLogFrequent(endFrameCallbacks)) {
+                logs.push_back("AVC420 native-buffer GPU deferred GDI-only present: "
+                    "endFrame=" + std::to_string(frameId) +
+                    " activeFrame=" + std::to_string(activeFrameId) +
+                    " matched=no gdiBg=" + std::to_string(gdiBackgroundUpdates) + "/" +
+                    std::to_string(gdiBackgroundPresents));
+            }
+            return false;
+        }
+        if (currentSurfaceWidth == 0 || currentSurfaceHeight == 0) {
+            logs.push_back("AVC420 native-buffer GPU deferred GDI-only present: "
+                "retained surface size missing gdiBg=" +
+                std::to_string(gdiBackgroundUpdates) + "/" +
+                std::to_string(gdiBackgroundPresents));
+            return false;
+        }
+
+        DecoderSurfaceTarget target {};
+        if (callbacks.decoderSurfaceTarget != nullptr) {
+            target = callbacks.decoderSurfaceTarget();
+        }
+        if (target.window == nullptr || target.width == 0 || target.height == 0) {
+            ++ignoredUpdates;
+            if (ShouldLogFrequent(ignoredUpdates)) {
+                logs.push_back("AVC420 native-buffer GPU deferred GDI-only present: "
+                    "target unavailable while output active ignoredUpdates=" +
+                    std::to_string(ignoredUpdates));
+            }
+            return false;
+        }
+
+        ++endFramePresentAttempts;
+        const bool sampleTiming = ShouldSampleTiming(endFramePresentAttempts);
+        bool windowReady = false;
+        {
+            ScopedTiming timing(windowEnsureTiming, sampleTiming);
+            windowReady = renderer.Ensure(target.window, target.width, target.height,
+                currentSurfaceWidth, currentSurfaceHeight, logs);
+        }
+        if (!windowReady) {
+            ++failures;
+            logs.push_back("AVC420 native-buffer GPU EndFrame GDI-only renderer window attach "
+                "failed failures=" + std::to_string(failures));
+            return false;
+        }
+
+        const bool logPresentSummary = ShouldLogFrequent(gdiBackgroundPresents + 1) ||
+            ShouldLogFrequent(endFramePresentAttempts);
+        bool presentOk = false;
+        {
+            ScopedTiming timing(presentTiming, sampleTiming);
+            presentOk = renderer.PresentComposite(logs, logPresentSummary);
+        }
+        if (!presentOk) {
+            ++failures;
+            ++ignoredUpdates;
+            logs.push_back("AVC420 native-buffer GPU EndFrame GDI-only present failed "
+                "failures=" + std::to_string(failures) +
+                " ignoredUpdates=" + std::to_string(ignoredUpdates));
+            return false;
+        }
+
+        ++gdiBackgroundPresents;
+        gdiBackgroundPendingPresent = false;
+        RecordPresentGap(NowMicros());
+        ++presented;
+        if (ShouldLogFrequent(gdiBackgroundPresents) || ShouldLogFrequent(presented)) {
+            logs.push_back("AVC420 native-buffer GPU presented retained GDI background at "
+                "EndFrame: frame=" + std::to_string(frameId) +
+                " activeFrame=" + std::to_string(activeFrameId) +
+                " presented=" + std::to_string(presented) +
+                " gdiBg=" + std::to_string(gdiBackgroundUpdates) + "/" +
+                std::to_string(gdiBackgroundPresents) +
+                " surface=" + std::to_string(currentSurfaceWidth) + "x" +
+                std::to_string(currentSurfaceHeight) +
+                " policyActive=yes retainFrames=yes");
+        }
+        return true;
+    }
+
     bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
         const Avc420GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs)
@@ -2343,6 +2431,10 @@ struct Avc420GpuCompositorImpl::State {
         const uint32_t activeFrameId = frame == nullptr ? 0 : frame->activeFrameId;
         const bool matchedFrame = frame != nullptr && frame->matchedFrame;
         if (!pendingPresent) {
+            if (PresentGdiBackgroundAtEndFrame(frameId, activeFrameId, matchedFrame,
+                    callbacks, outputActive, logs)) {
+                return true;
+            }
             ++endFrameSkipNoPending;
             if (ShouldLogFrequent(endFrameSkipNoPending) ||
                 ShouldLogFrequent(endFrameCallbacks)) {

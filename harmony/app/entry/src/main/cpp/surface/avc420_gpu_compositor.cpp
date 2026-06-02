@@ -407,26 +407,55 @@ Avc420GpuCompositor::ClearWorkerQueueLocked()
 }
 
 Avc420GpuCompositor::WorkerQueueCompaction
-Avc420GpuCompositor::CompactNonDecoderWorkLocked()
+Avc420GpuCompositor::CompactWorkerBacklogLocked()
 {
     WorkerQueueCompaction compaction;
     compaction.depthBefore = workerQueue_.size();
-    for (auto it = workerQueue_.begin(); it != workerQueue_.end();) {
-        if (it->type == WorkerTaskType::Prewarm) {
-            ++compaction.drops.prewarms;
-            it = workerQueue_.erase(it);
-        } else if (it->type == WorkerTaskType::EndFrame) {
-            ++compaction.drops.endFrames;
-            it = workerQueue_.erase(it);
-        } else {
-            if (it->type == WorkerTaskType::SurfaceCommand) {
-                ++compaction.preservedCommands;
-            } else if (it->type == WorkerTaskType::GdiFrame) {
-                ++compaction.preservedGdiFrames;
-            }
-            ++it;
+
+    size_t keepEndFrameIndex = workerQueue_.size();
+    for (size_t index = workerQueue_.size(); index > 0; --index) {
+        const size_t taskIndex = index - 1;
+        const WorkerTask& task = workerQueue_[taskIndex];
+        if (task.type == WorkerTaskType::EndFrame && task.frame.matchedFrame) {
+            keepEndFrameIndex = taskIndex;
+            break;
         }
     }
+    if (keepEndFrameIndex == workerQueue_.size()) {
+        for (size_t index = workerQueue_.size(); index > 0; --index) {
+            const size_t taskIndex = index - 1;
+            if (workerQueue_[taskIndex].type == WorkerTaskType::EndFrame) {
+                keepEndFrameIndex = taskIndex;
+                break;
+            }
+        }
+    }
+
+    std::deque<WorkerTask> compacted;
+    for (size_t index = 0; index < workerQueue_.size(); ++index) {
+        WorkerTask& task = workerQueue_[index];
+        if (task.type == WorkerTaskType::Prewarm) {
+            ++compaction.drops.prewarms;
+            continue;
+        }
+        if (task.type == WorkerTaskType::EndFrame && index != keepEndFrameIndex) {
+            ++compaction.drops.endFrames;
+            continue;
+        }
+        if (task.type == WorkerTaskType::SurfaceCommand) {
+            ++compaction.preservedCommands;
+        } else if (task.type == WorkerTaskType::GdiFrame) {
+            ++compaction.preservedGdiFrames;
+        } else if (task.type == WorkerTaskType::EndFrame) {
+            ++compaction.preservedEndFrames;
+            compaction.preservedEndFrameId = task.frame.frameId;
+            compaction.preservedEndFrameActiveId = task.frame.activeFrameId;
+            compaction.preservedEndFrameMatched = task.frame.matchedFrame ? true : false;
+        }
+        compacted.push_back(std::move(task));
+    }
+
+    workerQueue_.swap(compacted);
     compaction.depthAfter = workerQueue_.size();
     workerQueueDepth_.store(workerQueue_.size());
     return compaction;
@@ -550,7 +579,7 @@ bool Avc420GpuCompositor::EnqueueGdiFrame(const RgbaFrame& frame, bool outputAct
             return false;
         }
         if (workerQueue_.size() >= kEndFrameCoalesceDepth) {
-            compaction = CompactNonDecoderWorkLocked();
+            compaction = CompactWorkerBacklogLocked();
         }
         for (WorkerTask& queuedTask : workerQueue_) {
             if (queuedTask.type != WorkerTaskType::GdiFrame) {
@@ -591,13 +620,18 @@ bool Avc420GpuCompositor::EnqueueGdiFrame(const RgbaFrame& frame, bool outputAct
             " " + DescribeDirtyStats(frame.dirty));
     }
     if (compaction.DidDrop()) {
-        Log("AVC420 GPU worker compacted non-decoder backlog before GDI background: "
+        Log("AVC420 GPU worker compacted backlog before GDI background: "
             "droppedPrewarms=" + std::to_string(compaction.drops.prewarms) +
             " droppedGdiFrames=" + std::to_string(compaction.drops.gdiFrames) +
             " droppedCommands=" + std::to_string(compaction.drops.commands) +
             " droppedEndFrames=" + std::to_string(compaction.drops.endFrames) +
             " preservedCommands=" + std::to_string(compaction.preservedCommands) +
             " preservedGdiFrames=" + std::to_string(compaction.preservedGdiFrames) +
+            " preservedEndFrames=" + std::to_string(compaction.preservedEndFrames) +
+            " preservedEndFrame=" + std::to_string(compaction.preservedEndFrameId) +
+            " preservedActiveFrame=" + std::to_string(compaction.preservedEndFrameActiveId) +
+            " preservedMatched=" +
+            std::string(compaction.preservedEndFrameMatched ? "yes" : "no") +
             " depthBeforeCompact=" + std::to_string(compaction.depthBefore) +
             " depthAfterCompact=" + std::to_string(compaction.depthAfter) +
             " " + WorkerBacklogText());
@@ -710,7 +744,7 @@ bool Avc420GpuCompositor::EnqueueSurfaceCommand(
             return false;
         }
         if (workerQueue_.size() >= kEndFrameCoalesceDepth) {
-            compaction = CompactNonDecoderWorkLocked();
+            compaction = CompactWorkerBacklogLocked();
         }
         if (workerQueue_.size() >= kMaxWorkerTasks) {
             ++workerQueueOverLimit_;
@@ -735,13 +769,18 @@ bool Avc420GpuCompositor::EnqueueSurfaceCommand(
             " " + WorkerBacklogText());
     }
     if (compaction.DidDrop()) {
-        Log("AVC420 GPU worker compacted non-decoder backlog before SurfaceCommand: "
+        Log("AVC420 GPU worker compacted backlog before SurfaceCommand: "
             "droppedPrewarms=" + std::to_string(compaction.drops.prewarms) +
             " droppedGdiFrames=" + std::to_string(compaction.drops.gdiFrames) +
             " droppedCommands=" + std::to_string(compaction.drops.commands) +
             " droppedEndFrames=" + std::to_string(compaction.drops.endFrames) +
             " preservedCommands=" + std::to_string(compaction.preservedCommands) +
             " preservedGdiFrames=" + std::to_string(compaction.preservedGdiFrames) +
+            " preservedEndFrames=" + std::to_string(compaction.preservedEndFrames) +
+            " preservedEndFrame=" + std::to_string(compaction.preservedEndFrameId) +
+            " preservedActiveFrame=" + std::to_string(compaction.preservedEndFrameActiveId) +
+            " preservedMatched=" +
+            std::string(compaction.preservedEndFrameMatched ? "yes" : "no") +
             " depthBeforeCompact=" + std::to_string(compaction.depthBefore) +
             " depthAfterCompact=" + std::to_string(compaction.depthAfter) +
             " frame=" + std::to_string(command->frameId) +
@@ -777,7 +816,7 @@ bool Avc420GpuCompositor::EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* 
             return false;
         }
         if (workerQueue_.size() >= kEndFrameCoalesceDepth) {
-            compaction = CompactNonDecoderWorkLocked();
+            compaction = CompactWorkerBacklogLocked();
         }
         if (workerQueue_.size() >= kMaxWorkerTasks) {
             ++workerQueueOverLimit_;
@@ -807,6 +846,11 @@ bool Avc420GpuCompositor::EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* 
             " droppedEndFrameTotal=" + std::to_string(workerDroppedEndFrames_.load()) +
             " preservedCommands=" + std::to_string(compaction.preservedCommands) +
             " preservedGdiFrames=" + std::to_string(compaction.preservedGdiFrames) +
+            " preservedEndFrames=" + std::to_string(compaction.preservedEndFrames) +
+            " preservedEndFrame=" + std::to_string(compaction.preservedEndFrameId) +
+            " preservedActiveFrame=" + std::to_string(compaction.preservedEndFrameActiveId) +
+            " preservedMatched=" +
+            std::string(compaction.preservedEndFrameMatched ? "yes" : "no") +
             " depthBeforeCompact=" + std::to_string(compaction.depthBefore) +
             " depthAfterCompact=" + std::to_string(compaction.depthAfter) +
             " frame=" + std::to_string(frame->frameId) +
