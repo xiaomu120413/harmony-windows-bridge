@@ -37,4 +37,30 @@ private:
     std::unique_ptr<State> state_;
 };
 
+class Avc420GpuCompositorImpl {
+public:
+    Avc420GpuCompositorImpl();
+    ~Avc420GpuCompositorImpl();
+    Avc420GpuCompositorImpl(const Avc420GpuCompositorImpl&) = delete;
+    Avc420GpuCompositorImpl& operator=(const Avc420GpuCompositorImpl&) = delete;
+
+    void Destroy();
+
+    bool Prewarm(uint32_t surfaceWidth, uint32_t surfaceHeight,
+        std::vector<std::string>& logs);
+    bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
+        std::vector<std::string>& logs);
+    bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
+        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
+        std::vector<std::string>& logs);
+    std::string DebugSummary() const;
+
+    static std::string RectText(const RECTANGLE_16* rect);
+
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
+
 } // namespace rdp_bridge
