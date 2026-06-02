@@ -16,6 +16,7 @@
 #include <freerdp/settings_keys.h>
 
 namespace rdp_bridge {
+bool UpdateAvc420CompositeWithGdiFrame(const RgbaFrame& frame);
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 } // namespace rdp_bridge
 
@@ -220,11 +221,35 @@ BOOL HarmonyEndPaint(rdpContext* context)
     if (context == nullptr || context->gdi == nullptr) {
         return TRUE;
     }
+    rdpGdi* gdi = context->gdi;
     if (IsAvc420SurfaceOutputEnabled()) {
+        if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
+            gdi->height <= 0 || gdi->stride == 0) {
+            return TRUE;
+        }
+        if (gdi->primary != nullptr && gdi->primary->hdc != nullptr &&
+            gdi->primary->hdc->hwnd != nullptr) {
+            HGDI_WND hwnd = gdi->primary->hdc->hwnd;
+            if (hwnd->invalid != nullptr && hwnd->invalid->null) {
+                return TRUE;
+            }
+        }
+
+        RgbaFrame frame = {
+            gdi->primary_buffer,
+            static_cast<uint32_t>(gdi->width),
+            static_cast<uint32_t>(gdi->height),
+            static_cast<int32_t>(gdi->stride),
+            "freerdp gdi background",
+            CaptureGdiDirtyStats(gdi),
+        };
+        if (UpdateAvc420CompositeWithGdiFrame(frame)) {
+            g_rdpPrimaryFrameReady.store(true);
+        }
+        ClearGdiInvalidRegion(gdi);
         return TRUE;
     }
 
-    rdpGdi* gdi = context->gdi;
     if (IsAvc444GpuRenderOutputOwner()) {
         ClearGdiInvalidRegion(gdi);
         return TRUE;

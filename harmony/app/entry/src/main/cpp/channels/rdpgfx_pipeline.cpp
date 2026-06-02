@@ -84,12 +84,14 @@ void ResetAvcGpuOutputOwner(const std::string &reason) {
       current != RenderOutputOwner::Avc420Gpu) {
     return;
   }
-  const RenderOutputOwner previous =
-      ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
-  if (previous == RenderOutputOwner::Avc444Gpu ||
-      previous == RenderOutputOwner::Avc420Gpu) {
+  const RenderOutputOwnerTransition transition = TransitionRenderOutputOwner(
+      RenderOutputOwner::Gdi, RenderOutputOwnerTransitionReason::SessionReset);
+  if (transition.previous == RenderOutputOwner::Avc444Gpu ||
+      transition.previous == RenderOutputOwner::Avc420Gpu) {
     LogThroughCallbacks("render output owner reset after " + reason +
-                        ": " + RenderOutputOwnerName(previous) + " -> gdi");
+                        ": " + RenderOutputOwnerName(transition.previous) +
+                        " -> gdi transitionReason=" +
+                        RenderOutputOwnerTransitionReasonName(transition.reason));
   }
 }
 
@@ -124,6 +126,16 @@ void UpdateOhosRdpgfxSurfaceTarget(FreerdpRuntimeApi &api, uint32_t width,
   }
 }
 
+void SetOhosRdpgfxAvc420OutputPolicy(bool active, const std::string &reason) {
+  FreerdpRuntimeApi &api = SharedFreerdpRuntimeApi();
+  freerdpOhosRdpgfxBridge *bridge = CurrentOhosRdpgfxBridge();
+  if (bridge == nullptr || api.ohosRdpgfxBridgeSetAvc420OutputActive == nullptr) {
+    return;
+  }
+  api.ohosRdpgfxBridgeSetAvc420OutputActive(
+      bridge, active ? TRUE : FALSE, reason.c_str());
+}
+
 void OhosRdpgfxLogCallback(const char *message, void *) {
   if (message != nullptr && message[0] != '\0') {
     LogThroughCallbacks(message);
@@ -154,6 +166,12 @@ BOOL OhosRdpgfxAvc420EndFrameCallback(
   return handled ? TRUE : FALSE;
 }
 
+void OhosRdpgfxAvc420OutputStateCallback(BOOL active, const char *reason,
+                                         void *) {
+  SharedAvc420GpuCompositor().SetOutputActive(active ? true : false,
+                                              SafeCString(reason));
+}
+
 } // namespace
 
 void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks) {
@@ -165,10 +183,18 @@ bool IsAvc420SurfaceOutputEnabled() {
   return IsAvc420GpuRenderOutputOwner();
 }
 
+bool UpdateAvc420CompositeWithGdiFrame(const RgbaFrame &frame) {
+  if (!g_avc420GpuCompositorConfigured.load() &&
+      !IsAvc420GpuRenderOutputOwner()) {
+    return false;
+  }
+  return SharedAvc420GpuCompositor().OnGdiFrame(frame);
+}
+
 void UpdateAvc420SurfaceOutputIfActive(const std::string &reason) {
-  RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-  if (callbacks.releaseRenderTarget != nullptr && IsAvc420GpuRenderOutputOwner()) {
-    callbacks.releaseRenderTarget("AVC420 GPU target update after " + reason);
+  const bool ownsOutput = IsAvc420GpuRenderOutputOwner();
+  if (g_avc420GpuCompositorConfigured.load() || ownsOutput) {
+    SharedAvc420GpuCompositor().OnSurfaceTargetChanged(reason);
   }
 }
 
@@ -214,11 +240,12 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi &api,
 
   g_avc420GpuCompositorConfigured.store(true);
   RdpgfxPipelineCallbacks callbacks = SnapshotCallbacks();
-  Avc444GpuCompositorCallbacks avc420Callbacks;
+  Avc420GpuCompositorCallbacks avc420Callbacks;
   avc420Callbacks.decoderSurfaceTarget = callbacks.decoderSurfaceTarget;
   avc420Callbacks.stopRenderPipeline = callbacks.stopRenderPipeline;
   avc420Callbacks.startRenderPipeline = callbacks.startRenderPipeline;
   avc420Callbacks.releaseRenderTarget = callbacks.releaseRenderTarget;
+  avc420Callbacks.setOutputPolicy = SetOhosRdpgfxAvc420OutputPolicy;
   SharedAvc420GpuCompositor().Configure(true, log, std::move(avc420Callbacks));
   if (log != nullptr) {
     log("OHOS AVC420 GPU compositor enabled; using RDPGFX command hardware-decode path");
@@ -315,6 +342,7 @@ void InstallRdpgfxDiagnosticsHooks(RdpgfxClientContext *gfx) {
   config.log = OhosRdpgfxLogCallback;
   config.avc420SurfaceCommand = OhosRdpgfxAvc420SurfaceCommandCallback;
   config.avc420EndFrame = OhosRdpgfxAvc420EndFrameCallback;
+  config.avc420OutputState = OhosRdpgfxAvc420OutputStateCallback;
   config.avc444SurfaceCommand = OhosRdpgfxAvc444SurfaceCommandCallback;
   config.avc444EndFrame = OhosRdpgfxAvc444EndFrameCallback;
 

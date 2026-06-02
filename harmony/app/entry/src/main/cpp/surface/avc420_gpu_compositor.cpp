@@ -1,9 +1,11 @@
 #include "surface/avc420_gpu_compositor.h"
 
-#include "surface/avc444_gpu_compositor_internal.h"
+#include "common/frame_utils.h"
+#include "surface/avc420_gpu_compositor_internal.h"
 #include "surface/render_output_owner.h"
 
 #include <algorithm>
+#include <chrono>
 #include <exception>
 #include <initializer_list>
 #include <mutex>
@@ -13,12 +15,24 @@
 namespace rdp_bridge {
 namespace {
 constexpr size_t kMaxWorkerTasks = 720;
-// Preserve normal EndFrame ordering; coalesce only if the worker is effectively saturated.
-constexpr size_t kEndFrameCoalesceDepth = kMaxWorkerTasks;
+constexpr size_t kEndFrameCoalesceDepth = 24;
+constexpr auto kStatsLogInterval = std::chrono::seconds(2);
 
 bool ShouldLogWorkerCounter(uint64_t count)
 {
     return count == 1 || (count % 600) == 0;
+}
+
+std::string RatePerSecondText(uint64_t delta, uint64_t elapsedMs)
+{
+    if (elapsedMs == 0) {
+        return "0.00";
+    }
+    const uint64_t rate100 = (delta * 100000ULL) / elapsedMs;
+    const uint64_t whole = rate100 / 100ULL;
+    const uint64_t fraction = rate100 % 100ULL;
+    return std::to_string(whole) + "." + (fraction < 10 ? "0" : "") +
+        std::to_string(fraction);
 }
 
 bool ContainsAny(const std::string& value, std::initializer_list<const char*> needles)
@@ -31,12 +45,42 @@ bool ContainsAny(const std::string& value, std::initializer_list<const char*> ne
     return false;
 }
 
+const char* OutputStateName(Avc420OutputState state)
+{
+    switch (state) {
+        case Avc420OutputState::Active:
+            return "active";
+        case Avc420OutputState::TargetPaused:
+            return "targetPaused";
+        case Avc420OutputState::Failed:
+            return "failed";
+        case Avc420OutputState::Detached:
+        default:
+            return "detached";
+    }
+}
+
 bool IsRoutineAvc420GpuLog(const std::string& message)
 {
-    if (message.rfind("AVC420 GPU", 0) != 0) {
+    const bool isAvc420GpuLog =
+        message.rfind("AVC420 GPU", 0) == 0 ||
+        message.rfind("AVC420 native-buffer GPU", 0) == 0;
+    if (!isAvc420GpuLog) {
         return false;
     }
-    if (message.find("prewarmed") != std::string::npos) {
+    if (message.find("stats") != std::string::npos) {
+        return false;
+    }
+    if (message.find("output policy") != std::string::npos ||
+        message.find("released output") != std::string::npos) {
+        return false;
+    }
+    if (ContainsAny(message, {
+        "active update policy", "native import fallback", "fallback before takeover"
+    })) {
+        return false;
+    }
+    if (message.find("configuredFrameRate") != std::string::npos) {
         return false;
     }
     if (ContainsAny(message, {
@@ -61,7 +105,7 @@ Avc420GpuCompositor::~Avc420GpuCompositor()
 }
 
 void Avc420GpuCompositor::Configure(bool enabled, Avc420GpuLogFn log,
-    Avc444GpuCompositorCallbacks callbacks)
+    Avc420GpuCompositorCallbacks callbacks)
 {
     StopWorker();
     std::lock_guard<std::mutex> processLock(processingMutex_);
@@ -69,13 +113,16 @@ void Avc420GpuCompositor::Configure(bool enabled, Avc420GpuLogFn log,
         impl_->Destroy();
     }
     if (CurrentRenderOutputOwner() == RenderOutputOwner::Avc420Gpu) {
-        ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
+        TransitionRenderOutputOwner(
+            RenderOutputOwner::Gdi,
+            RenderOutputOwnerTransitionReason::Avc420ConfigureReset);
     }
     std::lock_guard<std::mutex> lock(mutex_);
     enabled_ = enabled;
     log_ = std::move(log);
     callbacks_ = std::move(callbacks);
     outputActive_ = false;
+    outputState_ = Avc420OutputState::Detached;
     candidates_ = 0;
     lastFrameId_ = 0;
     lastBytes_ = 0;
@@ -84,18 +131,25 @@ void Avc420GpuCompositor::Configure(bool enabled, Avc420GpuLogFn log,
     lastTargetHeight_ = 0;
     lastFullSurface_ = false;
     implDiagnosticsCache_.clear();
+    nextStatsLogAt_ = {};
+    lastStatsLogAt_ = {};
+    lastStatsCandidates_ = 0;
+    lastStatsProcessedEndFrames_ = 0;
     workerQueuedPrewarms_.store(0);
+    workerQueuedGdiFrames_.store(0);
     workerQueuedCommands_.store(0);
     workerQueuedEndFrames_.store(0);
     workerProcessedPrewarms_.store(0);
+    workerProcessedGdiFrames_.store(0);
     workerProcessedCommands_.store(0);
     workerProcessedEndFrames_.store(0);
+    workerDroppedCommands_.store(0);
     workerDroppedEndFrames_.store(0);
     workerQueueOverLimit_.store(0);
     workerMaxDepth_.store(0);
     workerQueueDepth_.store(0);
     diagnostics_ = enabled ?
-        "avc420 gpu compositor: configured hardware-decode mapped-plane compositor" :
+        "avc420 gpu compositor: configured hardware-decode native-buffer compositor" :
         "avc420 gpu compositor: off";
 }
 
@@ -132,21 +186,28 @@ std::string Avc420GpuCompositor::Diagnostics() const
     }
     const uint64_t workerDepth = workerQueueDepth_.load();
     const uint64_t workerQueuedPrewarms = workerQueuedPrewarms_.load();
+    const uint64_t workerQueuedGdiFrames = workerQueuedGdiFrames_.load();
     const uint64_t workerQueuedCommands = workerQueuedCommands_.load();
     const uint64_t workerQueuedEndFrames = workerQueuedEndFrames_.load();
     const uint64_t workerProcessedPrewarms = workerProcessedPrewarms_.load();
+    const uint64_t workerProcessedGdiFrames = workerProcessedGdiFrames_.load();
     const uint64_t workerProcessedCommands = workerProcessedCommands_.load();
     const uint64_t workerProcessedEndFrames = workerProcessedEndFrames_.load();
-    if (workerQueuedPrewarms != 0 || workerQueuedCommands != 0 || workerQueuedEndFrames != 0 ||
-        workerProcessedPrewarms != 0 || workerProcessedCommands != 0 ||
+    if (workerQueuedPrewarms != 0 || workerQueuedGdiFrames != 0 ||
+        workerQueuedCommands != 0 || workerQueuedEndFrames != 0 ||
+        workerProcessedPrewarms != 0 || workerProcessedGdiFrames != 0 ||
+        workerProcessedCommands != 0 ||
         workerProcessedEndFrames != 0) {
         diagnostics += " | gpuWorker=depth:" + std::to_string(workerDepth) +
             ",queued:" + std::to_string(workerQueuedPrewarms) + "/" +
+            std::to_string(workerQueuedGdiFrames) + "/" +
             std::to_string(workerQueuedCommands) + "/" +
             std::to_string(workerQueuedEndFrames) +
             ",processed:" + std::to_string(workerProcessedPrewarms) + "/" +
+            std::to_string(workerProcessedGdiFrames) + "/" +
             std::to_string(workerProcessedCommands) + "/" +
             std::to_string(workerProcessedEndFrames) +
+            ",droppedCmd:" + std::to_string(workerDroppedCommands_.load()) +
             ",droppedEnd:" + std::to_string(workerDroppedEndFrames_.load()) +
             ",queueOverLimit:" + std::to_string(workerQueueOverLimit_.load()) +
             ",maxDepth:" + std::to_string(workerMaxDepth_.load());
@@ -188,6 +249,7 @@ void Avc420GpuCompositor::Prewarm(uint32_t surfaceWidth, uint32_t surfaceHeight)
         }
         if (workerQueue_.size() >= kMaxWorkerTasks) {
             ++workerQueueOverLimit_;
+            return;
         }
         workerQueue_.push_back(std::move(task));
         depth = workerQueue_.size();
@@ -203,9 +265,407 @@ void Avc420GpuCompositor::Prewarm(uint32_t surfaceWidth, uint32_t surfaceHeight)
     }
 }
 
+void Avc420GpuCompositor::SetOutputActive(bool active, const std::string& reason)
+{
+    std::vector<std::string> logs;
+    Avc420GpuCompositorCallbacks callbacks;
+    bool changed = false;
+    bool startRenderPipeline = false;
+    RenderOutputOwnerTransition ownerTransition;
+    WorkerQueueDropCounts drops;
+    {
+        std::lock_guard<std::mutex> processLock(processingMutex_);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!enabled_) {
+                return;
+            }
+            changed = outputActive_ != active;
+            outputActive_ = active;
+            outputState_ = active ? Avc420OutputState::Active : Avc420OutputState::Detached;
+            callbacks = callbacks_;
+        }
+        if (!active) {
+            if (impl_ != nullptr) {
+                impl_->Destroy();
+            }
+            ownerTransition = TransitionRenderOutputOwner(
+                RenderOutputOwner::Gdi,
+                RenderOutputOwnerTransitionReason::Avc420FreeRdpPolicyRelease);
+            {
+                std::lock_guard<std::mutex> lock(workerMutex_);
+                drops = ClearWorkerQueueLocked();
+            }
+            AccountDroppedWorkerTasks(drops);
+            startRenderPipeline = ownerTransition.previous == RenderOutputOwner::Avc420Gpu;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            diagnostics_ = "avc420 gpu compositor: enabled=yes active=" +
+                std::string(outputActive_ ? "yes" : "no") +
+                " state=" + OutputStateName(outputState_) +
+                " policyState=" + reason;
+            if (impl_ != nullptr) {
+                implDiagnosticsCache_ = impl_->DebugSummary();
+            }
+        }
+    }
+    if (!active && startRenderPipeline && callbacks.startRenderPipeline != nullptr) {
+        callbacks.startRenderPipeline();
+    }
+    if (changed || !active) {
+        std::string line = "AVC420 GPU compositor observed FreeRDP output policy: active=" +
+            std::string(active ? "yes" : "no") + " reason=" + reason;
+        if (!active) {
+            line += " previousOwner=" + RenderOutputOwnerName(ownerTransition.previous) +
+                " transitionReason=" +
+                RenderOutputOwnerTransitionReasonName(ownerTransition.reason);
+        } else {
+            line += " outputOwner=" + CurrentRenderOutputOwnerName();
+        }
+        logs.push_back(std::move(line));
+    }
+    if (drops.prewarms != 0 || drops.gdiFrames != 0 ||
+        drops.commands != 0 || drops.endFrames != 0) {
+        logs.push_back("AVC420 GPU worker cleared queued work after output policy release: "
+            "droppedPrewarms=" + std::to_string(drops.prewarms) +
+            " droppedGdiFrames=" + std::to_string(drops.gdiFrames) +
+            " droppedCommands=" + std::to_string(drops.commands) +
+            " droppedEndFrames=" + std::to_string(drops.endFrames));
+    }
+    for (const std::string& line : logs) {
+        Log(line);
+    }
+}
+
+bool Avc420GpuCompositor::HasReadySurfaceTarget(
+    const Avc420GpuCompositorCallbacks& callbacks) const
+{
+    if (callbacks.decoderSurfaceTarget == nullptr) {
+        return false;
+    }
+    const DecoderSurfaceTarget target = callbacks.decoderSurfaceTarget();
+    return target.window != nullptr && target.width != 0 && target.height != 0;
+}
+
+bool Avc420GpuCompositor::ShouldDetachForTargetChange(const std::string& reason) const
+{
+    return ContainsAny(reason, {
+        "surface destroyed",
+        "rdpgfx bridge detached",
+        "rdpgfx diagnostics hook restore",
+        "AVC surface output reset",
+    });
+}
+
+void Avc420GpuCompositor::PauseOutputForTargetUnavailable(
+    const std::string& reason, const Avc420GpuCompositorCallbacks& callbacks,
+    std::vector<std::string>& logs)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!enabled_ || !outputActive_) {
+            return;
+        }
+        outputState_ = Avc420OutputState::TargetPaused;
+        diagnostics_ = "avc420 gpu compositor: enabled=yes active=yes state=targetPaused "
+            "targetUnavailable=" + reason;
+    }
+
+    if (impl_ != nullptr) {
+        impl_->OnSurfaceTargetChanged(reason, callbacks, true, logs);
+    }
+    logs.push_back("AVC420 GPU compositor entered TargetPaused after target unavailable: "
+        "reason=" + reason +
+        " outputOwner=" + CurrentRenderOutputOwnerName() +
+        " policyActive=yes retainDecoder=yes retainComposite=yes queuedWorkPreserved=yes");
+}
+
+Avc420GpuCompositor::WorkerQueueDropCounts
+Avc420GpuCompositor::ClearWorkerQueueLocked()
+{
+    WorkerQueueDropCounts drops;
+    for (const WorkerTask& task : workerQueue_) {
+        switch (task.type) {
+            case WorkerTaskType::Prewarm:
+                ++drops.prewarms;
+                break;
+            case WorkerTaskType::GdiFrame:
+                ++drops.gdiFrames;
+                break;
+            case WorkerTaskType::SurfaceCommand:
+                ++drops.commands;
+                break;
+            case WorkerTaskType::EndFrame:
+                ++drops.endFrames;
+                break;
+        }
+    }
+    workerQueue_.clear();
+    workerQueueDepth_.store(0);
+    return drops;
+}
+
+Avc420GpuCompositor::WorkerQueueCompaction
+Avc420GpuCompositor::CompactNonDecoderWorkLocked()
+{
+    WorkerQueueCompaction compaction;
+    compaction.depthBefore = workerQueue_.size();
+    for (auto it = workerQueue_.begin(); it != workerQueue_.end();) {
+        if (it->type == WorkerTaskType::Prewarm) {
+            ++compaction.drops.prewarms;
+            it = workerQueue_.erase(it);
+        } else if (it->type == WorkerTaskType::EndFrame) {
+            ++compaction.drops.endFrames;
+            it = workerQueue_.erase(it);
+        } else {
+            if (it->type == WorkerTaskType::SurfaceCommand) {
+                ++compaction.preservedCommands;
+            } else if (it->type == WorkerTaskType::GdiFrame) {
+                ++compaction.preservedGdiFrames;
+            }
+            ++it;
+        }
+    }
+    compaction.depthAfter = workerQueue_.size();
+    workerQueueDepth_.store(workerQueue_.size());
+    return compaction;
+}
+
+void Avc420GpuCompositor::AccountDroppedWorkerTasks(const WorkerQueueDropCounts& drops)
+{
+    if (drops.commands != 0) {
+        workerDroppedCommands_.fetch_add(drops.commands);
+    }
+    if (drops.endFrames != 0) {
+        workerDroppedEndFrames_.fetch_add(drops.endFrames);
+    }
+}
+
+std::string Avc420GpuCompositor::WorkerBacklogText() const
+{
+    const auto pending = [](uint64_t queued, uint64_t processed) {
+        return queued >= processed ? queued - processed : 0;
+    };
+    const uint64_t queuedCommands = workerQueuedCommands_.load();
+    const uint64_t processedCommands = workerProcessedCommands_.load();
+    const uint64_t queuedEndFrames = workerQueuedEndFrames_.load();
+    const uint64_t processedEndFrames = workerProcessedEndFrames_.load();
+    return "queueDepth=" + std::to_string(workerQueueDepth_.load()) +
+        " commandBacklog=" + std::to_string(pending(queuedCommands, processedCommands)) +
+        " presentBacklog=" + std::to_string(pending(queuedEndFrames, processedEndFrames)) +
+        " queuedCommands=" + std::to_string(queuedCommands) +
+        " processedCommands=" + std::to_string(processedCommands) +
+        " queuedEndFrames=" + std::to_string(queuedEndFrames) +
+        " processedEndFrames=" + std::to_string(processedEndFrames);
+}
+
+bool Avc420GpuCompositor::DetachOutputActive(
+    const std::string& reason, const Avc420GpuCompositorCallbacks& callbacks,
+    bool clearQueuedWork, RenderOutputOwnerTransitionReason transitionReason,
+    std::vector<std::string>& logs)
+{
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!enabled_ || !outputActive_) {
+            return false;
+        }
+        outputActive_ = false;
+        outputState_ = transitionReason == RenderOutputOwnerTransitionReason::Avc420FatalFallback ?
+            Avc420OutputState::Failed : Avc420OutputState::Detached;
+    }
+
+    if (impl_ != nullptr) {
+        impl_->Destroy();
+    }
+
+    const RenderOutputOwnerTransition ownerTransition = TransitionRenderOutputOwner(
+        RenderOutputOwner::Gdi, transitionReason);
+    WorkerQueueDropCounts drops;
+    if (clearQueuedWork) {
+        std::lock_guard<std::mutex> lock(workerMutex_);
+        drops = ClearWorkerQueueLocked();
+    }
+    AccountDroppedWorkerTasks(drops);
+    if (callbacks.setOutputPolicy != nullptr) {
+        callbacks.setOutputPolicy(false, "AVC420 GPU detached: " + reason);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        diagnostics_ = "avc420 gpu compositor: enabled=yes active=no state=" +
+            std::string(OutputStateName(outputState_)) + " detached=" +
+            reason;
+        if (impl_ != nullptr) {
+            implDiagnosticsCache_ = impl_->DebugSummary();
+        }
+    }
+
+    logs.push_back("AVC420 GPU compositor detached output ownership: "
+        "reason=" + reason +
+        " previousOwner=" + RenderOutputOwnerName(ownerTransition.previous) +
+        " transitionReason=" +
+        RenderOutputOwnerTransitionReasonName(ownerTransition.reason) +
+        " outputOwner=gdi; decoder/composite resources released and FreeRDP fallback is allowed");
+    if (drops.prewarms != 0 || drops.gdiFrames != 0 ||
+        drops.commands != 0 || drops.endFrames != 0) {
+        logs.push_back("AVC420 GPU worker cleared queued work after output detach: "
+            "droppedPrewarms=" + std::to_string(drops.prewarms) +
+            " droppedGdiFrames=" + std::to_string(drops.gdiFrames) +
+            " droppedCommands=" + std::to_string(drops.commands) +
+            " droppedEndFrames=" + std::to_string(drops.endFrames));
+    }
+    return true;
+}
+
+bool Avc420GpuCompositor::EnqueueGdiFrame(const RgbaFrame& frame, bool outputActive)
+{
+    const int32_t sourceStride = frame.strideBytes > 0 ? frame.strideBytes :
+        static_cast<int32_t>(frame.width * 4U);
+    if (frame.data == nullptr || frame.width == 0 || frame.height == 0 ||
+        sourceStride < static_cast<int32_t>(frame.width * 4U)) {
+        return false;
+    }
+
+    WorkerTask task;
+    task.type = WorkerTaskType::GdiFrame;
+    task.outputActive = outputActive;
+    task.gdiFrame = frame;
+    task.gdiFrame.strideBytes = sourceStride;
+    if (task.gdiFrame.label.empty()) {
+        task.gdiFrame.label = "freerdp gdi background";
+    }
+
+    uint64_t depth = 0;
+    uint64_t queued = 0;
+    bool coalesced = false;
+    WorkerQueueCompaction compaction;
+    {
+        std::lock_guard<std::mutex> lock(workerMutex_);
+        if (!workerRunning_) {
+            EnsureWorkerLocked();
+        }
+        if (!workerRunning_) {
+            ++workerQueueOverLimit_;
+            return false;
+        }
+        if (workerQueue_.size() >= kEndFrameCoalesceDepth) {
+            compaction = CompactNonDecoderWorkLocked();
+        }
+        for (WorkerTask& queuedTask : workerQueue_) {
+            if (queuedTask.type != WorkerTaskType::GdiFrame) {
+                continue;
+            }
+            if (queuedTask.gdiFrame.width == task.gdiFrame.width &&
+                queuedTask.gdiFrame.height == task.gdiFrame.height) {
+                task.gdiFrame.dirty = MergeDirtyStats(queuedTask.gdiFrame.dirty,
+                    task.gdiFrame.dirty, task.gdiFrame.width, task.gdiFrame.height);
+            }
+            queuedTask = std::move(task);
+            coalesced = true;
+            depth = workerQueue_.size();
+            break;
+        }
+        if (!coalesced) {
+            if (workerQueue_.size() >= kMaxWorkerTasks) {
+                ++workerQueueOverLimit_;
+                return false;
+            }
+            workerQueue_.push_back(std::move(task));
+            depth = workerQueue_.size();
+        }
+        workerQueueDepth_.store(depth);
+        workerMaxDepth_.store(std::max(workerMaxDepth_.load(), depth));
+        queued = ++workerQueuedGdiFrames_;
+    }
+    if (compaction.DidDrop()) {
+        AccountDroppedWorkerTasks(compaction.drops);
+    }
+    workerCondition_.notify_one();
+    if (ShouldLogWorkerCounter(queued)) {
+        Log("AVC420 GPU worker queued GDI background frame: queued=" +
+            std::to_string(queued) +
+            " depth=" + std::to_string(depth) +
+            " coalesced=" + std::string(coalesced ? "yes" : "no") +
+            " " + WorkerBacklogText() +
+            " " + DescribeDirtyStats(frame.dirty));
+    }
+    if (compaction.DidDrop()) {
+        Log("AVC420 GPU worker compacted non-decoder backlog before GDI background: "
+            "droppedPrewarms=" + std::to_string(compaction.drops.prewarms) +
+            " droppedGdiFrames=" + std::to_string(compaction.drops.gdiFrames) +
+            " droppedCommands=" + std::to_string(compaction.drops.commands) +
+            " droppedEndFrames=" + std::to_string(compaction.drops.endFrames) +
+            " preservedCommands=" + std::to_string(compaction.preservedCommands) +
+            " preservedGdiFrames=" + std::to_string(compaction.preservedGdiFrames) +
+            " depthBeforeCompact=" + std::to_string(compaction.depthBefore) +
+            " depthAfterCompact=" + std::to_string(compaction.depthAfter) +
+            " " + WorkerBacklogText());
+    }
+    return true;
+}
+
+void Avc420GpuCompositor::OnSurfaceTargetChanged(const std::string& reason)
+{
+    std::vector<std::string> logs;
+    Avc420GpuCompositorCallbacks callbacks;
+    bool enabled = false;
+    bool outputActive = false;
+    bool startRenderPipeline = false;
+    bool detached = false;
+    {
+        std::lock_guard<std::mutex> processLock(processingMutex_);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            enabled = enabled_;
+            outputActive = outputActive_;
+            callbacks = callbacks_;
+        }
+        if (enabled && impl_) {
+            const bool targetReady = HasReadySurfaceTarget(callbacks);
+            if (outputActive && ShouldDetachForTargetChange(reason)) {
+                detached = DetachOutputActive(reason, callbacks, true,
+                    RenderOutputOwnerTransitionReason::SurfaceDestroyed, logs);
+                startRenderPipeline = detached;
+            } else if (outputActive && !targetReady) {
+                PauseOutputForTargetUnavailable(reason, callbacks, logs);
+            } else {
+                impl_->OnSurfaceTargetChanged(reason, callbacks, outputActive, logs);
+                if (outputActive && targetReady) {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    outputState_ = Avc420OutputState::Active;
+                    logs.push_back("AVC420 GPU compositor target ready: reason=" + reason +
+                        " state=active outputOwner=" + CurrentRenderOutputOwnerName() +
+                        " retainDecoder=yes retainComposite=yes");
+                }
+            }
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            diagnostics_ = "avc420 gpu compositor: enabled=" +
+                std::string(enabled_ ? "yes" : "no") +
+                " active=" + std::string(outputActive_ ? "yes" : "no") +
+                " state=" + OutputStateName(outputState_) +
+                " targetChange=" + reason;
+            if (impl_) {
+                implDiagnosticsCache_ = impl_->DebugSummary();
+            }
+        }
+    }
+    if (startRenderPipeline && callbacks.startRenderPipeline != nullptr) {
+        callbacks.startRenderPipeline();
+    }
+
+    if (enabled || outputActive) {
+        for (const std::string& line : logs) {
+            Log(line);
+        }
+    }
+}
+
 bool Avc420GpuCompositor::EnqueueSurfaceCommand(
     const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
-    const Avc444GpuCompositorCallbacks& callbacks, bool outputActive)
+    const Avc420GpuCompositorCallbacks& callbacks, bool outputActive)
 {
     if (command == nullptr) {
         return false;
@@ -218,6 +678,10 @@ bool Avc420GpuCompositor::EnqueueSurfaceCommand(
     task.command.info = *command;
     task.command.info.stream.data = nullptr;
     task.command.info.stream.regionRects = nullptr;
+
+    uint64_t depth = 0;
+    uint64_t queued = 0;
+    WorkerQueueCompaction compaction;
 
     try {
         if (command->stream.data != nullptr && command->stream.length > 0) {
@@ -236,8 +700,6 @@ bool Avc420GpuCompositor::EnqueueSurfaceCommand(
         return false;
     }
 
-    uint64_t depth = 0;
-    uint64_t queued = 0;
     {
         std::lock_guard<std::mutex> lock(workerMutex_);
         if (!workerRunning_) {
@@ -247,8 +709,12 @@ bool Avc420GpuCompositor::EnqueueSurfaceCommand(
             ++workerQueueOverLimit_;
             return false;
         }
+        if (workerQueue_.size() >= kEndFrameCoalesceDepth) {
+            compaction = CompactNonDecoderWorkLocked();
+        }
         if (workerQueue_.size() >= kMaxWorkerTasks) {
             ++workerQueueOverLimit_;
+            return false;
         }
         workerQueue_.push_back(std::move(task));
         depth = workerQueue_.size();
@@ -256,19 +722,37 @@ bool Avc420GpuCompositor::EnqueueSurfaceCommand(
         workerMaxDepth_.store(std::max(workerMaxDepth_.load(), depth));
         queued = ++workerQueuedCommands_;
     }
+    if (compaction.DidDrop()) {
+        AccountDroppedWorkerTasks(compaction.drops);
+    }
     workerCondition_.notify_one();
     if (ShouldLogWorkerCounter(queued)) {
         Log("AVC420 GPU worker queued SurfaceCommand: queued=" + std::to_string(queued) +
             " depth=" + std::to_string(depth) +
             " frame=" + std::to_string(command->frameId) +
             " bytes=" + std::to_string(command->stream.length) +
-            " rects=" + std::to_string(command->stream.numRegionRects));
+            " rects=" + std::to_string(command->stream.numRegionRects) +
+            " " + WorkerBacklogText());
+    }
+    if (compaction.DidDrop()) {
+        Log("AVC420 GPU worker compacted non-decoder backlog before SurfaceCommand: "
+            "droppedPrewarms=" + std::to_string(compaction.drops.prewarms) +
+            " droppedGdiFrames=" + std::to_string(compaction.drops.gdiFrames) +
+            " droppedCommands=" + std::to_string(compaction.drops.commands) +
+            " droppedEndFrames=" + std::to_string(compaction.drops.endFrames) +
+            " preservedCommands=" + std::to_string(compaction.preservedCommands) +
+            " preservedGdiFrames=" + std::to_string(compaction.preservedGdiFrames) +
+            " depthBeforeCompact=" + std::to_string(compaction.depthBefore) +
+            " depthAfterCompact=" + std::to_string(compaction.depthAfter) +
+            " frame=" + std::to_string(command->frameId) +
+            " depth=" + std::to_string(depth) +
+            " " + WorkerBacklogText());
     }
     return true;
 }
 
 bool Avc420GpuCompositor::EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
-    const Avc444GpuCompositorCallbacks& callbacks, bool outputActive)
+    const Avc420GpuCompositorCallbacks& callbacks, bool outputActive)
 {
     if (frame == nullptr) {
         return false;
@@ -282,8 +766,7 @@ bool Avc420GpuCompositor::EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* 
 
     uint64_t depth = 0;
     uint64_t queued = 0;
-    uint64_t dropped = 0;
-    uint64_t droppedTotal = 0;
+    WorkerQueueCompaction compaction;
     {
         std::lock_guard<std::mutex> lock(workerMutex_);
         if (!workerRunning_) {
@@ -293,21 +776,12 @@ bool Avc420GpuCompositor::EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* 
             ++workerQueueOverLimit_;
             return false;
         }
-        if (workerQueue_.size() > kEndFrameCoalesceDepth) {
-            for (auto it = workerQueue_.begin(); it != workerQueue_.end();) {
-                if (it->type == WorkerTaskType::EndFrame) {
-                    it = workerQueue_.erase(it);
-                    ++dropped;
-                } else {
-                    ++it;
-                }
-            }
-            if (dropped != 0) {
-                droppedTotal = workerDroppedEndFrames_.fetch_add(dropped) + dropped;
-            }
+        if (workerQueue_.size() >= kEndFrameCoalesceDepth) {
+            compaction = CompactNonDecoderWorkLocked();
         }
         if (workerQueue_.size() >= kMaxWorkerTasks) {
             ++workerQueueOverLimit_;
+            return false;
         }
         workerQueue_.push_back(std::move(task));
         depth = workerQueue_.size();
@@ -315,15 +789,29 @@ bool Avc420GpuCompositor::EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* 
         workerMaxDepth_.store(std::max(workerMaxDepth_.load(), depth));
         queued = ++workerQueuedEndFrames_;
     }
+    if (compaction.DidDrop()) {
+        AccountDroppedWorkerTasks(compaction.drops);
+    }
     workerCondition_.notify_one();
-    if (ShouldLogWorkerCounter(queued) ||
-        (dropped != 0 && ShouldLogWorkerCounter(droppedTotal))) {
+    const bool logCompaction = compaction.DidDrop() &&
+        (ShouldLogWorkerCounter(queued) ||
+            (compaction.drops.endFrames != 0 &&
+                ShouldLogWorkerCounter(workerDroppedEndFrames_.load())));
+    if (ShouldLogWorkerCounter(queued) || logCompaction) {
         Log("AVC420 GPU worker queued EndFrame: queued=" + std::to_string(queued) +
             " depth=" + std::to_string(depth) +
-            " droppedOldEndFrames=" + std::to_string(dropped) +
-            " droppedTotal=" + std::to_string(droppedTotal) +
+            " droppedPrewarms=" + std::to_string(compaction.drops.prewarms) +
+            " droppedGdiFrames=" + std::to_string(compaction.drops.gdiFrames) +
+            " droppedCommands=" + std::to_string(compaction.drops.commands) +
+            " droppedOldEndFrames=" + std::to_string(compaction.drops.endFrames) +
+            " droppedEndFrameTotal=" + std::to_string(workerDroppedEndFrames_.load()) +
+            " preservedCommands=" + std::to_string(compaction.preservedCommands) +
+            " preservedGdiFrames=" + std::to_string(compaction.preservedGdiFrames) +
+            " depthBeforeCompact=" + std::to_string(compaction.depthBefore) +
+            " depthAfterCompact=" + std::to_string(compaction.depthAfter) +
             " frame=" + std::to_string(frame->frameId) +
-            " matched=" + std::string(frame->matchedFrame ? "yes" : "no"));
+            " matched=" + std::string(frame->matchedFrame ? "yes" : "no") +
+            " " + WorkerBacklogText());
     }
     return true;
 }
@@ -384,6 +872,9 @@ void Avc420GpuCompositor::ProcessWorkerTask(WorkerTask task)
     std::vector<std::string> logs;
     bool handled = false;
     bool outputActive = task.outputActive;
+    bool outputActiveBeforeTask = false;
+    bool releaseActiveOutput = false;
+    RenderOutputOwnerTransition ownerTransition;
     {
         std::lock_guard<std::mutex> processLock(processingMutex_);
         {
@@ -392,6 +883,7 @@ void Avc420GpuCompositor::ProcessWorkerTask(WorkerTask task)
                 return;
             }
             outputActive = outputActive_ || outputActive;
+            outputActiveBeforeTask = outputActive;
         }
         if (task.type == WorkerTaskType::Prewarm) {
             handled = impl_ != nullptr &&
@@ -404,6 +896,17 @@ void Avc420GpuCompositor::ProcessWorkerTask(WorkerTask task)
                     " depth=" + std::to_string(workerQueueDepth_.load()) +
                     " surface=" + std::to_string(task.prewarmSurfaceWidth) + "x" +
                     std::to_string(task.prewarmSurfaceHeight));
+            }
+        } else if (task.type == WorkerTaskType::GdiFrame) {
+            handled = impl_ != nullptr &&
+                impl_->ProcessGdiFrame(task.gdiFrame, outputActive, logs);
+            const uint64_t processed = ++workerProcessedGdiFrames_;
+            if (ShouldLogWorkerCounter(processed) || !handled) {
+                logs.push_back("AVC420 GPU worker processed GDI background: processed=" +
+                    std::to_string(processed) +
+                    " handled=" + std::string(handled ? "yes" : "no") +
+                    " depth=" + std::to_string(workerQueueDepth_.load()) +
+                    " " + DescribeDirtyStats(task.gdiFrame.dirty));
             }
         } else if (task.type == WorkerTaskType::SurfaceCommand) {
             bindCommandPointers(task.command);
@@ -418,8 +921,14 @@ void Avc420GpuCompositor::ProcessWorkerTask(WorkerTask task)
                     " frame=" + std::to_string(task.command.info.frameId));
             }
         } else {
-            handled = impl_ != nullptr &&
-                impl_->PresentEndFrame(&task.frame, task.callbacks, outputActive, logs);
+            if (outputActive && !HasReadySurfaceTarget(task.callbacks)) {
+                PauseOutputForTargetUnavailable(
+                    "AVC420 worker EndFrame target unavailable", task.callbacks, logs);
+                handled = true;
+            } else {
+                handled = impl_ != nullptr &&
+                    impl_->PresentEndFrame(&task.frame, task.callbacks, outputActive, logs);
+            }
             const uint64_t processed = ++workerProcessedEndFrames_;
             if (ShouldLogWorkerCounter(processed)) {
                 logs.push_back("AVC420 GPU worker processed EndFrame: processed=" +
@@ -429,24 +938,163 @@ void Avc420GpuCompositor::ProcessWorkerTask(WorkerTask task)
                     " frame=" + std::to_string(task.frame.frameId));
             }
         }
+        if (task.type == WorkerTaskType::SurfaceCommand && outputActiveBeforeTask && !handled) {
+            if (impl_ != nullptr) {
+                impl_->Destroy();
+            }
+            ownerTransition = TransitionRenderOutputOwner(
+                RenderOutputOwner::Gdi,
+                RenderOutputOwnerTransitionReason::Avc420FatalFallback);
+            outputActive = false;
+            releaseActiveOutput = true;
+            logs.push_back("AVC420 GPU worker released output ownership after active command "
+                "failure: previousOwner=" + RenderOutputOwnerName(ownerTransition.previous) +
+                " transitionReason=" +
+                RenderOutputOwnerTransitionReasonName(ownerTransition.reason) +
+                " outputOwner=gdi; queued stale AVC420 work will be ignored until the stream "
+                "becomes decodable again");
+        }
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            outputActive_ = outputActive_ || outputActive;
+            outputActive_ = releaseActiveOutput ? false : (outputActive_ || outputActive);
+            if (releaseActiveOutput) {
+                outputState_ = Avc420OutputState::Failed;
+            } else if (outputActive_) {
+                outputState_ = outputState_ == Avc420OutputState::TargetPaused ?
+                    Avc420OutputState::TargetPaused : Avc420OutputState::Active;
+            } else {
+                outputState_ = Avc420OutputState::Detached;
+            }
             diagnostics_ = "avc420 gpu compositor: enabled=yes active=" +
                 std::string(outputActive_ ? "yes" : "no") +
+                " state=" + OutputStateName(outputState_) +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " worker=" + (task.type == WorkerTaskType::Prewarm ? "prewarm" :
-                    (task.type == WorkerTaskType::SurfaceCommand ? "command" : "endFrame")) +
+                    (task.type == WorkerTaskType::GdiFrame ? "gdiFrame" :
+                        (task.type == WorkerTaskType::SurfaceCommand ? "command" : "endFrame"))) +
                 " handled=" + std::string(handled ? "yes" : "no");
             if (impl_ != nullptr) {
                 implDiagnosticsCache_ = impl_->DebugSummary();
             }
         }
+        AppendPeriodicStats(logs, task.type == WorkerTaskType::Prewarm ? "prewarm" :
+            (task.type == WorkerTaskType::GdiFrame ? "gdiFrame" :
+                (task.type == WorkerTaskType::SurfaceCommand ? "command" : "endFrame")));
+    }
+    if (releaseActiveOutput) {
+        WorkerQueueDropCounts drops;
+        {
+            std::lock_guard<std::mutex> lock(workerMutex_);
+            drops = ClearWorkerQueueLocked();
+        }
+        AccountDroppedWorkerTasks(drops);
+        if (drops.prewarms != 0 || drops.gdiFrames != 0 ||
+            drops.commands != 0 || drops.endFrames != 0) {
+            logs.push_back("AVC420 GPU worker cleared stale queued work after fail-open: "
+                "droppedPrewarms=" + std::to_string(drops.prewarms) +
+                " droppedGdiFrames=" + std::to_string(drops.gdiFrames) +
+                " droppedCommands=" + std::to_string(drops.commands) +
+                " droppedEndFrames=" + std::to_string(drops.endFrames));
+        }
+    }
+    if (releaseActiveOutput && task.callbacks.setOutputPolicy != nullptr) {
+        task.callbacks.setOutputPolicy(false, "AVC420 GPU active command failure");
+    }
+    if (releaseActiveOutput && task.callbacks.startRenderPipeline != nullptr) {
+        task.callbacks.startRenderPipeline();
     }
     for (const std::string& line : logs) {
         Log(line);
     }
+}
+
+void Avc420GpuCompositor::AppendPeriodicStats(
+    std::vector<std::string>& logs, const std::string& reason)
+{
+    const auto now = std::chrono::steady_clock::now();
+    bool shouldLog = false;
+    bool outputActive = false;
+    uint64_t candidates = 0;
+    uint32_t lastFrameId = 0;
+    uint32_t lastBytes = 0;
+    uint32_t lastRects = 0;
+    uint32_t lastTargetWidth = 0;
+    uint32_t lastTargetHeight = 0;
+    bool lastFullSurface = false;
+    std::string inputFps = "0.00";
+    std::string endFrameFps = "0.00";
+    uint64_t elapsedMs = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (nextStatsLogAt_ == std::chrono::steady_clock::time_point{} ||
+            now >= nextStatsLogAt_) {
+            nextStatsLogAt_ = now + kStatsLogInterval;
+            shouldLog = true;
+            outputActive = outputActive_;
+            candidates = candidates_;
+            lastFrameId = lastFrameId_;
+            lastBytes = lastBytes_;
+            lastRects = lastRects_;
+            lastTargetWidth = lastTargetWidth_;
+            lastTargetHeight = lastTargetHeight_;
+            lastFullSurface = lastFullSurface_;
+            if (lastStatsLogAt_ != std::chrono::steady_clock::time_point{}) {
+                elapsedMs = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - lastStatsLogAt_).count());
+                inputFps = RatePerSecondText(candidates_ - lastStatsCandidates_, elapsedMs);
+                endFrameFps = RatePerSecondText(
+                    workerProcessedEndFrames_.load() - lastStatsProcessedEndFrames_, elapsedMs);
+            }
+            lastStatsLogAt_ = now;
+            lastStatsCandidates_ = candidates_;
+            lastStatsProcessedEndFrames_ = workerProcessedEndFrames_.load();
+        }
+    }
+    if (!shouldLog) {
+        return;
+    }
+
+    const std::string implStats = impl_ == nullptr ? "decoded=0 presented=0 mismatch=0" :
+        impl_->StatsSummary();
+    logs.push_back("AVC420 GPU stats: reason=" + reason +
+        " active=" + std::string(outputActive ? "yes" : "no") +
+        " candidates=" + std::to_string(candidates) +
+        " lastFrame=" + std::to_string(lastFrameId) +
+        " lastTarget=" + std::to_string(lastTargetWidth) + "x" +
+        std::to_string(lastTargetHeight) +
+        " lastBytes=" + std::to_string(lastBytes) +
+        " lastRects=" + std::to_string(lastRects) +
+        " lastFullSurface=" + std::string(lastFullSurface ? "yes" : "no") +
+        " statsWindowMs=" + std::to_string(elapsedMs) +
+        " inputFps=" + inputFps +
+        " endFrameFps=" + endFrameFps +
+        " queuedGdiFrames=" + std::to_string(workerQueuedGdiFrames_.load()) +
+        " processedGdiFrames=" + std::to_string(workerProcessedGdiFrames_.load()) +
+        " queuedCommands=" + std::to_string(workerQueuedCommands_.load()) +
+        " processedCommands=" + std::to_string(workerProcessedCommands_.load()) +
+        " queuedEndFrames=" + std::to_string(workerQueuedEndFrames_.load()) +
+        " processedEndFrames=" + std::to_string(workerProcessedEndFrames_.load()) +
+        " droppedCommands=" + std::to_string(workerDroppedCommands_.load()) +
+        " droppedEndFrames=" + std::to_string(workerDroppedEndFrames_.load()) +
+        " queueDepth=" + std::to_string(workerQueueDepth_.load()) +
+        " maxDepth=" + std::to_string(workerMaxDepth_.load()) +
+        " queueOverLimit=" + std::to_string(workerQueueOverLimit_.load()) +
+        " " + implStats);
+}
+
+bool Avc420GpuCompositor::OnGdiFrame(const RgbaFrame& frame)
+{
+    bool outputActive = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!enabled_ || !outputActive_) {
+            return false;
+        }
+        outputActive = outputActive_;
+    }
+    return EnqueueGdiFrame(frame, outputActive);
 }
 
 bool Avc420GpuCompositor::OnSurfaceCommand(
@@ -457,7 +1105,6 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
     }
 
     bool shouldLogCommand = false;
-    bool frameOpen = false;
     uint64_t candidate = 0;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -466,7 +1113,6 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
         }
         candidate = ++candidates_;
         shouldLogCommand = ShouldLogWorkerCounter(candidate);
-        frameOpen = command->frameOpen ? true : false;
         lastFrameId_ = command->frameId;
         lastBytes_ = command->stream.length;
         lastRects_ = command->stream.numRegionRects;
@@ -475,26 +1121,7 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
         lastFullSurface_ = command->fullSurface ? true : false;
     }
 
-    if (shouldLogCommand || !frameOpen) {
-        const RECTANGLE_16* firstRect =
-            command->stream.numRegionRects == 0 ? nullptr : command->stream.regionRects;
-        Log("AVC420 GPU compositor candidate: index=" + std::to_string(candidate) +
-            " surface=" + std::to_string(command->surfaceId) +
-            " frame=" + std::to_string(command->frameId) +
-            " frameOpen=" + std::string(frameOpen ? "yes" : "no") +
-            " commandOrigin=" + std::to_string(command->left) + "," +
-            std::to_string(command->top) +
-            " surfaceSize=" + std::to_string(command->width) + "x" +
-            std::to_string(command->height) +
-            " target=" + std::to_string(command->targetWidth) + "x" +
-            std::to_string(command->targetHeight) +
-            " fullSurface=" + std::string(command->fullSurface ? "yes" : "no") +
-            " stream=bytes:" + std::to_string(command->stream.length) +
-            ",rects:" + std::to_string(command->stream.numRegionRects) +
-            ",first:" + Avc420GpuCompositorImpl::RectText(firstRect));
-    }
-
-    Avc444GpuCompositorCallbacks callbacks;
+    Avc420GpuCompositorCallbacks callbacks;
     bool outputActive = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -502,10 +1129,47 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
         outputActive = outputActive_;
     }
 
+    if (!HasReadySurfaceTarget(callbacks)) {
+        std::vector<std::string> logs;
+        bool targetReady = false;
+        {
+            std::lock_guard<std::mutex> processLock(processingMutex_);
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                outputActive = outputActive_;
+                callbacks = callbacks_;
+            }
+            targetReady = HasReadySurfaceTarget(callbacks);
+            if (outputActive && !targetReady) {
+                PauseOutputForTargetUnavailable(
+                    "AVC420 SurfaceCommand target unavailable", callbacks, logs);
+            }
+        }
+        for (const std::string& line : logs) {
+            Log(line);
+        }
+        if (!targetReady && !outputActive) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                diagnostics_ = "avc420 gpu compositor: enabled=yes active=no candidates=" +
+                    std::to_string(candidates_) +
+                    " lastFrame=" + std::to_string(lastFrameId_) +
+                    " suppress=no targetUnavailable=yes";
+            }
+            if (shouldLogCommand) {
+                Log("AVC420 GPU compositor skipped SurfaceCommand takeover because target is "
+                    "unavailable; preserving FreeRDP native GDI path: frame=" +
+                    std::to_string(command->frameId));
+            }
+            return false;
+        }
+    }
+
     if (outputActive && EnqueueSurfaceCommand(command, callbacks, outputActive)) {
         std::lock_guard<std::mutex> lock(mutex_);
         diagnostics_ = "avc420 gpu compositor: enabled=yes active=yes candidates=" +
             std::to_string(candidates_) +
+            " state=" + OutputStateName(outputState_) +
             " lastFrame=" + std::to_string(lastFrameId_) +
             " suppress=queued-worker";
         return true;
@@ -522,9 +1186,10 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
         consumed = impl_ != nullptr &&
             impl_->ProcessCommand(command, callbacks, outputActive, logs);
         if (consumed && !outputActive) {
-            const RenderOutputOwner previousOwner =
-                ExchangeRenderOutputOwner(RenderOutputOwner::Avc420Gpu);
-            if (previousOwner != RenderOutputOwner::Avc420Gpu) {
+            const RenderOutputOwnerTransition ownerTransition = TransitionRenderOutputOwner(
+                RenderOutputOwner::Avc420Gpu,
+                RenderOutputOwnerTransitionReason::Avc420Takeover);
+            if (ownerTransition.previous != RenderOutputOwner::Avc420Gpu) {
                 if (callbacks.stopRenderPipeline != nullptr) {
                     callbacks.stopRenderPipeline();
                 }
@@ -534,7 +1199,10 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
                 }
                 logs.push_back("AVC420 GPU compositor claimed render output ownership at "
                     "SurfaceCommand before suppressing FreeRDP GDI: previousOwner=" +
-                    RenderOutputOwnerName(previousOwner) + " outputOwner=avc420-gpu");
+                    RenderOutputOwnerName(ownerTransition.previous) +
+                    " transitionReason=" +
+                    RenderOutputOwnerTransitionReasonName(ownerTransition.reason) +
+                    " outputOwner=avc420-gpu");
             }
             outputActive = true;
             logs.push_back("AVC420 GPU compositor is authoritative after queued update; "
@@ -543,8 +1211,12 @@ bool Avc420GpuCompositor::OnSurfaceCommand(
         {
             std::lock_guard<std::mutex> lock(mutex_);
             outputActive_ = outputActive;
+            if (outputActive_) {
+                outputState_ = Avc420OutputState::Active;
+            }
             diagnostics_ = "avc420 gpu compositor: enabled=yes active=" +
                 std::string(outputActive_ ? "yes" : "no") +
+                " state=" + OutputStateName(outputState_) +
                 " candidates=" + std::to_string(candidates_) +
                 " lastFrame=" + std::to_string(lastFrameId_) +
                 " bytes=" + std::to_string(lastBytes_) +
@@ -566,7 +1238,7 @@ bool Avc420GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
     }
 
     std::vector<std::string> logs;
-    Avc444GpuCompositorCallbacks callbacks;
+    Avc420GpuCompositorCallbacks callbacks;
     bool handled = false;
     bool outputActive = false;
     {
@@ -578,10 +1250,52 @@ bool Avc420GpuCompositor::OnEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame
         callbacks = callbacks_;
     }
 
+    if (!HasReadySurfaceTarget(callbacks)) {
+        bool targetReady = false;
+        {
+            std::lock_guard<std::mutex> processLock(processingMutex_);
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                outputActive = outputActive_;
+                callbacks = callbacks_;
+            }
+            targetReady = HasReadySurfaceTarget(callbacks);
+            if (outputActive && !targetReady) {
+                PauseOutputForTargetUnavailable(
+                    "AVC420 EndFrame target unavailable", callbacks, logs);
+            }
+        }
+        for (const std::string& line : logs) {
+            Log(line);
+        }
+        if (!targetReady) {
+            if (outputActive) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                diagnostics_ = "avc420 gpu compositor: enabled=yes active=yes state=" +
+                    std::string(OutputStateName(outputState_)) +
+                    " candidates=" + std::to_string(candidates_) +
+                    " lastFrame=" + std::to_string(lastFrameId_) +
+                    " endFrame=" + std::to_string(frame->frameId) +
+                    " endFramePresent=targetPaused";
+                return true;
+            }
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                diagnostics_ = "avc420 gpu compositor: enabled=yes active=no candidates=" +
+                    std::to_string(candidates_) +
+                    " lastFrame=" + std::to_string(lastFrameId_) +
+                    " endFrame=" + std::to_string(frame->frameId) +
+                    " endFramePresent=targetUnavailable";
+            }
+            return false;
+        }
+    }
+
     if (outputActive && EnqueueEndFrame(frame, callbacks, outputActive)) {
         std::lock_guard<std::mutex> lock(mutex_);
         diagnostics_ = "avc420 gpu compositor: enabled=yes active=yes candidates=" +
             std::to_string(candidates_) +
+            " state=" + OutputStateName(outputState_) +
             " lastFrame=" + std::to_string(lastFrameId_) +
             " endFrame=" + std::to_string(frame->frameId) +
             " endFramePresent=queued-worker";
