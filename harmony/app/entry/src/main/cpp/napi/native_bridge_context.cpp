@@ -238,15 +238,19 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
-    const RenderOutputOwner previous = ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
-    if (previous == RenderOutputOwner::Avc444Gpu || previous == RenderOutputOwner::Avc420Gpu) {
-        EmitNativeLog("render output owner reset after surface destroyed: " +
-            RenderOutputOwnerName(previous) + " -> gdi");
-    }
     g_surface.OnSurfaceDestroyed(component, window);
     g_resizeCoordinator.Reset("surface destroyed");
     UpdateRdpgfxSurfaceTargetIfReady("surface destroyed");
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");
+
+    const RenderOutputOwnerTransition transition = TransitionRenderOutputOwner(
+        RenderOutputOwner::Gdi, RenderOutputOwnerTransitionReason::SurfaceDestroyed);
+    if (transition.previous == RenderOutputOwner::Avc444Gpu ||
+        transition.previous == RenderOutputOwner::Avc420Gpu) {
+        EmitNativeLog("render output owner reset after surface destroyed: " +
+            RenderOutputOwnerName(transition.previous) + " -> gdi transitionReason=" +
+            RenderOutputOwnerTransitionReasonName(transition.reason));
+    }
 }
 
 

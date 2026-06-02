@@ -232,7 +232,7 @@ struct PreparedH264Packet {
 
 std::string CodecRoleLogPrefix(const std::string& role)
 {
-    return role == "avc420" ? "AVC420 GPU " : "AVC444 GPU " + role + " ";
+    return "AVC444 GPU " + role + " ";
 }
 
 PreparedH264Packet PrepareH264Packet(const uint8_t* data, uint32_t size, bool decoderStarted,
@@ -1108,9 +1108,6 @@ public:
             if (presentProgram_ != 0) {
                 glDeleteProgram(presentProgram_);
             }
-            if (present420Program_ != 0) {
-                glDeleteProgram(present420Program_);
-            }
             eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             if (context_ != EGL_NO_CONTEXT) {
                 eglDestroyContext(display_, context_);
@@ -1135,10 +1132,8 @@ public:
         chromaV1Program_ = 0;
         chromaV2Program_ = 0;
         presentProgram_ = 0;
-        present420Program_ = 0;
         hasLuma_ = false;
         hasChroma_ = false;
-        presentMode420_ = false;
         lastFramebufferSample_ = "readback:disabled";
     }
 
@@ -1301,7 +1296,7 @@ public:
             << ",surface:" << surfaceWidth_ << "x" << surfaceHeight_
             << ",luma:" << (hasLuma_ ? "yes" : "no")
             << ",chroma:" << (hasChroma_ ? "yes" : "no")
-            << ",mode:" << (presentMode420_ ? "avc420" : "avc444")
+            << ",mode:avc444"
             << ",source:mapped-plane"
             << "," << lastFramebufferSample_;
         return out.str();
@@ -1316,7 +1311,6 @@ public:
     {
         hasLuma_ = false;
         hasChroma_ = false;
-        presentMode420_ = false;
     }
 
     bool ApplyLuma(const DecodedFrame& frame, const RECTANGLE_16* rects, uint32_t rectCount,
@@ -1364,7 +1358,6 @@ public:
         }
         hasLuma_ = true;
         hasChroma_ = true;
-        presentMode420_ = false;
         if (!hadChroma) {
             logs.push_back(
                 "AVC444 GPU luma update initialized base chroma from AVC444_LUMA stream, "
@@ -1414,7 +1407,6 @@ public:
             return false;
         }
         hasChroma_ = true;
-        presentMode420_ = false;
         return true;
     }
 
@@ -1452,58 +1444,12 @@ public:
             return false;
         }
         hasChroma_ = true;
-        presentMode420_ = false;
-        return true;
-    }
-
-    bool ApplyAvc420Frame(const DecodedFrame& frame, const RECTANGLE_16* rects,
-        uint32_t rectCount, std::vector<std::string>& logs)
-    {
-        if (!MakeCurrent(logs) || !UploadSource(frame, logs)) {
-            return false;
-        }
-
-        glUseProgram(copyYProgram_);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, srcYTexture_);
-        glUniform1i(glGetUniformLocation(copyYProgram_, "uSrcY"), 0);
-        glUniform1i(glGetUniformLocation(copyYProgram_, "uSrcHeight"),
-            static_cast<GLint>(frame.height));
-        glUniform1i(glGetUniformLocation(copyYProgram_, "uSurfaceHeight"),
-            static_cast<GLint>(surfaceHeight_));
-        DrawRectsToTexture(yTexture_, rects, rectCount);
-
-        glUseProgram(lumaUvProgram_);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, srcUVTexture_);
-        glUniform1i(glGetUniformLocation(lumaUvProgram_, "uSrcUV"), 0);
-        glUniform1i(glGetUniformLocation(lumaUvProgram_, "uSrcUComponent"), frame.nv21 ? 1 : 0);
-        glUniform1i(glGetUniformLocation(lumaUvProgram_, "uSrcVComponent"), frame.nv21 ? 0 : 1);
-        glUniform1i(glGetUniformLocation(lumaUvProgram_, "uSurfaceHeight"),
-            static_cast<GLint>(surfaceHeight_));
-        const GLint rectLeft = glGetUniformLocation(lumaUvProgram_, "uRectLeft");
-        const GLint rectTop = glGetUniformLocation(lumaUvProgram_, "uRectTop");
-        glUniform1i(glGetUniformLocation(lumaUvProgram_, "uTargetPlane"), 0);
-        DrawRectsToTexture(uTexture_, rects, rectCount, rectLeft, rectTop);
-        glUniform1i(glGetUniformLocation(lumaUvProgram_, "uTargetPlane"), 1);
-        DrawRectsToTexture(vTexture_, rects, rectCount, rectLeft, rectTop);
-
-        const GLenum error = glGetError();
-        eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (error != GL_NO_ERROR) {
-            logs.push_back("AVC420 GPU frame shader update failed glError=" +
-                Hex32(static_cast<uint32_t>(error)));
-            return false;
-        }
-        hasLuma_ = true;
-        hasChroma_ = true;
-        presentMode420_ = true;
         return true;
     }
 
     bool Present(std::vector<std::string>& logs, bool logSuccess)
     {
-        const std::string modePrefix = presentMode420_ ? "AVC420 GPU " : "AVC444 GPU ";
+        const std::string modePrefix = "AVC444 GPU ";
         if (!hasLuma_ || !hasChroma_) {
             logs.push_back(modePrefix + "present skipped: luma=" +
                 std::string(hasLuma_ ? "yes" : "no") +
@@ -1527,20 +1473,19 @@ public:
             return false;
         }
 
-        const GLuint presentProgram = presentMode420_ ? present420Program_ : presentProgram_;
-        glUseProgram(presentProgram);
+        glUseProgram(presentProgram_);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, yTexture_);
-        glUniform1i(glGetUniformLocation(presentProgram, "uY"), 0);
+        glUniform1i(glGetUniformLocation(presentProgram_, "uY"), 0);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, uTexture_);
-        glUniform1i(glGetUniformLocation(presentProgram, "uU"), 1);
+        glUniform1i(glGetUniformLocation(presentProgram_, "uU"), 1);
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, vTexture_);
-        glUniform1i(glGetUniformLocation(presentProgram, "uV"), 2);
-        glUniform1i(glGetUniformLocation(presentProgram, "uSurfaceWidth"),
+        glUniform1i(glGetUniformLocation(presentProgram_, "uV"), 2);
+        glUniform1i(glGetUniformLocation(presentProgram_, "uSurfaceWidth"),
             static_cast<GLint>(surfaceWidth_));
-        glUniform1i(glGetUniformLocation(presentProgram, "uSurfaceHeight"),
+        glUniform1i(glGetUniformLocation(presentProgram_, "uSurfaceHeight"),
             static_cast<GLint>(surfaceHeight_));
 
         const GLfloat vertices[] = {
@@ -1895,44 +1840,13 @@ private:
             "                 yy + 1.85546875 * d);\n"
             "  fragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);\n"
             "}\n";
-        static constexpr const char* present420Fragment =
-            "#version 300 es\n"
-            "precision highp float;\n"
-            "in vec2 vTexCoord;\n"
-            "uniform highp sampler2D uY;\n"
-            "uniform highp sampler2D uU;\n"
-            "uniform highp sampler2D uV;\n"
-            "uniform int uSurfaceWidth;\n"
-            "uniform int uSurfaceHeight;\n"
-            "out vec4 fragColor;\n"
-            "float fetchPlane(sampler2D tex, int x, int y) {\n"
-            "  x = clamp(x, 0, uSurfaceWidth - 1);\n"
-            "  y = clamp(y, 0, uSurfaceHeight - 1);\n"
-            "  return texelFetch(tex, ivec2(x, uSurfaceHeight - 1 - y), 0).r;\n"
-            "}\n"
-            "void main() {\n"
-            "  int x = clamp(int(floor(vTexCoord.x * float(uSurfaceWidth))), 0, uSurfaceWidth - 1);\n"
-            "  int y = clamp(int(floor(vTexCoord.y * float(uSurfaceHeight))), 0, uSurfaceHeight - 1);\n"
-            "  float yy = fetchPlane(uY, x, y);\n"
-            "  float uu = fetchPlane(uU, x, y);\n"
-            "  float vv = fetchPlane(uV, x, y);\n"
-            "  float d = uu - (128.0 / 255.0);\n"
-            "  float e = vv - (128.0 / 255.0);\n"
-            "  vec3 rgb = vec3(yy + 1.57421875 * e,\n"
-            "                 yy - 0.1875 * d - 0.46875 * e,\n"
-            "                 yy + 1.85546875 * d);\n"
-            "  fragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);\n"
-            "}\n";
-
         copyYProgram_ = LinkProgram(updateVertex, copyYFragment, logs);
         lumaUvProgram_ = LinkProgram(updateVertex, lumaUvFragment, logs);
         chromaV1Program_ = LinkProgram(updateVertex, chromaV1Fragment, logs);
         chromaV2Program_ = LinkProgram(updateVertex, chromaV2Fragment, logs);
         presentProgram_ = LinkProgram(presentVertex, presentFragment, logs);
-        present420Program_ = LinkProgram(presentVertex, present420Fragment, logs);
         if (copyYProgram_ == 0 || lumaUvProgram_ == 0 ||
-            chromaV1Program_ == 0 || chromaV2Program_ == 0 || presentProgram_ == 0 ||
-            present420Program_ == 0) {
+            chromaV1Program_ == 0 || chromaV2Program_ == 0 || presentProgram_ == 0) {
             return false;
         }
         return true;
@@ -2141,10 +2055,8 @@ private:
     GLuint chromaV1Program_ = 0;
     GLuint chromaV2Program_ = 0;
     GLuint presentProgram_ = 0;
-    GLuint present420Program_ = 0;
     bool hasLuma_ = false;
     bool hasChroma_ = false;
-    bool presentMode420_ = false;
     std::string lastFramebufferSample_ = "readback:disabled";
 };
 
@@ -2851,479 +2763,6 @@ bool Avc444GpuCompositorImpl::PresentEndFrame(
     std::vector<std::string>& logs)
 {
     return state_ != nullptr && state_->PresentEndFrame(frame, callbacks, outputActive, logs);
-}
-
-struct Avc420GpuCompositorImpl::State {
-    Avc444HardwareDecoder avcDecoder;
-    Avc444GpuRenderer renderer;
-    std::vector<uint8_t> streamParameterSets;
-    uint64_t streamPts = 0;
-    uint64_t processedCommands = 0;
-    uint64_t queuedPresents = 0;
-    uint64_t presented = 0;
-    uint64_t failures = 0;
-    uint64_t ignoredUpdates = 0;
-    uint64_t prewarms = 0;
-    uint64_t prewarmFailures = 0;
-    uint64_t endFrameCallbacks = 0;
-    uint64_t endFrameSkipNoPending = 0;
-    uint64_t endFrameMismatches = 0;
-    uint64_t endFramePresentAttempts = 0;
-    uint64_t pendingPresentOverwrites = 0;
-    uint32_t pendingFrameId = 0;
-    uint32_t pendingSurfaceWidth = 0;
-    uint32_t pendingSurfaceHeight = 0;
-    bool pendingPresent = false;
-    bool gpuSurfaceInitialized = false;
-    uint32_t gpuSurfaceWidth = 0;
-    uint32_t gpuSurfaceHeight = 0;
-    bool resetDecoderBeforeNextDecode = false;
-    uint64_t lastSampledProcessStartUs = 0;
-    TimingBucket commandTiming;
-    TimingBucket commandIntervalTiming;
-    TimingBucket offscreenEnsureTiming;
-    TimingBucket decodeTiming;
-    TimingBucket applyTiming;
-    TimingBucket windowEnsureTiming;
-    TimingBucket presentTiming;
-
-    void Destroy()
-    {
-        renderer.Destroy();
-        avcDecoder.Close();
-        streamParameterSets.clear();
-        streamPts = 0;
-        processedCommands = 0;
-        queuedPresents = 0;
-        presented = 0;
-        failures = 0;
-        ignoredUpdates = 0;
-        prewarms = 0;
-        prewarmFailures = 0;
-        endFrameCallbacks = 0;
-        endFrameSkipNoPending = 0;
-        endFrameMismatches = 0;
-        endFramePresentAttempts = 0;
-        pendingPresentOverwrites = 0;
-        pendingFrameId = 0;
-        pendingSurfaceWidth = 0;
-        pendingSurfaceHeight = 0;
-        pendingPresent = false;
-        gpuSurfaceInitialized = false;
-        gpuSurfaceWidth = 0;
-        gpuSurfaceHeight = 0;
-        resetDecoderBeforeNextDecode = false;
-        lastSampledProcessStartUs = 0;
-        commandTiming.Reset();
-        commandIntervalTiming.Reset();
-        offscreenEnsureTiming.Reset();
-        decodeTiming.Reset();
-        applyTiming.Reset();
-        windowEnsureTiming.Reset();
-        presentTiming.Reset();
-    }
-
-    bool Prewarm(uint32_t surfaceWidth, uint32_t surfaceHeight, std::vector<std::string>& logs)
-    {
-        if (surfaceWidth == 0 || surfaceHeight == 0) {
-            logs.push_back("AVC420 GPU renderer prewarm skipped: invalid surface size");
-            return false;
-        }
-
-        ++prewarms;
-        const bool ready = renderer.Ensure(nullptr, 0, 0, surfaceWidth, surfaceHeight, logs);
-        if (!ready) {
-            ++prewarmFailures;
-            logs.push_back("AVC420 GPU renderer prewarm failed: surface=" +
-                std::to_string(surfaceWidth) + "x" + std::to_string(surfaceHeight) +
-                " prewarms=" + std::to_string(prewarms) +
-                " failures=" + std::to_string(prewarmFailures));
-            return false;
-        }
-        if (ShouldLogFrequent(prewarms)) {
-            logs.push_back("AVC420 GPU renderer prewarmed: surface=" +
-                std::to_string(surfaceWidth) + "x" + std::to_string(surfaceHeight) +
-                " prewarms=" + std::to_string(prewarms) +
-                " " + renderer.DebugState());
-        }
-        return true;
-    }
-
-    bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
-        const Avc444GpuCompositorCallbacks&, bool outputActive, std::vector<std::string>& logs)
-    {
-        const uint64_t commandIndex = ++processedCommands;
-        const bool sampleTiming = ShouldSampleTiming(commandIndex);
-        const uint64_t processStartUs = sampleTiming ? NowMicros() : 0;
-        ScopedTiming commandTimer(commandTiming, processStartUs, sampleTiming);
-        if (sampleTiming) {
-            if (lastSampledProcessStartUs != 0 && processStartUs >= lastSampledProcessStartUs) {
-                commandIntervalTiming.Add(processStartUs - lastSampledProcessStartUs);
-            }
-            lastSampledProcessStartUs = processStartUs;
-        }
-
-        if (command == nullptr || command->codecId != RDPGFX_CODECID_AVC420) {
-            logs.push_back("AVC420 GPU compositor supports AVC420 only");
-            return false;
-        }
-        if (command->stream.data == nullptr || command->stream.length == 0) {
-            logs.push_back("AVC420 GPU compositor rejected empty H264 stream");
-            return false;
-        }
-        if (!RectsValid(command->stream.regionRects, command->stream.numRegionRects,
-                command->width, command->height)) {
-            logs.push_back("AVC420 GPU compositor rejected invalid dirty rects");
-            return false;
-        }
-        if (gpuSurfaceWidth != command->width || gpuSurfaceHeight != command->height) {
-            gpuSurfaceInitialized = false;
-            gpuSurfaceWidth = command->width;
-            gpuSurfaceHeight = command->height;
-        }
-
-        auto ignoreActiveUpdate = [&](const std::string& reason, bool resetDecoder) {
-            ++ignoredUpdates;
-            pendingPresent = false;
-            pendingFrameId = 0;
-            pendingSurfaceWidth = 0;
-            pendingSurfaceHeight = 0;
-            if (resetDecoder) {
-                resetDecoderBeforeNextDecode = true;
-                logs.push_back("AVC420 GPU compositor scheduled hardware decoder reset for "
-                    "stream resync; cached H264 parameter sets are preserved");
-            }
-            logs.push_back("AVC420 GPU compositor ignored update while preserving GPU ownership: " +
-                reason + "; GDI remains suppressed so its H264 context is not re-entered "
-                "mid-stream ignoredUpdates=" + std::to_string(ignoredUpdates));
-            return true;
-        };
-
-        auto fail = [&](const std::string& reason) {
-            ++failures;
-            logs.push_back("AVC420 GPU compositor failed: " + reason +
-                " failures=" + std::to_string(failures));
-            if (outputActive) {
-                return ignoreActiveUpdate(reason, true);
-            }
-            renderer.Destroy();
-            return false;
-        };
-
-        if (resetDecoderBeforeNextDecode) {
-            avcDecoder.Close();
-            resetDecoderBeforeNextDecode = false;
-            logs.push_back("AVC420 GPU compositor reset hardware decoder before decode; waiting "
-                "for cached SPS/PPS or a fresh parameter set to bootstrap");
-        }
-
-        bool offscreenReady = false;
-        {
-            ScopedTiming timing(offscreenEnsureTiming, sampleTiming);
-            offscreenReady = renderer.Ensure(nullptr, 0, 0, command->width, command->height, logs);
-        }
-        if (!offscreenReady) {
-            if (!outputActive) {
-                logs.push_back("AVC420 GPU compositor offscreen renderer unavailable before decode; "
-                    "keeping GDI");
-                return false;
-            }
-            return fail("offscreen renderer init");
-        }
-
-        PreparedH264Packet packet = PrepareH264Packet(command->stream.data,
-            command->stream.length, avcDecoder.Started(), streamParameterSets,
-            streamParameterSets, "avc420", logs);
-        if (!avcDecoder.Started() && !packet.hadParameterSets &&
-            !packet.prependedParameterSets) {
-            if (outputActive) {
-                return ignoreActiveUpdate("missing initial SPS/PPS before AVC420 stream", true);
-            }
-            logs.push_back("AVC420 GPU compositor waits for SPS/PPS before hardware decode; "
-                "keeping GDI nalTypes=" + packet.nalSummary);
-            return false;
-        }
-        if (!avcDecoder.Ensure(command->width, command->height, "avc420", logs)) {
-            return fail("decoder init");
-        }
-
-        DecodedFrame frame;
-        DecodeResult decode = DecodeResult::Failed;
-        {
-            ScopedTiming timing(decodeTiming, sampleTiming);
-            decode = avcDecoder.Decode(packet.data, packet.size,
-                static_cast<int64_t>(++streamPts), frame, logs);
-        }
-        if (decode != DecodeResult::Decoded) {
-            if (!outputActive) {
-                logs.push_back("AVC420 GPU compositor warm-up decode " +
-                    std::string(decode == DecodeResult::NoOutput ? "has no output yet" : "failed") +
-                    "; keeping GDI");
-                return false;
-            }
-            if (decode == DecodeResult::NoOutput) {
-                return ignoreActiveUpdate("decode output not ready", false);
-            }
-            return ignoreActiveUpdate("decode failed", true);
-        }
-
-        if (!gpuSurfaceInitialized && !command->fullSurface) {
-            if (outputActive) {
-                return ignoreActiveUpdate(
-                    "waiting for full-surface AVC420 frame before refreshing GPU surface", false);
-            }
-            logs.push_back("AVC420 GPU compositor warning: decoded partial warm-up frame but "
-                "preserved GDI until a full-surface AVC420 frame initializes GPU state");
-            return false;
-        }
-
-        bool applied = false;
-        {
-            ScopedTiming timing(applyTiming, sampleTiming);
-            applied = renderer.ApplyAvc420Frame(frame, command->stream.regionRects,
-                command->stream.numRegionRects, logs);
-        }
-        if (!applied) {
-            return fail("mapped-plane shader update");
-        }
-        gpuSurfaceInitialized = true;
-        gpuSurfaceWidth = command->width;
-        gpuSurfaceHeight = command->height;
-
-        if (pendingPresent) {
-            ++pendingPresentOverwrites;
-            if (ShouldLogFrequent(pendingPresentOverwrites)) {
-                logs.push_back("AVC420 GPU compositor overwriting pending EndFrame present: oldFrame=" +
-                    std::to_string(pendingFrameId) + " newFrame=" +
-                    std::to_string(command->frameId) +
-                    " overwrites=" + std::to_string(pendingPresentOverwrites));
-            }
-        }
-
-        pendingPresent = true;
-        pendingFrameId = command->frameId;
-        pendingSurfaceWidth = command->width;
-        pendingSurfaceHeight = command->height;
-        ++queuedPresents;
-        if (ShouldLogFrequent(queuedPresents)) {
-            logs.push_back("AVC420 GPU compositor queued EndFrame present: frame=" +
-                std::to_string(command->frameId) +
-                " surface=" + std::to_string(command->width) + "x" +
-                std::to_string(command->height) +
-                " targetHint=" + std::to_string(command->targetWidth) + "x" +
-                std::to_string(command->targetHeight) +
-                " fullSurface=" + std::string(command->fullSurface ? "yes" : "no") +
-                " stream=bytes:" + std::to_string(command->stream.length) +
-                "," + RectsText(command->stream.regionRects, command->stream.numRegionRects) +
-                " route=hardware-decode+mapped-plane-gpu-avc420 frameLayout=" +
-                FramePlaneText(frame));
-        }
-        if (!command->frameOpen) {
-            logs.push_back("AVC420 GPU compositor queued inter-frame update; bridge will trigger "
-                "GPU present without entering FreeRDP dirty state frame=" +
-                std::to_string(command->frameId));
-        }
-        return true;
-    }
-
-    bool PresentQueuedUpdate(const std::string& trigger, uint32_t frameId,
-        uint32_t activeFrameId, bool matchedFrame, const Avc444GpuCompositorCallbacks& callbacks,
-        bool outputActive, std::vector<std::string>& logs)
-    {
-        if (!pendingPresent) {
-            logs.push_back("AVC420 GPU compositor " + trigger +
-                " present skipped: pending=no policyActive=" +
-                std::string(outputActive ? "yes" : "no") + " " + renderer.DebugState());
-            return false;
-        }
-
-        if (!matchedFrame || frameId != pendingFrameId) {
-            ++endFrameMismatches;
-            ++ignoredUpdates;
-            const uint32_t queuedFrameId = pendingFrameId;
-            pendingPresent = false;
-            pendingFrameId = 0;
-            pendingSurfaceWidth = 0;
-            pendingSurfaceHeight = 0;
-            logs.push_back("AVC420 GPU compositor dropped pending present at " + trigger +
-                " mismatch: frame=" + std::to_string(frameId) +
-                " queuedFrame=" + std::to_string(queuedFrameId) +
-                " activeFrame=" + std::to_string(activeFrameId) +
-                " matched=" + std::string(matchedFrame ? "yes" : "no") +
-                " mismatches=" + std::to_string(endFrameMismatches));
-            return outputActive;
-        }
-
-        DecoderSurfaceTarget target {};
-        if (callbacks.decoderSurfaceTarget != nullptr) {
-            target = callbacks.decoderSurfaceTarget();
-        }
-        if (target.window == nullptr || target.width == 0 || target.height == 0) {
-            ++failures;
-            ++ignoredUpdates;
-            pendingPresent = false;
-            pendingFrameId = 0;
-            pendingSurfaceWidth = 0;
-            pendingSurfaceHeight = 0;
-            logs.push_back("AVC420 GPU compositor " + trigger +
-                " target unavailable; policyActive=" +
-                std::string(outputActive ? "yes" : "no") +
-                " failures=" + std::to_string(failures) +
-                " ignoredUpdates=" + std::to_string(ignoredUpdates));
-            return outputActive;
-        }
-
-        ++endFramePresentAttempts;
-        const bool sampleTiming = ShouldSampleTiming(endFramePresentAttempts);
-        bool windowReady = false;
-        {
-            ScopedTiming timing(windowEnsureTiming, sampleTiming);
-            windowReady = renderer.Ensure(target.window, target.width, target.height,
-                pendingSurfaceWidth, pendingSurfaceHeight, logs);
-        }
-        if (!windowReady) {
-            ++failures;
-            logs.push_back("AVC420 GPU compositor " + trigger +
-                " renderer window attach failed failures=" + std::to_string(failures));
-            return outputActive;
-        }
-
-        const bool logPresentSummary = ShouldLogFrequent(endFramePresentAttempts);
-        bool presentOk = false;
-        {
-            ScopedTiming timing(presentTiming, sampleTiming);
-            presentOk = renderer.Present(logs, logPresentSummary);
-        }
-        if (!presentOk) {
-            ++failures;
-            ++ignoredUpdates;
-            pendingPresent = false;
-            pendingFrameId = 0;
-            pendingSurfaceWidth = 0;
-            pendingSurfaceHeight = 0;
-            logs.push_back("AVC420 GPU compositor " + trigger +
-                " present failed failures=" + std::to_string(failures) +
-                " ignoredUpdates=" + std::to_string(ignoredUpdates));
-            return outputActive;
-        }
-
-        pendingPresent = false;
-        pendingFrameId = 0;
-        pendingSurfaceWidth = 0;
-        pendingSurfaceHeight = 0;
-        ++presented;
-        if (ShouldLogFrequent(presented)) {
-            logs.push_back("AVC420 GPU compositor presented at " + trigger + ": frame=" +
-                std::to_string(frameId) + " presented=" + std::to_string(presented) +
-                " attempts=" + std::to_string(endFramePresentAttempts) +
-                " queued=" + std::to_string(queuedPresents) +
-                " policyActive=" + std::string(outputActive ? "yes" : "no"));
-        }
-        return true;
-    }
-
-    bool PresentEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
-        const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
-        std::vector<std::string>& logs)
-    {
-        ++endFrameCallbacks;
-        const uint32_t frameId = frame == nullptr ? 0 : frame->frameId;
-        const uint32_t activeFrameId = frame == nullptr ? 0 : frame->activeFrameId;
-        const bool matchedFrame = frame != nullptr && frame->matchedFrame;
-        if (!pendingPresent) {
-            ++endFrameSkipNoPending;
-            if (ShouldLogFrequent(endFrameSkipNoPending) ||
-                ShouldLogFrequent(endFrameCallbacks)) {
-                logs.push_back("AVC420 GPU compositor EndFrame callback skipped: endFrame=" +
-                    std::to_string(frameId) + " activeFrame=" + std::to_string(activeFrameId) +
-                    " matched=" + std::string(matchedFrame ? "yes" : "no") +
-                    " pending=no callbacks=" + std::to_string(endFrameCallbacks) +
-                    " skipNoPending=" + std::to_string(endFrameSkipNoPending) +
-                    " queued=" + std::to_string(queuedPresents) +
-                    " presented=" + std::to_string(presented) +
-                    " " + renderer.DebugState());
-            }
-            return false;
-        }
-        return PresentQueuedUpdate("EndFrame", frameId, activeFrameId, matchedFrame,
-            callbacks, outputActive, logs);
-    }
-
-    std::string DebugSummary() const
-    {
-        std::ostringstream out;
-        out << "impl=queued:" << queuedPresents
-            << ",presented:" << presented
-            << ",failures:" << failures
-            << ",prewarm:" << prewarms << "/" << prewarmFailures
-            << ",ignored:" << ignoredUpdates
-            << ",endCallbacks:" << endFrameCallbacks
-            << ",skipNoPending:" << endFrameSkipNoPending
-            << ",mismatch:" << endFrameMismatches
-            << ",attempts:" << endFramePresentAttempts
-            << ",commands:" << processedCommands
-            << ",pending:" << (pendingPresent ? "yes" : "no")
-            << ",pendingFrame:" << pendingFrameId
-            << ",pendingSize:" << pendingSurfaceWidth << "x" << pendingSurfaceHeight
-            << ",gpuSurfaceInitialized:" << (gpuSurfaceInitialized ? "yes" : "no")
-            << ",gpuSurfaceSize:" << gpuSurfaceWidth << "x" << gpuSurfaceHeight
-            << ",lastSampleAgeUs:" << (lastSampledProcessStartUs == 0 ?
-                0 : NowMicros() - lastSampledProcessStartUs)
-            << ",timingSample=1/" << kTimingSampleInterval
-            << ",timingUs(avg/max/count)="
-            << commandTiming.Text("cmd") << ";"
-            << commandIntervalTiming.Text("cmdGap") << ";"
-            << offscreenEnsureTiming.Text("offEns") << ";"
-            << decodeTiming.Text("dec") << ";"
-            << applyTiming.Text("apply") << ";"
-            << windowEnsureTiming.Text("winEns") << ";"
-            << presentTiming.Text("present")
-            << "," << renderer.DebugState();
-        return out.str();
-    }
-};
-
-Avc420GpuCompositorImpl::Avc420GpuCompositorImpl() : state_(std::make_unique<State>()) {}
-
-Avc420GpuCompositorImpl::~Avc420GpuCompositorImpl() = default;
-
-void Avc420GpuCompositorImpl::Destroy()
-{
-    if (state_) {
-        state_->Destroy();
-    }
-}
-
-bool Avc420GpuCompositorImpl::Prewarm(
-    uint32_t surfaceWidth, uint32_t surfaceHeight, std::vector<std::string>& logs)
-{
-    return state_ != nullptr && state_->Prewarm(surfaceWidth, surfaceHeight, logs);
-}
-
-bool Avc420GpuCompositorImpl::ProcessCommand(
-    const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
-    const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
-    std::vector<std::string>& logs)
-{
-    return state_ != nullptr && state_->ProcessCommand(command, callbacks, outputActive, logs);
-}
-
-bool Avc420GpuCompositorImpl::PresentEndFrame(
-    const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
-    const Avc444GpuCompositorCallbacks& callbacks, bool outputActive,
-    std::vector<std::string>& logs)
-{
-    return state_ != nullptr && state_->PresentEndFrame(frame, callbacks, outputActive, logs);
-}
-
-std::string Avc420GpuCompositorImpl::DebugSummary() const
-{
-    return state_ == nullptr ? "impl=null" : state_->DebugSummary();
-}
-
-std::string Avc420GpuCompositorImpl::RectText(const RECTANGLE_16* rect)
-{
-    return FormatRectText(rect);
 }
 
 } // namespace rdp_bridge

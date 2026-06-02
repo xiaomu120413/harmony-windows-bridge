@@ -52,6 +52,14 @@ bool IsRoutineAvc444GpuLog(const std::string& message)
     }
     return true;
 }
+
+std::string RectPreviewText(const RECTANGLE_16* rects, uint32_t count)
+{
+    if (count == 0) {
+        return "none";
+    }
+    return rects == nullptr ? "missing" : "present";
+}
 }
 
 Avc444GpuCompositor::Avc444GpuCompositor() : impl_(std::make_unique<Avc444GpuCompositorImpl>()) {}
@@ -69,7 +77,8 @@ void Avc444GpuCompositor::Configure(bool enabled, Avc444GpuLogFn log,
     if (impl_) {
         impl_->Destroy();
     }
-    ExchangeRenderOutputOwner(RenderOutputOwner::Gdi);
+    TransitionRenderOutputOwner(
+        RenderOutputOwner::Gdi, RenderOutputOwnerTransitionReason::Avc444Reset);
     std::lock_guard<std::mutex> lock(mutex_);
     enabled_ = enabled;
     log_ = std::move(log);
@@ -524,15 +533,12 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
     }
 
     if (shouldLogCommand || !frameOpen || !lcValid) {
-        const RECTANGLE_16* stream1FirstRect = command->stream1.numRegionRects == 0 ?
-            nullptr : command->stream1.regionRects;
         const bool hasStream2 = command->LC == 0;
-        const RECTANGLE_16* stream2FirstRect = !hasStream2 || command->stream2.numRegionRects == 0 ?
-            nullptr : command->stream2.regionRects;
         const std::string stream2Text = hasStream2 ?
             "bytes:" + std::to_string(command->stream2.length) +
                 ",rects:" + std::to_string(command->stream2.numRegionRects) +
-                ",first:" + Avc444GpuCompositorImpl::RectText(stream2FirstRect) :
+                ",rectPreview:" +
+                RectPreviewText(command->stream2.regionRects, command->stream2.numRegionRects) :
             "unused";
         Log("AVC444 GPU compositor candidate: index=" + std::to_string(candidate) +
             " codec=" + std::to_string(command->codecId) +
@@ -549,7 +555,8 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
             std::to_string(command->targetHeight) +
             " stream1=bytes:" + std::to_string(command->stream1.length) +
             ",rects:" + std::to_string(command->stream1.numRegionRects) +
-            ",first:" + Avc444GpuCompositorImpl::RectText(stream1FirstRect) +
+            ",rectPreview:" +
+            RectPreviewText(command->stream1.regionRects, command->stream1.numRegionRects) +
             " stream2=" + stream2Text);
     }
 
@@ -588,9 +595,10 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
         consumed = impl_ != nullptr &&
             impl_->ProcessCommand(command, callbacks, outputActive, logs);
         if (consumed && !outputActive) {
-            const RenderOutputOwner previousOwner =
-                ExchangeRenderOutputOwner(RenderOutputOwner::Avc444Gpu);
-            if (previousOwner != RenderOutputOwner::Avc444Gpu) {
+            const RenderOutputOwnerTransition ownerTransition = TransitionRenderOutputOwner(
+                RenderOutputOwner::Avc444Gpu,
+                RenderOutputOwnerTransitionReason::Avc444Takeover);
+            if (ownerTransition.previous != RenderOutputOwner::Avc444Gpu) {
                 if (callbacks.stopRenderPipeline != nullptr) {
                     callbacks.stopRenderPipeline();
                 }
@@ -600,7 +608,10 @@ bool Avc444GpuCompositor::OnSurfaceCommand(
                 }
                 logs.push_back("AVC444 GPU compositor claimed render output ownership at "
                     "SurfaceCommand before suppressing FreeRDP GDI: previousOwner=" +
-                    RenderOutputOwnerName(previousOwner) + " outputOwner=avc444-gpu");
+                    RenderOutputOwnerName(ownerTransition.previous) +
+                    " transitionReason=" +
+                    RenderOutputOwnerTransitionReasonName(ownerTransition.reason) +
+                    " outputOwner=avc444-gpu");
             }
             outputActive = true;
             logs.push_back("AVC444 GPU compositor is authoritative after queued update; "

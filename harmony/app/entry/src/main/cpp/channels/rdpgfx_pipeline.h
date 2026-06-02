@@ -24,6 +24,7 @@ struct RdpgfxPipelineCallbacks {
 
 void SetRdpgfxPipelineCallbacks(RdpgfxPipelineCallbacks callbacks);
 bool IsAvc420SurfaceOutputEnabled();
+bool UpdateAvc420CompositeWithGdiFrame(const RgbaFrame& frame);
 void UpdateAvc420SurfaceOutputIfActive(const std::string& reason);
 void UpdateRdpgfxSurfaceTargetIfReady(const std::string& reason);
 

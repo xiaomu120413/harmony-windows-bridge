@@ -109,6 +109,8 @@ public:
     using OhosRdpgfxBridgeFreeFn = void (*)(freerdpOhosRdpgfxBridge*);
     using OhosRdpgfxBridgeResetFn = void (*)(freerdpOhosRdpgfxBridge*, BOOL, BOOL);
     using OhosRdpgfxBridgeSetSurfaceTargetFn = void (*)(freerdpOhosRdpgfxBridge*, UINT32, UINT32);
+    using OhosRdpgfxBridgeSetAvc420OutputActiveFn =
+        void (*)(freerdpOhosRdpgfxBridge*, BOOL, const char*);
     using OhosRdpgfxBridgeAttachFn = BOOL (*)(freerdpOhosRdpgfxBridge*, RdpgfxClientContext*,
         const FREERDP_OHOS_RDPGFX_BRIDGE_CONFIG*, char*, size_t);
     using OhosRdpgfxBridgeDetachFn = void (*)(freerdpOhosRdpgfxBridge*, RdpgfxClientContext*);
@@ -190,6 +192,7 @@ public:
     OhosRdpgfxBridgeFreeFn ohosRdpgfxBridgeFree = nullptr;
     OhosRdpgfxBridgeResetFn ohosRdpgfxBridgeReset = nullptr;
     OhosRdpgfxBridgeSetSurfaceTargetFn ohosRdpgfxBridgeSetSurfaceTarget = nullptr;
+    OhosRdpgfxBridgeSetAvc420OutputActiveFn ohosRdpgfxBridgeSetAvc420OutputActive = nullptr;
     OhosRdpgfxBridgeAttachFn ohosRdpgfxBridgeAttach = nullptr;
     OhosRdpgfxBridgeDetachFn ohosRdpgfxBridgeDetach = nullptr;
     OhosRdpgfxBridgeSetGdiAttachedFn ohosRdpgfxBridgeSetGdiAttached = nullptr;

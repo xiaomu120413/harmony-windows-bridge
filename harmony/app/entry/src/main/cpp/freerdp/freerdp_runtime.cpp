@@ -152,6 +152,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosRdpgfxBridgeReset);
         LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_set_surface_target",
             ohosRdpgfxBridgeSetSurfaceTarget);
+        LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_set_avc420_gpu_output_active",
+            ohosRdpgfxBridgeSetAvc420OutputActive);
         LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_attach",
             ohosRdpgfxBridgeAttach);
         LoadOptionalClientSymbol("freerdp_ohos_rdpgfx_bridge_detach",
