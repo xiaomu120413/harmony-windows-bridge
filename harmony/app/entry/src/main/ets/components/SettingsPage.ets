@@ -62,6 +62,7 @@ export struct SettingsPage {
   @Prop xrdpServerPort: number = 3390
   @Prop xrdpServerMessage: string = ''
   @Prop xrdpServerBusy: boolean = false
+  @Prop screenRecordingPermissionBusy: boolean = false
   @State private pageName: string = SettingsRoute.SETTINGS
   @State private remoteControlTargetSection: string = ''
   @State private appearanceMode: SettingsAppearanceMode = SettingsTheme.getStoredAppearanceMode()
@@ -91,10 +92,16 @@ export struct SettingsPage {
   }
 
   private screenStatusTone(): SettingsStatusTone {
+    if (this.screenRecordingPermissionBusy) {
+      return 'info'
+    }
     return this.screenRecordingPermissionGranted ? 'ok' : 'warning'
   }
 
   private screenStatusText(): string {
+    if (this.screenRecordingPermissionBusy) {
+      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
+    }
     return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
       SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
   }
@@ -336,6 +343,7 @@ export struct SettingsPage {
             xrdpServerPort: this.xrdpServerPort,
             xrdpServerMessage: this.xrdpServerMessage,
             xrdpServerBusy: this.xrdpServerBusy,
+            screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
             onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
             onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
             onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,

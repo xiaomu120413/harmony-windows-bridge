@@ -1,6 +1,7 @@
 import { SettingsAccent, SettingsTheme } from '../settings/SettingsUi'
 import { WindowsConnectionProfile } from '../../rdp/WindowsConnectionStore'
 import { HomeResources } from './HomeResources'
+import { HomeText } from './HomeText'
 import { HomeTheme } from './HomeTheme'
 
 @Component
@@ -74,7 +75,7 @@ export struct HomeDeviceList {
         .height(20)
         .fillColor(Color.White)
         .draggable(false)
-      Text('新建设备')
+      Text(HomeText.NEW_DEVICE_ACTION)
         .fontSize(14)
         .fontColor(Color.White)
         .fontWeight(FontWeight.Bold)
@@ -113,7 +114,7 @@ export struct HomeDeviceList {
         .height(22)
         .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
         .draggable(false)
-      TextInput({ placeholder: '搜索设备名称或地址', text: this.profileSearchText })
+      TextInput({ placeholder: HomeText.DEVICE_SEARCH_PLACEHOLDER, text: this.profileSearchText })
         .height(48)
         .layoutWeight(1)
         .fontSize(15)
@@ -190,10 +191,10 @@ export struct HomeDeviceList {
           .width('100%')
         Row({ space: 6 }) {
           if (this.isSelectedProfile(profile)) {
-            this.buildDeviceTag('最近连接')
+            this.buildDeviceTag(HomeText.DEVICE_TAG_RECENT)
           }
           if (profile.rememberPassword) {
-            this.buildDeviceTag('已保存密码')
+            this.buildDeviceTag(HomeText.DEVICE_TAG_PASSWORD_SAVED)
           }
         }
         .height(18)
@@ -280,7 +281,7 @@ export struct HomeDeviceList {
   build() {
     Column({ space: 20 }) {
       Row() {
-        Text('设备列表')
+        Text(HomeText.DEVICE_LIST_TITLE)
           .fontSize(24)
           .fontWeight(FontWeight.Bold)
           .fontColor(SettingsTheme.primaryText(this.isDark))
@@ -298,9 +299,9 @@ export struct HomeDeviceList {
         Row() {
           Column({ space: 10 }) {
             if (!this.hasConnectionProfiles()) {
-              this.buildDeviceEmptyState('还没有保存的设备', '连接成功后会自动出现在这里')
+              this.buildDeviceEmptyState(HomeText.DEVICE_EMPTY_TITLE, HomeText.DEVICE_EMPTY_BODY)
             } else if (this.visibleProfileCount() === 0) {
-              this.buildDeviceEmptyState('没有匹配设备', '换个设备名称或地址再试')
+              this.buildDeviceEmptyState(HomeText.DEVICE_SEARCH_EMPTY_TITLE, HomeText.DEVICE_SEARCH_EMPTY_BODY)
             } else {
               ForEach(this.connectionProfiles, (profile: WindowsConnectionProfile) => {
                 if (this.profileVisible(profile)) {

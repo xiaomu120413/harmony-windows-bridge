@@ -23,6 +23,7 @@ export struct HomePage {
   @Prop xrdpServerRunning: boolean = false
   @Prop xrdpServerPort: number = 3390
   @Prop screenRecordingPermissionGranted: boolean = false
+  @Prop screenRecordingPermissionBusy: boolean = false
   @Prop remoteAccessCodeGateEnabled: boolean = false
   onHostChange: (value: string) => void = (_value: string) => {
   }
@@ -101,6 +102,7 @@ export struct HomePage {
         xrdpServerRunning: this.xrdpServerRunning,
         xrdpServerPort: this.xrdpServerPort,
         screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+        screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
         remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
         onOpenSettings: this.onOpenSettings
       })

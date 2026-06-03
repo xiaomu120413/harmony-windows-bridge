@@ -57,6 +57,7 @@ export struct RemoteControlSettingsPage {
   @Prop xrdpServerPort: number = 3390
   @Prop xrdpServerMessage: string = ''
   @Prop xrdpServerBusy: boolean = false
+  @Prop screenRecordingPermissionBusy: boolean = false
   @State private localAccessCode: string = '000000'
   @State private localGateEnabled: boolean = false
   @State private localScreenRecordingGranted: boolean = false
@@ -65,7 +66,7 @@ export struct RemoteControlSettingsPage {
   @State private localXrdpServerPort: number = 3390
   @State private localXrdpServerMessage: string = ''
   @State private localXrdpServerBusy: boolean = false
-  @State private screenPermissionBusy: boolean = false
+  private screenPermissionRequestPending: boolean = false
 
   aboutToAppear(): void {
     this.localAccessCode = this.remoteAccessCode
@@ -75,7 +76,7 @@ export struct RemoteControlSettingsPage {
     this.localXrdpServerState = this.xrdpServerState
     this.localXrdpServerPort = this.xrdpServerPort
     this.localXrdpServerMessage = this.xrdpServerMessage
-    this.localXrdpServerBusy = this.xrdpServerBusy
+    this.localXrdpServerBusy = false
     this.refreshScreenRecordingState()
     this.refreshXrdpServerStatus()
   }
@@ -107,7 +108,7 @@ export struct RemoteControlSettingsPage {
   }
 
   private startXrdpServer(): void {
-    if (this.localXrdpServerBusy) {
+    if (this.localXrdpServerBusy || this.xrdpServerBusy || this.screenRecordingPermissionBusy) {
       return
     }
     this.localXrdpServerBusy = true
@@ -130,20 +131,27 @@ export struct RemoteControlSettingsPage {
   }
 
   private requestScreenRecordingPermission(): void {
-    if (this.screenPermissionBusy) {
+    if (this.screenPermissionRequestPending || this.screenRecordingPermissionBusy) {
       return
     }
-    this.screenPermissionBusy = true
+    this.screenPermissionRequestPending = true
     this.onRequestScreenRecordingPermission()
       .then((granted: boolean) => {
-        this.localScreenRecordingGranted = granted || this.onRefreshScreenRecordingPermission()
+        const allowed = granted || this.onRefreshScreenRecordingPermission()
+        this.localScreenRecordingGranted = allowed
+        if (!allowed) {
+          this.localXrdpServerBusy = false
+        }
         this.refreshXrdpServerStatus()
       })
       .catch((_error: Error) => {
         this.localScreenRecordingGranted = this.onRefreshScreenRecordingPermission()
+        if (!this.localScreenRecordingGranted) {
+          this.localXrdpServerBusy = false
+        }
       })
       .finally(() => {
-        this.screenPermissionBusy = false
+        this.screenPermissionRequestPending = false
       })
   }
 
@@ -168,7 +176,7 @@ export struct RemoteControlSettingsPage {
             isDark: this.isDark,
             targetSection: this.targetSection,
             running: this.localXrdpServerRunning,
-            busy: this.localXrdpServerBusy,
+            busy: this.localXrdpServerBusy || this.xrdpServerBusy || this.screenRecordingPermissionBusy,
             state: this.localXrdpServerState,
             port: this.localXrdpServerPort,
             message: this.localXrdpServerMessage,
@@ -183,7 +191,7 @@ export struct RemoteControlSettingsPage {
             isDark: this.isDark,
             targetSection: this.targetSection,
             granted: this.localScreenRecordingGranted,
-            busy: this.screenPermissionBusy,
+            busy: this.screenRecordingPermissionBusy,
             onRequest: (): void => {
               this.requestScreenRecordingPermission()
             }

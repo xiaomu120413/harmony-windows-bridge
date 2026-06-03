@@ -18,6 +18,7 @@ import {
   WindowsConnectionStore
 } from '../rdp/WindowsConnectionStore'
 import { HomePage } from '../components/home/HomePage'
+import { HomeText } from '../components/home/HomeText'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsRoute, SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
@@ -57,6 +58,7 @@ struct Index {
   @State private remoteAccessCode: string = '000000'
   @State private remoteAccessCodeGateEnabled: boolean = false
   @State private screenRecordingPermissionGranted: boolean = false
+  @State private screenRecordingPermissionBusy: boolean = false
   @State private xrdpServerRunning: boolean = false
   @State private xrdpServerState: string = 'Stopped'
   @State private xrdpServerPort: number = 3390
@@ -75,7 +77,6 @@ struct Index {
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
   private callbacksRegistered: boolean = false
-  private xrdpServerStartRequested: boolean = false
   private remoteAccessCodeInitialized: boolean = false
   private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
@@ -104,8 +105,7 @@ struct Index {
     if (!this.connectionProfilesLoaded) {
       this.loadConnectionProfiles()
     }
-    this.refreshScreenRecordingPermissionState()
-    this.refreshXrdpServerDiagnostics()
+    this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
   }
 
   onPageHide(): void {
@@ -133,7 +133,9 @@ struct Index {
       const delegate = new RdpPermissionCallbackDelegate(
         (): common.UIAbilityContext | null => this.getUiAbilityContext()
       )
-      this.permissionManager = new RdpPermissionManager(delegate)
+      this.permissionManager = new RdpPermissionManager(delegate, (): void => {
+        this.onScreenRecordingPermissionPromptOpen()
+      })
     }
     return this.permissionManager
   }
@@ -339,13 +341,13 @@ struct Index {
     this.password = ''
     this.rememberConnectionPassword = false
     if (this.selectedConnectionProfileId.length === 0) {
-      this.setConnectionFeedback('已清空当前密码', 'neutral')
+      this.setConnectionFeedback(HomeText.PASSWORD_CLEARED_CURRENT, 'neutral')
       return
     }
 
     const store = this.getWindowsConnectionStore()
     if (store === null) {
-      this.setConnectionFeedback('清除密码失败：存储不可用', 'danger')
+      this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_STORAGE_UNAVAILABLE, 'danger')
       return
     }
 
@@ -355,11 +357,11 @@ struct Index {
           this.applyConnectionSnapshot(snapshot, true, false)
           this.password = ''
           this.rememberConnectionPassword = false
-          this.setConnectionFeedback('已清除保存的密码', 'ok')
+          this.setConnectionFeedback(HomeText.PASSWORD_CLEARED_SAVED, 'ok')
         })
       })
       .catch((error: Error) => {
-        this.setConnectionFeedback('清除密码失败', 'danger')
+        this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_FAILED, 'danger')
         RdpLogger.warn(`windows connection password clear failed: ${JSON.stringify(error)}`)
       })
   }
@@ -374,12 +376,12 @@ struct Index {
     this.connectionFeedbackTone = tone
   }
 
-  private connectionFailureMessage(message: string, fallback: string = '连接失败'): string {
+  private connectionFailureMessage(message: string, fallback: string = HomeText.CONNECTION_FAILURE): string {
     const detail = message.trim()
     if (detail.length === 0) {
       return fallback
     }
-    return `连接失败：${detail}`
+    return HomeText.connectionFailureWithDetail(detail)
   }
 
   private errorMessage(error: Error): string {
@@ -405,13 +407,13 @@ struct Index {
       messages.push(portMessage)
     }
     if (username.length === 0) {
-      messages.push('Username 必填')
+      messages.push(HomeText.USERNAME_REQUIRED)
     }
     if (password.trim().length === 0) {
-      messages.push('Password 必填')
+      messages.push(HomeText.PASSWORD_REQUIRED)
     }
     if (messages.length > 0) {
-      return this.connectionValidationError(messages.join('；'), host, port, username, password)
+      return this.connectionValidationError(messages.join(HomeText.VALIDATION_SEPARATOR), host, port, username, password)
     }
     return {
       ok: true,
@@ -437,36 +439,36 @@ struct Index {
 
   private validateHost(host: string): string {
     if (host.length === 0) {
-      return 'Host 必填'
+      return HomeText.HOST_REQUIRED
     }
     if (host.length > 253) {
-      return 'Host 过长'
+      return HomeText.HOST_TOO_LONG
     }
     if (/\s/.test(host)) {
-      return 'Host 不能含空格'
+      return HomeText.HOST_NO_SPACES
     }
     if (host.indexOf('/') >= 0 || host.indexOf('\\') >= 0 || host.indexOf('://') >= 0) {
-      return 'Host 不要包含协议或路径'
+      return HomeText.HOST_NO_PROTOCOL_OR_PATH
     }
     if (host.indexOf(':') >= 0) {
-      return this.isValidIpv6Host(host) ? '' : 'Host 格式错误'
+      return this.isValidIpv6Host(host) ? '' : HomeText.HOST_FORMAT_INVALID
     }
     if (this.isIpv4Candidate(host)) {
-      return this.isValidIpv4Host(host) ? '' : 'Host IP 格式错误'
+      return this.isValidIpv4Host(host) ? '' : HomeText.HOST_IP_FORMAT_INVALID
     }
-    return this.isValidDnsHost(host) ? '' : 'Host 格式错误'
+    return this.isValidDnsHost(host) ? '' : HomeText.HOST_FORMAT_INVALID
   }
 
   private validatePort(port: string): string {
     if (port.length === 0) {
-      return 'Port 必填'
+      return HomeText.PORT_REQUIRED
     }
     if (!/^[0-9]+$/.test(port)) {
-      return 'Port 只能是数字'
+      return HomeText.PORT_DIGITS_ONLY
     }
     const portNumber = Number(port)
     if (portNumber < 1 || portNumber > 65535) {
-      return 'Port 范围应为 1-65535'
+      return HomeText.PORT_RANGE_INVALID
     }
     return ''
   }
@@ -536,18 +538,18 @@ struct Index {
             this.setSessionVisible(true)
             this.focusRemoteSurface()
             this.lastConnectionErrorMessage = ''
-            this.setConnectionFeedback('连接成功', 'ok')
+            this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
             this.persistPendingConnectionProfile()
           }
           if (state === 'Failed') {
             this.pendingConnectionProfileSave = null
             this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-              '连接失败，请检查 Host、账号或密码'), 'danger')
+              HomeText.CONNECTION_FAILURE_CREDENTIALS), 'danger')
             RdpLogger.error(`Native state: ${state}`)
           } else if ((state === 'Disconnected' || state === 'Idle') && this.pendingConnectionProfileSave !== null) {
             this.pendingConnectionProfileSave = null
             this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-              '连接失败，未建立远程桌面会话'), 'danger')
+              HomeText.CONNECTION_FAILURE_NO_SESSION), 'danger')
           } else if (state === 'Connected' || state === 'Disconnected' ||
             state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady') {
             RdpLogger.info(`Native state: ${state}`)
@@ -585,15 +587,15 @@ struct Index {
   private updateSessionNoticeForNativeState(state: string): void {
     if (state === 'RemoteLoginWaiting') {
       this.remoteLoginWaiting = true
-      this.sessionNoticeTitle = '已连接，等待远端桌面'
-      this.sessionNoticeSubtitle = '远端桌面登录阶段暂未收到新画面'
+      this.sessionNoticeTitle = HomeText.SESSION_REMOTE_LOGIN_WAITING_TITLE
+      this.sessionNoticeSubtitle = HomeText.SESSION_REMOTE_LOGIN_WAITING_SUBTITLE
       return
     }
 
     this.remoteLoginWaiting = false
     if (state === 'Connected') {
-      this.sessionNoticeTitle = '已连接，正在打开远端桌面'
-      this.sessionNoticeSubtitle = '等待远端桌面首帧'
+      this.sessionNoticeTitle = HomeText.SESSION_CONNECTED_TITLE
+      this.sessionNoticeSubtitle = HomeText.SESSION_CONNECTED_SUBTITLE
       return
     }
 
@@ -604,17 +606,17 @@ struct Index {
     }
 
     if (state === 'Resolving') {
-      this.sessionNoticeTitle = '正在解析主机'
-      this.sessionNoticeSubtitle = '准备建立 RDP 连接'
+      this.sessionNoticeTitle = HomeText.SESSION_RESOLVING_TITLE
+      this.sessionNoticeSubtitle = HomeText.SESSION_RESOLVING_SUBTITLE
     } else if (state === 'TCP connected') {
-      this.sessionNoticeTitle = '已连通主机'
-      this.sessionNoticeSubtitle = '正在协商远程桌面会话'
+      this.sessionNoticeTitle = HomeText.SESSION_TCP_CONNECTED_TITLE
+      this.sessionNoticeSubtitle = HomeText.SESSION_TCP_CONNECTED_SUBTITLE
     } else if (state === 'Negotiating') {
-      this.sessionNoticeTitle = '正在协商远程桌面'
-      this.sessionNoticeSubtitle = '等待服务端返回图形能力'
+      this.sessionNoticeTitle = HomeText.SESSION_NEGOTIATING_TITLE
+      this.sessionNoticeSubtitle = HomeText.SESSION_NEGOTIATING_SUBTITLE
     } else if (state === 'Authenticating') {
-      this.sessionNoticeTitle = '正在验证登录信息'
-      this.sessionNoticeSubtitle = '即将进入远端桌面'
+      this.sessionNoticeTitle = HomeText.SESSION_AUTHENTICATING_TITLE
+      this.sessionNoticeSubtitle = HomeText.SESSION_AUTHENTICATING_SUBTITLE
     }
   }
 
@@ -745,22 +747,54 @@ struct Index {
     return this.screenRecordingPermissionGranted
   }
 
+  private clearXrdpServerBusy(reason: string): void {
+    if (this.xrdpServerBusy) {
+      RdpLogger.info(`xrdp busy cleared: ${reason}`)
+    }
+    this.xrdpServerBusy = false
+  }
+
+  private setScreenRecordingPermissionBusy(busy: boolean): void {
+    this.screenRecordingPermissionBusy = busy
+    if (busy) {
+      this.xrdpServerBusy = true
+    }
+  }
+
+  private onScreenRecordingPermissionPromptOpen(): void {
+    RdpLogger.info('screen recording permission prompt opened')
+    this.setScreenRecordingPermissionBusy(true)
+  }
+
+  private applyScreenRecordingPermissionResult(granted: boolean, clearBusy: boolean = false): boolean {
+    const allowed = granted || this.hasScreenRecordingPermission()
+    RdpLogger.info(`screen recording permission result applied: granted=${granted} allowed=${allowed}`)
+    this.screenRecordingPermissionGranted = allowed
+    if (clearBusy || !allowed) {
+      this.clearXrdpServerBusy('screen recording permission not granted')
+    }
+    this.refreshXrdpServerDiagnostics()
+    return allowed
+  }
+
   private requestScreenRecordingPermissionFromSettings(): Promise<boolean> {
     return this.getPermissionManager().requestScreenRecordingPermission('remote control settings')
       .then((granted: boolean) => {
-        const allowed = granted || this.refreshScreenRecordingPermissionState()
-        this.screenRecordingPermissionGranted = allowed
+        const allowed = this.applyScreenRecordingPermissionResult(granted, !granted)
         if (!allowed) {
           return false
         }
         return this.ensureXrdpServerStarted('screen recording permission granted')
           .then((_status: XrdpServerStatus) => {
-            return this.refreshScreenRecordingPermissionState()
+            return this.applyScreenRecordingPermissionResult(true)
           })
       })
       .catch((error: Error) => {
         RdpLogger.error(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
-        return this.refreshScreenRecordingPermissionState()
+        return this.applyScreenRecordingPermissionResult(false, true)
+      })
+      .finally(() => {
+        this.setScreenRecordingPermissionBusy(false)
       })
   }
 
@@ -783,6 +817,14 @@ struct Index {
 
   private refreshXrdpServerDiagnostics(): XrdpServerStatus {
     return this.applyXrdpServerStatus(this.getXrdpServerController().diagnostics())
+  }
+
+  private refreshRemoteControlReadiness(clearBusy: boolean = false): XrdpServerStatus {
+    if (clearBusy) {
+      this.clearXrdpServerBusy('remote control readiness refreshed')
+    }
+    this.refreshScreenRecordingPermissionState()
+    return this.refreshXrdpServerDiagnostics()
   }
 
   private startXrdpServerFromSettings(): Promise<XrdpServerStatus> {
@@ -817,38 +859,42 @@ struct Index {
     if (this.xrdpServerStartRequest !== null && !restartIfRunning) {
       if (requestScreenRecordingImmediately) {
         this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`)
+          .then((granted: boolean) => {
+            this.applyScreenRecordingPermissionResult(granted, !granted)
+          })
           .catch((error: Error) => {
             RdpLogger.error(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
+            this.applyScreenRecordingPermissionResult(false, true)
+          })
+          .finally(() => {
+            this.setScreenRecordingPermissionBusy(false)
           })
       }
       return this.xrdpServerStartRequest
     }
-    if (this.xrdpServerStartRequested && !restartIfRunning) {
-      return Promise.resolve(this.currentXrdpServerStatus())
-    }
-    this.xrdpServerStartRequested = true
-    this.xrdpServerBusy = true
+    this.xrdpServerBusy = this.hasScreenRecordingPermission()
     const screenRecordingPermissionRequest = requestScreenRecordingImmediately ?
       this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`) :
       this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
     this.xrdpServerStartRequest = screenRecordingPermissionRequest
       .then((granted: boolean) => {
-        const allowed = granted || this.refreshScreenRecordingPermissionState()
-        this.screenRecordingPermissionGranted = allowed
+        const allowed = this.applyScreenRecordingPermissionResult(granted, !granted)
         if (!allowed) {
           RdpLogger.warn(`xrdp start skipped: screen recording permission denied: ${trigger}`)
-          return this.refreshXrdpServerDiagnostics()
+          return this.refreshRemoteControlReadiness(true)
         }
         return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
       })
       .catch((error: Error) => {
         RdpLogger.error(`xrdp permission check failed: ${JSON.stringify(error)}`)
+        this.applyScreenRecordingPermissionResult(false, true)
         return this.refreshXrdpServerDiagnostics()
       })
       .finally(() => {
-        this.xrdpServerStartRequested = false
-        this.xrdpServerBusy = false
         this.xrdpServerStartRequest = null
+        this.clearXrdpServerBusy('xrdp start request finished')
+        this.setScreenRecordingPermissionBusy(false)
+        this.refreshRemoteControlReadiness()
       })
     return this.xrdpServerStartRequest
   }
@@ -900,9 +946,9 @@ struct Index {
     this.lastConnectionErrorMessage = ''
     this.connected = false
     this.remoteLoginWaiting = false
-    this.setConnectionFeedback('正在连接...', 'info')
-    this.sessionNoticeTitle = '正在连接远程桌面'
-    this.sessionNoticeSubtitle = '正在建立 RDP 会话'
+    this.setConnectionFeedback(HomeText.CONNECTION_CONNECTING, 'info')
+    this.sessionNoticeTitle = HomeText.SESSION_CONNECTING_TITLE
+    this.sessionNoticeSubtitle = HomeText.SESSION_CONNECTING_SUBTITLE
     this.setSessionVisible(true)
     this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
   }
@@ -930,7 +976,7 @@ struct Index {
         this.setSessionVisible(true)
         if (this.connected) {
           this.lastConnectionErrorMessage = ''
-          this.setConnectionFeedback('连接成功', 'ok')
+          this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
           this.persistPendingConnectionProfile()
         }
       } else {
@@ -949,7 +995,7 @@ struct Index {
       this.pendingConnectionProfileSave = null
       this.lastConnectionErrorMessage = this.errorMessage(error as Error)
       this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-        '连接失败，请检查 Host、账号或密码'), 'danger')
+        HomeText.CONNECTION_FAILURE_CREDENTIALS), 'danger')
       RdpLogger.error(`Native connect failed: ${JSON.stringify(error)}`)
     }
   }
@@ -1086,6 +1132,7 @@ struct Index {
           remoteAccessCode: this.remoteAccessCode,
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+          screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
           xrdpServerRunning: this.xrdpServerRunning,
           xrdpServerState: this.xrdpServerState,
           xrdpServerPort: this.xrdpServerPort,
@@ -1099,6 +1146,7 @@ struct Index {
           onStartXrdpServer: (): Promise<XrdpServerStatus> => this.startXrdpServerFromSettings(),
           onOpenRemoteFilesDirectory: (): void => this.openRemoteFilesDirectoryFromSettings(),
           onClose: () => {
+            this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
             this.showSettings = false
             this.settingsInitialPageName = SettingsRoute.SETTINGS
             this.settingsRemoteControlSection = ''
@@ -1121,6 +1169,7 @@ struct Index {
           xrdpServerRunning: this.xrdpServerRunning,
           xrdpServerPort: this.xrdpServerPort,
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+          screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
           onHostChange: (value: string): void => {
             this.host = value

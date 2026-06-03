@@ -33,11 +33,15 @@ interface PermissionRequestState {
 type PermissionGrantChecker = () => boolean
 type PermissionRequestFactory = (context: common.UIAbilityContext) => Promise<boolean>
 type PermissionRequestResolver = (granted: boolean) => void
+type PermissionPromptOpenedCallback = () => void
 
 const SCREEN_RECORDING_PERMISSION_PROMPT_DELAY_MS: number = 3000
+const SETTINGS_PERMISSION_POLL_INTERVAL_MS: number = 1000
+const SETTINGS_PERMISSION_POLL_TIMEOUT_MS: number = 60000
 
 export class RdpPermissionManager {
   private delegate: RdpPermissionDelegate
+  private readonly onScreenRecordingPermissionPromptOpen: PermissionPromptOpenedCallback
   private pasteboardPermission: PermissionRequestState = { request: null, requested: false }
   private microphonePermission: PermissionRequestState = { request: null, requested: false }
   private cameraPermission: PermissionRequestState = { request: null, requested: false }
@@ -46,8 +50,10 @@ export class RdpPermissionManager {
   private screenRecordingPermissionPromptDelayTimer: number | null = null
   private screenRecordingPermissionPromptDelayResolve: PermissionRequestResolver | null = null
 
-  constructor(delegate: RdpPermissionDelegate) {
+  constructor(delegate: RdpPermissionDelegate, onScreenRecordingPermissionPromptOpen: PermissionPromptOpenedCallback = () => {
+  }) {
     this.delegate = delegate
+    this.onScreenRecordingPermissionPromptOpen = onScreenRecordingPermissionPromptOpen
   }
 
   ensurePasteboardReadPermission(trigger: string): Promise<boolean> {
@@ -130,7 +136,7 @@ export class RdpPermissionManager {
       trigger,
       (): boolean => this.hasScreenRecordingPermission(),
       (context: common.UIAbilityContext): Promise<boolean> =>
-        this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording'),
+        this.openScreenRecordingPermissionOnSetting(context),
       false
     )
   }
@@ -191,6 +197,10 @@ export class RdpPermissionManager {
       .then((result: abilityAccessCtrl.SelectedResult) => {
         const granted = result === abilityAccessCtrl.SelectedResult.GRANTED ||
           this.hasPermission(permission, label)
+        RdpLogger.info(`${label} setting result: result=${result} granted=${granted}`)
+        if (result === abilityAccessCtrl.SelectedResult.OPENED && !granted) {
+          return this.pollPermissionOnSettingResult(permission, label)
+        }
         if (!granted) {
           RdpLogger.warn(`${label} setting result: granted=${granted} result=${result}`)
         }
@@ -200,6 +210,36 @@ export class RdpPermissionManager {
         RdpLogger.error(`${label} setting request failed: ${JSON.stringify(error)}`)
         return false
       })
+  }
+
+  private pollPermissionOnSettingResult(permission: Permissions, label: string): Promise<boolean> {
+    const startedAt = Date.now()
+    return new Promise<boolean>((resolve) => {
+      const poll = (): void => {
+        const granted = this.hasPermission(permission, label)
+        RdpLogger.info(`${label} setting poll result: granted=${granted}`)
+        if (granted) {
+          resolve(true)
+          return
+        }
+        if (Date.now() - startedAt >= SETTINGS_PERMISSION_POLL_TIMEOUT_MS) {
+          RdpLogger.warn(`${label} setting poll timed out: granted=false`)
+          resolve(false)
+          return
+        }
+        setTimeout((): void => {
+          poll()
+        }, SETTINGS_PERMISSION_POLL_INTERVAL_MS)
+      }
+      setTimeout((): void => {
+        poll()
+      }, SETTINGS_PERMISSION_POLL_INTERVAL_MS)
+    })
+  }
+
+  private openScreenRecordingPermissionOnSetting(context: common.UIAbilityContext): Promise<boolean> {
+    this.onScreenRecordingPermissionPromptOpen()
+    return this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording')
   }
 
   private openScreenRecordingPermissionOnSettingAfterDelay(context: common.UIAbilityContext): Promise<boolean> {
@@ -215,7 +255,7 @@ export class RdpPermissionManager {
           delayedResolve(true)
           return
         }
-        this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording')
+        this.openScreenRecordingPermissionOnSetting(context)
           .then((granted: boolean) => {
             delayedResolve(granted)
           })
@@ -241,7 +281,7 @@ export class RdpPermissionManager {
     }
 
     RdpLogger.info(`Screen recording permission requested immediately: ${trigger}`)
-    this.openPermissionOnSetting(context, SCREEN_RECORDING_PERMISSION, 'Screen recording')
+    this.openScreenRecordingPermissionOnSetting(context)
       .then((granted: boolean) => {
         delayedResolve(granted)
       })
