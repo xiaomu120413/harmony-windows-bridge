@@ -3,6 +3,7 @@
 #include "common/bridge_log.h"
 #include "common/string_utils.h"
 #include "channels/rdpgfx_pipeline.h"
+#include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/freerdp_runtime.h"
 #include "input/xcomponent_input_bridge.h"
 #include "surface/latest_frame_renderer.h"
@@ -188,6 +189,7 @@ void ConfigureRdpgfxPipelineCallbacks()
         StartRenderPipeline,
         StopRenderPipeline,
         ReleaseSurfaceRenderTarget,
+        SnapshotRdpPrimaryFrame,
         EmitNativeLog,
     });
 }

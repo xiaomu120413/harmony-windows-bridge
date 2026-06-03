@@ -18,6 +18,7 @@ enum class RenderOutputOwnerTransitionReason {
     Avc420ConfigureReset,
     Avc420FreeRdpPolicyRelease,
     Avc420FatalFallback,
+    Avc420BootstrapFallback,
     Avc420Takeover,
 };
 
