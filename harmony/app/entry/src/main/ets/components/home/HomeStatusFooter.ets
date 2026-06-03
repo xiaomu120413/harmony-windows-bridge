@@ -1,7 +1,37 @@
 import { SettingsRemoteControlSection, SettingsText } from '../settings/SettingsConstants'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
+import { HomeText } from './HomeText'
 import { HomeTheme } from './HomeTheme'
+
+interface HomeStatusCardConfig {
+  section: string
+  label: string
+  icon: Resource
+}
+
+const HOME_STATUS_CARDS: HomeStatusCardConfig[] = [
+  {
+    section: SettingsRemoteControlSection.SERVER,
+    label: HomeText.STATUS_SERVICE_LABEL,
+    icon: HomeResources.SHIELD_ICON
+  },
+  {
+    section: SettingsRemoteControlSection.SCREEN,
+    label: HomeText.STATUS_SCREEN_LABEL,
+    icon: HomeResources.MONITOR_ICON
+  },
+  {
+    section: SettingsRemoteControlSection.ACCESS,
+    label: HomeText.STATUS_ACCESS_LABEL,
+    icon: HomeResources.SHIELD_ICON
+  },
+  {
+    section: SettingsRemoteControlSection.FILES,
+    label: HomeText.STATUS_FILES_LABEL,
+    icon: HomeResources.LOCK_ICON
+  }
+]
 
 @Component
 export struct HomeStatusFooter {
@@ -11,6 +41,7 @@ export struct HomeStatusFooter {
   @Prop xrdpServerRunning: boolean = false
   @Prop xrdpServerPort: number = 3390
   @Prop screenRecordingPermissionGranted: boolean = false
+  @Prop screenRecordingPermissionBusy: boolean = false
   @Prop remoteAccessCodeGateEnabled: boolean = false
   onOpenSettings: (remoteControlSection: string) => void = (_remoteControlSection: string) => {
   }
@@ -27,11 +58,18 @@ export struct HomeStatusFooter {
   }
 
   private screenStatusTone(): SettingsStatusTone {
+    if (this.screenRecordingPermissionBusy) {
+      return 'info'
+    }
     return this.screenRecordingPermissionGranted ? 'ok' : 'warning'
   }
 
   private screenStatusText(): string {
-    return this.screenRecordingPermissionGranted ? '已授权' : '未授权'
+    if (this.screenRecordingPermissionBusy) {
+      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
+    }
+    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
+    SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
   }
 
   private accessStatusTone(): SettingsStatusTone {
@@ -39,7 +77,25 @@ export struct HomeStatusFooter {
   }
 
   private accessStatusText(): string {
-    return this.remoteAccessCodeGateEnabled ? '已开启' : '默认关闭'
+    return this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
+  }
+
+  private cardValue(section: string): string {
+    const values = new Map<string, string>()
+    values.set(SettingsRemoteControlSection.SERVER, this.serviceStatusText())
+    values.set(SettingsRemoteControlSection.SCREEN, this.screenStatusText())
+    values.set(SettingsRemoteControlSection.ACCESS, this.accessStatusText())
+    values.set(SettingsRemoteControlSection.FILES, HomeText.STATUS_FILES_CONFIGURED)
+    return values.get(section) || HomeText.STATUS_FILES_CONFIGURED
+  }
+
+  private cardTone(section: string): SettingsStatusTone {
+    const tones = new Map<string, SettingsStatusTone>()
+    tones.set(SettingsRemoteControlSection.SERVER, this.serviceStatusTone())
+    tones.set(SettingsRemoteControlSection.SCREEN, this.screenStatusTone())
+    tones.set(SettingsRemoteControlSection.ACCESS, this.accessStatusTone())
+    tones.set(SettingsRemoteControlSection.FILES, 'ok')
+    return tones.get(section) || 'ok'
   }
 
   private setHoveredSection(section: string, hovered: boolean): void {
@@ -66,15 +122,15 @@ export struct HomeStatusFooter {
   }
 
   @Builder
-  private buildStatusCard(label: string, value: string, icon: Resource, tone: SettingsStatusTone, section: string) {
+  private buildStatusCard(config: HomeStatusCardConfig) {
     Row({ space: 12 }) {
-      this.buildStatusIcon(icon, tone)
-      Text(label)
+      this.buildStatusIcon(config.icon, this.cardTone(config.section))
+      Text(config.label)
         .fontSize(15)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .maxLines(1)
-      Text(value)
+      Text(this.cardValue(config.section))
         .fontSize(14)
         .fontColor(SettingsTheme.secondaryText(this.isDark))
         .maxLines(1)
@@ -83,31 +139,32 @@ export struct HomeStatusFooter {
       Circle()
         .width(9)
         .height(9)
-        .fill(SettingsTheme.statusText(this.isDark, tone))
+        .fill(SettingsTheme.statusText(this.isDark, this.cardTone(config.section)))
     }
     .height(52)
     .layoutWeight(1)
     .padding({ left: 14, right: 14 })
     .alignItems(VerticalAlign.Center)
-    .backgroundColor(this.hoveredSection === section || this.pressedSection === section ?
-      HomeTheme.inactivePanelBackground(this.isDark, this.hoveredSection === section, this.pressedSection === section) :
+    .backgroundColor(this.hoveredSection === config.section || this.pressedSection === config.section ?
+      HomeTheme.inactivePanelBackground(this.isDark, this.hoveredSection === config.section,
+        this.pressedSection === config.section) :
       HomeTheme.panelBackground(this.isDark))
     .borderRadius(8)
     .border({
       width: 1,
-      color: this.hoveredSection === section || this.pressedSection === section ?
-        SettingsTheme.statusText(this.isDark, tone) : HomeTheme.mutedBorderColor(this.isDark)
+      color: this.hoveredSection === config.section || this.pressedSection === config.section ?
+        SettingsTheme.statusText(this.isDark, this.cardTone(config.section)) : HomeTheme.mutedBorderColor(this.isDark)
     })
     .scale({
-      x: this.pressedSection === section ? 0.99 : 1,
-      y: this.pressedSection === section ? 0.99 : 1
+      x: this.pressedSection === config.section ? 0.99 : 1,
+      y: this.pressedSection === config.section ? 0.99 : 1
     })
     .onHover((hovered: boolean) => {
-      this.setHoveredSection(section, hovered)
+      this.setHoveredSection(config.section, hovered)
     })
     .onTouch((event: TouchEvent) => {
       if (event.type === TouchType.Down) {
-        this.pressedSection = section
+        this.pressedSection = config.section
         return
       }
       if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
@@ -116,19 +173,15 @@ export struct HomeStatusFooter {
     })
     .onClick(() => {
       this.pressedSection = ''
-      this.onOpenSettings(section)
+      this.onOpenSettings(config.section)
     })
   }
 
   build() {
     Row({ space: 22 }) {
-      this.buildStatusCard('被控服务', this.serviceStatusText(), HomeResources.SHIELD_ICON,
-        this.serviceStatusTone(), SettingsRemoteControlSection.SERVER)
-      this.buildStatusCard('录屏', this.screenStatusText(), HomeResources.MONITOR_ICON, this.screenStatusTone(),
-        SettingsRemoteControlSection.SCREEN)
-      this.buildStatusCard('验证码', this.accessStatusText(), HomeResources.SHIELD_ICON, this.accessStatusTone(),
-        SettingsRemoteControlSection.ACCESS)
-      this.buildStatusCard('共享目录', '已配置', HomeResources.LOCK_ICON, 'ok', SettingsRemoteControlSection.FILES)
+      ForEach(HOME_STATUS_CARDS, (config: HomeStatusCardConfig) => {
+        this.buildStatusCard(config)
+      }, (config: HomeStatusCardConfig): string => config.section)
     }
     .width('100%')
     .height(70)

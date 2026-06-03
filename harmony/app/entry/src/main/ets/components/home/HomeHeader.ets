@@ -1,5 +1,6 @@
 import { SettingsText } from '../settings/SettingsConstants'
 import { SettingsAccent, SettingsResources, SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
+import { HomeText } from './HomeText'
 import { HomeTheme } from './HomeTheme'
 
 @Component
@@ -49,7 +50,7 @@ export struct HomeHeader {
         .height(19)
         .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
         .draggable(false)
-      Text('设置')
+      Text(SettingsText.SETTINGS_TITLE)
         .fontSize(14)
         .fontWeight(FontWeight.Medium)
         .fontColor(SettingsTheme.primaryText(this.isDark))
@@ -84,7 +85,7 @@ export struct HomeHeader {
       Row()
         .width(this.headerSideWidth)
 
-      Text('HarmonyOS 与 Windows 互联的局域网远程桌面工具')
+      Text(HomeText.APP_TAGLINE)
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))

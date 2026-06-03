@@ -1,6 +1,7 @@
 import pasteboard from '@ohos.pasteboard'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
+import { HomeText } from './HomeText'
 import { HomeTheme } from './HomeTheme'
 
 @Component
@@ -198,7 +199,7 @@ export struct HomeConnectionDetails {
   @Builder
   private buildRememberRow() {
     Row({ space: 30 }) {
-      Text('记住密码')
+      Text(HomeText.REMEMBER_PASSWORD)
         .fontSize(16)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .textAlign(TextAlign.End)
@@ -334,18 +335,18 @@ export struct HomeConnectionDetails {
   @Builder
   private buildDeviceActions() {
     Row({ space: 12 }) {
-      Text('设备操作')
+      Text(HomeText.DEVICE_ACTIONS)
         .fontSize(16)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .width(170)
         .textAlign(TextAlign.End)
-      this.buildActionButton('delete', '删除', HomeResources.TRASH_ICON, 'danger', () => {
+      this.buildActionButton('delete', HomeText.DELETE_ACTION, HomeResources.TRASH_ICON, 'danger', () => {
         this.onDeleteProfile()
       })
-      this.buildActionButton('clearPassword', '清除密码', HomeResources.LOCK_ICON, 'warning', () => {
+      this.buildActionButton('clearPassword', HomeText.CLEAR_PASSWORD_ACTION, HomeResources.LOCK_ICON, 'warning', () => {
         this.onClearPassword()
       })
-      this.buildActionButton('copyAddress', '复制地址', HomeResources.COPY_ICON, 'info', () => {
+      this.buildActionButton('copyAddress', HomeText.COPY_ADDRESS_ACTION, HomeResources.COPY_ICON, 'info', () => {
         this.copyCurrentAddress()
       })
     }
@@ -370,7 +371,7 @@ export struct HomeConnectionDetails {
 
   build() {
     Column({ space: 12 }) {
-      Text('连接详情')
+      Text(HomeText.CONNECTION_DETAILS_TITLE)
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))
