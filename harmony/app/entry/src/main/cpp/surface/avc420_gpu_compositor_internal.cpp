@@ -1982,6 +1982,83 @@ struct Avc420GpuCompositorImpl::State {
         return true;
     }
 
+    bool PresentGdiBackgroundNow(const std::string& trigger,
+        const Avc420GpuCompositorCallbacks& callbacks, bool outputActive,
+        std::vector<std::string>& logs)
+    {
+        if (!outputActive || !gdiBackgroundPendingPresent || pendingPresent) {
+            return false;
+        }
+        if (currentSurfaceWidth == 0 || currentSurfaceHeight == 0) {
+            logs.push_back("AVC420 native-buffer GPU immediate GDI present skipped: "
+                "retained surface size missing trigger=" + trigger +
+                " gdiBg=" + std::to_string(gdiBackgroundUpdates) + "/" +
+                std::to_string(gdiBackgroundPresents));
+            return false;
+        }
+
+        DecoderSurfaceTarget target {};
+        if (callbacks.decoderSurfaceTarget != nullptr) {
+            target = callbacks.decoderSurfaceTarget();
+        }
+        if (target.window == nullptr || target.width == 0 || target.height == 0) {
+            ++ignoredUpdates;
+            if (ShouldLogFrequent(ignoredUpdates)) {
+                logs.push_back("AVC420 native-buffer GPU immediate GDI present skipped: "
+                    "target unavailable trigger=" + trigger +
+                    " ignoredUpdates=" + std::to_string(ignoredUpdates));
+            }
+            return false;
+        }
+
+        ++endFramePresentAttempts;
+        const bool sampleTiming = ShouldSampleTiming(endFramePresentAttempts);
+        bool windowReady = false;
+        {
+            ScopedTiming timing(windowEnsureTiming, sampleTiming);
+            windowReady = renderer.Ensure(target.window, target.width, target.height,
+                currentSurfaceWidth, currentSurfaceHeight, logs);
+        }
+        if (!windowReady) {
+            ++failures;
+            logs.push_back("AVC420 native-buffer GPU immediate GDI present window attach failed "
+                "trigger=" + trigger + " failures=" + std::to_string(failures));
+            return false;
+        }
+
+        const bool logPresentSummary = ShouldLogFrequent(gdiBackgroundPresents + 1) ||
+            ShouldLogFrequent(endFramePresentAttempts);
+        bool presentOk = false;
+        {
+            ScopedTiming timing(presentTiming, sampleTiming);
+            presentOk = renderer.PresentComposite(logs, logPresentSummary);
+        }
+        if (!presentOk) {
+            ++failures;
+            ++ignoredUpdates;
+            logs.push_back("AVC420 native-buffer GPU immediate GDI present failed trigger=" +
+                trigger + " failures=" + std::to_string(failures) +
+                " ignoredUpdates=" + std::to_string(ignoredUpdates));
+            return false;
+        }
+
+        ++gdiBackgroundPresents;
+        gdiBackgroundPendingPresent = false;
+        RecordPresentGap(NowMicros());
+        ++presented;
+        if (ShouldLogFrequent(gdiBackgroundPresents) || ShouldLogFrequent(presented)) {
+            logs.push_back("AVC420 native-buffer GPU presented retained GDI background "
+                "immediately: trigger=" + trigger +
+                " presented=" + std::to_string(presented) +
+                " gdiBg=" + std::to_string(gdiBackgroundUpdates) + "/" +
+                std::to_string(gdiBackgroundPresents) +
+                " surface=" + std::to_string(currentSurfaceWidth) + "x" +
+                std::to_string(currentSurfaceHeight) +
+                " policyActive=yes retainFrames=yes");
+        }
+        return true;
+    }
+
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
         const Avc420GpuCompositorCallbacks&, bool outputActive, std::vector<std::string>& logs)
     {
@@ -2582,6 +2659,14 @@ bool Avc420GpuCompositorImpl::ProcessGdiFrame(
 {
     return state_ != nullptr &&
         state_->ProcessGdiFrame(frame, outputActive, logs);
+}
+
+bool Avc420GpuCompositorImpl::PresentGdiBackgroundNow(const std::string& trigger,
+    const Avc420GpuCompositorCallbacks& callbacks, bool outputActive,
+    std::vector<std::string>& logs)
+{
+    return state_ != nullptr &&
+        state_->PresentGdiBackgroundNow(trigger, callbacks, outputActive, logs);
 }
 
 bool Avc420GpuCompositorImpl::ProcessCommand(

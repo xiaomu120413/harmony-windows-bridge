@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -26,6 +27,10 @@ namespace {
 
 std::mutex g_gdiCallbacksMutex;
 GdiBridgeCallbacks g_gdiCallbacks;
+std::mutex g_gdiPrimaryFrameMutex;
+RgbaFrame g_lastGdiPrimaryFrame;
+std::chrono::steady_clock::time_point g_lastGdiPrimaryFrameAt {};
+uint64_t g_gdiPrimaryFrameSequence = 0;
 
 void EmitGdiLog(const std::string& line);
 
@@ -93,6 +98,48 @@ void ClearGdiInvalidRegion(rdpGdi* gdi)
     hwnd->ninvalid = 0;
 }
 
+DirtyFrameStats FullDirtyStats(uint32_t width, uint32_t height)
+{
+    DirtyFrameStats stats;
+    if (width == 0 || height == 0) {
+        return stats;
+    }
+    stats.valid = true;
+    stats.rectCount = 1;
+    stats.x = 0;
+    stats.y = 0;
+    stats.width = width;
+    stats.height = height;
+    stats.areaPermille = 1000;
+    return stats;
+}
+
+bool DirtyCoversFullFrame(const DirtyFrameStats& dirty, uint32_t width, uint32_t height)
+{
+    return dirty.valid && width != 0 && height != 0 &&
+        dirty.x == 0 && dirty.y == 0 &&
+        dirty.width >= width && dirty.height >= height;
+}
+
+void RememberGdiPrimaryFrame(RgbaFrame frame)
+{
+    if (frame.data == nullptr || frame.width == 0 || frame.height == 0 ||
+        frame.strideBytes == 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_gdiPrimaryFrameMutex);
+    frame.sequence = ++g_gdiPrimaryFrameSequence;
+    g_lastGdiPrimaryFrame = std::move(frame);
+    g_lastGdiPrimaryFrameAt = std::chrono::steady_clock::now();
+}
+
+void ClearRememberedGdiPrimaryFrame()
+{
+    std::lock_guard<std::mutex> lock(g_gdiPrimaryFrameMutex);
+    g_lastGdiPrimaryFrame = {};
+    g_lastGdiPrimaryFrameAt = {};
+}
+
 } // namespace
 
 void SetGdiBridgeCallbacks(GdiBridgeCallbacks callbacks)
@@ -131,6 +178,40 @@ uint32_t RdpDesktopHeight()
 bool RdpPrimaryFrameReady()
 {
     return g_rdpPrimaryFrameReady.load();
+}
+
+bool SnapshotRdpPrimaryFrame(RgbaFrame& frame, bool forceFullDirty,
+    const std::string& label, uint64_t maxAgeMs)
+{
+    std::lock_guard<std::mutex> lock(g_gdiPrimaryFrameMutex);
+    if (!g_rdpPrimaryFrameReady.load() || g_lastGdiPrimaryFrame.data == nullptr ||
+        g_lastGdiPrimaryFrame.width == 0 || g_lastGdiPrimaryFrame.height == 0 ||
+        g_lastGdiPrimaryFrame.strideBytes == 0 ||
+        g_lastGdiPrimaryFrameAt == std::chrono::steady_clock::time_point{}) {
+        return false;
+    }
+    if (!DirtyCoversFullFrame(g_lastGdiPrimaryFrame.dirty,
+            g_lastGdiPrimaryFrame.width, g_lastGdiPrimaryFrame.height)) {
+        return false;
+    }
+    if (maxAgeMs != 0) {
+        const uint64_t ageMs = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - g_lastGdiPrimaryFrameAt).count());
+        if (ageMs > maxAgeMs) {
+            return false;
+        }
+    }
+
+    frame = g_lastGdiPrimaryFrame;
+    if (!label.empty()) {
+        frame.label = label;
+    }
+    if (forceFullDirty) {
+        frame.dirty = FullDirtyStats(frame.width, frame.height);
+        frame.dirtySequenceStart = frame.sequence;
+    }
+    return true;
 }
 
 DirtyFrameStats CaptureGdiDirtyStats(const rdpGdi* gdi)
@@ -223,7 +304,7 @@ BOOL HarmonyEndPaint(rdpContext* context)
     }
     rdpGdi* gdi = context->gdi;
     if (IsAvc420SurfaceOutputEnabled()) {
-        if (gdi->suppressOutput || gdi->primary_buffer == nullptr || gdi->width <= 0 ||
+        if (gdi->primary_buffer == nullptr || gdi->width <= 0 ||
             gdi->height <= 0 || gdi->stride == 0) {
             return TRUE;
         }
@@ -243,8 +324,15 @@ BOOL HarmonyEndPaint(rdpContext* context)
             "freerdp gdi background",
             CaptureGdiDirtyStats(gdi),
         };
-        if (UpdateAvc420CompositeWithGdiFrame(frame)) {
-            g_rdpPrimaryFrameReady.store(true);
+        RememberGdiPrimaryFrame(frame);
+        g_rdpPrimaryFrameReady.store(true);
+        if (!UpdateAvc420CompositeWithGdiFrame(frame)) {
+            const uint32_t skipCount = ++g_freerdpRenderSkipCount;
+            if (skipCount == 1 || skipCount % 300 == 0) {
+                EmitGdiLog("FreeRDP GDI background composite skipped for AVC420 owner");
+            }
+        } else {
+            g_freerdpRenderSkipCount.store(0);
         }
         ClearGdiInvalidRegion(gdi);
         return TRUE;
@@ -275,6 +363,7 @@ BOOL HarmonyEndPaint(rdpContext* context)
         "freerdp gdi",
         CaptureGdiDirtyStats(gdi),
     };
+    RememberGdiPrimaryFrame(frame);
     g_rdpPrimaryFrameReady.store(true);
     ++g_freerdpRenderedFrameCount;
     std::string queueMessage;
@@ -313,6 +402,7 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     SetRdpDesktopSize(width, height);
     if (sizeChanged) {
         g_rdpPrimaryFrameReady.store(false);
+        ClearRememberedGdiPrimaryFrame();
     }
     if (IsAvc420SurfaceOutputEnabled()) {
         UpdateAvc420SurfaceOutputIfActive("desktop resize " + std::to_string(width) + "x" +
@@ -347,6 +437,7 @@ BOOL HarmonyPostConnect(freerdp* instance)
     g_freerdpRenderedFrameCount.store(0);
     g_freerdpRenderSkipCount.store(0);
     g_rdpPrimaryFrameReady.store(false);
+    ClearRememberedGdiPrimaryFrame();
     if (instance->context->settings != nullptr) {
         const uint32_t width = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopWidth);
         const uint32_t height = api.settingsGetUint32(instance->context->settings, FreeRDP_DesktopHeight);
@@ -362,6 +453,7 @@ void HarmonyPostDisconnect(freerdp* instance)
     StopGdiRenderPipeline();
     if (instance == nullptr || instance->context == nullptr || instance->context->gdi == nullptr) {
         ClearRdpDesktopSize();
+        ClearRememberedGdiPrimaryFrame();
         return;
     }
 
@@ -370,6 +462,7 @@ void HarmonyPostDisconnect(freerdp* instance)
         api.gdiFree(instance);
     }
     ClearRdpDesktopSize();
+    ClearRememberedGdiPrimaryFrame();
 }
 
 

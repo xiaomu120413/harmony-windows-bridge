@@ -246,6 +246,7 @@ bool ConfigureAvc420SurfaceOutput(FreerdpRuntimeApi &api,
   avc420Callbacks.startRenderPipeline = callbacks.startRenderPipeline;
   avc420Callbacks.releaseRenderTarget = callbacks.releaseRenderTarget;
   avc420Callbacks.setOutputPolicy = SetOhosRdpgfxAvc420OutputPolicy;
+  avc420Callbacks.snapshotGdiFrame = callbacks.snapshotGdiFrame;
   SharedAvc420GpuCompositor().Configure(true, log, std::move(avc420Callbacks));
   if (log != nullptr) {
     log("OHOS AVC420 GPU compositor enabled; using RDPGFX command hardware-decode path");

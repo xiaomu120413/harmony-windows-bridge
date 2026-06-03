@@ -19,6 +19,7 @@ struct RdpgfxPipelineCallbacks {
     std::function<void()> startRenderPipeline;
     std::function<void()> stopRenderPipeline;
     std::function<void(const std::string&)> releaseRenderTarget;
+    std::function<bool(RgbaFrame&, bool, const std::string&, uint64_t)> snapshotGdiFrame;
     std::function<void(const std::string&)> log;
 };
 

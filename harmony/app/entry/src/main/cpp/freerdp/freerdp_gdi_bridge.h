@@ -24,6 +24,8 @@ void ClearRdpDesktopSize();
 uint32_t RdpDesktopWidth();
 uint32_t RdpDesktopHeight();
 bool RdpPrimaryFrameReady();
+bool SnapshotRdpPrimaryFrame(RgbaFrame& frame, bool forceFullDirty,
+    const std::string& label, uint64_t maxAgeMs);
 
 BOOL HarmonyBeginPaint(rdpContext* context);
 BOOL HarmonyEndPaint(rdpContext* context);

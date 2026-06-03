@@ -60,6 +60,8 @@ std::string RenderOutputOwnerTransitionReasonName(RenderOutputOwnerTransitionRea
             return "AVC420 FreeRDP policy release";
         case RenderOutputOwnerTransitionReason::Avc420FatalFallback:
             return "AVC420 fatal fallback";
+        case RenderOutputOwnerTransitionReason::Avc420BootstrapFallback:
+            return "AVC420 bootstrap fallback";
         case RenderOutputOwnerTransitionReason::Avc420Takeover:
             return "AVC420 takeover";
         case RenderOutputOwnerTransitionReason::SessionReset:

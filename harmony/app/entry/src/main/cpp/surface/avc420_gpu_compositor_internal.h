@@ -26,6 +26,9 @@ public:
         std::vector<std::string>& logs);
     bool ProcessGdiFrame(const RgbaFrame& frame,
         bool outputActive, std::vector<std::string>& logs);
+    bool PresentGdiBackgroundNow(const std::string& trigger,
+        const Avc420GpuCompositorCallbacks& callbacks, bool outputActive,
+        std::vector<std::string>& logs);
     bool ProcessCommand(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
         const Avc420GpuCompositorCallbacks& callbacks, bool outputActive,
         std::vector<std::string>& logs);

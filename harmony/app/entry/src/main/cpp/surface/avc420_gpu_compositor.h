@@ -29,6 +29,7 @@ struct Avc420GpuCompositorCallbacks {
     std::function<void()> stopRenderPipeline;
     std::function<void(const std::string&)> releaseRenderTarget;
     std::function<void(bool, const std::string&)> setOutputPolicy;
+    std::function<bool(RgbaFrame&, bool, const std::string&, uint64_t)> snapshotGdiFrame;
 };
 
 enum class Avc420OutputState {
@@ -66,7 +67,6 @@ private:
 
     enum class WorkerTaskType {
         Prewarm,
-        GdiFrame,
         SurfaceCommand,
         EndFrame,
     };
@@ -74,7 +74,6 @@ private:
     struct WorkerTask {
         WorkerTaskType type = WorkerTaskType::Prewarm;
         OwnedAvc420Command command;
-        RgbaFrame gdiFrame {};
         FREERDP_OHOS_RDPGFX_FRAME_INFO frame {};
         Avc420GpuCompositorCallbacks callbacks;
         uint32_t prewarmSurfaceWidth = 0;
@@ -84,7 +83,6 @@ private:
 
     struct WorkerQueueDropCounts {
         uint64_t prewarms = 0;
-        uint64_t gdiFrames = 0;
         uint64_t commands = 0;
         uint64_t endFrames = 0;
     };
@@ -94,7 +92,6 @@ private:
         size_t depthBefore = 0;
         size_t depthAfter = 0;
         size_t preservedCommands = 0;
-        size_t preservedGdiFrames = 0;
         size_t preservedEndFrames = 0;
         uint32_t preservedEndFrameId = 0;
         uint32_t preservedEndFrameActiveId = 0;
@@ -102,8 +99,7 @@ private:
 
         bool DidDrop() const
         {
-            return drops.prewarms != 0 || drops.gdiFrames != 0 ||
-                drops.commands != 0 || drops.endFrames != 0;
+            return drops.prewarms != 0 || drops.commands != 0 || drops.endFrames != 0;
         }
     };
 
@@ -119,7 +115,10 @@ private:
     bool DetachOutputActive(const std::string& reason,
         const Avc420GpuCompositorCallbacks& callbacks, bool clearQueuedWork,
         RenderOutputOwnerTransitionReason transitionReason, std::vector<std::string>& logs);
-    bool EnqueueGdiFrame(const RgbaFrame& frame, bool outputActive);
+    bool SeedBackgroundBeforeTakeover(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
+        const Avc420GpuCompositorCallbacks& callbacks, std::vector<std::string>& logs);
+    bool ClaimOutputAfterTakeover(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
+        const Avc420GpuCompositorCallbacks& callbacks, std::vector<std::string>& logs);
     bool EnqueueSurfaceCommand(const FREERDP_OHOS_RDPGFX_AVC420_COMMAND_INFO* command,
         const Avc420GpuCompositorCallbacks& callbacks, bool outputActive);
     bool EnqueueEndFrame(const FREERDP_OHOS_RDPGFX_FRAME_INFO* frame,
@@ -145,6 +144,10 @@ private:
     uint32_t lastTargetWidth_ = 0;
     uint32_t lastTargetHeight_ = 0;
     bool lastFullSurface_ = false;
+    bool backgroundSeeded_ = false;
+    uint32_t backgroundSeedWidth_ = 0;
+    uint32_t backgroundSeedHeight_ = 0;
+    std::chrono::steady_clock::time_point lastAvc420CommandAt_ {};
     std::string diagnostics_;
     mutable std::string implDiagnosticsCache_;
     std::chrono::steady_clock::time_point nextStatsLogAt_ {};
@@ -157,11 +160,9 @@ private:
     Avc420OutputState outputState_ = Avc420OutputState::Detached;
     std::unique_ptr<Avc420GpuCompositorImpl> impl_;
     std::atomic<uint64_t> workerQueuedPrewarms_ {0};
-    std::atomic<uint64_t> workerQueuedGdiFrames_ {0};
     std::atomic<uint64_t> workerQueuedCommands_ {0};
     std::atomic<uint64_t> workerQueuedEndFrames_ {0};
     std::atomic<uint64_t> workerProcessedPrewarms_ {0};
-    std::atomic<uint64_t> workerProcessedGdiFrames_ {0};
     std::atomic<uint64_t> workerProcessedCommands_ {0};
     std::atomic<uint64_t> workerProcessedEndFrames_ {0};
     std::atomic<uint64_t> workerDroppedCommands_ {0};
