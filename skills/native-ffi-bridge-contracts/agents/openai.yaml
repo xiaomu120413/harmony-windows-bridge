@@ -1,0 +1,4 @@
+interface:
+  display_name: "Native FFI Bridge Contracts"
+  short_description: "Design stable app-to-native bridge APIs."
+  default_prompt: "Use $native-ffi-bridge-contracts to design a stable bridge between app code and this native library."

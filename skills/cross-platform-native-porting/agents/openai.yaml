@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cross-Platform Native Porting"
+  short_description: "Port C/C++ libraries across platform targets."
+  default_prompt: "Use $cross-platform-native-porting to port this C/C++ dependency to a new platform target while preserving upstream compatibility."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Media Render Pipeline Adapter"
+  short_description: "Bridge media frames into platform rendering."
+  default_prompt: "Use $media-render-pipeline-adapter to adapt this library frame pipeline to the platform rendering surface."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Upstream Patch Upgrade Management"
+  short_description: "Maintain local patches across upstream upgrades."
+  default_prompt: "Use $upstream-patch-upgrade-management to keep this third-party fork aligned with upstream while preserving local platform patches."

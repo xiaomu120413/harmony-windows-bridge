@@ -1,0 +1,4 @@
+interface:
+  display_name: "Third-Party Security Compliance"
+  short_description: "Review native dependencies for security and licenses."
+  default_prompt: "Use $third-party-security-compliance to check security, license, and distribution risks for this third-party native dependency."

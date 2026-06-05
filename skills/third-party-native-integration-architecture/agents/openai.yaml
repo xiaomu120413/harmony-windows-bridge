@@ -1,0 +1,4 @@
+interface:
+  display_name: "Third-Party Native Integration Architecture"
+  short_description: "Design reusable native library integration layers."
+  default_prompt: "Use -party-native-integration-architecture to design the architecture and interface contracts for this third-party native library integration."

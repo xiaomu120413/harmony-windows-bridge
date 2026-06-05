@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capability Permission Gating"
+  short_description: "Map library features to platform permissions."
+  default_prompt: "Use $capability-permission-gating to gate this third-party feature behind the right platform permissions and app state."
