@@ -1,0 +1,4 @@
+interface:
+  display_name: "Native Runtime Bundling"
+  short_description: "Package and load native shared libraries."
+  default_prompt: "Use $native-runtime-bundling to package, load, and verify native shared libraries inside the app runtime."

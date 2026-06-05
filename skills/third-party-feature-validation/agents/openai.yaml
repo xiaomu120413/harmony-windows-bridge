@@ -1,0 +1,4 @@
+interface:
+  display_name: "Third-Party Feature Validation"
+  short_description: "Validate third-party library feature profiles."
+  default_prompt: "Use $third-party-feature-validation to build a feature matrix and validation baseline for this dependency."

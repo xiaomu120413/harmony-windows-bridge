@@ -1,0 +1,4 @@
+interface:
+  display_name: "Native Service Orchestration"
+  short_description: "Run native daemons under app control."
+  default_prompt: "Use $native-service-orchestration to manage this native daemon from app startup through diagnostics."

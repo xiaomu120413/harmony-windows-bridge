@@ -1,0 +1,4 @@
+interface:
+  display_name: "Platform Backend Adapter"
+  short_description: "Adapt library backends to platform APIs."
+  default_prompt: "Use $platform-backend-adapter to connect this library backend to platform APIs without forking the core logic."
