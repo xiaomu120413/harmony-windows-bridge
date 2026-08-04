@@ -472,7 +472,7 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 
 ### 9.5 虚拟键盘和中文输入
 
-- XComponent 获得 Native focus 时由 `RemoteImeClient` 自动 attach/show 系统输入法；失焦、Surface 销毁或会话退出时自动 hide/detach，不提供工具栏按钮或配置开关。
+- XComponent 获得 Native focus 时由 `RemoteImeClient` 自动 attach/show 系统输入法；失焦、Surface 销毁或会话退出时自动 hide/detach，不提供工具栏按钮或配置开关。若用户通过系统返回键临时隐藏键盘但 XComponent 仍保持焦点，下一次触摸 XComponent 时由 Native 根据 keyboard status 恢复 show，不新建第二输入链。
 - ArkTS 不创建隐藏 `TextInput`，不维护 IME active 状态，也不暴露逐字符或 open/close N-API；仅向 Native 提供宿主 `windowId/displayId`，并在会话页设置 `KeyboardAvoidMode.NONE`。
 - Native `InputMethod_TextEditorProxy` 保存 preview text 本地组合态，只把 committed insert 交给现有 `RdpSession::SendCommittedText`，不把拼音预编辑串重复发送。
 - delete forward/backward 与 Enter 由 Native 直接转成平台键；物理键盘、鼠标和触控仍由 XComponent callback 处理，避免 ArkTS 输入宿主与 XComponent 双输入源。
@@ -1025,14 +1025,14 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | Change ID | TAB-F-01 |
 | 设计版本/章节 | v1.4；第 9.5、10.6、10.7、12.9、13、14.2、14.3 节 |
 | 用户决策 | 2026-08-04确认虚拟键盘获焦后的适配是本轮重点；浮窗字体/点击目标和其余审计项不作为本项问题 |
-| 交互与焦点 | 2026-08-04用户明确要求不做键盘开关，IME 完全绑定 XComponent。XComponent Native focus callback 先释放活动远端按键，再由 `RemoteImeClient` attach/show；blur、Surface destroyed、会话退出时 hide/detach 并清理 preview。ArkTS 不创建 TextInput、不持有 IME active 状态，也不提供手动开关 |
+| 交互与焦点 | 2026-08-04用户明确要求不做键盘开关，IME 完全绑定 XComponent。XComponent Native focus callback 先释放活动远端按键，再由 `RemoteImeClient` attach/show；blur、Surface destroyed、会话退出时 hide/detach 并清理 preview。Native keyboard-status callback 记录 show/hide；系统返回键仅隐藏但不改变 XComponent focus 时，下一次 XComponent touch-down 自动恢复 show。ArkTS 不创建 TextInput、不持有 IME active 状态，也不提供手动开关 |
 | IME 数据流 | 2026-08-04按用户复核改用 API 22 Native IME C API。新建 `RemoteImeClient`，通过 `OH_InputMethodController_Attach` + `InputMethod_TextEditorProxy` 接收 committed insert、delete forward/backward、enter 和 preview 生命周期；preview 只保存在本地组合态，不发远端，insert 才调用现有 `RdpSession::SendCommittedText`，delete/enter直接调用 `SendPlatformKey`。XComponent 保持焦点并继续处理物理键盘/鼠标/触控，避免 ArkTS TextInput 与 XComponent 双输入源 |
 | 键盘避让 | 进入会话保存当前 `KeyboardAvoidMode` 并设置 `NONE`，离开时恢复；不再监听或镜像 keyboardHeight，因为没有浮动键盘控件需要移动。键盘以 overlay 覆盖且不改变 XComponent width/height、不触发远端 resize。远端 caret 位置不可由当前 RDP 通道获得，因此不伪造自动滚动或远端光标跟随 |
 | N-API/Native 边界 | N-API 只通过公共 `configureHostWindow()` 传 windowId/displayId，不暴露 open/close 或逐字符接口。IME attach/proxy、XComponent focus/blur、预编辑、提交、删除、Enter 和状态清理由 Native `RemoteImeClient` 持有；ArkTS SessionPage 只保存/设置/恢复 `KeyboardAvoidMode.NONE`。`SetNeedSoftKeyboard` 不作为第二条输入链，显式设为 false，由 RemoteImeClient 唯一 attach/show |
 | 计划代码文件 | 新建 `cpp/input/remote_ime_client.h/.cpp`；修改 `components/session/RdpSessionPage.ets`（仅键盘避让，无 TextInput/按钮）、`entryability/EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/api_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`input/xcomponent_input_bridge.h`、`xcomponent_input_registration.cpp`、`xcomponent_key.cpp`、`cpp/CMakeLists.txt`；删除 ArkTS `SessionImePolicy`、`SessionKeyboardEnvironment` 及测试 |
 | 非目标 | 不实现远端 caret 探测、候选窗自绘、手写输入、远端桌面缩放、Surface 随键盘缩放或一套 tablet 专用 SessionPage；不顺带修改浮窗/全屏策略和其他会话工具栏功能 |
 | 兼容与回退 | 目标和兼容 API 均为 22；退出路径必须恢复原 KeyboardAvoidMode 并注销同一 keyboard callback。任一 native 输入调用失败仅记录可诊断错误并保留本地焦点，不崩溃、不重复补发。回退需同时删除 ArkTS 输入宿主与两个 N-API 导出，避免留下可聚焦但不能远程提交的假输入框 |
-| 验收ID | AC-IME：XComponent focus 自动显示、blur 自动隐藏，中文拼音选词仅一次提交，英文/数字/退格/Delete/Enter及20次 focus/blur 循环；AC-INPUT：IME 显示时物理打印字符不双发且非打印键可达；AC-XC/AC-RESIZE：IME 显示隐藏前后 Surface width/height 不变、无 reconnect/resize_request；AC-ARCH：无按钮、无 TextInput、无 open/close 或逐字符 N-API，IME 状态不进入 ArkTS。HAP 构建及本机策略测试通过后标 Implemented，tablet 真机中文 IME+物理键盘+Surface 日志证据通过后升 Verified |
+| 验收ID | AC-IME：XComponent focus 自动显示、blur 自动隐藏，系统返回键隐藏后再次触摸可自动恢复，中文拼音选词仅一次提交，英文/数字/退格/Delete/Enter及20次 focus/blur 循环；AC-INPUT：IME 显示时物理打印字符不双发且非打印键可达；AC-XC/AC-RESIZE：IME 显示隐藏前后 Surface width/height 不变、无 reconnect/resize_request；AC-ARCH：无按钮、无 TextInput、无 open/close 或逐字符 N-API，IME 状态不进入 ArkTS。HAP 构建及本机策略测试通过后标 Implemented，tablet 真机中文 IME+物理键盘+Surface 日志证据通过后升 Verified |
 | 设计状态 | DesignReady |
 | 实现状态 | NotStarted |
 | 实际代码文件 | 待实现回写 |
