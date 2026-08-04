@@ -5,6 +5,12 @@ validation notes live under `docs/archive/`.
 
 ## Current Docs
 
+- [harmonyos-tablet-adaptation-architecture-and-acceptance.md](harmonyos-tablet-adaptation-architecture-and-acceptance.md):
+  proposed architecture and acceptance baseline (not yet implemented) for the
+  single-HAP tablet/2in1 UI and capability isolation, file-level change list
+  and XComponent adaptation. Current runtime capability remains defined by the
+  code and the FreeRDP feature matrix.
+
 - `freerdp-ohos-feature-matrix.md`: current OHOS FreeRDP feature status,
   default channel policy, permissions and fallback behavior.
 - `freerdp-ohos-validation-baseline.md`: repeatable build, runtime sync, HAP
