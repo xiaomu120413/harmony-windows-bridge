@@ -146,9 +146,10 @@ export struct HomeStatusFooter {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Circle()
+      Column()
         .width(9)
         .height(9)
+        .borderRadius(4.5)
         .backgroundColor(SettingsTheme.statusText(this.isDark, this.cardTone(config.section)))
     }
     .height(52)
