@@ -35,7 +35,7 @@
 | C. 系统能力 | tablet 声明、auto_rotation、split、600×480 候选窗口、系统字体比例 | B 通过后启用 | 同一 HAP 的 tablet/2in1 真机矩阵 |
 | D. UI 重排 | Home/Settings Compact/Expanded、内部 Grid、Scroll、字体/Icon/焦点 | A/C 基线稳定后 | 布局截图 + snapshot + 839/840 状态连续性 |
 | E. 功能隔离 | D-01 下 XRDP 初始化/服务/路由/展示四层隔离，保留 RDP 客户端远程文件 | D-01 已确认 | tablet Native mock 零调用 + 2in1 回归 |
-| F. 输入能力 | 触控阈值、黑边拒绝、releaseAllInput、显式 IME/中文输入 | B 的 geometry 可用 | 坐标、手势、键鼠、IME 和失焦释放测试 |
+| F. 输入能力 | 触控阈值、黑边拒绝、releaseAllInput、XComponent focus 驱动的 Native IME/中文输入 | B 的 geometry 可用 | 坐标、手势、键鼠、IME 和失焦释放测试 |
 | G. 交付门禁 | 自动测试、架构检查、Debug/Release、证据包 | 各工作包同步建设 | 脚本退出码、canonical HAP、完成定义 |
 
 ### 1.2 本文怎么用
@@ -171,7 +171,7 @@ Index（页面协调器，不再承载底层算法）
 │     ├─ 常驻 XComponent
 │     ├─ 状态/错误 overlay
 │     ├─ 浮动会话工具栏
-│     └─ 显式 IME 输入入口
+│     └─ XComponent focus 驱动的 Native IME
 │
 └─ showSession = false
    └─ AdaptiveShell
@@ -472,15 +472,14 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 
 ### 9.5 虚拟键盘和中文输入
 
-- 默认触摸远程桌面不自动弹软键盘。
-- 会话工具栏提供明确的键盘按钮。
-- 键盘入口聚焦 ArkUI TextInput 输入宿主；TextInput 获焦期间 XComponent key callback 不再是按键来源，不能假定两边同时收事件。
-- TextInput preview text 保持本地组合态；onDidInsert 只把已提交文本交给 sendCommittedText，不把拼音预编辑串重复发送。
-- onDidDelete 转成退格/删除平台键，onSubmit 转成 Enter；TextInput.onKeyEvent 只转发方向键、修饰键等非打印物理键，打印字符仍以 onDidInsert 为准，避免双发。
+- XComponent 获得 Native focus 时由 `RemoteImeClient` 自动 attach/show 系统输入法；失焦、Surface 销毁或会话退出时自动 hide/detach，不提供工具栏按钮或配置开关。
+- ArkTS 不创建隐藏 `TextInput`，不维护 IME active 状态，也不暴露逐字符或 open/close N-API；仅向 Native 提供宿主 `windowId/displayId`，并在会话页设置 `KeyboardAvoidMode.NONE`。
+- Native `InputMethod_TextEditorProxy` 保存 preview text 本地组合态，只把 committed insert 交给现有 `RdpSession::SendCommittedText`，不把拼音预编辑串重复发送。
+- delete forward/backward 与 Enter 由 Native 直接转成平台键；物理键盘、鼠标和触控仍由 XComponent callback 处理，避免 ArkTS 输入宿主与 XComponent 双输入源。
 - N-API 暴露 sendCommittedText 和 sendPlatformKey，分别薄转发到现有 RdpSession::SendCommittedText/SendPlatformKey。
 - 进入会话保存当前 KeyboardAvoidMode，设置为 NONE；退出时恢复。
 - IME 以 overlay 方式覆盖，会话 Surface 尺寸不能因键盘显示/隐藏而变化。
-- 关闭 IME 时清空输入宿主，并用稳定 focus id 把焦点还给 XComponent；随后物理键盘继续由 XComponent callback 处理。
+- 关闭 IME 时清理 Native preview 状态但不转移 XComponent 焦点；随后物理键盘继续由 XComponent callback 处理。
 - 需要验证中文拼音组合、候选选择、英文、数字、退格、Enter 和连续开关键盘。
 
 ## 10. 文件级修改清单
@@ -550,11 +549,11 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 
 | 优先级 | 文件 | 修改点 | 文件完成条件 |
 |---|---|---|---|
-| P0，新文件 | harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets | 从 Index 移出会话 Builder；接收已有 Controller；固定 Stack + XComponent + overlay；用 TextInput onDidInsert/onDidDelete/onSubmit/onKeyEvent 实现 IME，并处理 KeyboardAvoidMode 与焦点恢复 | 切布局/工具栏/字体不重建 Controller 或 session；中英文不双发 |
+| P0，新文件 | harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets | 从 Index 移出会话 Builder；接收已有 Controller；固定 Stack + XComponent + overlay；会话期间设置并在退出时恢复 `KeyboardAvoidMode.NONE`，不创建 TextInput 或 IME 按钮 | 切布局/字体/键盘显示状态不重建 Controller、session 或 Surface |
 | P0 | harmony/app/entry/src/main/ets/pages/Index.ets | XComponentController 只在这里创建一次；showSession 保持最外层分支 | 静态只有一个创建点，运行时 controllerInstanceId 保持不变 |
 | P0 | harmony/app/entry/src/main/ets/pages/Index.ets、harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 会话开始及 display change 时用 display.getDefaultDisplaySync() 读取 rotation 和本地 densityDPI，形成 P0 DisplayProfile，经 Controller 转发；display.on/off('change') 成对 | 旋转后 profile generation 更新，页面消失后无残留监听 |
 | P1 | harmony/app/entry/src/main/ets/pages/Index.ets、harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | DisplayProfile 再加入经校验的 xDPI/yDPI 和远端 scale 策略 | 不与 P0 旋转提交混合；无效值有明确 fallback |
-| P0 | harmony/app/entry/src/main/cpp/input/xcomponent_input_registration.cpp | 不再无条件 SetNeedSoftKeyboard(true)；MakeNativePointer 默认不允许 clamp | 普通触摸不误弹键盘；down/click/hover 不夹到边缘 |
+| P0 | harmony/app/entry/src/main/cpp/input/xcomponent_input_registration.cpp | 显式 `SetNeedSoftKeyboard(false)`，由 XComponent focus/blur 唯一驱动 `RemoteImeClient`；MakeNativePointer 默认不允许 clamp | 获焦自动显示、失焦自动隐藏且无第二输入链；down/click/hover 不夹到边缘 |
 | P0 | harmony/app/entry/src/main/cpp/napi/napi_exports.cpp、harmony/app/entry/src/main/cpp/napi/napi_exports.h、harmony/app/entry/src/main/cpp/types/libentry/Index.d.ts | 增加 sendCommittedText、sendPlatformKey、surface orientation/input density、RDP diagnostics 薄接口；P1 才加 xDPI/yDPI/scale | 参数校验后转发，不承载算法 |
 | P0 | harmony/app/entry/src/main/cpp/input/xcomponent_mouse.cpp、harmony/app/entry/src/main/cpp/input/xcomponent_touch_gesture.cpp | down/click/hover 的 allowClamp=false；仅已开始拖动的 move/up 可有限 clamp；原始 px 阈值改为 density 相关 | 不同密度手感一致；黑边不误触远端边缘 |
 | P0 | harmony/app/entry/src/main/cpp/input/xcomponent_input_bridge.h、harmony/app/entry/src/main/cpp/input/xcomponent_input_internal.h、harmony/app/entry/src/main/cpp/session/rdp_session_input.cpp | 新增幂等 releaseAllInput：发送活动左/右/中/触控拖动 up，再释放所有键，最后清本地状态；在 Surface invalidation/blur/background/disconnect 调用 | diagnostics 的 buttonsDown/keysDown 均归零，远端无粘键/粘按钮 |
@@ -608,7 +607,7 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 8. 改首页 Compact/Expanded。
 9. 改设置 Compact/Expanded。
 10. 清理固定高度、字体裁切、Icon 热区和焦点顺序。
-11. 补显式 IME、sendCommittedText 和 density 触控阈值。
+11. 补 XComponent focus 驱动的 Native IME、sendCommittedText 和 density 触控阈值。
 12. 完成 600×480 与 1.75 字体验收后，把 600×480 固化为发布 manifest 值；若产品另有更高下限，必须有独立产品决策，不能代替布局修复。
 13. 最后以 P1 独立评估远端 auto DPI、手动 100/140/180 和增强手势。
 
@@ -1033,7 +1032,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 计划代码文件 | 新建 `cpp/input/remote_ime_client.h/.cpp`；修改 `components/session/RdpSessionPage.ets`（仅键盘避让，无 TextInput/按钮）、`entryability/EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/api_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`input/xcomponent_input_bridge.h`、`xcomponent_input_registration.cpp`、`xcomponent_key.cpp`、`cpp/CMakeLists.txt`；删除 ArkTS `SessionImePolicy`、`SessionKeyboardEnvironment` 及测试 |
 | 非目标 | 不实现远端 caret 探测、候选窗自绘、手写输入、远端桌面缩放、Surface 随键盘缩放或一套 tablet 专用 SessionPage；不顺带修改浮窗/全屏策略和其他会话工具栏功能 |
 | 兼容与回退 | 目标和兼容 API 均为 22；退出路径必须恢复原 KeyboardAvoidMode 并注销同一 keyboard callback。任一 native 输入调用失败仅记录可诊断错误并保留本地焦点，不崩溃、不重复补发。回退需同时删除 ArkTS 输入宿主与两个 N-API 导出，避免留下可聚焦但不能远程提交的假输入框 |
-| 验收ID | AC-IME：中文拼音选词仅一次提交、英文/数字/退格/Delete/Enter、开关20次、关闭后焦点恢复；AC-INPUT：IME 获焦时物理打印字符不双发且非打印键可达；AC-XC/AC-RESIZE：IME 显示隐藏前后 Surface width/height 不变、无 reconnect/resize_request；AC-ARCH：普通 XComponent 触摸不请求软键盘、IME 状态不进入 N-API。HAP 构建及本机策略测试通过后标 Implemented，tablet 真机中文 IME+物理键盘+Surface 日志证据通过后升 Verified |
+| 验收ID | AC-IME：XComponent focus 自动显示、blur 自动隐藏，中文拼音选词仅一次提交，英文/数字/退格/Delete/Enter及20次 focus/blur 循环；AC-INPUT：IME 显示时物理打印字符不双发且非打印键可达；AC-XC/AC-RESIZE：IME 显示隐藏前后 Surface width/height 不变、无 reconnect/resize_request；AC-ARCH：无按钮、无 TextInput、无 open/close 或逐字符 N-API，IME 状态不进入 ArkTS。HAP 构建及本机策略测试通过后标 Implemented，tablet 真机中文 IME+物理键盘+Surface 日志证据通过后升 Verified |
 | 设计状态 | DesignReady |
 | 实现状态 | NotStarted |
 | 实际代码文件 | 待实现回写 |
@@ -1226,19 +1225,19 @@ tablet 冷启动：
 
 ### 12.9 虚拟键盘
 
-- 普通触摸 XComponent 不自动弹键盘。
-- 工具栏键盘按钮可显式打开/关闭。
+- XComponent 获得 Native focus 后自动弹出键盘，失焦后自动关闭；界面中不存在键盘按钮或配置开关。
+- ArkTS 组件树不存在隐藏 TextInput，N-API 不存在 IME open/close 或逐字符入口。
 - 中文拼音：预编辑不重复发送，选词后只提交一次。
 - 英文、数字、退格、Enter 正常。
-- IME 打开且 TextInput 获焦时，物理键盘打印字符只提交一次；方向键、修饰键等非打印键仍可到达远端。
-- 关闭 IME 后 focus 返回 XComponent，随后物理键盘输入继续正常。
+- IME 打开且 XComponent 保持焦点时，中文选词只提交一次；物理键盘、方向键和修饰键继续由 XComponent 到达远端且不双发。
+- XComponent 失焦并关闭 IME 后，Native preview 和按键状态完成清理；再次获焦可重新 attach/show。
 - 键盘开关 20 次，Surface width/height 不变化。
 - IME 显示/隐藏不触发 RDP reconnect 或动态分辨率请求。
 
 ### 12.10 稳定性
 
 - 远程会话持续 30 分钟。
-- 期间执行 10 次旋转、20 次窗口 resize、20 次 IME 开关和 20 次前后台切换。
+- 期间执行 10 次旋转、20 次窗口 resize、20 次 XComponent focus/blur IME 循环和 20 次前后台切换。
 - 无崩溃、永久黑屏、输入失配、粘键或持续增长的 pending resize；结束时 activePointerButtons/buttonsDown/keysDown 均为 0。
 
 ## 13. 诊断字段、验收快照和日志
