@@ -1,5 +1,7 @@
 #include "input/xcomponent_input_internal.h"
+#include "input/remote_pointer_text_detector.h"
 #include "input/remote_ime_client.h"
+#include "input/xcomponent_touch_policy.h"
 
 namespace rdp_bridge {
 namespace {
@@ -164,6 +166,7 @@ bool DispatchNativeTouchScroll(const OH_NativeXComponent_TouchEvent& touchEvent,
             "touch.scroll.releaseDrag");
     }
     ResetNativeTouchGesture();
+    g_nativeTouch.lastTapValid = false;
 
     if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN || !g_nativeTouch.scrollActive) {
         g_nativeTouch.scrollActive = true;
@@ -202,7 +205,6 @@ bool DispatchNativeTouchScroll(const OH_NativeXComponent_TouchEvent& touchEvent,
 bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
     OH_NativeXComponent_EventSourceType source)
 {
-    constexpr float kDragThreshold = 8.0f;
     constexpr uint64_t kLongPressTimeoutMs = 550;
     if (!IsNativeTouchscreenLikeSource(source)) {
         return false;
@@ -240,15 +242,17 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
 
     if (touchEvent.type == OH_NATIVEXCOMPONENT_MOVE) {
         if (!g_nativeTouch.leftDragActive && !g_nativeTouch.longPressSent &&
-            ageMs >= kLongPressTimeoutMs && distance < kDragThreshold) {
+            ageMs >= kLongPressTimeoutMs && distance < kNativeTouchDragThresholdPx) {
             SendNativeTouchClick(LocalPointerButtonRight, g_nativeTouch.startX,
                 g_nativeTouch.startY, "touch.longPress.right");
             g_nativeTouch.longPressSent = true;
+            g_nativeTouch.lastTapValid = false;
             ResetNativeTouchGesture();
             return true;
         }
-        if (!g_nativeTouch.leftDragActive && distance >= kDragThreshold) {
+        if (!g_nativeTouch.leftDragActive && distance >= kNativeTouchDragThresholdPx) {
             g_nativeTouch.leftDragActive = true;
+            g_nativeTouch.lastTapValid = false;
             SendNativeTouchMove(g_nativeTouch.startX, g_nativeTouch.startY,
                 LocalPointerButtonNone, "touch.drag.start.move", true);
             SendNativeTouchButton(LocalPointerButtonLeft, true, g_nativeTouch.startX,
@@ -266,12 +270,28 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
         if (g_nativeTouch.leftDragActive) {
             ReleaseNativeTouchLeftDrag(x, y, "touch.drag.release");
         } else if (!cancelled && !g_nativeTouch.longPressSent) {
-            if (ageMs >= kLongPressTimeoutMs && distance < kDragThreshold) {
+            if (ageMs >= kLongPressTimeoutMs && distance < kNativeTouchDragThresholdPx) {
                 SendNativeTouchClick(LocalPointerButtonRight, g_nativeTouch.startX,
                     g_nativeTouch.startY, "touch.longPress.right");
+                g_nativeTouch.lastTapValid = false;
             } else {
-                SendNativeTouchClick(LocalPointerButtonLeft, x, y, "touch.tap.left");
+                const uint64_t tapAtMs = NowMs();
+                const bool doubleTap = g_nativeTouch.lastTapValid && IsNativeDoubleTap(
+                    g_nativeTouch.lastTapAtMs, g_nativeTouch.lastTapX, g_nativeTouch.lastTapY,
+                    tapAtMs, x, y);
+                SendNativeTouchClick(LocalPointerButtonLeft, x, y,
+                    doubleTap ? "touch.doubleTap.left.second" : "touch.tap.left");
+                if (doubleTap) {
+                    g_nativeTouch.lastTapValid = false;
+                } else {
+                    g_nativeTouch.lastTapValid = true;
+                    g_nativeTouch.lastTapAtMs = tapAtMs;
+                    g_nativeTouch.lastTapX = x;
+                    g_nativeTouch.lastTapY = y;
+                }
             }
+        } else if (cancelled) {
+            g_nativeTouch.lastTapValid = false;
         }
         ResetNativeTouchGesture();
         return true;
@@ -298,12 +318,8 @@ void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window)
     const OH_NativeXComponent_EventSourceType source =
         ResolveNativeTouchSource(component, touchEvent);
     if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN &&
-        IsNativeTouchscreenLikeSource(source) && IsXComponentFocused() &&
-        g_remoteIme != nullptr && !g_remoteIme->IsKeyboardVisible()) {
-        std::string imeMessage;
-        if (!g_remoteIme->Open(imeMessage)) {
-            EmitInputLog("XComponent native IME touch restore failed: " + imeMessage);
-        }
+        IsNativeTouchscreenLikeSource(source) && IsXComponentFocused()) {
+        NotifyRemotePointerDirectTouch(NowMs());
     }
     std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
     if (DispatchNativeTouchScroll(touchEvent, source)) {

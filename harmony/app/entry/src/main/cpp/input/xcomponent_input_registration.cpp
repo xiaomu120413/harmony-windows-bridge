@@ -1,5 +1,6 @@
 #include "input/xcomponent_input_internal.h"
 #include "input/remote_ime_client.h"
+#include "input/remote_pointer_text_detector.h"
 
 #include <utility>
 
@@ -103,11 +104,29 @@ void ConfigureXComponentInputBridge(
     g_inputSession = session;
     g_remoteIme = remoteIme;
     g_inputLog = std::move(log);
+    ConfigureRemotePointerTextDetector([](bool visible) {
+        if (!IsXComponentFocused() || g_remoteIme == nullptr) {
+            return false;
+        }
+        std::string message;
+        if (visible && g_remoteIme->IsKeyboardVisible()) {
+            return true;
+        }
+        if (!visible && !g_remoteIme->IsKeyboardVisible()) {
+            return true;
+        }
+        const bool applied = visible ? g_remoteIme->Open(message) : g_remoteIme->Close(message);
+        EmitInputLog(std::string("RDP_IME event=touch_pointer_visibility desired=") +
+            (visible ? "shown" : "hidden") + " result=" +
+            (applied ? "applied " : "rejected ") + message);
+        return applied;
+    }, EmitInputLog);
 }
 
 void ResetXComponentInputBridge()
 {
     g_xcomponentFocused.store(false);
+    ResetRemotePointerTextDetector();
     if (g_remoteIme != nullptr) {
         std::string message;
         (void)g_remoteIme->Close(message);

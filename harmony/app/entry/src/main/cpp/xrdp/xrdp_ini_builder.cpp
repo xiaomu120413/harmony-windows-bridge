@@ -79,7 +79,7 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         << "EnableProcessId=true\n\n"
         << "[LoggingPerLogger]\n\n"
         << "[Channels]\n"
-        << "rdpdr=false\n"
+        << "rdpdr=true\n"
         << "rdpsnd=true\n"
         << "drdynvc=true\n"
         << "cliprdr=true\n"

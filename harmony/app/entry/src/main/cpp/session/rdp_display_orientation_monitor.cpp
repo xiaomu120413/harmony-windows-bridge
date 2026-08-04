@@ -92,15 +92,6 @@ void RdpDisplayOrientationMonitor::Stop()
     logCallback_ = nullptr;
 }
 
-bool RdpDisplayOrientationMonitor::SetActiveDisplayId(uint32_t displayId, std::string& message)
-{
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        activeDisplayId_ = displayId;
-    }
-    return Refresh("host_window", message);
-}
-
 void RdpDisplayOrientationMonitor::OnDisplayChanged(uint64_t displayId)
 {
     RdpDisplayOrientationMonitor* monitor = g_activeMonitor.load();

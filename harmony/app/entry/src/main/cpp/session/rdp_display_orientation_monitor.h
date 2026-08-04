@@ -21,7 +21,6 @@ public:
     bool Start(OrientationCallback orientationCallback, LogCallback logCallback,
         std::string& message);
     void Stop();
-    bool SetActiveDisplayId(uint32_t displayId, std::string& message);
 
 private:
     static void OnDisplayChanged(uint64_t displayId);

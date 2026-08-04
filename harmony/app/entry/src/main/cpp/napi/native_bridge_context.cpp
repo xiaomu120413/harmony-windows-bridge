@@ -143,11 +143,6 @@ void ConfigureRdpSessionCallbacks()
                 g_resizeCoordinator.Reset("session disconnected");
                 std::string imeMessage;
                 (void)g_remoteIme.Close(imeMessage);
-            } else if (state == "Connected" && IsXComponentFocused()) {
-                std::string imeMessage;
-                if (!g_remoteIme.Open(imeMessage)) {
-                    EmitNativeLog("Native remote IME deferred open failed: " + imeMessage);
-                }
             }
             g_events.state.Emit(state);
         },
@@ -255,24 +250,15 @@ bool UpdateDisplayOrientation(uint32_t orientation, std::string& message)
     return true;
 }
 
-bool ConfigureHostWindow(uint32_t windowId, uint32_t displayId, std::string& message)
+bool BindImeHostWindow(uint32_t windowId, std::string& message)
 {
     if (windowId == 0) {
-        message = "host windowId must be non-zero";
+        message = "IME host windowId must be non-zero";
         return false;
     }
-    g_remoteIme.Configure(&g_session, windowId);
-    std::string orientationMessage;
-    const bool orientationOk = g_orientationMonitor.SetActiveDisplayId(displayId, orientationMessage);
-    if (IsXComponentFocused() && g_session.IsConnected()) {
-        std::string imeMessage;
-        if (!g_remoteIme.Open(imeMessage)) {
-            EmitNativeLog("Native remote IME host update open failed: " + imeMessage);
-        }
-    }
-    message = "host window configured: windowId=" + std::to_string(windowId) +
-        " displayId=" + std::to_string(displayId) + " " + orientationMessage;
-    return orientationOk;
+    g_remoteIme.BindHostWindow(&g_session, windowId);
+    message = "IME host window bound: windowId=" + std::to_string(windowId);
+    return true;
 }
 
 void InitializeNativeBridgeContext()

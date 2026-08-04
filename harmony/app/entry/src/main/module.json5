@@ -114,6 +114,17 @@
           }
         ]
       }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "MuHubPrintExtension",
+        "srcEntry": "./ets/print/MuHubPrintExtension.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "type": "print",
+        "exported": true
+      }
     ]
   }
 }

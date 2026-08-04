@@ -63,10 +63,16 @@ void OnSendKeyboardStatus(InputMethod_TextEditorProxy*, InputMethod_KeyboardStat
         std::to_string(static_cast<int32_t>(status)));
 }
 
-void OnSendEnter(InputMethod_TextEditorProxy*, InputMethod_EnterKeyType)
+void OnSendEnter(InputMethod_TextEditorProxy*, InputMethod_EnterKeyType enterKeyType)
 {
     if (RemoteImeClient* client = ActiveClient(); client != nullptr) {
         client->SendEnter();
+        if (enterKeyType == IME_ENTER_KEY_DONE) {
+            std::string message;
+            if (!client->HideKeyboard(message)) {
+                BridgeLogger::Error("Native remote IME done hide failed: " + message);
+            }
+        }
     }
 }
 
@@ -140,7 +146,7 @@ RemoteImeClient::~RemoteImeClient()
     }
 }
 
-void RemoteImeClient::Configure(RdpSession* session, uint32_t windowId)
+void RemoteImeClient::BindHostWindow(RdpSession* session, uint32_t windowId)
 {
     session_.store(session);
     windowId_.store(windowId);
@@ -257,6 +263,24 @@ bool RemoteImeClient::Close(std::string& message)
     message = "native remote IME close hideRc=" + std::to_string(static_cast<int32_t>(hideResult)) +
         " detachRc=" + std::to_string(static_cast<int32_t>(detachResult));
     return hideResult == IME_ERR_OK && detachResult == IME_ERR_OK;
+}
+
+bool RemoteImeClient::HideKeyboard(std::string& message)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    FinishPreviewText();
+    if (inputMethodProxy_ == nullptr) {
+        keyboardVisible_.store(false);
+        message = "native remote IME keyboard already hidden";
+        return true;
+    }
+    const InputMethod_ErrorCode hideResult = OH_InputMethodProxy_HideKeyboard(inputMethodProxy_);
+    if (hideResult == IME_ERR_OK) {
+        keyboardVisible_.store(false);
+    }
+    message = "native remote IME hide rc=" +
+        std::to_string(static_cast<int32_t>(hideResult));
+    return hideResult == IME_ERR_OK;
 }
 
 bool RemoteImeClient::IsOpen()

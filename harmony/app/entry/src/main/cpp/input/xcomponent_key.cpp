@@ -1,5 +1,6 @@
 #include "input/xcomponent_input_internal.h"
 #include "input/remote_ime_client.h"
+#include "input/remote_pointer_text_detector.h"
 
 namespace rdp_bridge {
 namespace {
@@ -14,20 +15,12 @@ bool IsModifierPressed(uint64_t modifiers, ArkUI_ModifierKeyName modifier)
 void OnXComponentFocusEvent(OH_NativeXComponent*, void*)
 {
     g_xcomponentFocused.store(true);
-    if (g_remoteIme == nullptr) {
-        return;
-    }
-    std::string message;
-    if (!g_remoteIme->Open(message)) {
-        EmitInputLog("XComponent native IME open failed: " + message);
-    } else {
-        EmitInputLog("XComponent native IME opened: " + message);
-    }
 }
 
 void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
 {
     g_xcomponentFocused.store(false);
+    ResetRemotePointerTextDetector();
     if (g_remoteIme != nullptr) {
         std::string imeMessage;
         if (!g_remoteIme->Close(imeMessage)) {

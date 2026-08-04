@@ -29,6 +29,10 @@ struct NativeTouchState {
     float startY = 0.0f;
     float lastX = 0.0f;
     float lastY = 0.0f;
+    bool lastTapValid = false;
+    uint64_t lastTapAtMs = 0;
+    float lastTapX = 0.0f;
+    float lastTapY = 0.0f;
     float scrollLastX = 0.0f;
     float scrollLastY = 0.0f;
 };
