@@ -10,9 +10,10 @@ export struct SettingsStatusChip {
 
   build() {
     Row({ space: 6 }) {
-      Circle()
+      Column()
         .width(7)
         .height(7)
+        .borderRadius(3.5)
         .backgroundColor(SettingsTheme.statusText(this.isDark, this.tone))
 
       Text(this.text)

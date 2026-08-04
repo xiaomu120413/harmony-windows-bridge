@@ -32,9 +32,10 @@ export struct HomeHeader {
   @Builder
   private buildHeaderStatus() {
     Row({ space: 10 }) {
-      Circle()
+      Column()
         .width(9)
         .height(9)
+        .borderRadius(4.5)
         .backgroundColor(SettingsTheme.statusText(this.isDark, this.headerStatusTone()))
       Text(this.headerStatusText())
         .fontSize(15)
