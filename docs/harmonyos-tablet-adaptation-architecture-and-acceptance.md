@@ -1,7 +1,7 @@
 # MuHub HarmonyOS 单包平板适配架构、修改清单与验收方案
 
 > 状态：架构基线，尚未实施
-> 文档版本：1.2
+> 文档版本：1.4
 > 审阅日期：2026-08-04
 > 适用工程：MuHub HarmonyOS 应用，目标/兼容 API 22
 > 本文目标：先固定修改边界、实施顺序、验收口径和架构门禁，再开始改业务代码。
@@ -997,6 +997,49 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 设计偏差及原因 | 本次完成结构化结果、无兼容层、Sent目标等待/超时、即时fallback和生命周期Reset；尚未实现第9.3节完整DisplayGeometry及输入门禁，App当前仍传`ORIENTATION_LANDSCAPE`，待DisplayProfile/rotation工作包提供真实方向。未加入200ms SurfaceChanged debounce，避免在缺少真机旋转事件序列证据时引入额外时序；这些缺口使AC-INPUT和三codec旋转矩阵保持未通过 |
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1`退出码0，覆盖Deferred即时fallback、Sent目标匹配/超时、last-write-wins和reset取消；`tools/run_tablet_arkts_tests.ps1`退出码0；`build-freerdp-ohos.sh`完整OHOS arm64交叉构建退出码0（198.3s）；源码`rg`确认旧session接口及三个旧display包装均0引用；runtime与最终HAP内`readelf -Ws`仅见`freerdp_ohos_session_resize_ex`、`display_*_ex`；`build_hap.bat`退出码0，signed HAP 35,389,685 bytes；在线2in1 `3QC0124C11000711`安装成功、EntryAbility前台、首帧完成且无FATAL/SIGABRT。平板`5JB0223804000371`离线，按用户决策超时收口；平板旋转/分屏/触控/IME及真实RDP GDI/AVC420/AVC444矩阵待补 |
 | 关联FreeRDP提交/父仓提交 | FreeRDP `3c2aa31a1`；设计先行父仓提交`0326453`；实现父仓提交待本项提交后以Git历史为准 |
+
+#### TAB-B-02：真实显示方向接入远端 resize
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-B-02 |
+| 设计版本/章节 | v1.4；第 8.3、9.2、9.3、10.7、12.7、13、14.2、14.3 节 |
+| 用户决策 | 2026-08-04确认浮窗字体/任务栏/点击目标偏小不纳入本轮；本项只修复远程 resize 固定 `ORIENTATION_LANDSCAPE` 的问题，并实际覆盖正横屏、正竖屏、反横屏和反竖屏 |
+| 方向来源与映射 | ArkTS 只读取当前应用主窗口所在 Display 的 `display.Orientation`，映射为 RDP 角度：`LANDSCAPE -> 0`、`PORTRAIT -> 90`、`LANDSCAPE_INVERTED -> 180`、`PORTRAIT_INVERTED -> 270`。禁止用 width/height 猜方向，也不直接把 `Display.rotation` 的自然屏旋转序号当 RDP 角度 |
+| 所有权与时序 | 新建 `DisplayOrientationTracker` 由 `EntryAbility` 创建和销毁，持有主窗口 Display ID，监听 display change 与 window displayIdChange，并在内容加载后立即发布初值。Native 只保存最后一次合法 RDP orientation；方向更新时使用当前 Surface snapshot 主动请求一次 resize，SurfaceChanged 也读取同一份方向，从而不依赖系统先回调旋转还是先回调 SurfaceChanged |
+| N-API/Native 边界 | 新增薄接口 `setDisplayOrientation(orientation)`；N-API 只校验 0/90/180/270 并转交 native bridge，不监听系统事件、不拥有定时器。`RequestRemoteDesktopResize()` 删除固定 landscape，结构化日志同时记录 requested/sent orientation |
+| 计划代码文件 | 新建 `harmony/app/entry/src/main/ets/rdp/DisplayOrientationPolicy.ets`、`DisplayOrientationTracker.ets`；修改 `entryability/EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/api_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、ArkTS 纯策略测试及测试入口 |
+| 非目标 | 不在本项开放/修改浮窗、最大化、全屏、远端缩放或 manifest 窗口策略；不实现第二套 resize coordinator；不以方向变化重建 XComponent、Controller 或 RDP session |
+| 兼容与回退 | 目标和兼容 API 均为 22，不提供旧行为兼容开关；监听/读取异常时保留最后一次合法方向并记录日志。回退需同时删除 Tracker、N-API 接口和 Native 方向状态，不能只恢复 ArkTS 造成跨层不一致 |
+| 验收ID | AC-RESIZE：四个方向的 policy 单测、日志 orientation、Surface 尺寸与远端方向一致；AC-XC：四向旋转不重连、不重建 Controller；AC-ARCH：全仓 App resize 路径不存在固定 `ORIENTATION_LANDSCAPE`，系统方向只由 Tracker 读取。HAP 构建通过后标 Implemented，tablet 真机四向旋转及远端 Windows 方向/画面证据通过后升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现回写 |
+| 设计偏差及原因 | 待实现回写 |
+| 测试命令/结果/证据 | 待实现回写 |
+| 关联提交 | 设计先行提交待本项提交后以 Git 历史为准；实现提交待回写 |
+
+#### TAB-F-01：远程会话虚拟键盘焦点与提交隔离
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-01 |
+| 设计版本/章节 | v1.4；第 9.5、10.6、10.7、12.9、13、14.2、14.3 节 |
+| 用户决策 | 2026-08-04确认虚拟键盘获焦后的适配是本轮重点；浮窗字体/点击目标和其余审计项不作为本项问题 |
+| 交互与焦点 | 会话页新增唯一、明确的键盘开关和一个最小可见但不承载业务展示的 ArkUI `TextInput` 输入宿主。开启时焦点从 XComponent 转交输入宿主；关闭、页面退出或会话断开时清空宿主、释放按键并把焦点恢复给稳定的 XComponent focus id。XComponent 普通触摸不自动弹键盘，因此 Native 取消无条件 `SetNeedSoftKeyboard(true)` |
+| IME 数据流 | `onDidInsert` 只提交 `InsertValue.insertValue` 到现有 `RdpSession::SendCommittedText`；预编辑/候选阶段不发送。`onDidDelete` 按方向发送 Backspace/Delete 的 down+up；`onSubmit` 发送 Enter。TextInput 的物理打印字符仍只走 committed text，方向键、修饰键、Tab、Esc、Home/End、PageUp/PageDown 等非打印键才走 `sendPlatformKey`，避免同一字符双发 |
+| 键盘避让 | 进入会话保存当前 `KeyboardAvoidMode` 并设置 `NONE`，离开时恢复；监听主窗口 `keyboardHeightChange`，只用于把键盘开关/输入状态提示移到键盘上沿并记录诊断，不改变 XComponent width/height，不触发远端 resize。远端 caret 位置不可由当前 RDP 通道获得，因此不伪造自动滚动或远端光标跟随 |
+| N-API/Native 边界 | 新增 `sendCommittedText(text)` 与 `sendPlatformKey(event)` 薄接口，转发到已有 Session API；N-API 校验文本非空、keyCode、down/repeat/modifier 字段，不保存 IME 状态。IME 开关、宿主文本复位、焦点和键盘高度均由 SessionPage/ArkTS 持有 |
+| 计划代码文件 | 修改 `components/session/RdpSessionPage.ets`、`pages/Index.ets`、`entryability/EntryAbility.ets`（仅向页面提供主窗口键盘高度所需的单一生命周期接点，如实现中由 SessionPage 直接取得窗口则不修改）、`cpp/types/libentry/Index.d.ts`、`cpp/napi/api_exports.cpp`、`input/xcomponent_input_registration.cpp`；新增 IME 纯策略/测试文件（非打印键白名单、删除方向映射）并更新测试入口 |
+| 非目标 | 不实现远端 caret 探测、候选窗自绘、手写输入、远端桌面缩放、Surface 随键盘缩放或一套 tablet 专用 SessionPage；不顺带修改浮窗/全屏策略和其他会话工具栏功能 |
+| 兼容与回退 | 目标和兼容 API 均为 22；退出路径必须恢复原 KeyboardAvoidMode 并注销同一 keyboard callback。任一 native 输入调用失败仅记录可诊断错误并保留本地焦点，不崩溃、不重复补发。回退需同时删除 ArkTS 输入宿主与两个 N-API 导出，避免留下可聚焦但不能远程提交的假输入框 |
+| 验收ID | AC-IME：中文拼音选词仅一次提交、英文/数字/退格/Delete/Enter、开关20次、关闭后焦点恢复；AC-INPUT：IME 获焦时物理打印字符不双发且非打印键可达；AC-XC/AC-RESIZE：IME 显示隐藏前后 Surface width/height 不变、无 reconnect/resize_request；AC-ARCH：普通 XComponent 触摸不请求软键盘、IME 状态不进入 N-API。HAP 构建及本机策略测试通过后标 Implemented，tablet 真机中文 IME+物理键盘+Surface 日志证据通过后升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现回写 |
+| 设计偏差及原因 | 待实现回写 |
+| 测试命令/结果/证据 | 待实现回写 |
+| 关联提交 | 设计先行提交待本项提交后以 Git 历史为准；实现提交待回写 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
