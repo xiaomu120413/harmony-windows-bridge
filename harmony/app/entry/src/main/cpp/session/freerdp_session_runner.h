@@ -19,8 +19,8 @@ using FreerdpClearActiveFn = std::function<void(freerdp*)>;
 using FreerdpConnectedFn = std::function<void()>;
 using FreerdpInputPumpFn = std::function<void(FreerdpRuntimeApi*, rdpContext*)>;
 
-RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
-    const RdpSessionCallbacks& callbacks, const FreerdpSetActiveFn& setActive,
+RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, uint64_t diagnosticSessionId,
+    std::atomic_bool& running, const RdpSessionCallbacks& callbacks, const FreerdpSetActiveFn& setActive,
     const FreerdpClearActiveFn& clearActive, const std::function<void(const std::string&)>& log,
     const FreerdpConnectedFn& onConnected, const FreerdpInputPumpFn& pumpInput);
 

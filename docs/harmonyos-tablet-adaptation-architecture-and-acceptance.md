@@ -957,6 +957,24 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试与模块编译通过；静态检查确认全 ArkTS 仅 `RdpSessionPage.ets` 1个XComponent构造、仅`Index.ets` 1个`new XComponentController`，session目录无`libentry.so`/deviceInfo/WidthBreakpoint/LayoutMode依赖；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP 34471202字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装和EntryAbility启动成功，首屏截图`%TEMP%/muhub-a03-home.jpeg`无首页布局回退。无可用RDP测试凭据，本项不伪造实际Surface连接证据 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
+#### TAB-A-04：RDP 会话关键路径结构化诊断
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-04 |
+| 设计版本/章节 | v1.3；第 10.8、12.6、13、14.3 节 |
+| 目标 | 用低频、可关联且不含凭据的 public 日志覆盖连接开始、TCP/FreeRDP失败、图形回退、登录成功、首帧、登录阶段停帧、输入首次使用、resize请求和会话结束，替换重复健康轮询日志，为后续IME和rotation真机验收提供会话级证据 |
+| 计划代码文件 | `session/rdp_session_core.cpp`、`session/freerdp_session_runner.h/.cpp`、`napi/native_bridge_context.cpp`；不修改协议、连接参数、渲染、输入队列、UI和manifest |
+| 数据与日志 | Native为每次Start分配单调`diagnosticSessionId`并贯穿runner；统一使用`RDP_CORE sid=... event=...`和`RDP_DISPLAY event=resize_request ...`。只记录阶段、图形模式、尺寸、耗时、计数和分类后的失败原因；不得记录用户名正文、密码、证书、输入文本、剪贴板或远端像素内容 |
+| 行为不变量 | 日志不改变连接/回退顺序、等待阈值、Surface/Controller所有权、resize状态机或输入发送。登录阶段连续15秒无帧只产生一次`frame_stalled`状态，恢复后由`first_frame recovered=yes`闭环；删除每30秒健康刷屏和每10秒重复停帧日志 |
+| 验收 ID | AC-ARCH：同一连接的关键事件sid一致、无定时健康刷屏、日志字段无敏感内容；AC-XC/AC-RESIZE/AC-INPUT：只增加观测，不改变会话、Surface、resize和输入路径；完整HAP构建及真机连接首帧通过后升Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（代码和完整HAP已通过；现有真机会话可正常恢复XComponent画面，新的完整断开重连事件链待下一次可控连接验收） |
+| 实际代码文件 | `session/rdp_session_core.cpp`、`session/freerdp_session_runner.h/.cpp`、`napi/native_bridge_context.cpp` |
+| 设计偏差及原因 | 无功能行为偏差；resize沿用当前App级`DisplayResizeStatus`名称，未引入第二套诊断状态对象 |
+| 测试命令/结果/证据 | 2026-08-04：`harmony/app/build_hap.bat`退出码0；signed HAP在tablet `5JB0223804000371`安装启动并恢复现有RDP XComponent画面，进程无FATAL/SIGABRT。为避免中断用户当前远程会话，本次未强制断线重连，故保持Implemented |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
+
 #### TAB-B-01：结构化 resize 结果与两秒 fallback
 
 | 字段 | 内容 |

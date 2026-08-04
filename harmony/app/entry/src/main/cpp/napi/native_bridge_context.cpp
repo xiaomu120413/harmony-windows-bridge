@@ -164,8 +164,14 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
     const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(
         snapshot.width, snapshot.height, "surface changed");
     g_resizeCoordinator.ApplyResult(resizeResult, "surface changed");
-    EmitNativeLog(std::string("surface resize outcome=") +
-        DisplayResizeStatusName(resizeResult.status) + " detail=" + resizeResult.message);
+    BridgeLogger::LogPublic(BridgeLogLevel::Info,
+        std::string("RDP_DISPLAY event=resize_request source=surface_changed requested=") +
+            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height) +
+            " normalized=" + std::to_string(resizeResult.normalizedWidth) + "x" +
+            std::to_string(resizeResult.normalizedHeight) + " sent=" +
+            std::to_string(resizeResult.sentWidth) + "x" +
+            std::to_string(resizeResult.sentHeight) + " status=" +
+            DisplayResizeStatusName(resizeResult.status));
     if (resizeResult.status != DisplayResizeStatus::Sent) {
         RequestSurfaceRepaint("surface resize immediate fallback");
     }
