@@ -685,6 +685,28 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功；静态检查结果：callback 符号恰好出现 3 次（定义/on/off），`getWindowWidthBreakpoint()` 恰好 1 次，无 `getWindowProperties`、`windowSizeChange`、`deviceInfo/deviceType` 第二来源；`git diff --unified=0` 证明 showSession/XComponent/Home/Settings 构建分支无改动。仍有一条既有 `SettingsPrimitives.ets` API 26 `fill` 兼容警告，与本项无关 |
 | 关联提交 | 设计先行提交 `e26d8d1`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
+#### TAB-D-01：设置页 Compact/Expanded 拓扑隔离
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-01 |
+| 设计版本/章节 | v1.2；第 5.1、6.2、10.2、10.5、12.3、14.2、14.3 节 |
+| 目标 | 让同一个 SettingsPage、同一个 `pageName` 和同一组回调根据 Index.layoutMode 切换两种拓扑：Compact 概览单页进入子页，Expanded 保留左侧导航与右侧内容；切换断点不重建业务状态源 |
+| 计划代码文件 | 修改 `harmony/app/entry/src/main/ets/pages/Index.ets`、`harmony/app/entry/src/main/ets/components/SettingsPage.ets`；复用 `adaptive/WindowLayoutPolicy.ets`，不新增页面副本 |
+| 公共 API/状态 | SettingsPage 新增 `@Prop layoutMode: LayoutMode`；Index 传递现有唯一 layoutMode；SettingsPage 抽取一个共享内容 Builder。Expanded 渲染 desktop nav + 共享内容，Compact 在概览页渲染可关闭设置的顶栏 + 共享内容，子页继续使用现有 onBack 回到同一概览路由 |
+| 所有权与数据流 | UIContext -> WindowLayoutPolicy -> Index.layoutMode -> SettingsPage 展示分支；`pageName`、appearanceMode、XRDP 状态、权限状态和全部回调仍只存在一份；Compact/Expanded Builder 不拥有业务状态，不调用 Native |
+| Compact 布局 | 不创建 196vp desktop nav；概览顶部提供至少 48vp 的返回/关闭入口，概览内容保持 Scroll；Basic/RemoteControl/ProjectHelp 子页沿用既有页面及其返回回调 |
+| Expanded 布局 | 保留 196vp desktop nav 和右侧共享内容；不改变现有路由、回调、颜色及功能入口 |
+| 非目标 | 本项不决定 tablet 是否显示 XRDP（D-01 仍待决）、不拆设置内部卡片、不修改 Basic/RemoteControl/ProjectHelp/Primitives、不改字体/Icon token、不改 Home/Session/XComponent/Native/manifest |
+| 兼容与回退 | 只依赖现有 LayoutMode；删除 layoutMode Prop、Index 传参和两个拓扑 Builder 后可恢复原 Row；断点切换只条件重排 SettingsPage 容器，不重置 `pageName` |
+| 验收 ID | AC-LAYOUT：Compact 不创建 desktop nav，Expanded 创建且两者复用同一内容 Builder；AC-ARCH：只存在一个 pageName 和一组回调，无 TabletSettingsPage/DesktopSettingsPage；AC-XC：Index 的 showSession/XComponent 分支无改动；本机先完成编译与静态结构检查，600/839/840/1440vp 截图及往返状态证据留到真机验收后再升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现后回写 |
+| 设计偏差及原因 | 待实现后回写 |
+| 测试命令/结果/证据 | 计划执行 ArkTS 单测/模块编译和静态边界检查；真机截图、字体 1.0/1.75 与 839/840 往返证据待设备验收 |
+| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
