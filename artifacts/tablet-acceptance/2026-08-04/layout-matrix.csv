@@ -1,0 +1,8 @@
+device,device_type,orientation,width_vp,height_vp,layout_mode,page,result,evidence,notes
+HAD-W32,2in1,landscape,1280,760,Expanded,Home,PASS,muhub-home-expanded.jpeg,"双栏和四状态入口可见"
+HAD-W32,2in1,landscape,1280,760,Expanded,SettingsOverview,PASS,muhub-settings-real.jpeg,"左侧导航和右侧概览可见"
+HAD-W32,2in1,landscape,1280,760,Expanded,SettingsRoutes,PASS,muhub-layout-settings-basic.json,"basic/remote/help/overview 均可达"
+HAD-W32,2in1,landscape,1280,760,Expanded,HostTouchInput,PASS,muhub-layout-ime-text.json,"真实触控唤起输入面板，ASCII 提交成功"
+HAD-W32,2in1,landscape,839,600,Compact,Home,BLOCKED,,"minWindowWidth=1280，系统拒绝继续缩小"
+HAD-W32,2in1,landscape,839,600,Compact,Settings,BLOCKED,,"minWindowWidth=1280，系统拒绝继续缩小"
+tablet,tablet,portrait,600,800,Compact,Home,NOT_RUN,,"当前 HAP 未声明 tablet，且无 tablet 真机"

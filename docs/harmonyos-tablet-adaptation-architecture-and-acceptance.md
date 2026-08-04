@@ -704,7 +704,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（本机结构与编译通过；等待真机矩阵后升 Verified） |
 | 实际代码文件 | `harmony/app/entry/src/main/ets/pages/Index.ets`、`harmony/app/entry/src/main/ets/components/SettingsPage.ets`、`harmony/app/entry/src/main/ets/components/settings/SettingsPrimitives.ets` |
 | 设计偏差及原因 | 无；实现前发现 BackButton 仅 44vp 后已先通过文档提交补入 48vp 真实点击区域要求，再按更新后的 DesignReady 范围实现 |
-| 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功；静态结构检查：`@State pageName` 仅 1 处、desktop nav 调用仅在 Expanded Builder 1 处、共享内容调用 1 处、无 TabletSettingsPage/DesktopSettingsPage 文件；Index diff 仅新增 layoutMode 传参，showSession/XComponent 无改动；SettingsBackButton 的真实 Button 为 48×48vp，内部图标仍为 18vp。仍有一条既有 API 26 `fill` 兼容警告；真机 600/839/840/1440vp、字体 1.0/1.75 和往返状态证据待补 |
+| 测试命令/结果/证据 | 2026-08-04 两次执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码均为 0、5/5 通过、模块 ArkTS 编译成功；静态结构检查：`@State pageName` 仅 1 处、desktop nav 调用仅在 Expanded Builder 1 处、共享内容调用 1 处、无 TabletSettingsPage/DesktopSettingsPage 文件；Index diff 仅新增 layoutMode 传参，showSession/XComponent 无改动；SettingsBackButton 的真实 Button 为 48×48vp，内部图标仍为 18vp。API 26 `fill` 警告已由 `TAB-D-03` 消除。API 26 2in1 真机 Expanded 概览、基础设置、远控设置、项目帮助四个路由均可达，截图和 layout dump 位于 `artifacts/tablet-acceptance/2026-08-04/`；但当前 `minWindowWidth=1280` 阻塞 Compact，且字体 1.75、839/840 往返及 tablet 真机仍待补，因此保持 Implemented |
 | 关联提交 | 设计先行提交 `083f9db`，48vp 设计补充提交 `5f4266a`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 #### TAB-D-02：首页 Compact/Expanded 外层拓扑与可达性
@@ -727,7 +727,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（本机结构与编译通过；等待真机矩阵及内部表单任务后升 Verified） |
 | 实际代码文件 | `harmony/app/entry/src/main/ets/pages/Index.ets`、`components/home/HomePage.ets`、`HomeHeader.ets`、`HomeDeviceList.ets`、`HomeConnectionDetails.ets`、`HomeStatusFooter.ets` |
 | 设计偏差及原因 | 无；Compact/Expanded 外层拓扑、展示路由、真实点击区、详情 Scroll 和 2×2 Footer 均按 DesignReady 记录实现；190vp 标签列等明确非目标未在本项夹带修改 |
-| 测试命令/结果/证据 | 2026-08-04 两次执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，均退出码 0、5/5 通过、模块 ArkTS 编译成功；静态检查：`@State compactPage` 仅 1 处且为 devices/details 联合类型，Home 子组件断点监听 0 处、libentry/deviceInfo 依赖 0 处、TabletHomePage/DesktopHomePage 0 个；Index diff 仅新增 HomePage.layoutMode 传参，showSession/XComponent 无改动；Compact 分支使用 100% 列表、可滚动详情、48vp 设置/新建/返回和 2×2 GridRow，260vp/31%/70vp 仅保留在 Expanded 分支。仍有一条既有 API 26 `fill` 兼容警告；真机与字体证据待补 |
+| 测试命令/结果/证据 | 2026-08-04 三次执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，均退出码 0、5/5 通过、模块 ArkTS 编译成功；完整 HAP 构建最初发现 `HomePage.ets` 缺少已使用的 `HomeText` import，补齐同一计划文件内的 import 后 `CompileArkTS`、`SignHap`、HNP 重签和真机安装通过。静态检查：`@State compactPage` 仅 1 处且为 devices/details 联合类型，Home 子组件断点监听 0 处、libentry/deviceInfo 依赖 0 处、TabletHomePage/DesktopHomePage 0 个；Index diff 仅新增 HomePage.layoutMode 传参，showSession/XComponent 无改动；Compact 分支使用 100% 列表、可滚动详情、48vp 设置/新建/返回和 2×2 GridRow，260vp/31%/70vp 仅保留在 Expanded 分支。API 26 2in1 真机 Expanded 首页、真实触控 Host 输入和系统输入面板通过，证据位于 `artifacts/tablet-acceptance/2026-08-04/`；但当前 `minWindowWidth=1280` 阻塞 Compact，且字体、839/840 往返和 tablet 真机仍待补，因此保持 Implemented |
 | 关联提交 | 设计先行提交 `1daee02`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 #### TAB-D-03：状态圆点 API 22 兼容
