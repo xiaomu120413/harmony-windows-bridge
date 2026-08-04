@@ -701,11 +701,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 只依赖现有 LayoutMode；删除 layoutMode Prop、Index 传参和两个拓扑 Builder 后可恢复原 Row；BackButton 可独立恢复 44vp；断点切换只条件重排 SettingsPage 容器，不重置 `pageName` |
 | 验收 ID | AC-LAYOUT：Compact 不创建 desktop nav，Expanded 创建且两者复用同一内容 Builder；AC-ARCH：只存在一个 pageName 和一组回调，无 TabletSettingsPage/DesktopSettingsPage；AC-XC：Index 的 showSession/XComponent 分支无改动；本机先完成编译与静态结构检查，600/839/840/1440vp 截图及往返状态证据留到真机验收后再升 Verified |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现后回写 |
-| 设计偏差及原因 | 待实现后回写 |
-| 测试命令/结果/证据 | 计划执行 ArkTS 单测/模块编译和静态边界检查；真机截图、字体 1.0/1.75 与 839/840 往返证据待设备验收 |
-| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+| 实现状态 | Implemented（本机结构与编译通过；等待真机矩阵后升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/pages/Index.ets`、`harmony/app/entry/src/main/ets/components/SettingsPage.ets`、`harmony/app/entry/src/main/ets/components/settings/SettingsPrimitives.ets` |
+| 设计偏差及原因 | 无；实现前发现 BackButton 仅 44vp 后已先通过文档提交补入 48vp 真实点击区域要求，再按更新后的 DesignReady 范围实现 |
+| 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功；静态结构检查：`@State pageName` 仅 1 处、desktop nav 调用仅在 Expanded Builder 1 处、共享内容调用 1 处、无 TabletSettingsPage/DesktopSettingsPage 文件；Index diff 仅新增 layoutMode 传参，showSession/XComponent 无改动；SettingsBackButton 的真实 Button 为 48×48vp，内部图标仍为 18vp。仍有一条既有 API 26 `fill` 兼容警告；真机 600/839/840/1440vp、字体 1.0/1.75 和往返状态证据待补 |
+| 关联提交 | 设计先行提交 `083f9db`，48vp 设计补充提交 `5f4266a`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
