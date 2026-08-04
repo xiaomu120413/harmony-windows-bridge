@@ -131,6 +131,7 @@ void ResetNativeTouchGesture()
     g_nativeTouch.singleActive = false;
     g_nativeTouch.leftDragActive = false;
     g_nativeTouch.longPressSent = false;
+    g_nativeTouch.doubleTapActive = false;
 }
 
 bool DispatchNativeTouchScroll(const OH_NativeXComponent_TouchEvent& touchEvent,
@@ -164,6 +165,10 @@ bool DispatchNativeTouchScroll(const OH_NativeXComponent_TouchEvent& touchEvent,
     if (g_nativeTouch.leftDragActive) {
         ReleaseNativeTouchLeftDrag(g_nativeTouch.lastX, g_nativeTouch.lastY,
             "touch.scroll.releaseDrag");
+    }
+    if (g_nativeTouch.doubleTapActive) {
+        ReleaseNativeTouchLeftDrag(g_nativeTouch.lastX, g_nativeTouch.lastY,
+            "touch.scroll.releaseDoubleTap");
     }
     ResetNativeTouchGesture();
     g_nativeTouch.lastTapValid = false;
@@ -215,11 +220,16 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
     NativePrimaryTouchPoint(touchEvent, x, y);
 
     if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN) {
+        const uint64_t downAtMs = NowMs();
+        const bool doubleTap = g_nativeTouch.lastTapValid && IsNativeDoubleTap(
+            g_nativeTouch.lastTapAtMs, g_nativeTouch.lastTapX, g_nativeTouch.lastTapY,
+            downAtMs, x, y);
         g_nativeTouch.scrollActive = false;
         g_nativeTouch.singleActive = true;
         g_nativeTouch.leftDragActive = false;
         g_nativeTouch.longPressSent = false;
-        g_nativeTouch.downAtMs = NowMs();
+        g_nativeTouch.doubleTapActive = doubleTap;
+        g_nativeTouch.downAtMs = downAtMs;
         g_nativeTouch.startX = x;
         g_nativeTouch.startY = y;
         g_nativeTouch.lastX = x;
@@ -228,6 +238,13 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
             std::string(NativeTouchSourceName(source)) +
             " x=" + std::to_string(RoundSurfaceCoordinate(x)) +
             " y=" + std::to_string(RoundSurfaceCoordinate(y)));
+        if (doubleTap) {
+            g_nativeTouch.lastTapValid = false;
+            SendNativeTouchMove(x, y, LocalPointerButtonNone,
+                "touch.doubleTap.left.second.move", true);
+            SendNativeTouchButton(LocalPointerButtonLeft, true, x, y,
+                "touch.doubleTap.left.second.down");
+        }
         return true;
     }
 
@@ -241,6 +258,11 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
     g_nativeTouch.lastY = y;
 
     if (touchEvent.type == OH_NATIVEXCOMPONENT_MOVE) {
+        if (g_nativeTouch.doubleTapActive) {
+            SendNativeTouchMove(x, y, LocalPointerButtonLeft,
+                "touch.doubleTap.left.second.move");
+            return true;
+        }
         if (!g_nativeTouch.leftDragActive && !g_nativeTouch.longPressSent &&
             ageMs >= kLongPressTimeoutMs && distance < kNativeTouchDragThresholdPx) {
             SendNativeTouchClick(LocalPointerButtonRight, g_nativeTouch.startX,
@@ -267,7 +289,14 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
     if (touchEvent.type == OH_NATIVEXCOMPONENT_UP ||
         touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL) {
         const bool cancelled = touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL;
-        if (g_nativeTouch.leftDragActive) {
+        if (g_nativeTouch.doubleTapActive) {
+            SendNativeTouchMove(x, y, LocalPointerButtonLeft,
+                "touch.doubleTap.left.second.releaseMove", true);
+            SendNativeTouchButton(LocalPointerButtonLeft, false, x, y,
+                cancelled ? "touch.doubleTap.left.second.cancel" :
+                    "touch.doubleTap.left.second.up");
+            g_nativeTouch.lastTapValid = false;
+        } else if (g_nativeTouch.leftDragActive) {
             ReleaseNativeTouchLeftDrag(x, y, "touch.drag.release");
         } else if (!cancelled && !g_nativeTouch.longPressSent) {
             if (ageMs >= kLongPressTimeoutMs && distance < kNativeTouchDragThresholdPx) {
@@ -276,19 +305,11 @@ bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
                 g_nativeTouch.lastTapValid = false;
             } else {
                 const uint64_t tapAtMs = NowMs();
-                const bool doubleTap = g_nativeTouch.lastTapValid && IsNativeDoubleTap(
-                    g_nativeTouch.lastTapAtMs, g_nativeTouch.lastTapX, g_nativeTouch.lastTapY,
-                    tapAtMs, x, y);
-                SendNativeTouchClick(LocalPointerButtonLeft, x, y,
-                    doubleTap ? "touch.doubleTap.left.second" : "touch.tap.left");
-                if (doubleTap) {
-                    g_nativeTouch.lastTapValid = false;
-                } else {
-                    g_nativeTouch.lastTapValid = true;
-                    g_nativeTouch.lastTapAtMs = tapAtMs;
-                    g_nativeTouch.lastTapX = x;
-                    g_nativeTouch.lastTapY = y;
-                }
+                SendNativeTouchClick(LocalPointerButtonLeft, x, y, "touch.tap.left");
+                g_nativeTouch.lastTapValid = true;
+                g_nativeTouch.lastTapAtMs = tapAtMs;
+                g_nativeTouch.lastTapX = x;
+                g_nativeTouch.lastTapY = y;
             }
         } else if (cancelled) {
             g_nativeTouch.lastTapValid = false;
