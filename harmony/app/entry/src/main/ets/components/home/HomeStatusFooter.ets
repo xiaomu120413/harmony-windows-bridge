@@ -1,3 +1,4 @@
+import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { SettingsRemoteControlSection, SettingsText } from '../settings/SettingsConstants'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
@@ -35,6 +36,7 @@ const HOME_STATUS_CARDS: HomeStatusCardConfig[] = [
 
 @Component
 export struct HomeStatusFooter {
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop isDark: boolean = false
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
@@ -122,7 +124,7 @@ export struct HomeStatusFooter {
   }
 
   @Builder
-  private buildStatusCard(config: HomeStatusCardConfig) {
+  private buildStatusCard(config: HomeStatusCardConfig, expanded: boolean) {
     Row({ space: 12 }) {
       this.buildStatusIcon(config.icon, this.cardTone(config.section))
       Text(config.label)
@@ -142,7 +144,8 @@ export struct HomeStatusFooter {
         .fill(SettingsTheme.statusText(this.isDark, this.cardTone(config.section)))
     }
     .height(52)
-    .layoutWeight(1)
+    .width(expanded ? 'auto' : '100%')
+    .layoutWeight(expanded ? 1 : 0)
     .padding({ left: 14, right: 14 })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(this.hoveredSection === config.section || this.pressedSection === config.section ?
@@ -177,10 +180,11 @@ export struct HomeStatusFooter {
     })
   }
 
-  build() {
+  @Builder
+  private buildExpandedFooter() {
     Row({ space: 22 }) {
       ForEach(HOME_STATUS_CARDS, (config: HomeStatusCardConfig) => {
-        this.buildStatusCard(config)
+        this.buildStatusCard(config, true)
       }, (config: HomeStatusCardConfig): string => config.section)
     }
     .width('100%')
@@ -191,5 +195,34 @@ export struct HomeStatusFooter {
       width: { top: 1 },
       color: HomeTheme.borderColor(this.isDark)
     })
+  }
+
+  @Builder
+  private buildCompactFooter() {
+    GridRow({ columns: 2, gutter: { x: 12, y: 12 } }) {
+      ForEach(HOME_STATUS_CARDS, (config: HomeStatusCardConfig) => {
+        GridCol({ span: 1 }) {
+          this.buildStatusCard(config, false)
+        }
+      }, (config: HomeStatusCardConfig): string => config.section)
+    }
+    .width('100%')
+    .padding({ left: 12, right: 12, top: 8, bottom: 10 })
+    .backgroundColor(HomeTheme.appBackground(this.isDark))
+    .border({
+      width: { top: 1 },
+      color: HomeTheme.borderColor(this.isDark)
+    })
+  }
+
+  build() {
+    Stack() {
+      if (this.layoutMode === LayoutMode.COMPACT) {
+        this.buildCompactFooter()
+      } else {
+        this.buildExpandedFooter()
+      }
+    }
+    .width('100%')
   }
 }

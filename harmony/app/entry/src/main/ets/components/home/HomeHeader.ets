@@ -1,3 +1,4 @@
+import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { SettingsText } from '../settings/SettingsConstants'
 import { SettingsAccent, SettingsResources, SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeText } from './HomeText'
@@ -5,6 +6,7 @@ import { HomeTheme } from './HomeTheme'
 
 @Component
 export struct HomeHeader {
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop isDark: boolean = false
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
@@ -56,7 +58,7 @@ export struct HomeHeader {
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .maxLines(1)
     }
-    .height(38)
+    .height(48)
     .padding({ left: 12, right: 12 })
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)
@@ -80,7 +82,8 @@ export struct HomeHeader {
     })
   }
 
-  build() {
+  @Builder
+  private buildExpandedHeader() {
     Row() {
       Row()
         .width(this.headerSideWidth)
@@ -115,5 +118,45 @@ export struct HomeHeader {
       width: { bottom: 1 },
       color: HomeTheme.borderColor(this.isDark)
     })
+  }
+
+  @Builder
+  private buildCompactHeader() {
+    Column({ space: 8 }) {
+      Row({ space: 12 }) {
+        Text(HomeText.APP_TAGLINE)
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(SettingsTheme.primaryText(this.isDark))
+          .layoutWeight(1)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+
+        this.buildSettingsButton()
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      this.buildHeaderStatus()
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+    .alignItems(HorizontalAlign.Start)
+    .backgroundColor(HomeTheme.panelBackground(this.isDark))
+    .border({
+      width: { bottom: 1 },
+      color: HomeTheme.borderColor(this.isDark)
+    })
+  }
+
+  build() {
+    Stack() {
+      if (this.layoutMode === LayoutMode.COMPACT) {
+        this.buildCompactHeader()
+      } else {
+        this.buildExpandedHeader()
+      }
+    }
+    .width('100%')
   }
 }

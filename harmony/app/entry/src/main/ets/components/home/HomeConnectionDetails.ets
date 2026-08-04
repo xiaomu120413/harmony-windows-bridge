@@ -1,4 +1,5 @@
 import pasteboard from '@ohos.pasteboard'
+import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
 import { HomeText } from './HomeText'
@@ -6,6 +7,7 @@ import { HomeTheme } from './HomeTheme'
 
 @Component
 export struct HomeConnectionDetails {
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Link host: string
   @Link port: string
   @Link username: string
@@ -389,9 +391,10 @@ export struct HomeConnectionDetails {
         this.buildDeviceActions()
       }
     }
-    .layoutWeight(1)
-    .height('100%')
-    .padding({ left: 34, right: 34, top: 22, bottom: 20 })
+    .layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)
+    .height(this.layoutMode === LayoutMode.EXPANDED ? '100%' : 'auto')
+    .padding(this.layoutMode === LayoutMode.EXPANDED ?
+      { left: 34, right: 34, top: 22, bottom: 20 } : { left: 20, right: 20, top: 16, bottom: 20 })
     .alignItems(HorizontalAlign.Start)
     .backgroundColor(HomeTheme.panelBackground(this.isDark))
     .borderRadius(8)
