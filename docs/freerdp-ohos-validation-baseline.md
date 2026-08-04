@@ -107,6 +107,30 @@ build_app projectPath=harmony/app
 
 如果本机缺少 `ohpm`、`hvigor` 或 DevEco/HarmonyOS SDK，任务说明必须明确 HAP build 未覆盖，并保留 FreeRDP build 与 runtime sync 的结果。
 
+### 自动签名材料检查
+
+当前 `harmony/app/build-profile.json5` 使用 DevEco/Hvigor 加密后的 `storePassword` 和 `keyPassword`。Hvigor 在执行 `SignHap` 前会通过 `DecipherUtil` 读取 `tools/hapsigner/material` 中的本地解密材料；该目录缺失或内容不完整时，构建会在密码解密阶段报 `ENOENT ... tools/hapsigner/material`，这不表示 P12、证书、profile、key alias 或包名错误。
+
+构建前应确认以下受版本管理的材料均存在：
+
+- `tools/hapsigner/material/ac/salt`
+- `tools/hapsigner/material/ce/work`
+- `tools/hapsigner/material/fd/0/part0`
+- `tools/hapsigner/material/fd/1/part1`
+- `tools/hapsigner/material/fd/2/part2`
+
+自动签名验收要求：
+
+1. `SignHap` 不再出现 `DecipherUtil.getKey`、`decryptPwd` 或 `material` 路径缺失错误。
+2. `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap` 成功生成。
+3. 对携带 xrdp HNP 的交付包继续执行 HNP 重打包和最终签名，不能用普通 unsigned HAP 直接签名替代 HNP 注入流程。
+
+`SIGN-A-01` 验证记录（2026-08-04）：
+
+- 恢复上述5个解密材料后，`hvigorw --no-daemon assembleHap --mode module -p product=default -p module=entry@default` 完成 `SignHap`，结果为 `BUILD SUCCESSFUL`。
+- 使用 `tools/hapsigner` 下的 OpenHarmony P12、证书、debug profile 和 `openharmony application release` alias 对注入 xrdp HNP 后的 HAP 重签成功；最终产物为 `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap`，大小 `41782896` 字节。
+- 设备 `3QC0124C11000711` 执行 `hdc install -r` 返回 `install bundle successfully`，系统验签及 HNP 解包通过。
+
 ## 真机最小回归清单
 
 每个任务完成后至少按影响范围选择以下检查。P0/P1 任务默认应覆盖 1-8。
@@ -133,3 +157,9 @@ T00 只建立验收基线，不改变业务逻辑。完成判定：
 - 本文档存在并记录主仓库和 FreeRDP 子模块基线。
 - `docs/freerdp-ohos-feature-matrix.md` 引用本基线，并保留当前 feature 状态。
 - 后续 T01-T18 可以直接引用本文档中的命令和真机清单。
+
+## 实施台账
+
+| Change ID | 状态 | 修改范围 | 验收 ID | 验收条件 |
+| --- | --- | --- | --- | --- |
+| `SIGN-D-01` | `Verified` | 已恢复 `tools/hapsigner/material/**` 中5个已跟踪的自动签名解密材料；未修改业务代码、证书、P12、profile 或包名 | `SIGN-A-01` | `SignHap`、HNP 重签及真机覆盖安装均通过；日志不再出现 `DecipherUtil` 读取 `material` 失败 |
