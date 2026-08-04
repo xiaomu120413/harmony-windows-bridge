@@ -127,7 +127,7 @@ export struct BasicSettingsPage {
 
         Button(SettingsText.NETWORK_REFRESH_ACTION)
           .type(ButtonType.Normal)
-          .height(34)
+          .constraintSize({ minHeight: 48 })
           .borderRadius(SettingsTheme.BUTTON_RADIUS)
           .backgroundColor(SettingsTheme.subtleButton(this.isVisualDark(), false, false))
           .fontColor(SettingsTheme.primaryText(this.isVisualDark()))

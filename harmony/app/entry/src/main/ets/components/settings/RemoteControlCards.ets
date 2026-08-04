@@ -92,7 +92,7 @@ export struct XrdpServerCard {
 
       Button(this.actionText())
         .type(ButtonType.Normal)
-        .height(36)
+        .constraintSize({ minHeight: 48 })
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
         .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
           SettingsTheme.subtleButton(this.isDark, false, false))
@@ -198,7 +198,7 @@ export struct RemoteFilesCard {
 
       Button(SettingsText.REMOTE_FILES_FEATURE_ACTION)
         .type(ButtonType.Normal)
-        .height(36)
+        .constraintSize({ minHeight: 48 })
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
         .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, false))
         .fontColor(SettingsTheme.primaryText(this.isDark))
@@ -335,7 +335,7 @@ export struct RemoteAccessCard {
 
         Button(SettingsText.REMOTE_ACCESS_CODE_ACTION)
           .type(ButtonType.Normal)
-          .height(36)
+          .constraintSize({ minHeight: 48 })
           .borderRadius(SettingsTheme.BUTTON_RADIUS)
           .backgroundColor(this.regenerateDisabled() ? SettingsTheme.disabledButton(this.isDark) :
             SettingsTheme.subtleButton(this.isDark, false, false))
@@ -471,7 +471,7 @@ export struct ScreenRecordingCard {
 
       Button(this.actionText())
         .type(ButtonType.Normal)
-        .height(36)
+        .constraintSize({ minHeight: 48 })
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
         .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
           SettingsTheme.subtleButton(this.isDark, false, false))

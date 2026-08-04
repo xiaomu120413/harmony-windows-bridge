@@ -770,6 +770,47 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1` 退出码 0，5/5 通过；首次完整 `assembleHap` 精确暴露8处 `.minHeight()` API 兼容错误，改用 `constraintSize` 后 `CompileArkTS`、`SignHap` 和完整构建通过；HNP 重签产物 41788752 字节，设备 `3QC0124C11000711` 覆盖安装成功。静态检查：`ComponentSize` 2处、内部阈值仅 `600vp`，190/170vp 标签宽与 36/40/44/52 固定高度均为0，文件无 window observer/deviceInfo/Native 新依赖。2in1 Expanded 截图 `artifacts/tablet-acceptance/2026-08-04/muhub-d04-expanded.jpeg` 无回退；Compact/1.75 字体仍被现有 manifest 最小窗口和设备条件阻塞 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
 
+#### TAB-D-05：设置页触控热区与文本自然高度
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-05 |
+| 设计版本/章节 | v1.2；第 6.3、8.1、8.2、10.5、12.4、14.3 节 |
+| 目标 | 清理设置页中低于48vp的真实点击区域，并把状态/键值文本行从固定高度改为 API 22 可用的最小高度约束，使图标视觉尺寸不变而触控、字体放大和自然换行更稳健 |
+| 计划代码文件 | 修改 `components/settings/SettingsPrimitives.ets`、`components/settings/BasicSettingsPage.ets`、`components/settings/RemoteControlCards.ets`；不修改 SettingsPage 路由、Index、manifest、Native 或 XRDP 行为 |
+| 点击区域 | `SettingsDesktopNavItem` 从固定46vp改为最小48vp；本机网络刷新按钮从34vp改为最小48vp；XrdpServer、RemoteFiles、RemoteAccess、ScreenRecording 四个操作按钮从36vp改为最小48vp。统一使用 `.constraintSize({ minHeight: 48 })`，不把图标放大到48vp |
+| 文本自然高度 | `SettingsStatusChip` 的28vp和 `SettingsKeyValueRow` 的32vp固定高度改为对应最小高度约束并增加上下 padding；键值文本允许最多两行，容器可随系统字体增长，不通过缩小 fp 保持一行 |
+| 状态与行为 | 所有按钮 enabled/disabled、onClick、hover/pressed、Toggle、刷新/授权/目录/验证码回调保持原样；本项只修改布局约束，不改变能力、权限或服务状态 |
+| 非目标 | 不重排远控卡片为另一套 Compact 拓扑，不移动 RemoteFilesCard，不处理 D-01 能力隔离，不改颜色、文案、图标资源或 Icon 视觉尺寸，不启用系统 font configuration |
+| 兼容与回退 | API 22 不支持直接 `.minHeight()`，统一使用已验证可编译的 `constraintSize`；每处可独立恢复原固定高度，不影响业务状态 |
+| 验收 ID | AC-FONT：6处代码约束覆盖桌面导航、本机网络刷新和4个远控操作按钮，实测点击高度至少48vp，原34/36/46固定高度计数为0；状态/键值行不再固定高度且可两行；Icon 的17/18及 token 尺寸不变。AC-ARCH：仅改计划文件，无回调/能力/Native 依赖变化；本机测试和完整 HAP 通过后标 Implemented，1.75字体真机后升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（API 26 2in1 的 Expanded/约756×647vp Compact、构建签名安装通过；等待1.75字体矩阵后升 Verified） |
+| 实际代码文件 | `components/settings/SettingsPrimitives.ets`、`components/settings/BasicSettingsPage.ets`、`components/settings/RemoteControlCards.ets` |
+| 设计偏差及原因 | 无；6处固定点击高度改为 `constraintSize({ minHeight: 48 })`，状态/键值行按计划改为最小高度与自然换行，回调、状态和图标视觉尺寸未改 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1` 退出码0、5/5通过；完整 `assembleHap` 的 `CompileArkTS`、`SignHap` 通过；HNP重签产物41788509字节并覆盖安装成功。密度1.9真机 dump 中，Expanded桌面导航为91～92px，Compact本机网络刷新及4个远控按钮的原始边界高度均为91px（取整对应48vp）；约756×647vp下基础设置和远控设置可滚动到全部操作。证据：`muhub-layout-d05-settings-expanded.json`、`muhub-layout-d05-basic-compact.json`、`muhub-layout-d05-remote-compact.json`及对应截图 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
+
+#### TAB-C-01：适配候选解除应用声明的最小窗口限制
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-C-01 |
+| 设计版本/章节 | v1.2；第 6.1、10.1、11、12.3 节 |
+| 目标 | 删除 `EntryAbility` 的 `minWindowWidth`、`minWindowHeight`，让窗口管理器按系统可达范围缩放，从而在当前 2in1 真机进入 Compact 并暴露真实的小窗布局问题 |
+| 计划代码文件 | 仅修改 `harmony/app/entry/src/main/module.json5`；保留同文件中现有且与本项无关的打印扩展改动，不修改包名、product、module、deviceTypes、orientation、supportWindowMode 或业务代码 |
+| 配置语义 | 本项是未发布适配候选，不再由应用声明 1280×760vp 下限；实际最小尺寸由当前 HarmonyOS 设备和窗口管理器决定，不把“字段删除”误写成已保证 600×480vp |
+| 依赖偏差 | 父计划原定 TAB-B 会话 resize/fallback 验证后再开放小窗；按 2026-08-04 用户要求先解除限制以推进 UI 真机验收。未完成 TAB-B 前，远程会话小窗、XComponent 几何和输入映射仍是发布阻塞项，不因本次 Home/Settings 通过而放行发布 |
+| 状态与行为 | 只改变可达窗口范围；Compact/Expanded 仍由唯一 WidthBreakpoint 决定，首页/设置共享原状态与回调，连接、XRDP、打印和签名行为不变 |
+| 回退 | 恢复 `minWindowWidth: 1280`、`minWindowHeight: 760` 即可回退；如设备允许过小窗口导致不可达，发布前可按完整矩阵证据改为设计目标 600×480vp，而不是无证据抬高限制 |
+| 验收 ID | AC-PKG：仍为同一 `default/entry` HAP 和 `com.muhub.desktop`；AC-LAYOUT：真机可跨过 840vp 进入 Compact，Home/Settings 可达且无固定桌面侧栏；AC-XC/AC-INPUT：仅记录阻塞，不在本项宣称小窗远程会话已通过 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（2in1真机已进入Compact；精确600/839/840vp、tablet和小窗远程会话仍待完整矩阵） |
+| 实际代码文件 | `harmony/app/entry/src/main/module.json5`（仅删除 `EntryAbility.minWindowWidth/minWindowHeight`） |
+| 设计偏差及原因 | 无实现偏差；依赖顺序偏差已在设计阶段明确记录。实际最小窗口由系统管理，未宣称字段删除等于固定600×480vp |
+| 测试命令/结果/证据 | 2026-08-04：完整 `assembleHap` 的 `CompileArkTS`、`SignHap` 通过；HNP重签产物41788522字节，`hdc install -r`成功；包名仍为`com.muhub.desktop`。HAD-W32密度1.9真机窗口缩至1437×1229px（约756×647vp），Home切为单页设备列表，Settings概览无桌面侧栏，基础/远控子页可达。证据：`muhub-c01-home-compact.jpeg`、`muhub-c01-settings-compact.jpeg`及对应layout dump。XComponent会话、600vp下限和tablet未在本项验证 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
