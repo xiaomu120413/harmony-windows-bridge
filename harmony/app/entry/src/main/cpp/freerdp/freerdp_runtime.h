@@ -11,6 +11,8 @@
 #include <freerdp/client/rdpgfx.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
+#include <freerdp/graphics.h>
+#include <freerdp/codec/color.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
 #include <winpr/synch.h>
@@ -51,6 +53,9 @@ public:
     using GdiInitFn = BOOL (*)(freerdp*, UINT32);
     using GdiFreeFn = void (*)(freerdp*);
     using GdiResizeFn = BOOL (*)(rdpGdi*, UINT32, UINT32);
+    using GraphicsRegisterPointerFn = void (*)(rdpGraphics*, const rdpPointer*);
+    using ImageCopyFromPointerDataFn = BOOL (*)(BYTE*, UINT32, UINT32, UINT32, UINT32,
+        UINT32, UINT32, const BYTE*, UINT32, const BYTE*, UINT32, UINT32, const gdiPalette*);
     using PubSubSubscribeFn = int (*)(wPubSub*, const char*, ...);
     using PubSubUnsubscribeFn = int (*)(wPubSub*, const char*, ...);
     using GdiGraphicsPipelineInitFn = BOOL (*)(rdpGdi*, RdpgfxClientContext*);
@@ -153,6 +158,8 @@ public:
     GdiInitFn gdiInit = nullptr;
     GdiFreeFn gdiFree = nullptr;
     GdiResizeFn gdiResize = nullptr;
+    GraphicsRegisterPointerFn graphicsRegisterPointer = nullptr;
+    ImageCopyFromPointerDataFn imageCopyFromPointerData = nullptr;
     PubSubSubscribeFn pubSubSubscribe = nullptr;
     PubSubUnsubscribeFn pubSubUnsubscribe = nullptr;
     GdiGraphicsPipelineInitFn gdiGraphicsPipelineInit = nullptr;

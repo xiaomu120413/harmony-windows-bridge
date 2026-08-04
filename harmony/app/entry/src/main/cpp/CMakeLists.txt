@@ -101,6 +101,9 @@ add_library(entry SHARED
     input/xcomponent_key.cpp
     input/xcomponent_mouse.cpp
     input/remote_ime_client.cpp
+    input/remote_pointer_text_policy.cpp
+    input/remote_pointer_text_detector.cpp
+    input/xcomponent_touch_policy.cpp
     input/xcomponent_touch_gesture.cpp
     napi/camera_permission_bridge.cpp
     napi/clipboard_permission_bridge.cpp

@@ -2,12 +2,12 @@ import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit
 import { window } from '@kit.ArkUI'
 import { SettingsTheme } from '../components/settings/SettingsUi'
 import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
-import { HostWindowTracker } from '../rdp/HostWindowTracker'
+import { ImeHostWindowBinder } from '../rdp/ImeHostWindowBinder'
 
 const TAG = 'EntryAbility'
 
 export default class EntryAbility extends UIAbility {
-  private readonly hostWindowTracker: HostWindowTracker = new HostWindowTracker()
+  private readonly imeHostWindowBinder: ImeHostWindowBinder = new ImeHostWindowBinder()
 
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     SettingsTheme.initAppearance(this.context)
@@ -26,13 +26,12 @@ export default class EntryAbility extends UIAbility {
         return
       }
       const mainWindow = windowStage.getMainWindowSync()
-      this.hostWindowTracker.start(mainWindow)
+      this.imeHostWindowBinder.bind(mainWindow)
       this.ensureDownloadDriveDirectory()
     })
   }
 
   onWindowStageDestroy(): void {
-    this.hostWindowTracker.stop()
   }
 
   onForeground(): void {

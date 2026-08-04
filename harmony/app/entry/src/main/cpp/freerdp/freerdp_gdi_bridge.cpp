@@ -2,6 +2,7 @@
 
 #include "common/bridge_log.h"
 #include "freerdp/freerdp_runtime.h"
+#include "input/remote_pointer_text_detector.h"
 #include "surface/render_output_owner.h"
 
 #include <algorithm>
@@ -425,6 +426,11 @@ BOOL HarmonyPostConnect(freerdp* instance)
         return FALSE;
     }
 
+    std::string pointerMessage;
+    if (!RegisterRemotePointerTextDetector(api, instance->context, pointerMessage)) {
+        EmitGdiLog(pointerMessage);
+    }
+
     rdpUpdate* update = instance->context->update;
     update->BeginPaint = HarmonyBeginPaint;
     update->EndPaint = HarmonyEndPaint;
@@ -450,6 +456,7 @@ BOOL HarmonyPostConnect(freerdp* instance)
 
 void HarmonyPostDisconnect(freerdp* instance)
 {
+    ResetRemotePointerTextDetector();
     StopGdiRenderPipeline();
     if (instance == nullptr || instance->context == nullptr || instance->context->gdi == nullptr) {
         ClearRdpDesktopSize();

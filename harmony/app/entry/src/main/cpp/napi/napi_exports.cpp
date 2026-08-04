@@ -164,18 +164,20 @@ napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
     return result;
 }
 
-napi_value ConfigureHostWindow(napi_env env, napi_callback_info info)
+napi_value BindImeHostWindow(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
     napi_valuetype type = napi_undefined;
-    const bool hasHostWindow = arg != nullptr && napi_typeof(env, arg, &type) == napi_ok &&
-        type == napi_object;
-    const uint32_t windowId = hasHostWindow ? GetUint32Property(env, arg, "windowId") : 0;
-    const uint32_t displayId = hasHostWindow ? GetUint32Property(env, arg, "displayId") : 0;
+    const bool hasWindowId = arg != nullptr && napi_typeof(env, arg, &type) == napi_ok &&
+        type == napi_number;
+    uint32_t windowId = 0;
+    if (hasWindowId) {
+        (void)napi_get_value_uint32(env, arg, &windowId);
+    }
     std::string message;
-    const bool ok = hasHostWindow && rdp_bridge::ConfigureHostWindow(windowId, displayId, message);
-    if (!hasHostWindow) {
-        message = "host window must be an object";
+    const bool ok = hasWindowId && rdp_bridge::BindImeHostWindow(windowId, message);
+    if (!hasWindowId) {
+        message = "IME host windowId must be a number";
     }
 
     napi_value result = MakeObject(env);
@@ -305,7 +307,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"configureHostWindow", nullptr, ConfigureHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"bindImeHostWindow", nullptr, BindImeHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -15,11 +15,6 @@ export interface NativeCommandResult {
   message: string;
 }
 
-export interface NativeHostWindow {
-  windowId: number;
-  displayId: number;
-}
-
 export interface NativeXrdpServerParams {
   appFilesDir?: string;
   accessCode?: string;
@@ -41,7 +36,7 @@ declare const rdpNative: {
   connect(params: NativeConnectParams): NativeCommandResult;
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   getXrdpServerDiagnostics(): NativeXrdpServerResult;
-  configureHostWindow(hostWindow: NativeHostWindow): NativeCommandResult;
+  bindImeHostWindow(windowId: number): NativeCommandResult;
   releaseAllKeys(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

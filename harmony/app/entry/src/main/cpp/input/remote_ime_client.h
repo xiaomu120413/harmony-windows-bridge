@@ -22,8 +22,9 @@ public:
     RemoteImeClient(const RemoteImeClient&) = delete;
     RemoteImeClient& operator=(const RemoteImeClient&) = delete;
 
-    void Configure(RdpSession* session, uint32_t windowId);
+    void BindHostWindow(RdpSession* session, uint32_t windowId);
     bool Open(std::string& message);
+    bool HideKeyboard(std::string& message);
     bool Close(std::string& message);
     bool IsOpen();
     bool IsKeyboardVisible() const;

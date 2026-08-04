@@ -1,7 +1,7 @@
 # MuHub HarmonyOS 单包平板适配架构、修改清单与验收方案
 
 > 状态：架构基线，尚未实施
-> 文档版本：1.4
+> 文档版本：1.5
 > 审阅日期：2026-08-04
 > 适用工程：MuHub HarmonyOS 应用，目标/兼容 API 22
 > 本文目标：先固定修改边界、实施顺序、验收口径和架构门禁，再开始改业务代码。
@@ -1005,11 +1005,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 设计版本/章节 | v1.4；第 8.3、9.2、9.3、10.7、12.7、13、14.2、14.3 节 |
 | 用户决策 | 2026-08-04确认浮窗字体/任务栏/点击目标偏小不纳入本轮；本项只修复远程 resize 固定 `ORIENTATION_LANDSCAPE` 的问题，并实际覆盖正横屏、正竖屏、反横屏和反竖屏 |
 | 方向来源与映射 | 2026-08-04按用户复核改为使用 API 22 Native Display Manager：`OH_NativeDisplayManager_CreateDisplayById()` 读取主窗口所在 Display 的 `NativeDisplayManager_Orientation`，Native 映射为 RDP 角度：`LANDSCAPE -> 0`、`PORTRAIT -> 90`、`LANDSCAPE_INVERTED -> 180`、`PORTRAIT_INVERTED -> 270`。禁止用 Surface width/height 猜方向，也不把 rotation 序号直接当 RDP 角度 |
-| 所有权与时序 | ArkTS 不再监听 display change 或计算方向，只在主窗口创建及 `displayIdChange` 时把 windowId/displayId 交给 Native。新建 `RdpDisplayOrientationMonitor` 注册 `OH_NativeDisplayManager_RegisterDisplayChangeListener()`，读取活动 Display 并更新 `RdpSessionChannels` 唯一 orientation；SurfaceChanged、session connected、display-control connected 和 Native display change 四条 resize 路径读取同一状态。XComponent 四向 Surface 变化仍由系统负责，应用不控制或重建它 |
-| N-API/Native 边界 | 用薄接口 `configureHostWindow({windowId, displayId})` 代替 ArkTS `setDisplayOrientation()`；N-API 只传主窗口身份。方向监听、枚举映射、合法性、last-known 状态和主动 resize 全在 Native，结构化日志记录 displayId、native orientation、requested/sent RDP orientation |
-| 计划代码文件 | 新建 `cpp/session/rdp_display_orientation_monitor.h/.cpp` 和仅传窗口身份的 `ets/rdp/HostWindowTracker.ets`；删除此前 ArkTS `DisplayOrientationPolicy.ets`、`DisplayOrientationTracker.ets`及其测试；修改 `EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/api_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/session/rdp_session_core.h/.cpp`、`cpp/session/rdp_session_channels.h/.cpp`、`cpp/CMakeLists.txt` |
+| 所有权与时序 | ArkTS 不监听 display change、不计算方向、也不向 Native 传 displayId。`RdpDisplayOrientationMonitor` 使用 `OH_NativeDisplayManager_GetDefaultDisplayId()` 取得当前默认 Display，注册 `OH_NativeDisplayManager_RegisterDisplayChangeListener()` 并更新 `RdpSessionChannels` 唯一 orientation；SurfaceChanged、session connected、display-control connected 和 Native display change 四条 resize 路径读取同一状态。XComponent 四向 Surface 变化仍由系统负责，应用不控制或重建它。当前单屏 tablet/2in1 范围不包含窗口跨外接屏迁移；该能力以后独立设计，不能重新复用 IME windowId 接口夹带 displayId |
+| N-API/Native 边界 | 显示方向没有 ArkTS/N-API 配置入口。Native Display Manager 独立拥有显示枚举、方向映射、合法性、last-known 状态和主动 resize，结构化日志记录 displayId、native orientation、requested/sent RDP orientation。API 22 Native IME 所需的主窗口 ID 通过独立 `bindImeHostWindow(windowId)` 传递，不属于方向模块 |
+| 计划代码文件 | `cpp/session/rdp_display_orientation_monitor.h/.cpp` 保持 Native 默认 Display 监听；删除 `ets/rdp/HostWindowTracker.ets` 的 display 监听职责并改为单次 IME 窗口绑定；修改 `EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/napi_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`。此前 ArkTS `DisplayOrientationPolicy.ets`、`DisplayOrientationTracker.ets`及其测试保持删除 |
 | 非目标 | 不在本项开放/修改浮窗、最大化、全屏、远端缩放或 manifest 窗口策略；不实现第二套 resize coordinator；不以方向变化重建 XComponent、Controller 或 RDP session |
-| 兼容与回退 | 目标和兼容 API 均为 22，不提供旧行为兼容开关；监听/读取异常时保留最后一次合法方向并记录日志。回退需同时删除 Tracker、N-API 接口和 Native 方向状态，不能只恢复 ArkTS 造成跨层不一致 |
+| 兼容与回退 | 目标和兼容 API 均为 22，不提供旧行为兼容开关；监听/读取异常时保留最后一次合法方向并记录日志。若未来支持窗口跨外接屏迁移，必须新增明确的窗口/Display 关联设计；禁止使用需要 `CUSTOM_SCREEN_CAPTURE` 权限的全设备主窗口枚举来反查当前应用窗口 |
 | 验收ID | AC-RESIZE：四个 Native display orientation 枚举映射、日志 orientation、Surface 尺寸与远端方向一致；AC-XC：四向旋转不重连、不重建 Controller；AC-ARCH：全仓 App resize 路径不存在固定 `ORIENTATION_LANDSCAPE`，系统方向只由 Native monitor 读取。HAP 构建通过后标 Implemented，tablet 真机四向旋转及远端 Windows 方向/画面证据通过后升 Verified |
 | 设计状态 | DesignReady |
 | 实现状态 | Implemented（四向映射、主窗口 Display 跟踪、唯一 Session orientation 和四条 resize 路径已接入；tablet 真机四向远端 Windows 证据未完成，不能升 Verified） |
@@ -1039,6 +1039,43 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 设计偏差及原因 | 无功能偏差；真机发现系统“完成”可隐藏键盘但不会让 XComponent blur，因此先补充 DesignReady，再增加 Native keyboard-status 状态和下一次 touch-down 恢复 show；仍无按钮、开关、TextInput 或 IME N-API。ArkTS 只承担 `KeyboardAvoidMode.NONE` 和宿主窗口身份 |
 | 测试命令/结果/证据 | 2026-08-04：Native/ArkTS 测试均退出码0，完整 HAP Native/ArkTS/签名成功，signed HAP 35,458,600 bytes；平板 `5JB0223804000371` 覆盖安装、真实 RDP 登录和首帧成功。XComponent focus 后系统键盘自动显示；点击系统“完成”隐藏后再次触摸 XComponent 自动恢复；三张截图为 `artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-before-done.jpeg`、`muhub-native-ime-after-done.jpeg`、`muhub-native-ime-after-touch.jpeg`。全过程无 `RDP_DISPLAY event=resize_request`、FATAL 或 SIGABRT，键盘仅覆盖远端画面。中文选词、Delete/Enter、物理键盘和20次循环待补 |
 | 关联提交 | 设计先行提交待本项提交后以 Git 历史为准；实现提交待回写 |
+
+#### TAB-F-02：远程会话按需虚拟键盘与宿主窗口解耦
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-02 |
+| 设计版本/章节 | v1.5；第 9.5、10.6、10.7、12.9、13、14.1、14.2 节 |
+| 用户决策与平台依据 | 2026-08-04用户指出 XComponent focus 不能代表远端正在输入，并进一步明确“按需”不是增加单独键盘按钮。Microsoft Windows App、FreeRDP Android/iOS 和 Guacamole 的显式入口仅作为对比，不采用其 UI；本应用按用户要求用 Native 远端 Pointer Shape + 直接触屏时序判断输入需求，ArkTS 不出现键盘控件 |
+| 交互状态机 | 默认 `Hidden`。XComponent focus、session connected、鼠标 hover/click 和普通非文本触摸均不打开 IME。FreeRDP PostConnect 注册 Native pointer prototype，缓存远端当前光标是否为 I-beam 候选；只有 touchscreen-like pointer down/up 形成最近直接触屏意图，且当前或随后短窗口内的远端光标被识别为 I-beam，才由 Native `RemoteImeClient` attach/show。系统返回/完成键隐藏后，只有再次触摸远端文本候选才恢复。XComponent blur、Surface destroyed、disconnect 和会话退出必须 hide/detach、清理 preview 和 pending touch |
+| 远端信号边界 | RDP Pointer Shape 返回位图而非控件语义，不能声称获得了远端真实文本焦点。Native 将 pointer masks 解码为 RGBA，按非透明包围盒、纵向主干和上下横杠识别 I-beam 候选；再与 touchscreen-like 最近触摸短窗口求交，避免鼠标经过静态文字或单纯 XComponent focus 自动弹出。误判/漏判通过结构化计数和真机样本调参，不把 bitmap hash 写死为单一 Windows 主题。单纯鼠标移动或远端光标变化不关闭键盘；仅当存在新的 touchscreen-like 直接触摸意图，且随后远端光标切换为非文本候选时由 Native 隐藏，避免编辑中抖动并保证离开输入区域后不常驻 |
+| N-API/Native 边界 | `bindImeHostWindow(windowId)` 只传 API 22 `OH_TextConfig_SetWindowId()` 必需的主窗口 ID；XComponent 的 `OHNativeWindow` 是渲染 Surface，不能反查 Window Manager ID。不存在 keyboard show/hide/request 或逐字符 N-API，IME 决策、attach/proxy、show/hide、组合态和 RDP 提交全部属于 Native。删除通用 `configureHostWindow({windowId, displayId})`，显示方向不再经过该边界 |
+| 计划代码文件 | `docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md`；删除 `ets/rdp/HostWindowTracker.ets`，新建 `ets/rdp/ImeHostWindowBinder.ets`；修改 `EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/napi_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`session/rdp_display_orientation_monitor.h/.cpp`、`freerdp/freerdp_runtime.h/.cpp`、`freerdp/freerdp_gdi_bridge.cpp`、`input/remote_ime_client.h/.cpp`、`input/xcomponent_input_bridge.h`、`input/xcomponent_input_internal.h`、`input/xcomponent_input_registration.cpp`、`input/xcomponent_key.cpp`、`input/xcomponent_touch_gesture.cpp`；新建 `input/remote_pointer_text_policy.h/.cpp`、`input/remote_pointer_text_detector.h/.cpp` 和 `tests/remote_pointer_text_policy_test.cpp`，修改 `cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1`。撤回试验性的 `pages/Index.ets`、`components/session/RdpSessionPage.ets` 键盘按钮改动；不修改 FreeRDP/xrdp 子模块 |
+| 兼容与回退 | 目标/兼容 API 22，不兼容旧 focus 自动弹出行为，也不保留 `configureHostWindow` 别名。pointer 注册/解码失败时保持键盘隐藏并记录诊断，不退回“XComponent focus 即输入”。API 23 以后可单独评估 `OH_InputMethodController_AttachWithUIContext()`，但本项不得提高 SDK 或申请 `CUSTOM_SCREEN_CAPTURE` 权限 |
+| 验收ID | AC-IME：连接、XComponent focus、鼠标操作和非文本触摸后键盘保持隐藏；直接触摸远端文本框后显示；系统关闭后触摸非文本不恢复、再次触摸文本框可恢复；静态可选择文字样本不得持续误弹；中文拼音只提交一次。AC-INPUT：物理键鼠不触发软键盘且输入不受影响。AC-XC/AC-RESIZE：键盘显示隐藏不改变 Surface、不重连、不发送 resize。AC-ARCH：无键盘按钮/TextInput、`configureHostWindow`、ArkTS displayId 监听、focus/touch 无条件 Open 或 IME N-API；pointer 分类有纯逻辑测试，N-API 只做 windowId 参数转换/转发 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（Native pointer shape 分类、直接触摸短窗口、IME 按需显示/隐藏及宿主窗口解耦已完成；完整中文组合态、物理键盘和多主题光标矩阵未完成，不能升 Verified） |
+| 实际代码文件 | `cpp/input/remote_pointer_text_policy.h/.cpp`、`cpp/input/remote_pointer_text_detector.h/.cpp`、`cpp/tests/remote_pointer_text_policy_test.cpp`、`cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/input/xcomponent_key.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/freerdp/freerdp_runtime.h/.cpp`、`cpp/freerdp/freerdp_gdi_bridge.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/session/rdp_display_orientation_monitor.h/.cpp`、`cpp/types/libentry/Index.d.ts`、`cpp/CMakeLists.txt`、`ets/entryability/EntryAbility.ets`、`ets/rdp/ImeHostWindowBinder.ets`、删除 `ets/rdp/HostWindowTracker.ets`、`tools/run_tablet_native_tests.ps1` |
+| 设计偏差及原因 | 触摸后不立即以旧光标状态作最终判断，而是等待 120ms 内的新 Pointer Shape；若服务器未重复发送相同 shape，才使用触摸前缓存作为回退。这样可避免从文本区触摸到非文本区时旧 I-beam 造成键盘常驻，同时支持系统“完成”隐藏后再次触摸同一文本框恢复。无 ArkTS 键盘按钮、开关或 `RequestRemoteKeyboard` 接口 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，新增 I-beam/arrow/block/null 分类样本通过；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，最终 signed HAP 35,488,925 bytes；`rg` 确认无 `RequestRemoteKeyboard`、`requestRemoteKeyboard` 或键盘按钮 symbol。平板 `5JB0223804000371` 覆盖安装成功；冷启动、连接前和连接成功后键盘保持隐藏，真实 RDP 文本区直接触摸后系统 IME 显示，日志出现 `ShowCurrentInput` 且无崩溃。非文本触摸关闭、中文选词、物理键盘和多主题 Pointer Shape 完整矩阵待补 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-F-03：远程 IME 收起与触屏双击修正
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-03 |
+| 设计版本/章节 | v1.5；第 10.7、12.8、12.9、14.1、14.2 节 |
+| 问题与根因 | 2026-08-04 真机反馈：远程 IME 弹出后“完成”无法收起，触屏双击不稳定。Native `OnSendEnter` 只发送远端 Enter，没有响应 `IME_ENTER_KEY_DONE` 隐藏软键盘；单指手势没有双击时间/距离状态，且 8px 拖动阈值在平板高密度触控上过小，第二次轻触容易退化为拖动 |
+| 交互决策 | `IME_ENTER_KEY_DONE` 先向远端发送 Enter，再只调用当前 `InputMethodProxy` 隐藏键盘并更新 Native visibility；不 detach editor proxy，下一次远端文本候选触摸可复用当前 attach 快速显示。普通触屏点击仍即时发送第一组 left down/up，不为等待双击而增加单击延迟；第二次 tap 在 350ms、32px 范围内标记为双击第二击并发送第二组 left down/up，由 Windows/RDP 既有双击语义处理。拖动启动阈值调整为 18px，长按和双指滚动保持原语义 |
+| 架构边界 | 不增加 ArkTS 按钮、键盘状态或手势识别；IME hide、visibility 与 Enter 提交属于 `RemoteImeClient`，tap/double-tap/drag 判定属于 Native XComponent input。双击没有独立 RDP Pointer flag，正确线协议仍是两组带相同按钮和邻近坐标的 pointer down/up |
+| 计划代码文件 | 本文；`cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_touch_gesture.cpp`；新建 `cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/tests/xcomponent_touch_policy_test.cpp`；修改 `cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1` |
+| 验收ID | AC-IME：文本区触摸显示后点系统“完成”，远端收到一次 Enter 且键盘隐藏；XComponent 保持焦点时再次触摸文本区可恢复。AC-TOUCH：两次 tap 间隔 50/200/350ms 且距离不超过32px时远端收到两组 left down/up；351ms或距离超过32px按两个普通单击；10px手抖不启动 drag，超过18px启动一次 drag；双击不产生 right-click/wheel。AC-ARCH：无 ArkTS 键盘/双击入口，无双击专用 RDP 私有协议 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（IME“完成”收起已真机通过；双击 Native 判定和线协议发送已实现，远端主机恢复后补文件/窗口动作证据再升 Verified） |
+| 实际代码文件 | `cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1` |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，50/350/351ms及32/32.1px双击边界通过；`harmony/app/build_hap.bat debug` 完整构建、打包、签名成功，signed HAP 35,495,285 bytes；平板 `5JB0223804000371` 覆盖安装并进入真实 RDP，文本区按需显示键盘后点击“完成”，系统日志 `HidePanel success`/`OnPanelStatus type=hide`，截图确认键盘消失。随后远端连接出现 `ERRCONNECT_CONNECT_TRANSPORT_FAILED` 和 `connect_timed_out`，双击打开文件/窗口的最终真机动作证据待主机恢复后补，不误报 Verified |
+| 关联提交 | 待实现后回写 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
@@ -1225,19 +1262,21 @@ tablet 冷启动：
 
 ### 12.9 虚拟键盘
 
-- XComponent 获得 Native focus 后自动弹出键盘，失焦后自动关闭；界面中不存在键盘按钮或配置开关。
-- ArkTS 组件树不存在隐藏 TextInput，N-API 不存在 IME open/close 或逐字符入口。
+- 进入远程会话、连接成功、XComponent 获得 Native focus、鼠标操作和非文本 touch-down 后，虚拟键盘均保持隐藏。
+- 只有 touchscreen-like 直接触摸与远端 I-beam 候选光标在限定短窗口内同时成立时，Native 才显示键盘；单独 focus、单独 I-beam hover 或单独触摸均不得触发。
+- 系统返回/完成键隐藏键盘后，触摸非文本区域不恢复；再次触摸远端文本候选可恢复。
+- ArkTS 组件树不存在隐藏 TextInput、键盘按钮或键盘状态；N-API 不存在 IME show/hide/request 或逐字符入口。
 - 中文拼音：预编辑不重复发送，选词后只提交一次。
 - 英文、数字、退格、Enter 正常。
 - IME 打开且 XComponent 保持焦点时，中文选词只提交一次；物理键盘、方向键和修饰键继续由 XComponent 到达远端且不双发。
-- XComponent 失焦并关闭 IME 后，Native preview 和按键状态完成清理；再次获焦可重新 attach/show。
-- 键盘开关 20 次，Surface width/height 不变化。
+- XComponent 失焦并关闭 IME 后，Native preview、pending touch 和按键状态完成清理；再次获焦本身不 attach/show，必须再次触摸远端文本候选。
+- 键盘显示/隐藏 20 次，Surface width/height 不变化。
 - IME 显示/隐藏不触发 RDP reconnect 或动态分辨率请求。
 
 ### 12.10 稳定性
 
 - 远程会话持续 30 分钟。
-- 期间执行 10 次旋转、20 次窗口 resize、20 次 XComponent focus/blur IME 循环和 20 次前后台切换。
+- 期间执行 10 次旋转、20 次窗口 resize、20 次键盘动作/系统隐藏/再次动作循环、20 次 XComponent focus/blur 和 20 次前后台切换。
 - 无崩溃、永久黑屏、输入失配、粘键或持续增长的 pending resize；结束时 activePointerButtons/buttonsDown/keysDown 均为 0。
 
 ## 13. 诊断字段、验收快照和日志

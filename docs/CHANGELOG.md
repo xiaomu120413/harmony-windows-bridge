@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| `CHG-20260804-034` | `feat(ohos): add adaptive remote input and printing` | 功能/Native 输入、IME、打印 | 将显示方向和远程 IME 核心所有权收口到 Native，按远端文本光标与直接触摸显示/隐藏键盘，补充触屏双击判定与拖动容差；接入 HarmonyOS 打印扩展及 xrdp rdpdr 打印后端，并同步签名、模块和构建配置。 | `tools/run_tablet_native_tests.ps1`、`tools/run_tablet_arkts_tests.ps1`、`harmony/app/build_hap.bat debug` 均通过；平板完成 IME 显示/“完成”隐藏真机验证；双击最终动作因远端主机连接超时待补。关联 TAB-B-02、TAB-F-02、TAB-F-03。 |
 | `CHG-20260804-033` | `docs: add repository change ledger` | 文档/流程 | 新增本统一修改台账，在文档索引增加入口，并要求后续每笔提交同步登记。 | 文档链接、提交映射、UTF-8 和 Markdown 表格检查通过；本条随该主题提交。 |
 | `CHG-20260804-032` | `5937f8e` | 文档/旋转与 IME 架构 | 将显示方向和 IME 的核心所有权移至 API 22 Native：ArkTS 只传宿主窗口身份并展示键盘控制，Native 负责方向监听、IME client 和远端输入提交。 | [平板专项台账 TAB-B-02/TAB-F-01](harmonyos-tablet-adaptation-architecture-and-acceptance.md)；`git show 5937f8e`。 |
 | `CHG-20260804-031` | `86996fa` | 文档/IME 架构 | 明确键盘环境由 `EntryAbility` 唯一启停，键盘高度只经 AppStorage 镜像给会话页，不进入 Native、Surface 尺寸或远端 resize。 | [平板专项台账 TAB-F-01](harmonyos-tablet-adaptation-architecture-and-acceptance.md)；`git show 86996fa`。 |

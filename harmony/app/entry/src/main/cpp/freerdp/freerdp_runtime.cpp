@@ -94,6 +94,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
     if (loaded_) {
         LoadOptionalFreerdpSymbol("gdi_graphics_pipeline_init", gdiGraphicsPipelineInit);
         LoadOptionalFreerdpSymbol("gdi_graphics_pipeline_uninit", gdiGraphicsPipelineUninit);
+        LoadOptionalFreerdpSymbol("graphics_register_pointer", graphicsRegisterPointer);
+        LoadOptionalFreerdpSymbol("freerdp_image_copy_from_pointer_data", imageCopyFromPointerData);
         LoadOptionalClientSymbol("rdpgfx_client_context_new", rdpgfxClientContextNew);
         LoadOptionalClientSymbol("rdpgfx_client_context_free", rdpgfxClientContextFree);
         LoadOptionalClientSymbol("freerdp_rdpsnd_ohos_get_stats", rdpsndOhosGetStats);
