@@ -45,6 +45,7 @@ export struct HomeStatusFooter {
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
   @Prop remoteAccessCodeGateEnabled: boolean = false
+  @Prop remoteControlServerAvailable: boolean = true
   onOpenSettings: (remoteControlSection: string) => void = (_remoteControlSection: string) => {
   }
   @State private hoveredSection: string = ''
@@ -98,6 +99,13 @@ export struct HomeStatusFooter {
     tones.set(SettingsRemoteControlSection.ACCESS, this.accessStatusTone())
     tones.set(SettingsRemoteControlSection.FILES, 'ok')
     return tones.get(section) || 'ok'
+  }
+
+  private visibleStatusCards(): HomeStatusCardConfig[] {
+    if (this.remoteControlServerAvailable) {
+      return HOME_STATUS_CARDS
+    }
+    return [HOME_STATUS_CARDS[3]]
   }
 
   private setHoveredSection(section: string, hovered: boolean): void {
@@ -183,7 +191,7 @@ export struct HomeStatusFooter {
   @Builder
   private buildExpandedFooter() {
     Row({ space: 22 }) {
-      ForEach(HOME_STATUS_CARDS, (config: HomeStatusCardConfig) => {
+      ForEach(this.visibleStatusCards(), (config: HomeStatusCardConfig) => {
         this.buildStatusCard(config, true)
       }, (config: HomeStatusCardConfig): string => config.section)
     }
@@ -200,7 +208,7 @@ export struct HomeStatusFooter {
   @Builder
   private buildCompactFooter() {
     GridRow({ columns: 2, gutter: { x: 12, y: 12 } }) {
-      ForEach(HOME_STATUS_CARDS, (config: HomeStatusCardConfig) => {
+      ForEach(this.visibleStatusCards(), (config: HomeStatusCardConfig) => {
         GridCol({ span: 1 }) {
           this.buildStatusCard(config, false)
         }

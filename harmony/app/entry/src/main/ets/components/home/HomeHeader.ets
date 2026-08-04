@@ -11,6 +11,7 @@ export struct HomeHeader {
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
   @Prop xrdpServerRunning: boolean = false
+  @Prop remoteControlServerAvailable: boolean = true
   onOpenSettings: (remoteControlSection: string) => void = (_remoteControlSection: string) => {
   }
   @State private settingsHovered: boolean = false
@@ -98,11 +99,13 @@ export struct HomeHeader {
         .layoutWeight(1)
 
       Row({ space: 18 }) {
-        this.buildHeaderStatus()
-        Divider()
-          .vertical(true)
-          .height(26)
-          .color(HomeTheme.borderColor(this.isDark))
+        if (this.remoteControlServerAvailable) {
+          this.buildHeaderStatus()
+          Divider()
+            .vertical(true)
+            .height(26)
+            .color(HomeTheme.borderColor(this.isDark))
+        }
         this.buildSettingsButton()
       }
       .width(this.headerSideWidth)
@@ -137,7 +140,9 @@ export struct HomeHeader {
       .width('100%')
       .alignItems(VerticalAlign.Center)
 
-      this.buildHeaderStatus()
+      if (this.remoteControlServerAvailable) {
+        this.buildHeaderStatus()
+      }
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 10, bottom: 10 })
