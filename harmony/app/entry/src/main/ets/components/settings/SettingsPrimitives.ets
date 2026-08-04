@@ -19,11 +19,11 @@ export struct SettingsStatusChip {
         .fontSize(11)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.statusText(this.isDark, this.tone))
-        .maxLines(1)
+        .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
-    .height(28)
-    .padding({ left: 10, right: 10 })
+    .constraintSize({ minHeight: 28 })
+    .padding({ left: 10, right: 10, top: 4, bottom: 4 })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(SettingsTheme.statusBackground(this.isDark, this.tone))
     .borderRadius(14)
@@ -77,7 +77,7 @@ export struct SettingsDesktopNavItem {
     }
     .alignItems(VerticalAlign.Center)
     .width('100%')
-    .height(46)
+    .constraintSize({ minHeight: 48 })
     .padding({ left: 10, right: 10 })
     .backgroundColor(SettingsTheme.transparentButton(this.selected || this.hovered, this.pressed, this.isDark))
     .borderRadius(12)
@@ -112,7 +112,7 @@ export struct SettingsKeyValueRow {
       Text(this.label)
         .fontSize(12)
         .fontColor(SettingsTheme.mutedText(this.isDark))
-        .maxLines(1)
+        .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
 
@@ -121,14 +121,15 @@ export struct SettingsKeyValueRow {
         .fontWeight(FontWeight.Medium)
         .fontColor(this.tone === 'neutral' ? SettingsTheme.primaryText(this.isDark) :
           SettingsTheme.statusText(this.isDark, this.tone))
-        .maxLines(1)
+        .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .textAlign(TextAlign.End)
         .margin({ left: 12 })
     }
     .alignItems(VerticalAlign.Center)
     .width('100%')
-    .height(32)
+    .constraintSize({ minHeight: 32 })
+    .padding({ top: 4, bottom: 4 })
   }
 }
 
