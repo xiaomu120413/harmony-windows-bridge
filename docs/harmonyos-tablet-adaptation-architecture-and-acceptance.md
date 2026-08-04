@@ -799,6 +799,25 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1` 退出码0、5/5通过；完整 `assembleHap` 的 `CompileArkTS`、`SignHap` 通过；HNP重签产物41788509字节并覆盖安装成功。密度1.9真机 dump 中，Expanded桌面导航为91～92px，Compact本机网络刷新及4个远控按钮的原始边界高度均为91px（取整对应48vp）；约756×647vp下基础设置和远控设置可滚动到全部操作。证据：`muhub-layout-d05-settings-expanded.json`、`muhub-layout-d05-basic-compact.json`、`muhub-layout-d05-remote-compact.json`及对应截图 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
 
+#### TAB-D-06：首页 Expanded 矮窗表单可滚动
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-06 |
+| 设计版本/章节 | v1.3；第 6.2、8.1、10.4、12.3、12.4 节 |
+| 触发证据 | 2026-08-04 MatePad Pro多窗口约855×420vp时，宽度断点为Expanded但可用高度不足；首页右侧Password以下被Footer遮挡/截断，Connect不可直接到达 |
+| 目标 | WidthBreakpoint仍只决定Compact/Expanded拓扑；Expanded右侧详情pane增加独立纵向Scroll，连接详情组件改为自然高度，使矮窗和字体放大时所有字段、Connect和设备操作可滚动到达 |
+| 计划代码文件 | 修改`components/home/HomePage.ets`和`HomeConnectionDetails.ets`；不新增高度断点、不复制表单、不修改Index状态/回调/XComponent/Native |
+| 所有权 | HomePage拥有pane尺寸和滚动容器；HomeConnectionDetails只拥有表单自然内容高度和100%组件宽度，内部600vp ComponentSize断点保持不变 |
+| 兼容与回退 | Expanded高窗视觉宽度和Row拓扑不变，只在内容超高时出现滚动；Compact继续复用同一详情组件和已有Scroll。删除Expanded Scroll并恢复100%强制高度可回退，但会恢复矮窗不可达问题 |
+| 验收 ID | AC-LAYOUT：约855×420vp和600×480vp下Connect/设备操作可滚动到达；AC-FONT：自然高度兼容1.75字体；AC-ARCH：无第二套表单/高度断点/业务状态；AC-XC：showSession分支diff为0 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（纯策略测试、完整构建、MatePad Pro约855×420vp真机滚动可达通过；600×480和1.75字体矩阵待补） |
+| 实际代码文件 | `components/home/HomePage.ets`、`components/home/HomeConnectionDetails.ets` |
+| 设计偏差及原因 | 无；未增加高度断点，Expanded和Compact继续复用同一连接详情组件；只把pane高度约束和滚动所有权留在HomePage |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项通过；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34457637字节；MatePad Pro PCE-W30覆盖安装后在约855×420vp多窗口，从右侧详情向上滑动可显示完整Password、记住密码和Connect，Footer仍可见，设备列表未被联动滚走 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
+
 #### TAB-C-01：适配候选解除应用声明的最小窗口限制
 
 | 字段 | 内容 |

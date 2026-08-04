@@ -109,7 +109,12 @@ export struct HomePage {
   private buildExpandedMain() {
     Row({ space: 18 }) {
       this.buildDeviceList()
-      this.buildConnectionDetails()
+      Scroll() {
+        this.buildConnectionDetails()
+      }
+      .layoutWeight(1)
+      .height('100%')
+      .scrollBar(BarState.Auto)
     }
     .width('100%')
     .layoutWeight(1)
