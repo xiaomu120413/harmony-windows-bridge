@@ -5,6 +5,10 @@ validation notes live under `docs/archive/`.
 
 ## Current Docs
 
+- [CHANGELOG.md](CHANGELOG.md): repository-wide change ledger. Each Git commit
+  has one concise record of what changed, its impact and where to find
+  validation evidence.
+
 - [harmonyos-tablet-adaptation-architecture-and-acceptance.md](harmonyos-tablet-adaptation-architecture-and-acceptance.md):
   proposed architecture and acceptance baseline (not yet implemented) for the
   single-HAP tablet/2in1 UI and capability isolation, file-level change list
