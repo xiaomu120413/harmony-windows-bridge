@@ -8,4 +8,4 @@ HAD-W32,2in1,landscape,756,647,Compact,Home,PASS,muhub-c01-home-compact.jpeg,"�
 HAD-W32,2in1,landscape,756,647,Compact,SettingsOverview,PASS,muhub-c01-settings-compact.jpeg,"无桌面固定侧栏，概览与三个路由入口可达"
 HAD-W32,2in1,landscape,756,647,Compact,SettingsBasic,PASS,muhub-d05-basic-compact.jpeg,"刷新按钮91px，对应48vp取整"
 HAD-W32,2in1,landscape,756,647,Compact,SettingsRemote,PASS,muhub-d05-remote-compact-scrolled.jpeg,"4个操作按钮原始高度91px且底部共享目录可滚动到达"
-tablet,tablet,portrait,600,800,Compact,Home,NOT_RUN,,"当前 HAP 未声明 tablet，且无 tablet 真机"
+tablet,tablet,portrait,600,800,Compact,Home,NOT_RUN,,"同一HAP已声明tablet；当前无tablet真机，安装/旋转/能力隔离待测"
