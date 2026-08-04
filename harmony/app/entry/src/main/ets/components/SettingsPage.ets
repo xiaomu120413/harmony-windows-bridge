@@ -65,6 +65,7 @@ export struct SettingsPage {
   @Prop xrdpServerMessage: string = ''
   @Prop xrdpServerBusy: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
+  @Prop remoteControlServerAvailable: boolean = true
   @State private pageName: string = SettingsRoute.SETTINGS
   @State private remoteControlTargetSection: string = ''
   @State private appearanceMode: SettingsAppearanceMode = SettingsTheme.getStoredAppearanceMode()
@@ -73,6 +74,9 @@ export struct SettingsPage {
   aboutToAppear(): void {
     this.appearanceMode = SettingsTheme.getStoredAppearanceMode()
     this.pageName = this.initialPageName.length > 0 ? this.initialPageName : SettingsRoute.SETTINGS
+    if (!this.remoteControlServerAvailable && this.pageName === SettingsRoute.REMOTE_CONTROL) {
+      this.pageName = SettingsRoute.SETTINGS
+    }
     this.remoteControlTargetSection = this.pageName === SettingsRoute.REMOTE_CONTROL ?
       this.initialRemoteControlSection : ''
   }
@@ -164,17 +168,19 @@ export struct SettingsPage {
             this.remoteControlTargetSection = ''
           }
         })
-        SettingsDesktopNavItem({
-          title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
-          iconResource: SettingsResources.REMOTE_CONTROL_ICON,
-          accentName: SettingsAccent.BLUE,
-          selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
-          isDark: this.isDarkMode(),
-          onPress: () => {
-            this.pageName = SettingsRoute.REMOTE_CONTROL
-            this.remoteControlTargetSection = ''
-          }
-        })
+        if (this.remoteControlServerAvailable) {
+          SettingsDesktopNavItem({
+            title: SettingsText.REMOTE_CONTROL_ENTRY_TITLE,
+            iconResource: SettingsResources.REMOTE_CONTROL_ICON,
+            accentName: SettingsAccent.BLUE,
+            selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
+            isDark: this.isDarkMode(),
+            onPress: () => {
+              this.pageName = SettingsRoute.REMOTE_CONTROL
+              this.remoteControlTargetSection = ''
+            }
+          })
+        }
         SettingsDesktopNavItem({
           title: SettingsText.PROJECT_HELP_ENTRY_TITLE,
           iconResource: SettingsResources.PROJECT_HELP_ICON,
@@ -247,74 +253,77 @@ export struct SettingsPage {
         .fontColor(SettingsTheme.primaryText(this.isDarkMode()))
         .width('100%')
         .margin({ bottom: 6 })
-      Text(SettingsText.SETTINGS_OVERVIEW_SUBTITLE)
+      Text(this.remoteControlServerAvailable ? SettingsText.SETTINGS_OVERVIEW_SUBTITLE :
+        SettingsText.SETTINGS_OVERVIEW_CLIENT_SUBTITLE)
         .fontSize(13)
         .fontColor(SettingsTheme.mutedText(this.isDarkMode()))
         .lineHeight(20)
         .width('100%')
         .margin({ bottom: 18 })
 
-      Column() {
-        Row() {
-          Text(SettingsText.SETTINGS_CURRENT_STATE)
-            .fontSize(15)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(SettingsTheme.primaryText(this.isDarkMode()))
-            .layoutWeight(1)
+      if (this.remoteControlServerAvailable) {
+        Column() {
+          Row() {
+            Text(SettingsText.SETTINGS_CURRENT_STATE)
+              .fontSize(15)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(SettingsTheme.primaryText(this.isDarkMode()))
+              .layoutWeight(1)
 
-          SettingsStatusChip({
-            text: this.xrdpStatusText(),
-            tone: this.xrdpStatusTone(),
-            isDark: this.isDarkMode()
-          })
-        }
-        .alignItems(VerticalAlign.Center)
-        .width('100%')
-        .margin({ bottom: 14 })
-
-        Row({ space: 24 }) {
-          Column() {
-            SettingsKeyValueRow({
-              label: SettingsText.BASIC_APPEARANCE_SECTION,
-              value: SettingsText.appearanceValue(this.appearanceMode),
-              isDark: this.isDarkMode()
-            })
-            SettingsKeyValueRow({
-              label: SettingsText.REMOTE_SERVER_STATUS_LABEL,
-              value: this.xrdpStatusText(),
+            SettingsStatusChip({
+              text: this.xrdpStatusText(),
               tone: this.xrdpStatusTone(),
               isDark: this.isDarkMode()
             })
           }
-          .layoutWeight(1)
+          .alignItems(VerticalAlign.Center)
+          .width('100%')
+          .margin({ bottom: 14 })
 
-          Column() {
-            SettingsKeyValueRow({
-              label: SettingsText.REMOTE_SCREEN_SECTION,
-              value: this.screenStatusText(),
-              tone: this.screenStatusTone(),
-              isDark: this.isDarkMode()
-            })
-            SettingsKeyValueRow({
-              label: SettingsText.REMOTE_ACCESS_SECTION,
-              value: this.gateStatusText(),
-              tone: this.gateStatusTone(),
-              isDark: this.isDarkMode()
-            })
+          Row({ space: 24 }) {
+            Column() {
+              SettingsKeyValueRow({
+                label: SettingsText.BASIC_APPEARANCE_SECTION,
+                value: SettingsText.appearanceValue(this.appearanceMode),
+                isDark: this.isDarkMode()
+              })
+              SettingsKeyValueRow({
+                label: SettingsText.REMOTE_SERVER_STATUS_LABEL,
+                value: this.xrdpStatusText(),
+                tone: this.xrdpStatusTone(),
+                isDark: this.isDarkMode()
+              })
+            }
+            .layoutWeight(1)
+
+            Column() {
+              SettingsKeyValueRow({
+                label: SettingsText.REMOTE_SCREEN_SECTION,
+                value: this.screenStatusText(),
+                tone: this.screenStatusTone(),
+                isDark: this.isDarkMode()
+              })
+              SettingsKeyValueRow({
+                label: SettingsText.REMOTE_ACCESS_SECTION,
+                value: this.gateStatusText(),
+                tone: this.gateStatusTone(),
+                isDark: this.isDarkMode()
+              })
+            }
+            .layoutWeight(1)
           }
-          .layoutWeight(1)
+          .width('100%')
         }
         .width('100%')
+        .padding(18)
+        .backgroundColor(SettingsTheme.cardBackground(this.isDarkMode()))
+        .borderRadius(SettingsTheme.CARD_RADIUS)
+        .border({
+          width: 1,
+          color: SettingsTheme.borderColor(this.isDarkMode())
+        })
+        .margin({ bottom: 18 })
       }
-      .width('100%')
-      .padding(18)
-      .backgroundColor(SettingsTheme.cardBackground(this.isDarkMode()))
-      .borderRadius(SettingsTheme.CARD_RADIUS)
-      .border({
-        width: 1,
-        color: SettingsTheme.borderColor(this.isDarkMode())
-      })
-      .margin({ bottom: 18 })
 
       Column() {
         this.overviewEntry(SettingsText.BASIC_SETTINGS_ENTRY_TITLE, SettingsText.BASIC_SETTINGS_ENTRY_DESC,
@@ -323,11 +332,18 @@ export struct SettingsPage {
             this.pageName = SettingsRoute.BASIC
             this.remoteControlTargetSection = ''
           })
-        this.overviewEntry(SettingsText.REMOTE_CONTROL_ENTRY_TITLE, SettingsText.REMOTE_CONTROL_ENTRY_DESC,
-          SettingsResources.REMOTE_CONTROL_ICON, SettingsAccent.BLUE, this.xrdpStatusText(), () => {
-            this.pageName = SettingsRoute.REMOTE_CONTROL
-            this.remoteControlTargetSection = ''
-          })
+        if (this.remoteControlServerAvailable) {
+          this.overviewEntry(SettingsText.REMOTE_CONTROL_ENTRY_TITLE, SettingsText.REMOTE_CONTROL_ENTRY_DESC,
+            SettingsResources.REMOTE_CONTROL_ICON, SettingsAccent.BLUE, this.xrdpStatusText(), () => {
+              this.pageName = SettingsRoute.REMOTE_CONTROL
+              this.remoteControlTargetSection = ''
+            })
+        } else {
+          this.overviewEntry(SettingsText.REMOTE_FILES_FEATURE_TITLE, SettingsText.REMOTE_FILES_FEATURE_DESC,
+            SettingsResources.REMOTE_FILES_ICON, SettingsAccent.GREEN, '', () => {
+              this.onOpenRemoteFilesDirectory()
+            })
+        }
         this.overviewEntry(SettingsText.PROJECT_HELP_ENTRY_TITLE, SettingsText.PROJECT_HELP_ENTRY_DESC,
           SettingsResources.PROJECT_HELP_ICON, SettingsAccent.PURPLE, '', () => {
             this.pageName = SettingsRoute.PROJECT_HELP
@@ -354,7 +370,7 @@ export struct SettingsPage {
           this.pageName = SettingsRoute.SETTINGS
         }
       })
-    } else if (this.pageName === SettingsRoute.REMOTE_CONTROL) {
+    } else if (this.pageName === SettingsRoute.REMOTE_CONTROL && this.remoteControlServerAvailable) {
       RemoteControlSettingsPage({
         isDark: this.isDarkMode(),
         targetSection: this.remoteControlTargetSection,

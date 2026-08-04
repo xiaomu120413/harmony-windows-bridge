@@ -17,6 +17,7 @@ export interface XrdpServerDisplayMessages {
   stopped: string
   exited: string
   failed: string
+  unavailable: string
 }
 
 export interface XrdpServerStartOptions {
@@ -28,12 +29,17 @@ export interface XrdpServerStartOptions {
 
 export class XrdpServerController {
   private readonly messages: XrdpServerDisplayMessages
+  private readonly available: boolean
 
-  constructor(messages: XrdpServerDisplayMessages) {
+  constructor(messages: XrdpServerDisplayMessages, available: boolean = true) {
     this.messages = messages
+    this.available = available
   }
 
   diagnostics(): XrdpServerStatus {
+    if (!this.available) {
+      return this.unavailableStatus()
+    }
     try {
       const result: NativeXrdpServerResult = rdpNative.getXrdpServerDiagnostics()
       return this.toStatus(result)
@@ -44,6 +50,10 @@ export class XrdpServerController {
   }
 
   start(options: XrdpServerStartOptions, trigger: string): XrdpServerStatus {
+    if (!this.available) {
+      RdpLogger.info(`xrdp start blocked by device capability: ${trigger}`)
+      return this.unavailableStatus()
+    }
     try {
       const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.toNativeParams(options))
       return this.toStatus(result)
@@ -96,6 +106,15 @@ export class XrdpServerController {
       state: 'Failed',
       port: 3390,
       message: this.messages.failed
+    }
+  }
+
+  private unavailableStatus(): XrdpServerStatus {
+    return {
+      running: false,
+      state: 'Unavailable',
+      port: 3390,
+      message: this.messages.unavailable
     }
   }
 }

@@ -30,6 +30,7 @@ export struct HomePage {
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
   @Prop remoteAccessCodeGateEnabled: boolean = false
+  @Prop remoteControlServerAvailable: boolean = true
   @State private compactPage: HomeCompactPage = 'devices'
   onHostChange: (value: string) => void = (_value: string) => {
   }
@@ -163,6 +164,7 @@ export struct HomePage {
         xrdpServerBusy: this.xrdpServerBusy,
         xrdpServerState: this.xrdpServerState,
         xrdpServerRunning: this.xrdpServerRunning,
+        remoteControlServerAvailable: this.remoteControlServerAvailable,
         onOpenSettings: this.onOpenSettings
       })
       if (this.layoutMode === LayoutMode.COMPACT) {
@@ -180,6 +182,7 @@ export struct HomePage {
         screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
         screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
         remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+        remoteControlServerAvailable: this.remoteControlServerAvailable,
         onOpenSettings: this.onOpenSettings
       })
     }

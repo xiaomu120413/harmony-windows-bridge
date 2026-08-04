@@ -878,6 +878,28 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：MatePad Pro PCE-W30（tablet、OpenHarmony-6.0.2.130）上，旧HNP HAP返回9568407/NativeInstallHnp 8201，缺HNP但有声明返回9568409；删除声明并停止repack后完整构建成功，canonical HAP 34441489字节、`hnp/`条目0，`hdc -t 5JB0223804000371 install -r`和`aa start`成功；包名`com.muhub.desktop`、entry、`[2in1,tablet]`不变 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
+#### TAB-E-01：tablet XRDP 初始化、服务、路由与展示四层隔离
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-E-01 |
+| 设计版本/章节 | v1.3；第 5.1、7、10.2、10.3、10.4、12.5、14.2 节；采用D-01推荐值 |
+| 决策 | 单HAP需在不支持HNP的MatePad Pro安装，tablet首版仅提供RDP客户端；2in1保留XRDP能力入口。布局仍只按WidthBreakpoint，设备类型只进入能力策略 |
+| 计划代码文件 | 新增`harmony/app/entry/src/main/ets/capability/DeviceCapabilityPolicy.ets`及其纯策略测试；修改`pages/Index.ets`、`rdp/XrdpServerController.ets`、`components/home/HomePage.ets`、`HomeHeader.ets`、`HomeStatusFooter.ets`、`components/SettingsPage.ets`、`settings/SettingsConstants.ets`和测试入口 |
+| 能力数据 | 唯一策略输入读取`deviceInfo.deviceType`并生成不可变语义快照：`2in1 -> remoteControlServer=available`，`tablet/unknown/空值 -> unavailable`。Home/Settings只接收布尔展示能力，不自行读取设备类型 |
+| 初始化/服务隔离 | tablet的Index冷启动和onPageShow不检查录屏、不读取XRDP diagnostics、不启动服务；所有设置回调先做能力保护。XrdpServerController同时接收能力并在unavailable时直接返回Unavailable状态，不调用`libentry.so`，形成第二道保护 |
+| 路由/UI隔离 | tablet非法或旧`remoteControl`路由回退设置概览；Home Header不显示被控状态，Footer只保留客户端共享目录卡；Settings不创建远控导航、XRDP状态卡和远控页，改为可直接打开共享目录的客户端入口 |
+| 保留能力 | Windows RDP连接、XComponent、输入/IME、剪贴板/音频/摄像头/位置通道和`RemoteFilesDirectory`不受XRDP能力策略拦截 |
+| 非目标 | 不在本项迁移2in1进程内XRDP config/share，不启用rotation/split，不修改Native/FreeRDP/xrdp，不复制Tablet页面，不把WidthBreakpoint和deviceType混用 |
+| 兼容与回退 | 2in1快照保持available并走原回调；策略异常或未知设备按最小能力unavailable。删除能力传参可恢复旧UI，但会破坏tablet安装后的安全隔离，不能作为发布回退 |
+| 验收 ID | AC-CAP：四类纯策略测试；tablet冷启动hilog无XRDP start/diagnostics/录屏请求，首页和设置截图无XRDP UI但共享目录可达；2in1原行为待设备重新在线回归。AC-ARCH：deviceInfo只在policy文件，Home/Settings无Native导入；AC-PKG：同HAP/包名不变；AC-XC：会话分支无改动 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（tablet四层隔离、纯策略测试、完整构建与真机UI/日志验收通过；2in1回归待设备重新在线，因此不标Verified） |
+| 实际代码文件 | `capability/DeviceCapabilityPolicy.ets`、`pages/Index.ets`、`rdp/XrdpServerController.ets`、`components/home/HomePage.ets`、`HomeHeader.ets`、`HomeStatusFooter.ets`、`components/SettingsPage.ets`、`components/settings/SettingsConstants.ets`、`src/test/DeviceCapabilityPolicy.test.ets`、`src/test/List.test.ets` |
+| 设计偏差及原因 | 无功能偏差；真机当前处于约855×420vp多窗口，额外发现首页Expanded表单在矮窗被底部截断，作为布局后续项处理，不在本项用能力UI改动掩盖 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，原5项断点测试加4项能力测试全部通过；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34457850字节；MatePad Pro PCE-W30覆盖安装/冷启动成功，启动前`hilog -r`后过滤`RdpBridge|xrdp|screen recording`为0行；真机首页仅保留共享目录卡，Header无被控状态，Settings无远控导航/XRDP状态卡且共享目录入口仍可达。静态检查deviceInfo仅在policy文件，components下libentry导入为0 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text

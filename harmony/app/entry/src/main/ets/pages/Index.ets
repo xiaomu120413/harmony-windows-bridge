@@ -5,6 +5,11 @@ import {
   layoutModeForWidthBreakpoint
 } from '../adaptive/WindowLayoutPolicy'
 import {
+  currentDeviceCapabilities,
+  DeviceCapabilitySnapshot,
+  hasRemoteControlServer
+} from '../capability/DeviceCapabilityPolicy'
+import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
 import { RdpLogger } from '../rdp/RdpLogger'
@@ -79,6 +84,7 @@ struct Index {
   @State private connectionFeedbackText: string = ''
   @State private connectionFeedbackTone: SettingsStatusTone = 'neutral'
   @State private layoutMode: LayoutMode = LayoutMode.COMPACT
+  private readonly deviceCapabilities: DeviceCapabilitySnapshot = currentDeviceCapabilities()
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
@@ -107,16 +113,20 @@ struct Index {
     this.registerWindowLayoutObserver()
     this.registerNativeCallbacks()
     this.loadConnectionProfiles()
-    this.refreshScreenRecordingPermissionState()
-    this.refreshXrdpServerDiagnostics()
-    this.ensureXrdpServerStarted('page appear')
+    if (this.remoteControlServerAvailable()) {
+      this.refreshScreenRecordingPermissionState()
+      this.refreshXrdpServerDiagnostics()
+      this.ensureXrdpServerStarted('page appear')
+    }
   }
 
   onPageShow(): void {
     if (!this.connectionProfilesLoaded) {
       this.loadConnectionProfiles()
     }
-    this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+    if (this.remoteControlServerAvailable()) {
+      this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+    }
   }
 
   onPageHide(): void {
@@ -167,6 +177,10 @@ struct Index {
     }
   }
 
+  private remoteControlServerAvailable(): boolean {
+    return hasRemoteControlServer(this.deviceCapabilities)
+  }
+
   private getPermissionManager(): RdpPermissionManager {
     if (this.permissionManager === null) {
       const delegate = new RdpPermissionCallbackDelegate(
@@ -182,7 +196,8 @@ struct Index {
   private getXrdpServerController(): XrdpServerController {
     if (this.xrdpServerController === null) {
       this.xrdpServerController = new XrdpServerController(
-        this.xrdpServerDisplayMessages()
+        this.xrdpServerDisplayMessages(),
+        this.remoteControlServerAvailable()
       )
     }
     return this.xrdpServerController
@@ -554,7 +569,8 @@ struct Index {
       listening: SettingsText.REMOTE_SERVER_MESSAGE_LISTENING,
       stopped: SettingsText.REMOTE_SERVER_MESSAGE_STOPPED,
       exited: SettingsText.REMOTE_SERVER_MESSAGE_EXITED,
-      failed: SettingsText.REMOTE_SERVER_MESSAGE_FAILED
+      failed: SettingsText.REMOTE_SERVER_MESSAGE_FAILED,
+      unavailable: SettingsText.REMOTE_SERVER_MESSAGE_UNAVAILABLE
     }
   }
 
@@ -677,10 +693,16 @@ struct Index {
   }
 
   private openSettingsFromHome(remoteControlSection: string): void {
-    this.refreshScreenRecordingPermissionState()
-    this.refreshXrdpServerDiagnostics()
-    this.settingsRemoteControlSection = remoteControlSection
-    this.settingsInitialPageName = remoteControlSection.length > 0 ? SettingsRoute.REMOTE_CONTROL : SettingsRoute.SETTINGS
+    if (this.remoteControlServerAvailable()) {
+      this.refreshScreenRecordingPermissionState()
+      this.refreshXrdpServerDiagnostics()
+      this.settingsRemoteControlSection = remoteControlSection
+      this.settingsInitialPageName = remoteControlSection.length > 0 ? SettingsRoute.REMOTE_CONTROL :
+        SettingsRoute.SETTINGS
+    } else {
+      this.settingsRemoteControlSection = ''
+      this.settingsInitialPageName = SettingsRoute.SETTINGS
+    }
     this.showSettings = true
   }
 
@@ -778,10 +800,18 @@ struct Index {
   }
 
   private hasScreenRecordingPermission(): boolean {
+    if (!this.remoteControlServerAvailable()) {
+      return false
+    }
     return this.getPermissionManager().hasScreenRecordingPermission()
   }
 
   private refreshScreenRecordingPermissionState(): boolean {
+    if (!this.remoteControlServerAvailable()) {
+      this.screenRecordingPermissionGranted = false
+      this.screenRecordingPermissionBusy = false
+      return false
+    }
     this.screenRecordingPermissionGranted = this.hasScreenRecordingPermission()
     return this.screenRecordingPermissionGranted
   }
@@ -817,6 +847,9 @@ struct Index {
   }
 
   private requestScreenRecordingPermissionFromSettings(): Promise<boolean> {
+    if (!this.remoteControlServerAvailable()) {
+      return Promise.resolve(false)
+    }
     return this.getPermissionManager().requestScreenRecordingPermission('remote control settings')
       .then((granted: boolean) => {
         const allowed = this.applyScreenRecordingPermissionResult(granted, !granted)
@@ -895,6 +928,9 @@ struct Index {
 
   private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false,
     requestScreenRecordingImmediately: boolean = false): Promise<XrdpServerStatus> {
+    if (!this.remoteControlServerAvailable()) {
+      return Promise.resolve(this.refreshXrdpServerDiagnostics())
+    }
     if (this.xrdpServerStartRequest !== null && !restartIfRunning) {
       if (requestScreenRecordingImmediately) {
         this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`)
@@ -944,6 +980,9 @@ struct Index {
   }
 
   private setRemoteAccessCodeGateEnabled(enabled: boolean): void {
+    if (!this.remoteControlServerAvailable()) {
+      return
+    }
     if (this.remoteAccessCodeGateEnabled === enabled) {
       return
     }
@@ -1178,6 +1217,7 @@ struct Index {
           xrdpServerPort: this.xrdpServerPort,
           xrdpServerMessage: this.xrdpServerMessage,
           xrdpServerBusy: this.xrdpServerBusy,
+          remoteControlServerAvailable: this.remoteControlServerAvailable(),
           onRemoteAccessCodeGateChange: (enabled: boolean): string => this.setRemoteAccessCodeGateFromSettings(enabled),
           onRemoteAccessCodeRegenerate: (): string => this.regenerateRemoteAccessCodeFromSettings(),
           onRequestScreenRecordingPermission: (): Promise<boolean> => this.requestScreenRecordingPermissionFromSettings(),
@@ -1186,7 +1226,9 @@ struct Index {
           onStartXrdpServer: (): Promise<XrdpServerStatus> => this.startXrdpServerFromSettings(),
           onOpenRemoteFilesDirectory: (): void => this.openRemoteFilesDirectoryFromSettings(),
           onClose: () => {
-            this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+            if (this.remoteControlServerAvailable()) {
+              this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+            }
             this.showSettings = false
             this.settingsInitialPageName = SettingsRoute.SETTINGS
             this.settingsRemoteControlSection = ''
@@ -1212,6 +1254,7 @@ struct Index {
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
           screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+          remoteControlServerAvailable: this.remoteControlServerAvailable(),
           onHostChange: (value: string): void => {
             this.host = value
             this.clearConnectionFeedback()
