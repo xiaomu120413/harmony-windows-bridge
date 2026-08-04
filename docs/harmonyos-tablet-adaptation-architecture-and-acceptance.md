@@ -724,11 +724,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | Expanded 保持当前结构和操作；切换 839/840 只改变展示节点，不修改 Index 表单或连接状态；删除 layoutMode/compactPage 和 Compact Builders 可恢复原布局；按钮高度和列表宽度改动可独立回退 |
 | 验收 ID | AC-LAYOUT：Compact 无 260vp 占位/31% 列表/70vp footer，设备与详情有明确往返路径且详情可滚动；Expanded 仍同时显示两 pane；AC-FONT：设置/新建/返回点击区至少 48vp，视觉图标不缩放；AC-ARCH：业务状态仍只在 Index，无 TabletHomePage/DesktopHomePage；AC-XC：showSession/XComponent diff 为零。本机完成编译与静态结构检查后标 Implemented，真机 600/839/840/1440vp、字体与状态往返证据通过后升 Verified |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现后回写 |
-| 设计偏差及原因 | 待实现后回写 |
-| 测试命令/结果/证据 | 计划执行 ArkTS 单测/模块编译；静态检查唯一 compactPage、子组件无断点读取、Compact 固定尺寸清理和 Index XComponent diff；真机证据待设备验收 |
-| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+| 实现状态 | Implemented（本机结构与编译通过；等待真机矩阵及内部表单任务后升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/pages/Index.ets`、`components/home/HomePage.ets`、`HomeHeader.ets`、`HomeDeviceList.ets`、`HomeConnectionDetails.ets`、`HomeStatusFooter.ets` |
+| 设计偏差及原因 | 无；Compact/Expanded 外层拓扑、展示路由、真实点击区、详情 Scroll 和 2×2 Footer 均按 DesignReady 记录实现；190vp 标签列等明确非目标未在本项夹带修改 |
+| 测试命令/结果/证据 | 2026-08-04 两次执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，均退出码 0、5/5 通过、模块 ArkTS 编译成功；静态检查：`@State compactPage` 仅 1 处且为 devices/details 联合类型，Home 子组件断点监听 0 处、libentry/deviceInfo 依赖 0 处、TabletHomePage/DesktopHomePage 0 个；Index diff 仅新增 HomePage.layoutMode 传参，showSession/XComponent 无改动；Compact 分支使用 100% 列表、可滚动详情、48vp 设置/新建/返回和 2×2 GridRow，260vp/31%/70vp 仅保留在 Expanded 分支。仍有一条既有 API 26 `fill` 兼容警告；真机与字体证据待补 |
+| 关联提交 | 设计先行提交 `1daee02`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 

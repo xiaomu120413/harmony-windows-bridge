@@ -1194,6 +1194,7 @@ struct Index {
         })
       } else {
         HomePage({
+          layoutMode: this.layoutMode,
           host: $host,
           port: $port,
           username: $username,

@@ -1,3 +1,4 @@
+import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { SettingsAccent, SettingsTheme } from '../settings/SettingsUi'
 import { WindowsConnectionProfile } from '../../rdp/WindowsConnectionStore'
 import { HomeResources } from './HomeResources'
@@ -6,6 +7,7 @@ import { HomeTheme } from './HomeTheme'
 
 @Component
 export struct HomeDeviceList {
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop connectionProfiles: WindowsConnectionProfile[] = []
   @Prop selectedConnectionProfileId: string = ''
   @Prop isDark: boolean = false
@@ -82,7 +84,7 @@ export struct HomeDeviceList {
         .maxLines(1)
     }
     .width(136)
-    .height(44)
+    .height(48)
     .justifyContent(FlexAlign.Center)
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)
@@ -321,7 +323,7 @@ export struct HomeDeviceList {
       .scrollBar(BarState.Auto)
       .scrollBarWidth(4)
     }
-    .width('31%')
+    .width(this.layoutMode === LayoutMode.COMPACT ? '100%' : '31%')
     .height('100%')
     .padding({ left: 8, right: 8, top: 24, bottom: 24 })
     .alignItems(HorizontalAlign.Center)
