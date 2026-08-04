@@ -1,7 +1,7 @@
 # MuHub HarmonyOS 单包平板适配架构、修改清单与验收方案
 
 > 状态：架构基线，尚未实施
-> 文档版本：1.1
+> 文档版本：1.2
 > 审阅日期：2026-08-04
 > 适用工程：MuHub HarmonyOS 应用，目标/兼容 API 22
 > 本文目标：先固定修改边界、实施顺序、验收口径和架构门禁，再开始改业务代码。
@@ -645,6 +645,25 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | TAB-E | E 功能隔离 | 第 7、10.3、10.5 节 | AC-CAP | DecisionPending | NotStarted | D-01 完整决策记录 |
 | TAB-F | F 输入能力 | 第 9.3～9.5、10.6、10.7 节 | AC-INPUT、AC-IME | DesignReady | NotStarted | TAB-B 的唯一 geometry 已可用 |
 | TAB-G | G 交付门禁 | 第 12～14 节 | 全部 AC-* | DesignReady | NotStarted | 测试/构建脚本先按第 10.8 节落地 |
+
+#### TAB-A-01：窗口断点纯策略与本地单测
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-01 |
+| 设计版本/章节 | v1.2；第 4、6.1、10.2、10.8、12.3、14.2、14.3 节 |
+| 目标 | 建立唯一的 `WidthBreakpoint -> LayoutMode` 纯函数和可在本机执行的单测入口，不接入 Index、不改变现有 UI |
+| 计划代码文件 | 新建 `harmony/app/entry/src/main/ets/adaptive/WindowLayoutPolicy.ets`、`harmony/app/entry/src/test/List.test.ets`、`harmony/app/entry/src/test/WindowLayoutPolicy.test.ets`、`tools/run_tablet_arkts_tests.ps1` |
+| 公共 API/状态 | ArkTS 导出 `LayoutMode` 与 `layoutModeForWidthBreakpoint()`；XS/SM/MD -> Compact，LG/XL -> Expanded，未知枚举值 fail-safe 为 Compact；无 Native/FreeRDP ABI，无运行时状态 |
+| 非目标 | 本项不监听窗口、不修改 Index/Home/Settings、不读取 deviceInfo、不实现 DeviceCapabilityPolicy、不修改 manifest |
+| 兼容与回退 | 只使用本机 API 22 已声明的 WidthBreakpoint；删除四个新增文件即可完整回退，不影响当前应用行为 |
+| 验收 ID | AC-LAYOUT：五个官方枚举映射单测；AC-ARCH：测试脚本退出码与纯策略无 UI/RDP import |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现后回写 |
+| 设计偏差及原因 | 待实现后回写 |
+| 测试命令/结果/证据 | 计划执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run_tablet_arkts_tests.ps1`；结果待回写 |
+| 关联提交 | 设计先行记录待提交；实现提交待回写 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
