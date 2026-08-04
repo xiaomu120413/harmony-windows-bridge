@@ -1,4 +1,5 @@
 #include "input/xcomponent_input_internal.h"
+#include "input/remote_ime_client.h"
 
 namespace rdp_bridge {
 namespace {
@@ -296,6 +297,14 @@ void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window)
 
     const OH_NativeXComponent_EventSourceType source =
         ResolveNativeTouchSource(component, touchEvent);
+    if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN &&
+        IsNativeTouchscreenLikeSource(source) && IsXComponentFocused() &&
+        g_remoteIme != nullptr && !g_remoteIme->IsKeyboardVisible()) {
+        std::string imeMessage;
+        if (!g_remoteIme->Open(imeMessage)) {
+            EmitInputLog("XComponent native IME touch restore failed: " + imeMessage);
+        }
+    }
     std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
     if (DispatchNativeTouchScroll(touchEvent, source)) {
         return;

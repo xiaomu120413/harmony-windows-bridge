@@ -2,12 +2,12 @@ import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit
 import { window } from '@kit.ArkUI'
 import { SettingsTheme } from '../components/settings/SettingsUi'
 import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
-import { DisplayOrientationTracker } from '../rdp/DisplayOrientationTracker'
+import { HostWindowTracker } from '../rdp/HostWindowTracker'
 
 const TAG = 'EntryAbility'
 
 export default class EntryAbility extends UIAbility {
-  private readonly displayOrientationTracker: DisplayOrientationTracker = new DisplayOrientationTracker()
+  private readonly hostWindowTracker: HostWindowTracker = new HostWindowTracker()
 
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     SettingsTheme.initAppearance(this.context)
@@ -25,13 +25,14 @@ export default class EntryAbility extends UIAbility {
         console.error(`${TAG} loadContent failed: ${JSON.stringify(err)}`)
         return
       }
-      this.displayOrientationTracker.start(windowStage.getMainWindowSync())
+      const mainWindow = windowStage.getMainWindowSync()
+      this.hostWindowTracker.start(mainWindow)
       this.ensureDownloadDriveDirectory()
     })
   }
 
   onWindowStageDestroy(): void {
-    this.displayOrientationTracker.stop()
+    this.hostWindowTracker.stop()
   }
 
   onForeground(): void {

@@ -6,6 +6,8 @@
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/freerdp_runtime.h"
 #include "input/xcomponent_input_bridge.h"
+#include "input/remote_ime_client.h"
+#include "session/rdp_display_orientation_monitor.h"
 #include "session/rdp_display_resize_coordinator.h"
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
@@ -23,6 +25,8 @@ SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
 RdpSession g_session;
 RdpDisplayResizeCoordinator g_resizeCoordinator;
+RdpDisplayOrientationMonitor g_orientationMonitor;
+RemoteImeClient g_remoteIme;
 
 void EmitNativeLog(const std::string& line)
 {
@@ -137,6 +141,13 @@ void ConfigureRdpSessionCallbacks()
         [](const std::string& state) {
             if (state == "Disconnected") {
                 g_resizeCoordinator.Reset("session disconnected");
+                std::string imeMessage;
+                (void)g_remoteIme.Close(imeMessage);
+            } else if (state == "Connected" && IsXComponentFocused()) {
+                std::string imeMessage;
+                if (!g_remoteIme.Open(imeMessage)) {
+                    EmitNativeLog("Native remote IME deferred open failed: " + imeMessage);
+                }
             }
             g_events.state.Emit(state);
         },
@@ -185,6 +196,8 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
+    std::string imeMessage;
+    (void)g_remoteIme.Close(imeMessage);
     g_surface.OnSurfaceDestroyed(component, window);
     g_resizeCoordinator.Reset("surface destroyed");
     UpdateRdpgfxSurfaceTargetIfReady("surface destroyed");
@@ -242,11 +255,42 @@ bool UpdateDisplayOrientation(uint32_t orientation, std::string& message)
     return true;
 }
 
+bool ConfigureHostWindow(uint32_t windowId, uint32_t displayId, std::string& message)
+{
+    if (windowId == 0) {
+        message = "host windowId must be non-zero";
+        return false;
+    }
+    g_remoteIme.Configure(&g_session, windowId);
+    std::string orientationMessage;
+    const bool orientationOk = g_orientationMonitor.SetActiveDisplayId(displayId, orientationMessage);
+    if (IsXComponentFocused() && g_session.IsConnected()) {
+        std::string imeMessage;
+        if (!g_remoteIme.Open(imeMessage)) {
+            EmitNativeLog("Native remote IME host update open failed: " + imeMessage);
+        }
+    }
+    message = "host window configured: windowId=" + std::to_string(windowId) +
+        " displayId=" + std::to_string(displayId) + " " + orientationMessage;
+    return orientationOk;
+}
+
 void InitializeNativeBridgeContext()
 {
     ConfigureRdpgfxPipelineCallbacks();
     ConfigureRdpSessionCallbacks();
-    ConfigureXComponentInputBridge(&g_session, EmitNativeLog);
+    ConfigureXComponentInputBridge(&g_session, &g_remoteIme, EmitNativeLog);
+    std::string orientationMessage;
+    if (!g_orientationMonitor.Start(
+        [](uint32_t displayId, uint32_t orientation, const std::string& source) {
+            std::string updateMessage;
+            if (!UpdateDisplayOrientation(orientation, updateMessage)) {
+                EmitNativeLog("native display orientation rejected: displayId=" +
+                    std::to_string(displayId) + " source=" + source + " " + updateMessage);
+            }
+        }, EmitNativeLog, orientationMessage)) {
+        EmitNativeLog(orientationMessage);
+    }
 }
 
 bool RegisterNativeXComponent(napi_env env, napi_value exports)
