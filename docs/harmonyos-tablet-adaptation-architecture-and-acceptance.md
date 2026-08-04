@@ -919,6 +919,26 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，原5项断点测试加4项能力测试全部通过；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34457850字节；MatePad Pro PCE-W30覆盖安装/冷启动成功，启动前`hilog -r`后过滤`RdpBridge|xrdp|screen recording`为0行；真机首页仅保留共享目录卡，Header无被控状态，Settings无远控导航/XRDP状态卡且共享目录入口仍可达。静态检查deviceInfo仅在policy文件，components下libentry导入为0 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
+#### TAB-A-03：RDP 会话 UI 与首页协调器隔离
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-03 |
+| 设计版本/章节 | v1.3；第 4、5.2、9.1、10.2、10.6、12.6、14.2 节 |
+| 目标 | 把现有 RDP 会话的 `Stack + XComponent + 状态提示层` 从 `Index` 抽取为唯一的 `RdpSessionPage`；`Index` 继续唯一创建并持有 `XComponentController`、连接状态和焦点回调，布局组件不拥有或重建会话 |
+| 计划代码文件 | 新增 `harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets`；修改 `harmony/app/entry/src/main/ets/pages/Index.ets`；不修改 Native、FreeRDP/xrdp、manifest、Home、Settings 或输入协议 |
+| 公共 API/状态 | `RdpSessionPage` 接收已有 `XComponentController`、提示标题/副标题、等待状态和 `onSurfaceLoad` 回调；组件内部只构建一个固定 `XComponent` 节点和展示提示层，不创建业务状态、Controller、Native import、断点或设备类型判断 |
+| 所有权与数据流 | `Index.surfaceController` -> `RdpSessionPage.surfaceController` -> XComponent；Native 连接回调 -> Index 的 notice 状态 -> `@Prop` 提示字段；XComponent `onLoad` -> 页面回调 -> Index 现有延迟聚焦逻辑。`showSession` 仍是 Index.build 的最外层分支 |
+| 行为不变量 | XComponent 的 id、libraryname、SURFACE 类型、100% 尺寸、focusable/focusOnTouch/defaultFocus、黑色背景和 `RenderFit.CENTER` 保持不变；提示层颜色、边框、尺寸和文本截断保持不变；抽取不启用 IME、rotation、split 或新的 resize 请求 |
+| 兼容与回退 | 仅为 ArkUI 组件所有权整理，无 Native ABI/包配置变化；把组件 Builder 原样移回 Index 并删除新文件即可回退。若 ArkTS 编译、静态唯一性检查或真机连接首屏任一失败，不继续开放 rotation/split |
+| 验收 ID | AC-ARCH：Index 不再直接构建 XComponent，session 组件无 Native/能力/断点依赖；AC-XC：ArkTS 全局仅一个 XComponent 构造、仅一个 `new XComponentController`，`showSession` 仍为最外层分支，既有 XComponent 属性逐项保持；本机单测和完整 HAP 构建通过后标 Implemented，实际 RDP 连接时 Controller 身份、Surface 和提示层回归通过后升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（组件隔离、静态唯一性、完整构建及 tablet 安装启动通过；实际 RDP 连接的 Controller/SURFACE/提示层回归待可用服务端凭据后升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets`、`harmony/app/entry/src/main/ets/pages/Index.ets` |
+| 设计偏差及原因 | 无行为偏差。完整构建首次发现普通必传字段不满足 ArkTS 严格初始化；未在子组件创建备用 Controller，而是使用可空初始化并由 `requireSurfaceController()` 在构建 XComponent 前 fail-fast，父级仍是唯一实际 Controller 创建和传入点 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试与模块编译通过；静态检查确认全 ArkTS 仅 `RdpSessionPage.ets` 1个XComponent构造、仅`Index.ets` 1个`new XComponentController`，session目录无`libentry.so`/deviceInfo/WidthBreakpoint/LayoutMode依赖；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP 34471202字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装和EntryAbility启动成功，首屏截图`%TEMP%/muhub-a03-home.jpeg`无首页布局回退。无可用RDP测试凭据，本项不伪造实际Surface连接证据 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text

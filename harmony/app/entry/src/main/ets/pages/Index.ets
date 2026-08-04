@@ -29,6 +29,7 @@ import {
 } from '../rdp/WindowsConnectionStore'
 import { HomePage } from '../components/home/HomePage'
 import { HomeText } from '../components/home/HomeText'
+import { RdpSessionPage } from '../components/session/RdpSessionPage'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsRoute, SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
@@ -1134,75 +1135,20 @@ struct Index {
     return this.systemDark
   }
 
-  @Builder
-  private buildSessionPage() {
-    Stack({ alignContent: Alignment.TopStart }) {
-        XComponent({
-          id: 'rdpSurface',
-          type: XComponentType.SURFACE,
-          libraryname: 'entry',
-          controller: this.surfaceController
-        })
-          .width('100%')
-          .height('100%')
-          .onLoad(() => {
-            this.deferUiUpdate(() => {
-              this.focusRemoteSurface()
-            })
-          })
-          .id(REMOTE_SURFACE_FOCUS_ID)
-          .focusable(true)
-          .focusOnTouch(true)
-          .defaultFocus(true)
-          .backgroundColor(Color.Black)
-          .renderFit(RenderFit.CENTER)
-        if (this.shouldShowSessionNotice()) {
-          this.buildSessionNotice()
-        }
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(Color.Black)
-  }
-
-  private shouldShowSessionNotice(): boolean {
-    return this.sessionNoticeTitle.length > 0
-  }
-
-  @Builder
-  private buildSessionNotice() {
-    Row() {
-      Column() {
-        Text(this.sessionNoticeTitle)
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(Color.White)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.sessionNoticeSubtitle)
-          .fontSize(12)
-          .fontColor('rgba(255,255,255,0.72)')
-          .margin({ top: 4 })
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      }
-      .alignItems(HorizontalAlign.Start)
-    }
-    .padding({ left: 14, right: 14, top: 10, bottom: 10 })
-    .margin({ left: 18, top: 18, right: 18 })
-    .constraintSize({ maxWidth: 520 })
-    .backgroundColor(this.remoteLoginWaiting ? 'rgba(84,64,22,0.88)' : 'rgba(18,22,30,0.82)')
-    .border({
-      width: 1,
-      color: this.remoteLoginWaiting ? 'rgba(255,190,92,0.42)' : 'rgba(255,255,255,0.18)'
-    })
-    .borderRadius(8)
-  }
-
   build() {
     Column() {
       if (this.showSession) {
-        this.buildSessionPage()
+        RdpSessionPage({
+          surfaceController: this.surfaceController,
+          noticeTitle: this.sessionNoticeTitle,
+          noticeSubtitle: this.sessionNoticeSubtitle,
+          remoteLoginWaiting: this.remoteLoginWaiting,
+          onSurfaceLoad: (): void => {
+            this.deferUiUpdate(() => {
+              this.focusRemoteSurface()
+            })
+          }
+        })
       } else if (this.showSettings) {
         SettingsPage({
           layoutMode: this.layoutMode,
