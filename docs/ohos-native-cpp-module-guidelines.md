@@ -150,6 +150,17 @@ in progress. New code should still follow the target ownership rules below.
   render statistics.
 - Uses injected callbacks for actual surface painting and logging.
 
+`session/rdp_display_resize_coordinator.*`
+
+- Owns the App-side display resize state machine, target generations, the bounded
+  Sent deadline, and fallback notification.
+- Consumes structured resize outcomes from `session/rdp_session_channels.*` and
+  decides whether an incoming GDI frame may enter the render queue.
+- Must not parse diagnostics strings, call N-API, own an XComponent, or create a
+  second viewport algorithm.
+- Timer lifetime is owned by the coordinator; destruction must stop and join the
+  worker instead of leaving a detached callback that captures global state.
+
 `surface/gpu_rgba_renderer.*`
 
 - Owns GLES RGBA texture upload/rendering only.

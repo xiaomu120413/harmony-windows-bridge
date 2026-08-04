@@ -958,6 +958,29 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试与模块编译通过；静态检查确认全 ArkTS 仅 `RdpSessionPage.ets` 1个XComponent构造、仅`Index.ets` 1个`new XComponentController`，session目录无`libentry.so`/deviceInfo/WidthBreakpoint/LayoutMode依赖；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP 34471202字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装和EntryAbility启动成功，首屏截图`%TEMP%/muhub-a03-home.jpeg`无首页布局回退。无可用RDP测试凭据，本项不伪造实际Surface连接证据 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
+#### TAB-B-01：结构化 resize 结果与两秒 fallback
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-B-01 |
+| 设计版本/章节 | v1.3；第 8.3、9.2、9.3、10.7、12.6、12.7、14.2、14.3 节 |
+| 用户决策 | 2026-08-04确认resize等待允许以超时结束。实现语义固定为：会话断开/Surface销毁立即取消；Deferred、Unchanged、Unsupported、Failed和LegacyUnknown立即使用fallback；只有明确Sent最多等待2000ms，超时后主动请求最后可用GDI帧重绘，禁止永久黑屏 |
+| FreeRDP公共ABI | 保留`freerdp_ohos_session_resize()`旧BOOL ABI；新增`freerdp_ohos_session_resize_ex()`，request/result均带`structSize/version`。request包含width、height、orientation；result返回Sent/Deferred/Unchanged/Unsupported/Failed、normalized/sent尺寸和实际orientation。BOOL只表示调用及result写入是否合法，调用方必须读取status，不能从message解析状态 |
+| FreeRDP内部数据流 | session resize_ex -> display-control resize_ex -> normalize -> channel/caps/lastSent/send结果；旧BOOL函数包装新接口，除Failed外维持历史TRUE行为。monitor layout使用request真实orientation（0/90/180/270），非法orientation返回Failed，不静默写死landscape |
+| App运行时接口 | `FreerdpRuntimeApi`优先动态加载`freerdp_ohos_session_resize_ex`并保留旧符号；`RdpSessionChannels`返回App级`DisplayResizeResult`，缺_ex但有旧BOOL时标LegacyUnknown且不进入严格等待；缺两种符号标Unsupported |
+| Native状态机 | 新建`session/rdp_display_resize_coordinator.*`拥有Idle/WaitingForTarget/Fallback、targetGeneration、目标尺寸、2000ms deadline和超时回调；只有Sent进入Waiting。匹配目标帧结束等待；不匹配帧在等待期暂拒绝；超时切Fallback并回调`RequestCurrentFrameRender("resize timeout")`。新请求last-write-wins，旧generation的定时完成不得覆盖新目标 |
+| 生命周期 | SurfaceChanged先取得结构化resize结果，再决定是否BeginSent；SurfaceCreated/Destroyed、RDP Disconnected/连接失败均Reset并清除等待；display-control断开即使无即时通知，也最多由2000ms deadline退出。停止/析构时工作线程可join，不使用捕获全局对象的detached线程 |
+| 渲染边界 | 本项先修复GDI严格等待与重绘；AVC420/AVC444仍使用现有Surface target contain路径，不新增第二套等待算法。未完成三codec真机矩阵前，不开放manifest的auto_rotation/split，也不把TAB-B父项标Verified |
+| 计划代码文件 | FreeRDP子模块：`client/OHOS/ohos_session.h`、`ohos_session_display.c`、`ohos_display.h/.c`及对应测试/构建清单；App：`freerdp/freerdp_runtime.h/.cpp`、`session/rdp_session_channels.h/.cpp`、`session/rdp_session_core.h/.cpp`、新建`session/rdp_display_resize_coordinator.h/.cpp`、`napi/native_bridge_context.cpp`、`cpp/CMakeLists.txt`及窄测试。保留当前`rdp_session_core.cpp`中未提交的诊断改动，不覆盖或混入本项语义 |
+| 兼容与回退 | 新App配旧FreeRDP时可连接且LegacyUnknown立即fallback；旧App配新FreeRDP继续调用旧BOOL函数。回退App协调器不会移除新ABI；完整回退公共ABI需同步回退FreeRDP子模块提交和父仓SHA。任何构建/ABI/timeout测试失败均保持rotation/split关闭 |
+| 验收ID | AC-RESIZE：Sent匹配、Sent超时、Deferred、Unchanged、Unsupported、Failed、Legacy、last-write-wins、disconnect/reset均有确定结果；AC-XC：Surface变化不重建Controller/session；AC-INPUT：等待期不接受旧geometry输入，fallback成功present后恢复；AC-ARCH：N-API入口无状态机/线程/日志解析；本机单测、FreeRDP构建、完整HAP通过后标Implemented，GDI/AVC420/AVC444真机旋转/分屏矩阵后升Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现后回写 |
+| 设计偏差及原因 | 待实现后回写 |
+| 测试命令/结果/证据 | 待实现后回写 |
+| 关联FreeRDP提交/父仓提交 | 待实现后回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
