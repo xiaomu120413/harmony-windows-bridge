@@ -2,6 +2,7 @@
 
 #include "common/bridge_types.h"
 #include "input/ohos_keyboard_adapter.h"
+#include "session/rdp_session_channels.h"
 #include "surface/surface_bridge.h"
 
 #include <cstdint>
@@ -55,6 +56,8 @@ public:
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message);
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
         std::string& message);
+    DisplayResizeResult RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
+        uint32_t orientation, const std::string& reason);
 
 private:
     struct Impl;

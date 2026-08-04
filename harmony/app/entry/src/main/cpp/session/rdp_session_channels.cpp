@@ -81,27 +81,79 @@ bool RdpSessionChannels::RequestCurrentFrameRender(const std::string& reason, st
 bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t height,
     const std::string& reason, std::string& message)
 {
+    const DisplayResizeResult result = RequestDynamicDesktopResizeEx(
+        width, height, ORIENTATION_LANDSCAPE, reason);
+    message = result.message;
+    return result.status != DisplayResizeStatus::Failed &&
+        result.status != DisplayResizeStatus::Unsupported;
+}
+
+DisplayResizeResult RdpSessionChannels::RequestDynamicDesktopResizeEx(uint32_t width,
+    uint32_t height, uint32_t orientation, const std::string& reason)
+{
+    DisplayResizeResult result;
     std::lock_guard<std::mutex> lock(activeMutex_);
-    if (activeApi_ == nullptr || activeApi_->ohosSessionResize == nullptr) {
-        message = "FreeRDP OHOS session resize symbol is not loaded";
-        return false;
+    if (activeApi_ == nullptr) {
+        result.status = DisplayResizeStatus::Unsupported;
+        result.message = "FreeRDP OHOS session runtime is not active";
+        return result;
     }
     if (activeOhosSession_ == nullptr) {
-        message = "FreeRDP OHOS session resize target is not active";
-        return false;
+        result.status = DisplayResizeStatus::Failed;
+        result.message = "FreeRDP OHOS session resize target is not active";
+        return result;
     }
 
     std::array<char, 192> detail {};
-    if (!activeApi_->ohosSessionResize(activeOhosSession_, width, height, detail.data(),
-        detail.size())) {
-        message = detail[0] != '\0' ? detail.data() : "FreeRDP OHOS session resize failed";
-        return false;
+    if (activeApi_->ohosSessionResizeEx != nullptr) {
+        FREERDP_OHOS_SESSION_RESIZE_REQUEST request {
+            sizeof(FREERDP_OHOS_SESSION_RESIZE_REQUEST),
+            FREERDP_OHOS_SESSION_RESIZE_VERSION,
+            width,
+            height,
+            orientation,
+        };
+        FREERDP_OHOS_SESSION_RESIZE_RESULT nativeResult {};
+        nativeResult.structSize = sizeof(nativeResult);
+        if (!activeApi_->ohosSessionResizeEx(activeOhosSession_, &request, &nativeResult,
+            detail.data(), detail.size())) {
+            result.status = DisplayResizeStatus::Failed;
+            result.message = detail[0] != '\0' ? detail.data() :
+                "FreeRDP OHOS session resize_ex call failed";
+            return result;
+        }
+
+        switch (nativeResult.status) {
+            case FREERDP_OHOS_SESSION_RESIZE_SENT:
+                result.status = DisplayResizeStatus::Sent;
+                break;
+            case FREERDP_OHOS_SESSION_RESIZE_DEFERRED:
+                result.status = DisplayResizeStatus::Deferred;
+                break;
+            case FREERDP_OHOS_SESSION_RESIZE_UNCHANGED:
+                result.status = DisplayResizeStatus::Unchanged;
+                break;
+            case FREERDP_OHOS_SESSION_RESIZE_UNSUPPORTED:
+                result.status = DisplayResizeStatus::Unsupported;
+                break;
+            case FREERDP_OHOS_SESSION_RESIZE_FAILED:
+            default:
+                result.status = DisplayResizeStatus::Failed;
+                break;
+        }
+        result.normalizedWidth = nativeResult.normalizedWidth;
+        result.normalizedHeight = nativeResult.normalizedHeight;
+        result.sentWidth = nativeResult.sentWidth;
+        result.sentHeight = nativeResult.sentHeight;
+        result.orientation = nativeResult.orientation;
+        result.message = detail[0] != '\0' ? detail.data() :
+            (std::string("display-control resize_ex ") + DisplayResizeStatusName(result.status));
+        return result;
     }
 
-    message = "display-control resize requested after " + reason + ": " +
-        (detail[0] != '\0' ? detail.data() : (std::to_string(width) + "x" +
-            std::to_string(height)));
-    return true;
+    result.status = DisplayResizeStatus::Unsupported;
+    result.message = "FreeRDP OHOS session resize_ex symbol is not loaded";
+    return result;
 }
 
 void RdpSessionChannels::SetActive(FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,

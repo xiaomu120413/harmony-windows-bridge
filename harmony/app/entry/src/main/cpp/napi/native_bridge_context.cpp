@@ -6,11 +6,11 @@
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/freerdp_runtime.h"
 #include "input/xcomponent_input_bridge.h"
+#include "session/rdp_display_resize_coordinator.h"
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
 
 #include <cstdint>
-#include <mutex>
 #include <string>
 
 #include <ace/xcomponent/native_interface_xcomponent.h>
@@ -22,97 +22,12 @@ SessionEventHub g_events;
 SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
 RdpSession g_session;
+RdpDisplayResizeCoordinator g_resizeCoordinator;
 
 void EmitNativeLog(const std::string& line)
 {
     BridgeLogger::Debug(line);
 }
-
-class ResizeCoordinator {
-public:
-    void Reset(const std::string& reason)
-    {
-        (void)reason;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (pending_) {
-                pending_ = false;
-                skippedFrameCount_ = 0;
-            }
-        }
-    }
-
-    void Begin(uint32_t width, uint32_t height, const std::string& reason)
-    {
-        if (width == 0 || height == 0) {
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            pending_ = true;
-            targetWidth_ = width;
-            targetHeight_ = height;
-            skippedFrameCount_ = 0;
-        }
-    }
-
-    bool ShouldQueueFrame(const RgbaFrame& frame, std::string& message)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!pending_) {
-            return true;
-        }
-
-        if (FrameMatchesTarget(frame.width, frame.height)) {
-            pending_ = false;
-            skippedFrameCount_ = 0;
-            message = "resize target accepted by frame: target=" +
-                std::to_string(targetWidth_) + "x" + std::to_string(targetHeight_) +
-                " frame=" + std::to_string(frame.width) + "x" +
-                std::to_string(frame.height) + " label=" + FrameLabel(frame);
-            return true;
-        }
-
-        ++skippedFrameCount_;
-        message = "resize pending target=" + std::to_string(targetWidth_) + "x" +
-            std::to_string(targetHeight_) + " skipped frame=" +
-            std::to_string(frame.width) + "x" + std::to_string(frame.height) +
-            " label=" + FrameLabel(frame) + " skipped=" +
-            std::to_string(skippedFrameCount_);
-        return false;
-    }
-
-private:
-    static constexpr uint32_t kFrameAlignmentTolerance = 16;
-
-    static std::string FrameLabel(const RgbaFrame& frame)
-    {
-        return frame.label.empty() ? "frame" : frame.label;
-    }
-
-    bool FrameMatchesTarget(uint32_t width, uint32_t height) const
-    {
-        if (width == 0 || height == 0) {
-            return false;
-        }
-        if (width == targetWidth_ && height == targetHeight_) {
-            return true;
-        }
-
-        const uint32_t widthDelta = width > targetWidth_ ? width - targetWidth_ : targetWidth_ - width;
-        const uint32_t heightDelta = height > targetHeight_ ? height - targetHeight_ : targetHeight_ - height;
-        return widthDelta < kFrameAlignmentTolerance && heightDelta < kFrameAlignmentTolerance;
-    }
-
-    std::mutex mutex_;
-    bool pending_ = false;
-    uint32_t targetWidth_ = 0;
-    uint32_t targetHeight_ = 0;
-    uint32_t skippedFrameCount_ = 0;
-};
-
-ResizeCoordinator g_resizeCoordinator;
 
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
@@ -126,7 +41,8 @@ bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool fo
         return false;
     }
     std::string resizeMessage;
-    if (!g_resizeCoordinator.ShouldQueueFrame(frame, resizeMessage)) {
+    if (!g_resizeCoordinator.ShouldQueueFrame(frame.width, frame.height,
+        frame.label.empty() ? "frame" : frame.label, resizeMessage)) {
         message = resizeMessage;
         return false;
     }
@@ -176,10 +92,11 @@ std::string BuildRenderStatsLog()
     return g_frameRenderer.BuildStatsLog();
 }
 
-void RequestRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& reason)
+DisplayResizeResult RequestRemoteDesktopResize(uint32_t width, uint32_t height,
+    const std::string& reason)
 {
-    std::string message;
-    (void)g_session.RequestDynamicDesktopResize(width, height, reason, message);
+    return g_session.RequestDynamicDesktopResizeEx(
+        width, height, ORIENTATION_LANDSCAPE, reason);
 }
 
 void ConfigureRdpgfxPipelineCallbacks()
@@ -198,6 +115,9 @@ void ConfigureRdpSessionCallbacks()
 {
     g_session.SetCallbacks({
         [](const std::string& state) {
+            if (state == "Disconnected") {
+                g_resizeCoordinator.Reset("session disconnected");
+            }
             g_events.state.Emit(state);
         },
         [](const std::string& line) {
@@ -216,6 +136,13 @@ void ConfigureRdpSessionCallbacks()
         RequestSurfaceRepaint,
         BuildRenderStatsLog,
     });
+    g_resizeCoordinator.SetTimeoutCallback([](uint64_t generation, const std::string& reason) {
+        if (!g_resizeCoordinator.IsFallbackGeneration(generation)) {
+            return;
+        }
+        EmitNativeLog(reason + " generation=" + std::to_string(generation));
+        RequestSurfaceRepaint("resize timeout fallback");
+    });
 }
 
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
@@ -233,9 +160,15 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
     UpdateRdpgfxSurfaceTargetIfReady("surface changed");
     UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
-    g_resizeCoordinator.Begin(snapshot.width, snapshot.height, "surface changed");
     DropPendingRenderFrame("surface changed");
-    RequestRemoteDesktopResize(snapshot.width, snapshot.height, "surface changed");
+    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(
+        snapshot.width, snapshot.height, "surface changed");
+    g_resizeCoordinator.ApplyResult(resizeResult, "surface changed");
+    EmitNativeLog(std::string("surface resize outcome=") +
+        DisplayResizeStatusName(resizeResult.status) + " detail=" + resizeResult.message);
+    if (resizeResult.status != DisplayResizeStatus::Sent) {
+        RequestSurfaceRepaint("surface resize immediate fallback");
+    }
 }
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)

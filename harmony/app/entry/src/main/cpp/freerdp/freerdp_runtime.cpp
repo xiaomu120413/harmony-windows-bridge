@@ -186,8 +186,8 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionAttachDisplayControl);
         LoadOptionalClientSymbol("freerdp_ohos_session_detach_display_control",
             ohosSessionDetachDisplayControl);
-        LoadOptionalClientSymbol("freerdp_ohos_session_resize",
-            ohosSessionResize);
+        LoadOptionalClientSymbol("freerdp_ohos_session_resize_ex",
+            ohosSessionResizeEx);
         LoadOptionalClientSymbol("freerdp_ohos_session_get_diagnostics",
             ohosSessionGetDiagnostics);
         LoadOptionalFreerdpSymbol("freerdp_ohos_avcodec_get_diagnostics",
