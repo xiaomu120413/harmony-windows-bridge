@@ -818,6 +818,25 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项通过；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34457637字节；MatePad Pro PCE-W30覆盖安装后在约855×420vp多窗口，从右侧详情向上滑动可显示完整Password、记住密码和Connect，Footer仍可见，设备列表未被联动滚走 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
+#### TAB-D-07：首页设备列表字体自然高度
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-07 |
+| 设计版本/章节 | v1.3；第 6.2、8.1、8.2、10.4、12.3、12.4 节 |
+| 触发证据 | `HomeDeviceList.ets` 的新建设备按钮固定136×48vp、设备标签和标签Row固定18vp、设备卡固定72vp、空状态固定90vp且两行文字都限制1行；系统字体放大到1.75时存在文字裁切或横向挤压风险 |
+| 目标 | 保持Icon视觉vp尺寸和现有布局拓扑，把承载文本的固定宽高改成最小约束与自然增长；可点击设备卡和新建设备操作至少48vp，Compact/Expanded继续复用同一列表 |
+| 计划代码文件 | 仅修改`harmony/app/entry/src/main/ets/components/home/HomeDeviceList.ets`；不修改Index/HomePage/Settings/Session/XComponent/Native/manifest、业务回调或连接数据 |
+| 尺寸策略 | 新建设备按钮去掉固定宽度，使用水平padding与`minWidth:136/minHeight:48`；18vp标签及标签容器改`minHeight:18`；设备卡改`minHeight:72`并允许内容自然增高；空状态改`minHeight:90`、增加内边距并允许标题/正文最多2行。20/22/36/18vp Icon视觉尺寸保持不变 |
+| 兼容与回退 | 标准字体下最小尺寸等于原视觉基线，只有文本需要更多空间时增长；Scroll继续吸收纵向增长。恢复固定width/height即可回退，但会恢复字体裁切风险 |
+| 验收 ID | AC-FONT：目标文本容器固定高度计数归零，Icon尺寸不变，1.75字体下无裁字；AC-LAYOUT：Compact/Expanded列表可滚动且新建、搜索、选择均可达；AC-ARCH：仅改展示约束，无业务状态/回调/Native依赖变化。本机测试和完整HAP通过后标Implemented，系统1.75真机矩阵后升Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（标准字体tablet构建、安装和首页回归通过；系统1.75字体及存在已保存设备时的卡片增长矩阵待补后升Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/components/home/HomeDeviceList.ets` |
+| 设计偏差及原因 | 无；只替换文本容器的固定尺寸，Icon的20/22/36/18vp视觉尺寸、搜索输入48vp最小可用高度、布局拓扑、状态和回调均未改变 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试通过；完整`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34470550字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装、启动成功，标准字体首页截图`%TEMP%/muhub-d07-home.jpeg`显示新建设备、搜索和空状态无回退。静态diff确认136×48按钮、18标签/Row、72设备卡和90空状态的固定文本容器已改为min约束，Icon尺寸未改。设备当前无保存项且系统字体未切到1.75，因此不伪造对应证据 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
+
 #### TAB-C-01：适配候选解除应用声明的最小窗口限制
 
 | 字段 | 内容 |

@@ -83,8 +83,8 @@ export struct HomeDeviceList {
         .fontWeight(FontWeight.Bold)
         .maxLines(1)
     }
-    .width(136)
-    .height(48)
+    .padding({ left: 16, right: 16 })
+    .constraintSize({ minWidth: 136, minHeight: 48 })
     .justifyContent(FlexAlign.Center)
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)
@@ -147,7 +147,7 @@ export struct HomeDeviceList {
       .fontSize(10)
       .fontWeight(FontWeight.Medium)
       .fontColor(SettingsTheme.statusText(this.isDark, 'ok'))
-      .height(18)
+      .constraintSize({ minHeight: 18 })
       .padding({ left: 6, right: 6 })
       .backgroundColor(SettingsTheme.statusBackground(this.isDark, 'ok'))
       .borderRadius(6)
@@ -199,7 +199,7 @@ export struct HomeDeviceList {
             this.buildDeviceTag(HomeText.DEVICE_TAG_PASSWORD_SAVED)
           }
         }
-        .height(18)
+        .constraintSize({ minHeight: 18 })
         .alignItems(VerticalAlign.Center)
       }
       .layoutWeight(1)
@@ -213,8 +213,8 @@ export struct HomeDeviceList {
         .draggable(false)
     }
     .width('94%')
-    .height(72)
-    .padding({ left: 10, right: 8 })
+    .constraintSize({ minHeight: 72 })
+    .padding({ left: 10, right: 8, top: 8, bottom: 8 })
     .alignItems(VerticalAlign.Center)
     .backgroundColor(this.isSelectedProfile(profile) ?
       HomeTheme.activePanelBackground(this.isDark, this.hoveredProfileId === profile.id,
@@ -263,14 +263,17 @@ export struct HomeDeviceList {
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))
-        .maxLines(1)
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
       Text(body)
         .fontSize(13)
         .fontColor(SettingsTheme.mutedText(this.isDark))
-        .maxLines(1)
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .width('94%')
-    .height(90)
+    .constraintSize({ minHeight: 90 })
+    .padding({ left: 12, right: 12, top: 12, bottom: 12 })
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .borderRadius(8)
