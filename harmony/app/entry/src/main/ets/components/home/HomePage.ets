@@ -4,6 +4,7 @@ import { WindowsConnectionProfile } from '../../rdp/WindowsConnectionStore'
 import { HomeConnectionDetails } from './HomeConnectionDetails'
 import { HomeDeviceList } from './HomeDeviceList'
 import { HomeHeader } from './HomeHeader'
+import { HomeText } from './HomeText'
 import { HomeStatusFooter } from './HomeStatusFooter'
 import { HomeTheme } from './HomeTheme'
 
