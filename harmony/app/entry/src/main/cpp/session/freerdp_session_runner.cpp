@@ -23,8 +23,6 @@
 namespace rdp_bridge {
 namespace {
 constexpr auto kRemoteLoginFrameIdleThreshold = std::chrono::seconds(15);
-constexpr auto kRemoteLoginWatchdogRepeat = std::chrono::seconds(10);
-constexpr auto kHealthLogInterval = std::chrono::seconds(30);
 
 constexpr const char* kRemoteLoginWaitingState = "RemoteLoginWaiting";
 constexpr const char* kRemoteDesktopReadyState = "RemoteDesktopReady";
@@ -58,6 +56,7 @@ void CopyCallbackMessage(char* message, size_t messageSize, const std::string& v
 struct OhosSessionAdapter {
     FreerdpRuntimeApi& api;
     freerdpOhosSession* session = nullptr;
+    uint64_t diagnosticSessionId = 0;
     const GraphicsPipelineConfig& graphicsConfig;
     const RdpSessionCallbacks& callbacks;
     const FreerdpSetActiveFn& setActive;
@@ -75,10 +74,6 @@ struct OhosSessionAdapter {
     uint64_t lastRdpgfxEndFrames = 0;
     std::chrono::steady_clock::time_point connectedAt = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point lastFrameProgressAt = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point nextDiagnosticsLog =
-        std::chrono::steady_clock::now() + kHealthLogInterval;
-    std::chrono::steady_clock::time_point nextRemoteLoginWatchdogLog =
-        std::chrono::steady_clock::now();
 
     void EmitLog(const std::string& line)
     {
@@ -132,7 +127,6 @@ struct OhosSessionAdapter {
         lastRdpgfxEndFrames = 0;
         connectedAt = std::chrono::steady_clock::now();
         lastFrameProgressAt = connectedAt;
-        nextRemoteLoginWatchdogLog = connectedAt + kRemoteLoginFrameIdleThreshold;
         onConnected();
         if (!graphicsConfig.enabled || !graphicsConfig.h264) {
             EmitRemoteDesktopReadyState();
@@ -144,13 +138,6 @@ struct OhosSessionAdapter {
         pumpInput(&api, context);
         const auto now = std::chrono::steady_clock::now();
         CheckRemoteLoginFrameProgress(now);
-        if (now >= nextDiagnosticsLog) {
-            BridgeLogger::DebugPublic("FreeRDP health: connected=" +
-                std::string(connected ? "yes" : "no") + " mode=" + graphicsConfig.mode +
-                " | " + BuildGraphicsPipelineStatsLog());
-            BridgeLogger::DebugPublic("FreeRDP render health: " + BuildRenderStatsLog());
-            nextDiagnosticsLog = now + kHealthLogInterval;
-        }
         return true;
     }
 
@@ -184,7 +171,6 @@ struct OhosSessionAdapter {
             const auto idleBeforeProgress = now - lastFrameProgressAt;
             lastRdpgfxEndFrames = progress.endFrames;
             lastFrameProgressAt = now;
-            nextRemoteLoginWatchdogLog = now + kRemoteLoginFrameIdleThreshold;
             if (HasRemoteDesktopFrame(progress)) {
                 MarkRemoteDesktopReady(progress, idleBeforeProgress);
             }
@@ -192,7 +178,7 @@ struct OhosSessionAdapter {
         }
 
         const auto idle = now - lastFrameProgressAt;
-        if (idle < kRemoteLoginFrameIdleThreshold || now < nextRemoteLoginWatchdogLog) {
+        if (idle < kRemoteLoginFrameIdleThreshold) {
             return;
         }
 
@@ -203,7 +189,7 @@ struct OhosSessionAdapter {
         const RdpgfxFrameProgress& progress, const std::string& reason)
     {
         const auto idle = now - lastFrameProgressAt;
-        if (idle < kRemoteLoginFrameIdleThreshold || now < nextRemoteLoginWatchdogLog) {
+        if (remoteLoginWaiting || idle < kRemoteLoginFrameIdleThreshold) {
             return;
         }
 
@@ -211,8 +197,10 @@ struct OhosSessionAdapter {
         const auto connectedMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(now - connectedAt).count();
         const auto idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(idle).count();
-        BridgeLogger::LogPublic(BridgeLogLevel::Info,
-            "远端桌面登录阶段无新帧: connectedMs=" + std::to_string(connectedMs) +
+        BridgeLogger::LogPublic(BridgeLogLevel::Warn,
+            "RDP_CORE sid=" + std::to_string(diagnosticSessionId) +
+                " event=frame_stalled phase=remote_login connectedMs=" +
+                std::to_string(connectedMs) +
                 " idleMs=" + std::to_string(idleMs) +
                 " frames=" + (progress.available ? std::to_string(progress.startFrames) +
                     "/" + std::to_string(progress.endFrames) : std::string("unavailable")) +
@@ -224,7 +212,6 @@ struct OhosSessionAdapter {
         if (callbacks.emitState != nullptr) {
             callbacks.emitState(kRemoteLoginWaitingState);
         }
-        nextRemoteLoginWatchdogLog = now + kRemoteLoginWatchdogRepeat;
     }
 
     static bool HasRemoteDesktopFrame(const RdpgfxFrameProgress& progress)
@@ -249,33 +236,26 @@ struct OhosSessionAdapter {
         remoteLoginWaiting = false;
         if (!remoteDesktopReady) {
             remoteDesktopReady = true;
+            const auto connectedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - connectedAt).count();
+            std::string firstFrameLog =
+                "RDP_CORE sid=" + std::to_string(diagnosticSessionId) +
+                " event=first_frame mode=" + graphicsConfig.mode +
+                " connectedMs=" + std::to_string(connectedMs) +
+                " frames=" + std::to_string(progress.startFrames) + "/" +
+                std::to_string(progress.endFrames) +
+                " surfaceCommands=" + std::to_string(progress.surfaceCommands) +
+                " recovered=" + (wasWaiting ? "yes" : "no");
             if (wasWaiting) {
-                BridgeLogger::LogPublic(BridgeLogLevel::Info,
-                    "远端桌面登录阶段恢复新帧: frames=" +
-                        std::to_string(progress.startFrames) + "/" +
-                        std::to_string(progress.endFrames) +
-                        " idleBeforeProgressMs=" +
-                        std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-                            idleBeforeProgress).count()));
-            } else {
-                BridgeLogger::DebugPublic(
-                    "远端桌面首帧到达: frames=" + std::to_string(progress.startFrames) +
-                    "/" + std::to_string(progress.endFrames) +
-                    " surfaceCommands=" + std::to_string(progress.surfaceCommands));
+                firstFrameLog += " idleBeforeProgressMs=" +
+                    std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        idleBeforeProgress).count());
             }
+            BridgeLogger::LogPublic(BridgeLogLevel::Info, firstFrameLog);
             if (callbacks.emitState != nullptr) {
                 callbacks.emitState(kRemoteDesktopReadyState);
             }
         }
-    }
-
-    std::string BuildRenderStatsLog() const
-    {
-        if (callbacks.renderStats == nullptr) {
-            return "render stats unavailable";
-        }
-        const std::string stats = callbacks.renderStats();
-        return stats.empty() ? "render stats unavailable" : stats;
     }
 
     bool ShouldContinue() const
@@ -357,8 +337,8 @@ struct OhosSessionAdapter {
 
 } // namespace
 
-RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_bool& running,
-    const RdpSessionCallbacks& callbacks, const FreerdpSetActiveFn& setActive,
+RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, uint64_t diagnosticSessionId,
+    std::atomic_bool& running, const RdpSessionCallbacks& callbacks, const FreerdpSetActiveFn& setActive,
     const FreerdpClearActiveFn& clearActive, const std::function<void(const std::string&)>& log,
     const FreerdpConnectedFn& onConnected, const FreerdpInputPumpFn& pumpInput)
 {
@@ -429,6 +409,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, std::atomic_b
     OhosSessionAdapter adapter {
         api,
         session,
+        diagnosticSessionId,
         graphicsConfig,
         callbacks,
         setActive,
