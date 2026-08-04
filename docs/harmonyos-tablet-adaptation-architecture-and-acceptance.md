@@ -1,9 +1,11 @@
 # MuHub HarmonyOS 单包平板适配架构、修改清单与验收方案
 
 > 状态：架构基线，尚未实施
+> 文档版本：1.1
 > 审阅日期：2026-08-04
 > 适用工程：MuHub HarmonyOS 应用，目标/兼容 API 22
 > 本文目标：先固定修改边界、实施顺序、验收口径和架构门禁，再开始改业务代码。
+> 变更控制：任何相关代码修改前，先同步本文设计和实施台账；实现及验证后再回写状态与证据。
 
 ## 1. 结论
 
@@ -43,6 +45,30 @@
 3. 每个 PR 执行第 14 节对应阶段的测试与 baseline/strict 架构门禁，并提交本阶段 smoke 证据。
 4. 测试按第 12 节矩阵执行，判定以第 13 节 snapshot/diagnostics 的数值为准，截图和肉眼观察只作补充。
 5. 发布评审逐项核对第 18 节完成定义；任一 P0 项没有证据就不能标记“平板适配完成”。
+
+### 1.3 文档先行与同步流程
+
+本方案实施期间，每个代码任务必须按以下顺序执行：
+
+1. **定位设计**：确认改动对应本文的工作包、架构章节、文件级修改项和验收 ID。
+2. **先改文档**：补齐目标行为、非目标、所有权、调用/数据流、状态机或 API、兼容策略、实际文件、验收阈值和回退条件；不适用的字段明确写“不适用”，不能省略后让代码自行决定。
+3. **登记台账**：在第 11.1 节新增/更新 Change ID，状态达到 `DesignReady`，并审阅文档 diff。未达到该状态不得编辑代码。
+4. **再改代码**：代码范围必须落在台账和第 10 节文件清单内。发现需要新增文件、跨模块调用或改变行为时，先暂停实现并返回步骤 2。
+5. **验证并回写**：记录实际文件、测试命令、diagnostics、截图/日志证据和设计偏差；先标 `Implemented`，验收通过后再标 `Verified`。
+6. **同步当前事实**：只有 `Verified` 后，才把 feature matrix、当前交互、验证基线或 README 中的能力状态改成“已支持”。
+
+文档状态分工：
+
+| 文档类型 | 实现前怎么写 | 验证后怎么写 | 禁止事项 |
+|---|---|---|---|
+| 本文目标架构/验收方案 | 写清 Planned/DesignReady 设计、代码范围和验收 | 回写 Implemented/Verified、偏差和证据 | 未改本文就直接改平板相关代码 |
+| freerdp-ohos-feature-matrix.md | 仅可增加明确标注的 planned/gap 链接 | 真实测试通过后更新支持状态 | 提前把目标能力写成已完成 |
+| settings-desktop-current-interactions.md | 只记录仍然成立的当前行为；目标变化链接本文 | UI 真机验收后更新当前交互 | 用目标稿覆盖尚未实现的行为 |
+| ohos-native-cpp-module-guidelines.md | 仅在模块所有权/通用规则变化时先更新 | 验证文件归属和规模符合规则 | 把具体产品 UI 逻辑写成通用 Native 规范 |
+| freerdp-ohos-validation-baseline.md / README | 先补计划采用的新命令、参数和候选流程，并标待实现 | 命令实际可执行后改为当前步骤 | 发布不存在的脚本或未验证命令 |
+| FreeRDP/xrdp 子模块文档 | 先写公共 ABI、协议行为、兼容和上游边界 | 子模块提交与父仓 SHA 可复现后记录版本 | 只改父仓调用而不记录社区接口变化 |
+
+“设计已写过”不等于可以跳过同步：如果本次代码完全符合既有设计，仍需在实施台账中引用对应章节和验收 ID；如果不完全符合，必须先修改本文。文档和代码可以在同一提交，但文档 diff 必须先形成并完成审阅；公共 ABI、功能隔离、manifest/单包边界和子模块变更优先采用独立文档提交。
 
 ## 2. 固定约束和非目标
 
@@ -594,7 +620,67 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 
 不要把布局、IME、FreeRDP DPI 和 XRDP 隔离放入同一个大提交。
 
+### 11.1 实施台账与状态流转
+
+状态只能按以下方向流转：
+
+~~~text
+Planned -> DesignReady -> Implemented -> Verified
+Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
+~~~
+
+- `DesignReady`：本文已写清实际代码范围、接口/状态、兼容、验收 ID 和回退条件，文档 diff 已审阅；这是开始代码修改的唯一合法状态。
+- `Implemented`：代码和测试已落地、可构建，但完整验收尚未结束；不能据此更新当前能力为“支持”。
+- `Verified`：对应验收 ID 全部通过，证据已归档，当前事实文档已经同步。
+- `DecisionPending/Blocked`：缺产品决策、服务端、设备或外部 ABI；不得用假设直接实现越过门禁。
+
+初始父级台账：
+
+| Change ID | 工作包 | 设计/文件清单 | 验收 ID | 设计状态 | 实现状态 | 开始代码前的额外门禁 |
+|---|---|---|---|---|---|---|
+| TAB-A | A 架构基线 | 第 4、5、10.2、10.3、10.8 节 | AC-ARCH、AC-XC | DesignReady | NotStarted | 固定现状 diagnostics 基线 |
+| TAB-B | B 会话底座 | 第 8.3、9.2、9.3、10.6、10.7 节 | AC-XC、AC-RESIZE、AC-INPUT | DesignReady | NotStarted | `_ex` ABI 与旧 BOOL 兼容评审通过 |
+| TAB-C | C 系统能力 | 第 6.4、8.1、10.1 节 | AC-PKG、AC-LAYOUT、AC-FONT | DesignReady | NotStarted | TAB-B 至少完成 resize/fallback 验证 |
+| TAB-D | D UI 重排 | 第 6、8.1、8.2、10.4、10.5 节 | AC-LAYOUT、AC-FONT | DesignReady | NotStarted | 目标设备/窗口范围已确认 |
+| TAB-E | E 功能隔离 | 第 7、10.3、10.5 节 | AC-CAP | DecisionPending | NotStarted | D-01 完整决策记录 |
+| TAB-F | F 输入能力 | 第 9.3～9.5、10.6、10.7 节 | AC-INPUT、AC-IME | DesignReady | NotStarted | TAB-B 的唯一 geometry 已可用 |
+| TAB-G | G 交付门禁 | 第 12～14 节 | 全部 AC-* | DesignReady | NotStarted | 测试/构建脚本先按第 10.8 节落地 |
+
+父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
+
+~~~text
+Change ID:
+设计章节/设计版本:
+计划代码文件:
+公共 ABI 或数据/状态变化:
+兼容与回退:
+验收 ID:
+设计状态: DesignReady
+实际代码文件:                # 实现后回写
+设计偏差及原因:              # 无偏差也写“无”
+测试命令/结果/证据路径:       # 验证后回写
+实现状态: NotStarted | Implemented | Verified
+关联工程提交/子模块提交/SHA:
+~~~
+
+当前工作区中未登记到子项的既有改动，不自动视为本方案的实现证据；必须先核对归属、补台账和设计，再继续修改。
+
 ## 12. 验收方案
+
+代码、测试、截图和实施台账统一引用以下稳定验收 ID；不得只写“已测试”而不指明用例：
+
+| 验收 ID | 对应范围 | 本文位置 |
+|---|---|---|
+| AC-PKG | 单包、身份、安装和升级 | 第 12.2 节 |
+| AC-LAYOUT | Compact/Expanded、窗口、方向、安全区 | 第 12.3 节 |
+| AC-FONT | 字体、Icon、触控热区和焦点 | 第 12.4 节 |
+| AC-CAP | tablet/2in1 功能隔离和回归 | 第 12.5 节 |
+| AC-XC | XComponent/Controller/session 生命周期 | 第 12.6 节 |
+| AC-RESIZE | resize、fallback、viewport 和 codec | 第 12.7 节 |
+| AC-INPUT | 坐标、黑边、触控、键鼠和释放 | 第 12.8 节 |
+| AC-IME | 虚拟键盘、中文提交和焦点恢复 | 第 12.9 节 |
+| AC-STABILITY | 30 分钟组合稳定性 | 第 12.10 节 |
+| AC-ARCH | diagnostics、静态边界、自动测试和构建 | 第 13、14 节 |
 
 最低验收环境：至少 1 台目标 API 22 tablet 真机、1 台目标 API 22 2in1 真机；可实际操作的触屏、物理键盘和鼠标/触控板；至少 1 个支持 Display Control 的 RDP 服务端和 1 个不支持/可关闭该能力的服务端。GDI、AVC420、AVC444 可以由不同服务端或配置提供，但每项必须用 diagnostics 证明真实协商路径。模拟器可用于布局和纯策略冒烟，不能替代 Surface、旋转、密度、物理输入和 codec 真机验收。
 
@@ -838,6 +924,7 @@ tools/check_tablet_architecture.ps1 分两阶段：
 
 | 规则 | 自动检查 |
 |---|---|
+| 文档先行门禁 | 本次 diff 只要修改第 10 节覆盖的代码/config/脚本/子模块范围，就必须同时包含本文实施台账中的子级 Change ID；架构/ABI/manifest/子模块变更必须引用对应设计版本，未被现有设计精确覆盖时还必须先包含设计段落 diff |
 | Native import allowlist | harmony/app/entry/src/main/ets/**/*.ets 中，libentry.so 只允许 harmony/app/entry/src/main/ets/rdp/NativeRdpGateway.ets import |
 | XComponent allowlist | XComponent 构造只允许 harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets |
 | Controller 创建点 | harmony/app/entry/src/main/ets/**/*.ets 只有一个 new XComponentController 创建点；运行时身份另由 snapshot 验证 |
@@ -921,11 +1008,14 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 
 每个实现 PR：
 
-1. 受影响的 ArkTS/Native 纯逻辑测试成功。
-2. Commit A/B 使用 baseline，Commit B 之后使用 strict 架构检查。
-3. Debug 构建成功。
-4. 无未说明的 FreeRDP/xrdp 通用 core 修改。
-5. 对应阶段的 smoke 证据；不要求每个小 PR 都跑 30 分钟完整矩阵。
+1. 第一处代码 diff 产生前，本文已存在对应子级 Change ID，设计状态为 DesignReady；PR 描述引用设计章节和验收 ID。
+2. 计划/实际代码文件、公共 ABI、兼容和回退与台账一致；有偏差时先产生并审阅文档 diff，再继续代码，并在 PR 中记录此次设计同步。
+3. 受影响的 ArkTS/Native 纯逻辑测试成功。
+4. Commit A/B 使用 baseline，Commit B 之后使用 strict 架构检查，文档先行门禁始终启用。
+5. Debug 构建成功。
+6. 无未说明的 FreeRDP/xrdp 通用 core 修改。
+7. 对应阶段的 smoke 证据；不要求每个小 PR 都跑 30 分钟完整矩阵。
+8. 合并前台账至少回写为 Implemented；若声称能力完成，必须为 Verified 并同步当前事实文档。
 
 启用 tablet/rotation/split、修改 Native/FreeRDP ABI 或形成发布候选时，额外要求：
 
@@ -1007,3 +1097,4 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 10. 物理键鼠、触控、焦点导航和失焦释放通过。
 11. 静态架构检查、纯逻辑测试、Debug/Release 构建通过。
 12. 截图、diagnostics、hilog、设备矩阵形成可复核证据包。
+13. 所有实现提交都有 DesignReady 先行记录；实施台账、实际代码文件、设计偏差、验收 ID、证据和当前事实文档已经同步。
