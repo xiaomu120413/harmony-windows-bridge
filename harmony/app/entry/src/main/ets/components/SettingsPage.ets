@@ -1,4 +1,5 @@
 import { BasicSettingsPage } from './settings/BasicSettingsPage'
+import { LayoutMode } from '../adaptive/WindowLayoutPolicy'
 import { ProjectHelpPage } from './settings/ProjectHelpPage'
 import { RemoteControlSettingsPage } from './settings/RemoteControlSettingsPage'
 import { XrdpServerStatus } from '../rdp/XrdpServerController'
@@ -19,6 +20,7 @@ import {
 
 @Component
 export struct SettingsPage {
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   onClose: () => void = () => {
   }
   onRemoteAccessCodeGateChange: (enabled: boolean) => string = (_enabled: boolean) => {
@@ -199,6 +201,30 @@ export struct SettingsPage {
   }
 
   @Builder
+  private buildCompactTopBar() {
+    Row({ space: 12 }) {
+      SettingsBackButton({
+        isDark: this.isDarkMode(),
+        onBack: () => {
+          this.onClose()
+        }
+      })
+
+      Text(SettingsText.SETTINGS_TITLE)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(SettingsTheme.primaryText(this.isDarkMode()))
+        .layoutWeight(1)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+    .alignItems(VerticalAlign.Center)
+    .backgroundColor(SettingsTheme.pageBackground(this.isDarkMode()))
+  }
+
+  @Builder
   private overviewEntry(title: string, description: string, iconResource: Resource, accentName: SettingsAccentName,
     value: string, onPress: () => void) {
     SettingsListItem({
@@ -317,70 +343,105 @@ export struct SettingsPage {
     .padding(22)
   }
 
-  build() {
+  @Builder
+  private buildSettingsContent() {
+    if (this.pageName === SettingsRoute.BASIC) {
+      BasicSettingsPage({
+        onModeChange: (mode: SettingsAppearanceMode) => {
+          this.appearanceMode = mode
+        },
+        onBack: () => {
+          this.pageName = SettingsRoute.SETTINGS
+        }
+      })
+    } else if (this.pageName === SettingsRoute.REMOTE_CONTROL) {
+      RemoteControlSettingsPage({
+        isDark: this.isDarkMode(),
+        targetSection: this.remoteControlTargetSection,
+        remoteAccessCode: this.remoteAccessCode,
+        remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+        screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+        xrdpServerRunning: this.xrdpServerRunning,
+        xrdpServerState: this.xrdpServerState,
+        xrdpServerPort: this.xrdpServerPort,
+        xrdpServerMessage: this.xrdpServerMessage,
+        xrdpServerBusy: this.xrdpServerBusy,
+        screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
+        onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
+        onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
+        onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,
+        onRefreshScreenRecordingPermission: this.onRefreshScreenRecordingPermission,
+        onRefreshXrdpServerStatus: this.onRefreshXrdpServerStatus,
+        onStartXrdpServer: this.onStartXrdpServer,
+        onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
+        onBack: () => {
+          this.pageName = SettingsRoute.SETTINGS
+          this.remoteControlTargetSection = ''
+        }
+      })
+    } else if (this.pageName === SettingsRoute.PROJECT_HELP) {
+      ProjectHelpPage({
+        isDark: this.isDarkMode(),
+        onBack: () => {
+          this.pageName = SettingsRoute.SETTINGS
+        }
+      })
+    } else {
+      Scroll() {
+        this.buildOverviewPage()
+      }
+      .width('100%')
+      .height('100%')
+    }
+  }
+
+  @Builder
+  private buildContentPane() {
+    Column() {
+      this.buildSettingsContent()
+    }
+    .layoutWeight(1)
+    .height('100%')
+    .alignItems(HorizontalAlign.Start)
+    .justifyContent(FlexAlign.Start)
+    .backgroundColor(SettingsTheme.pageBackground(this.isDarkMode()))
+    .borderRadius(16)
+  }
+
+  @Builder
+  private buildCompactLayout() {
+    Column() {
+      if (this.pageName === SettingsRoute.SETTINGS) {
+        this.buildCompactTopBar()
+      }
+      this.buildContentPane()
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(SettingsTheme.pageBackground(this.isDarkMode()))
+  }
+
+  @Builder
+  private buildExpandedLayout() {
     Row({ space: 16 }) {
       this.buildDesktopNav()
-
-      Column() {
-        if (this.pageName === SettingsRoute.BASIC) {
-          BasicSettingsPage({
-            onModeChange: (mode: SettingsAppearanceMode) => {
-              this.appearanceMode = mode
-            },
-            onBack: () => {
-              this.pageName = SettingsRoute.SETTINGS
-            }
-          })
-        } else if (this.pageName === SettingsRoute.REMOTE_CONTROL) {
-          RemoteControlSettingsPage({
-            isDark: this.isDarkMode(),
-            targetSection: this.remoteControlTargetSection,
-            remoteAccessCode: this.remoteAccessCode,
-            remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
-            screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
-            xrdpServerRunning: this.xrdpServerRunning,
-            xrdpServerState: this.xrdpServerState,
-            xrdpServerPort: this.xrdpServerPort,
-            xrdpServerMessage: this.xrdpServerMessage,
-            xrdpServerBusy: this.xrdpServerBusy,
-            screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
-            onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
-            onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
-            onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,
-            onRefreshScreenRecordingPermission: this.onRefreshScreenRecordingPermission,
-            onRefreshXrdpServerStatus: this.onRefreshXrdpServerStatus,
-            onStartXrdpServer: this.onStartXrdpServer,
-            onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
-            onBack: () => {
-              this.pageName = SettingsRoute.SETTINGS
-              this.remoteControlTargetSection = ''
-            }
-          })
-        } else if (this.pageName === SettingsRoute.PROJECT_HELP) {
-          ProjectHelpPage({
-            isDark: this.isDarkMode(),
-            onBack: () => {
-              this.pageName = SettingsRoute.SETTINGS
-            }
-          })
-        } else {
-          Scroll() {
-            this.buildOverviewPage()
-          }
-          .width('100%')
-          .height('100%')
-        }
-      }
-      .layoutWeight(1)
-      .height('100%')
-      .alignItems(HorizontalAlign.Start)
-      .justifyContent(FlexAlign.Start)
-      .backgroundColor(SettingsTheme.pageBackground(this.isDarkMode()))
-      .borderRadius(16)
+      this.buildContentPane()
     }
     .width('100%')
     .height('100%')
     .padding(16)
     .backgroundColor(SettingsTheme.pageBackground(this.isDarkMode()))
+  }
+
+  build() {
+    Stack() {
+      if (this.layoutMode === LayoutMode.COMPACT) {
+        this.buildCompactLayout()
+      } else {
+        this.buildExpandedLayout()
+      }
+    }
+    .width('100%')
+    .height('100%')
   }
 }

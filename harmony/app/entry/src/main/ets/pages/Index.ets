@@ -1166,6 +1166,7 @@ struct Index {
         this.buildSessionPage()
       } else if (this.showSettings) {
         SettingsPage({
+          layoutMode: this.layoutMode,
           initialPageName: this.settingsInitialPageName,
           initialRemoteControlSection: this.settingsRemoteControlSection,
           remoteAccessCode: this.remoteAccessCode,

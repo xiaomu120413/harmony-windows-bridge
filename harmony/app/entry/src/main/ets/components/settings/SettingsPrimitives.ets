@@ -153,8 +153,8 @@ export struct SettingsBackButton {
         .draggable(false)
     }
     .type(ButtonType.Normal)
-    .width(44)
-    .height(44)
+    .width(48)
+    .height(48)
     .borderRadius(SettingsTheme.BUTTON_RADIUS)
     .backgroundColor(SettingsTheme.transparentButton(this.hovered, this.pressed, this.isDark))
     .stateEffect(false)
