@@ -665,6 +665,26 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0；5/5 通过、0 Failure、0 Error；结果文件 `harmony/app/entry/.test/default/intermediates/test/coverage_data/test_result.txt`；策略文件行/函数/分支覆盖率均为 100%；`rg` 静态检查确认策略和测试无 Index/Home/Settings/RDP/Session/XComponent/deviceInfo/DeviceCapability import。构建存在一条既有 `SettingsPrimitives.ets` API 26 兼容性警告，与本项无关 |
 | 关联提交 | 设计先行提交 `2b063f4`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
+#### TAB-A-02：窗口断点运行时接入
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-02 |
+| 设计版本/章节 | v1.2；第 4、5.3、6.1、10.2、12.3、14.2、14.3 节 |
+| 目标 | 在 Index 建立唯一、响应式的 `layoutMode` 页面状态：首次显示时读取当前窗口官方宽度断点，窗口跨断点时更新，页面销毁时使用同一个回调注销；本项不改变 Home/Settings/Session 的现有拓扑 |
+| 计划代码文件 | 修改 `harmony/app/entry/src/main/ets/pages/Index.ets`；复用 `harmony/app/entry/src/main/ets/adaptive/WindowLayoutPolicy.ets` 和现有测试，不新增运行时文件 |
+| 公共 API/状态 | Index 新增私有 `@State layoutMode`，初始 fail-safe 为 Compact；`aboutToAppear()` 先通过 `UIContext.getWindowWidthBreakpoint()` 初始化，再通过 `UIContext.getUIObserver().on('windowSizeLayoutBreakpointChange', callback)` 注册；回调只调用 `layoutModeForWidthBreakpoint()`；`aboutToDisappear()` 使用同一 callback 调用 `off` |
+| 所有权与数据流 | HarmonyOS UIContext/observer -> `WidthBreakpoint` -> WindowLayoutPolicy -> Index.layoutMode；Index 是页面拓扑状态所有者，adaptive 仍为无 UI/RDP 依赖的纯策略；EntryAbility、Home、Settings、RDP 和 Native 均不产生第二份布局状态 |
+| 非目标 | 不修改 Home/Settings 布局、不把 layoutMode 传入子组件、不改 XComponent、不监听像素宽高、不读 deviceInfo、不实现 capability、不修改 manifest/EntryAbility/Native |
+| 兼容与回退 | 仅使用当前 compile/compatible SDK 22 已声明 API；注册或读取异常时保留 Compact 并记录日志；删除 Index 的状态、初始化和 on/off 即可回退，不影响连接与会话状态 |
+| 验收 ID | AC-LAYOUT：初始值和 observer 事件都经过同一纯策略；AC-ARCH：on/off 使用同一回调、无 pixel/deviceType 第二来源、ArkTS 单测与模块编译通过；AC-XC：showSession 最外层分支和 XComponent 节点无改动 |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现后回写 |
+| 设计偏差及原因 | 待实现后回写 |
+| 测试命令/结果/证据 | 计划执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，并静态核对监听/注销、第二状态源和 XComponent diff；结果待回写 |
+| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
