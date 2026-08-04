@@ -659,11 +659,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 只使用本机 API 22 已声明的 WidthBreakpoint；删除四个新增文件即可完整回退，不影响当前应用行为 |
 | 验收 ID | AC-LAYOUT：五个官方枚举映射单测；AC-ARCH：测试脚本退出码与纯策略无 UI/RDP import |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现后回写 |
-| 设计偏差及原因 | 待实现后回写 |
-| 测试命令/结果/证据 | 计划执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run_tablet_arkts_tests.ps1`；结果待回写 |
-| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+| 实现状态 | Verified |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/adaptive/WindowLayoutPolicy.ets`、`harmony/app/entry/src/test/List.test.ets`、`harmony/app/entry/src/test/WindowLayoutPolicy.test.ets`、`tools/run_tablet_arkts_tests.ps1` |
+| 设计偏差及原因 | 无；实现文件、导出 API、映射规则、非目标和回退方式均与 DesignReady 记录一致 |
+| 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0；5/5 通过、0 Failure、0 Error；结果文件 `harmony/app/entry/.test/default/intermediates/test/coverage_data/test_result.txt`；策略文件行/函数/分支覆盖率均为 100%；`rg` 静态检查确认策略和测试无 Index/Home/Settings/RDP/Session/XComponent/deviceInfo/DeviceCapability import。构建存在一条既有 `SettingsPrimitives.ets` API 26 兼容性警告，与本项无关 |
+| 关联提交 | 设计先行提交 `2b063f4`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
