@@ -161,6 +161,12 @@ in progress. New code should still follow the target ownership rules below.
 - Timer lifetime is owned by the coordinator; destruction must stop and join the
   worker instead of leaving a detached callback that captures global state.
 
+`session/rdp_display_resize_types.h`
+
+- Owns only App-level resize status/result value types and their status-name helper.
+- Has no HarmonyOS, NativeWindow, FreeRDP, channel, surface, or N-API dependencies,
+  so the coordinator state machine remains host-testable.
+
 `surface/gpu_rgba_renderer.*`
 
 - Owns GLES RGBA texture upload/rendering only.

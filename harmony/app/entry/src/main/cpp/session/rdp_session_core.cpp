@@ -228,6 +228,19 @@ struct RdpSession::Impl {
         return channels.RequestDynamicDesktopResize(width, height, reason, message);
     }
 
+    DisplayResizeResult RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
+        uint32_t orientation, const std::string& reason)
+    {
+        if (!connected.load()) {
+            DisplayResizeResult result;
+            result.status = DisplayResizeStatus::Failed;
+            result.message = "no active FreeRDP session";
+            return result;
+        }
+
+        return channels.RequestDynamicDesktopResizeEx(width, height, orientation, reason);
+    }
+
     void EmitState(const std::string& state)
     {
         EmitCallback(callbacks.emitState, state);
@@ -552,6 +565,12 @@ bool RdpSession::RequestDynamicDesktopResize(uint32_t width, uint32_t height,
     const std::string& reason, std::string& message)
 {
     return impl_->RequestDynamicDesktopResize(width, height, reason, message);
+}
+
+DisplayResizeResult RdpSession::RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
+    uint32_t orientation, const std::string& reason)
+{
+    return impl_->RequestDynamicDesktopResizeEx(width, height, orientation, reason);
 }
 
 } // namespace rdp_bridge

@@ -137,7 +137,8 @@ public:
     using OhosSessionAttachDisplayControlFn = BOOL (*)(
         freerdpOhosSession*, DispClientContext*, char*, size_t);
     using OhosSessionDetachDisplayControlFn = void (*)(freerdpOhosSession*, DispClientContext*);
-    using OhosSessionResizeFn = BOOL (*)(freerdpOhosSession*, uint32_t, uint32_t, char*,
+    using OhosSessionResizeExFn = BOOL (*)(freerdpOhosSession*,
+        const FREERDP_OHOS_SESSION_RESIZE_REQUEST*, FREERDP_OHOS_SESSION_RESIZE_RESULT*, char*,
         size_t);
     using OhosSessionGetDiagnosticsFn = const char* (*)(freerdpOhosSession*);
     using OhosAvcodecGetDiagnosticsFn = const char* (*)();
@@ -210,7 +211,7 @@ public:
     OhosSessionDisconnectFn ohosSessionDisconnect = nullptr;
     OhosSessionAttachDisplayControlFn ohosSessionAttachDisplayControl = nullptr;
     OhosSessionDetachDisplayControlFn ohosSessionDetachDisplayControl = nullptr;
-    OhosSessionResizeFn ohosSessionResize = nullptr;
+    OhosSessionResizeExFn ohosSessionResizeEx = nullptr;
     OhosSessionGetDiagnosticsFn ohosSessionGetDiagnostics = nullptr;
     OhosAvcodecGetDiagnosticsFn ohosAvcodecGetDiagnostics = nullptr;
 

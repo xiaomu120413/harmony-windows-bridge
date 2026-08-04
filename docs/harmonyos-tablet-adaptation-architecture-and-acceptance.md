@@ -375,7 +375,7 @@ RenderFit.CENTER 只是 ArkUI 组件呈现策略，不等于远端桌面缩放�
 P0（平板旋转/分屏必须完成）：
 
 - Surface resize 稳定后，按最终 Native Surface 物理像素请求动态分辨率。
-- 从实际 display rotation 得到 RDP orientation，不再永久写死 landscape；orientation 与 resize 结果走版本化兼容接口。
+- 从实际 display rotation 得到 RDP orientation，不再永久写死 landscape；orientation 与 resize 结果走唯一的版本化 `_ex` 接口，不保留旧接口兼容层。
 - 本地 `densityDPI` 只用于触控阈值换算，不冒充远端 Windows DPI。
 
 P1（独立增强）：
@@ -414,7 +414,6 @@ Stable(surfaceGeneration=s, geometryRevision=r)
        Unchanged   -> 保持 fallback，直接 Stable
        Unsupported -> 保持 fallback，直接 Stable
        Failed      -> 保持 fallback，直接 Stable
-       LegacyUnknown -> 已调用旧 BOOL ABI，但不进入严格等待
   -> TargetPresented（匹配当前 surfaceGeneration、targetGeneration、normalized target）
        -> 发布新 geometryRevision
   -> SentTimeout <= 2s -> 回到 fallback，保留最后可用帧
@@ -422,10 +421,10 @@ Stable(surfaceGeneration=s, geometryRevision=r)
 
 关键要求：
 
-- 现有 freerdp_ohos_session_resize 的 BOOL ABI 保留；新增版本化 _ex/result struct 区分 Sent、Deferred、Unchanged、Unsupported、Failed，并返回 normalized/sent target。
+- `freerdp_ohos_session_resize_ex` 是唯一 resize ABI；版本化 request/result 区分 Sent、Deferred、Unchanged、Unsupported、Failed，并返回 normalized/sent target。
 - 只有 Sent 才进入目标帧等待。
-- Deferred、Unsupported、Failed、Unchanged 和 LegacyUnknown 不等待 2 秒，也不丢帧。
-- App runtime 优先加载 `_ex`；只找到旧 BOOL ABI 时可以保持旧客户端兼容连接，但结果标为 LegacyUnknown、继续 fallback，不能把 `TRUE` 猜成 Sent。发布候选的旋转/分屏门禁要求 diagnostics 显示 `resizeApi=ex`。
+- Deferred、Unsupported、Failed 和 Unchanged 不等待 2 秒，也不丢帧。
+- App runtime 只加载 `_ex`；符号缺失时标Unsupported并继续fallback，不调用旧BOOL。发布候选打包门禁要求内置运行库导出该符号。
 - 等待期间继续按 contain 显示最后可用帧，不允许清空后永久黑屏。
 - 若会话尚无任何可用首帧，则显示明确的连接/调整中 overlay，保持输入无效，直到首个 viewport 发布；不能把空黑 Surface 伪装成 fallback 已成功。
 - 使用 trailing debounce 200ms：连续 20 个、间隔 50ms 的事件期间发送 0 次，最后事件后 200～500ms 内只发送最终目标一次。
@@ -568,16 +567,16 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 | 优先级 | 文件 | 修改点 | 文件完成条件 |
 |---|---|---|---|
 | P0，新文件 | harmony/app/entry/src/main/cpp/surface/display_geometry.h/.cpp | 唯一保存 surfacePx、desktopPx、最终 viewportPx、surfaceGeneration、geometryRevision；替换 SurfaceBridge 现有 viewport 字段；只负责 contain 几何和代次，不复制远端坐标映射 | GDI/AVC/input/diagnostics 共用同一对象；边界单测通过 |
-| P0，新文件 | harmony/app/entry/src/main/cpp/session/rdp_display_resize_coordinator.h/.cpp | 从 N-API 文件移出；在 session/orchestration 层实现 trailing debounce、generation、明确结果状态、2秒 Sent 超时和 fallback，避免 surface 层反向依赖 session | unsupported/deferred/legacy/timeout 不黑屏 |
+| P0，新文件 | harmony/app/entry/src/main/cpp/session/rdp_display_resize_coordinator.h/.cpp | 从 N-API 文件移出；在 session/orchestration 层实现 trailing debounce、generation、明确结果状态、2秒 Sent 超时和 fallback，避免 surface 层反向依赖 session | unsupported/deferred/timeout 不黑屏 |
 | P0 | harmony/app/entry/src/main/cpp/CMakeLists.txt | 注册新增源文件和可测试纯逻辑 | HAP 构建和测试 target 通过 |
 | P0 | harmony/app/entry/src/main/cpp/napi/native_bridge_context.cpp | Surface 回调只转发；检查 resize 结果；非 Sent 不进入严格等待 | 文件不新增算法，目标不继续膨胀 |
 | P0 | harmony/app/entry/src/main/cpp/surface/surface_bridge.h/.cpp | 删除自身 viewportX_/Y_/Width_/Height_ 副本，委托 display_geometry；Surface changed 后先重算旧 desktop 在新 Surface 的 fallback viewport | fallback present 后输入恢复；Bridge 与 diagnostics 不出现第二份几何 |
 | P0 | harmony/app/entry/src/main/cpp/channels/rdpgfx_pipeline.h/.cpp | 把 viewport 发布传入 AVC420/AVC444 | 三渲染路径同一接口 |
 | P0 | harmony/app/entry/src/main/cpp/surface/avc420_gpu_compositor*.cpp、harmony/app/entry/src/main/cpp/surface/avc444_gpu_compositor*.cpp | present 成功后发布实际 contain viewport；不再自留第二套输入几何 | 三种编码的 viewport 诊断与画面一致 |
 | P0 | harmony/app/entry/src/main/cpp/session/rdp_session_input.cpp | 校验当前 geometryRevision 和黑边；通过后把 local pointer + viewport 交给 FreeRDP OHOS 映射；仅拖动 move/up 可有限 clamp | 黑边 down/click 不进入 FreeRDP |
-| P0 | harmony/app/entry/src/main/cpp/freerdp/freerdp_runtime.h/.cpp | 优先动态加载 resize `_ex`；缺失时可调用旧 BOOL ABI但返回 App 级 LegacyUnknown，不猜测 Sent | diagnostics 暴露 resizeApi=ex/legacy；发布旋转矩阵只接受 ex |
+| P0 | harmony/app/entry/src/main/cpp/freerdp/freerdp_runtime.h/.cpp | 只动态加载 resize `_ex`；缺失时返回App级Unsupported并立即fallback | diagnostics暴露resizeApi=ex/unsupported；发布打包只接受ex |
 | P0 | harmony/app/entry/src/main/cpp/session/rdp_session_channels.h/.cpp、harmony/app/entry/src/main/cpp/session/rdp_session_core.h/.cpp | 把内部 bool resize 链改为结构化结果并传给 coordinator；不通过日志字符串推断状态 | Deferred/normalized target 可端到端进入 diagnostics 和状态机 |
-| P0，兼容扩展 | harmony/third_party/FreeRDP/client/OHOS/ohos_session.h、harmony/third_party/FreeRDP/client/OHOS/ohos_session_display.c、harmony/third_party/FreeRDP/client/OHOS/ohos_display.c | 保留原 BOOL ABI；新增带 structSize/version 的 resize `_ex` request/result，P0 返回 Sent/Deferred/Unchanged/Unsupported/Failed、normalized target 和真实 orientation | 新调用优先 `_ex`，旧 SDK/旧调用仍可连接；禁止解析日志推断状态 |
+| P0，破坏性升级 | harmony/third_party/FreeRDP/client/OHOS/ohos_session.h、harmony/third_party/FreeRDP/client/OHOS/ohos_session_display.c、harmony/third_party/FreeRDP/client/OHOS/ohos_display.c | 以带structSize/version的resize `_ex` request/result替换旧BOOL会话接口，P0返回Sent/Deferred/Unchanged/Unsupported/Failed、normalized target和真实orientation | App与内置运行库同步升级；旧resize符号引用为0；禁止解析日志推断状态 |
 | P1 | harmony/third_party/FreeRDP/client/OHOS/ohos_session.h、harmony/third_party/FreeRDP/client/OHOS/ohos_session_display.c、harmony/third_party/FreeRDP/client/OHOS/ohos_display.c | 以同一版本化结构扩展真实 physical size、xDPI/yDPI、auto/manual scale | 改动通用、可同步 OHOS port，不含 MuHub UI 规则 |
 | 归属不变，尽量小改 | harmony/third_party/FreeRDP/client/OHOS/ohos_pointer.c | 继续作为 viewport 到远端 desktop 坐标映射的唯一实现；只在映射本身有通用缺陷时修复 | App Native 不实现第二套远端坐标变换 |
 
@@ -604,7 +603,7 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 3. 先无行为变化地抽出 NativeRdpGateway、RdpClientController、RdpSessionPage。
 4. 验证 connectCount、sessionId、Surface created/changed/destroyed 与改造前一致。
 5. 确认并记录 D-01；若采用推荐值，完成 XRDP 初始化、服务、路由、展示四层隔离，同时验证 RemoteFilesDirectory 仍作为 RDP 客户端能力可用。
-6. 先完成 FreeRDP resize `_ex` 兼容接口（含真实 orientation）、Native resize/fallback/geometry 和输入过渡期；用测试和可控 Surface change 验证不黑屏。
+6. 先完成 FreeRDP resize 唯一 `_ex` 接口（含真实 orientation）、Native resize/fallback/geometry 和输入过渡期；用测试和可控 Surface change 验证不黑屏。
 7. 再在未发布适配候选中启用 tablet deviceTypes、auto_rotation、split、字体 configuration，并临时把最小窗口降到 600×480以允许真机测试。
 8. 改首页 Compact/Expanded。
 9. 改设置 Compact/Expanded。
@@ -618,7 +617,7 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 - Commit A：纯策略、基础 diagnostics、测试，无 UI 行为变化。
 - Commit B：会话页/Controller 抽取，无 UI 行为变化。
 - Commit C：XRDP 能力隔离。
-- Commit D：FreeRDP resize `_ex` + orientation 兼容 ABI。
+- Commit D：FreeRDP resize 唯一 `_ex` ABI + orientation，删除旧 resize ABI。
 - Commit E：App Native geometry/resize/fallback/input。
 - Commit F：manifest、旋转/分屏和字体配置。
 - Commit G：首页响应式。
@@ -647,7 +646,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | Change ID | 工作包 | 设计/文件清单 | 验收 ID | 设计状态 | 实现状态 | 开始代码前的额外门禁 |
 |---|---|---|---|---|---|---|
 | TAB-A | A 架构基线 | 第 4、5、10.2、10.3、10.8 节 | AC-ARCH、AC-XC | DesignReady | NotStarted | 固定现状 diagnostics 基线 |
-| TAB-B | B 会话底座 | 第 8.3、9.2、9.3、10.6、10.7 节 | AC-XC、AC-RESIZE、AC-INPUT | DesignReady | NotStarted | `_ex` ABI 与旧 BOOL 兼容评审通过 |
+| TAB-B | B 会话底座 | 第 8.3、9.2、9.3、10.6、10.7 节 | AC-XC、AC-RESIZE、AC-INPUT | DesignReady | NotStarted | `_ex` 唯一ABI破坏性升级评审通过，App与运行库同步交付 |
 | TAB-C | C 系统能力 | 第 6.4、8.1、10.1 节 | AC-PKG、AC-LAYOUT、AC-FONT | DesignReady | NotStarted | TAB-B 至少完成 resize/fallback 验证 |
 | TAB-D | D UI 重排 | 第 6、8.1、8.2、10.4、10.5 节 | AC-LAYOUT、AC-FONT | DesignReady | NotStarted | 目标设备/窗口范围已确认 |
 | TAB-E | E 功能隔离 | 第 7、10.3、10.5 节 | AC-CAP | DecisionPending | NotStarted | D-01 完整决策记录 |
@@ -964,22 +963,22 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 |---|---|
 | Change ID | TAB-B-01 |
 | 设计版本/章节 | v1.3；第 8.3、9.2、9.3、10.7、12.6、12.7、14.2、14.3 节 |
-| 用户决策 | 2026-08-04确认resize等待允许以超时结束。实现语义固定为：会话断开/Surface销毁立即取消；Deferred、Unchanged、Unsupported、Failed和LegacyUnknown立即使用fallback；只有明确Sent最多等待2000ms，超时后主动请求最后可用GDI帧重绘，禁止永久黑屏 |
-| FreeRDP公共ABI | 保留`freerdp_ohos_session_resize()`旧BOOL ABI；新增`freerdp_ohos_session_resize_ex()`，request/result均带`structSize/version`。request包含width、height、orientation；result返回Sent/Deferred/Unchanged/Unsupported/Failed、normalized/sent尺寸和实际orientation。BOOL只表示调用及result写入是否合法，调用方必须读取status，不能从message解析状态 |
-| FreeRDP内部数据流 | session resize_ex -> display-control resize_ex -> normalize -> channel/caps/lastSent/send结果；旧BOOL函数包装新接口，除Failed外维持历史TRUE行为。monitor layout使用request真实orientation（0/90/180/270），非法orientation返回Failed，不静默写死landscape |
-| App运行时接口 | `FreerdpRuntimeApi`优先动态加载`freerdp_ohos_session_resize_ex`并保留旧符号；`RdpSessionChannels`返回App级`DisplayResizeResult`，缺_ex但有旧BOOL时标LegacyUnknown且不进入严格等待；缺两种符号标Unsupported |
+| 用户决策 | 2026-08-04确认resize等待允许以超时结束，且无需兼容旧resize接口。实现语义固定为：会话断开/Surface销毁立即取消；Deferred、Unchanged、Unsupported和Failed立即使用fallback；只有明确Sent最多等待2000ms，超时后主动请求最后可用GDI帧重绘，禁止永久黑屏 |
+| FreeRDP公共ABI | 按用户2026-08-04追加决策，不保留旧resize ABI；以`freerdp_ohos_session_resize_ex()`作为唯一会话resize接口，request/result均带`structSize/version`。request包含width、height、orientation；result返回Sent/Deferred/Unchanged/Unsupported/Failed、normalized/sent尺寸和实际orientation。BOOL只表示调用及result写入是否合法，调用方必须读取status，不能从message解析状态 |
+| FreeRDP内部数据流 | session resize_ex -> display-control resize_ex -> normalize -> channel/caps/lastSent/send结果；monitor layout使用request真实orientation（0/90/180/270），非法orientation返回Failed，不静默写死landscape。旧`freerdp_ohos_session_resize()`声明、实现和App动态加载入口删除；同时删除无调用者且缺少orientation/result的旧display包装`freerdp_ohos_display_build_monitor_layout()`、`freerdp_ohos_display_send_monitor_layout()`和`freerdp_ohos_display_control_request_resize()`，不保留默认landscape入口 |
+| App运行时接口 | `FreerdpRuntimeApi`只动态加载`freerdp_ohos_session_resize_ex`；`RdpSessionChannels`返回App级`DisplayResizeResult`，缺少_ex直接标Unsupported并立即fallback，不调用旧BOOL、不产生LegacyUnknown |
 | Native状态机 | 新建`session/rdp_display_resize_coordinator.*`拥有Idle/WaitingForTarget/Fallback、targetGeneration、目标尺寸、2000ms deadline和超时回调；只有Sent进入Waiting。匹配目标帧结束等待；不匹配帧在等待期暂拒绝；超时切Fallback并回调`RequestCurrentFrameRender("resize timeout")`。新请求last-write-wins，旧generation的定时完成不得覆盖新目标 |
 | 生命周期 | SurfaceChanged先取得结构化resize结果，再决定是否BeginSent；SurfaceCreated/Destroyed、RDP Disconnected/连接失败均Reset并清除等待；display-control断开即使无即时通知，也最多由2000ms deadline退出。停止/析构时工作线程可join，不使用捕获全局对象的detached线程 |
 | 渲染边界 | 本项先修复GDI严格等待与重绘；AVC420/AVC444仍使用现有Surface target contain路径，不新增第二套等待算法。未完成三codec真机矩阵前，不开放manifest的auto_rotation/split，也不把TAB-B父项标Verified |
-| 计划代码文件 | FreeRDP子模块：`client/OHOS/ohos_session.h`、`ohos_session_display.c`、`ohos_display.h/.c`及对应测试/构建清单；App：`freerdp/freerdp_runtime.h/.cpp`、`session/rdp_session_channels.h/.cpp`、`session/rdp_session_core.h/.cpp`、新建`session/rdp_display_resize_coordinator.h/.cpp`、`napi/native_bridge_context.cpp`、`cpp/CMakeLists.txt`及窄测试。保留当前`rdp_session_core.cpp`中未提交的诊断改动，不覆盖或混入本项语义 |
-| 兼容与回退 | 新App配旧FreeRDP时可连接且LegacyUnknown立即fallback；旧App配新FreeRDP继续调用旧BOOL函数。回退App协调器不会移除新ABI；完整回退公共ABI需同步回退FreeRDP子模块提交和父仓SHA。任何构建/ABI/timeout测试失败均保持rotation/split关闭 |
-| 验收ID | AC-RESIZE：Sent匹配、Sent超时、Deferred、Unchanged、Unsupported、Failed、Legacy、last-write-wins、disconnect/reset均有确定结果；AC-XC：Surface变化不重建Controller/session；AC-INPUT：等待期不接受旧geometry输入，fallback成功present后恢复；AC-ARCH：N-API入口无状态机/线程/日志解析；本机单测、FreeRDP构建、完整HAP通过后标Implemented，GDI/AVC420/AVC444真机旋转/分屏矩阵后升Verified |
+| 计划代码文件 | FreeRDP子模块：`client/OHOS/ohos_session.h`、`ohos_session_display.c`、`ohos_display.h/.c`；App：`freerdp/freerdp_runtime.h/.cpp`、新建无OHOS/FreeRDP依赖的`session/rdp_display_resize_types.h`、`session/rdp_session_channels.h/.cpp`、`session/rdp_session_core.h/.cpp`、新建`session/rdp_display_resize_coordinator.h/.cpp`、`napi/native_bridge_context.cpp`、`cpp/CMakeLists.txt`、新建`cpp/tests/rdp_display_resize_coordinator_test.cpp`和`tools/run_tablet_native_tests.ps1`。保留当前`rdp_session_core.cpp`中未提交的诊断改动，不覆盖或混入本项语义 |
+| 兼容与回退 | 本项是App与内置FreeRDP运行库同步升级，不兼容旧运行库；`_ex`缺失时应用仍可保持会话，但动态分辨率只走Unsupported即时fallback，发布打包检查必须确认内置运行库导出`_ex`。完整回退需同步回退FreeRDP子模块提交和父仓SHA。任何构建/ABI/timeout测试失败均保持rotation/split关闭 |
+| 验收ID | AC-RESIZE：Sent匹配、Sent超时、Deferred、Unchanged、Unsupported、Failed、last-write-wins、disconnect/reset均有确定结果；AC-XC：Surface变化不重建Controller/session；AC-INPUT：等待期不接受旧geometry输入，fallback成功present后恢复；AC-ARCH：N-API入口无状态机/线程/日志解析，App/FreeRDP无旧session resize符号且FreeRDP无上述三个旧display包装引用；本机单测、FreeRDP构建、完整HAP通过后标Implemented，GDI/AVC420/AVC444真机旋转/分屏矩阵后升Verified |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现后回写 |
-| 设计偏差及原因 | 待实现后回写 |
-| 测试命令/结果/证据 | 待实现后回写 |
-| 关联FreeRDP提交/父仓提交 | 待实现后回写 |
+| 实现状态 | Implemented（结构化ABI、2000ms超时和fallback已落地；真实rotation接入、DisplayGeometry/input门禁及平板三codec矩阵未完成，不能升Verified） |
+| 实际代码文件 | FreeRDP：`client/OHOS/ohos_session.h`、`ohos_session_display.c`、`ohos_display.h/.c`；App：`freerdp/freerdp_runtime.h/.cpp`、`session/rdp_display_resize_types.h`、`rdp_session_channels.h/.cpp`、`rdp_session_core.h/.cpp`、`rdp_display_resize_coordinator.h/.cpp`、`napi/native_bridge_context.cpp`、`cpp/CMakeLists.txt`、`cpp/tests/rdp_display_resize_coordinator_test.cpp`、`tools/run_tablet_native_tests.ps1` |
+| 设计偏差及原因 | 本次完成结构化结果、无兼容层、Sent目标等待/超时、即时fallback和生命周期Reset；尚未实现第9.3节完整DisplayGeometry及输入门禁，App当前仍传`ORIENTATION_LANDSCAPE`，待DisplayProfile/rotation工作包提供真实方向。未加入200ms SurfaceChanged debounce，避免在缺少真机旋转事件序列证据时引入额外时序；这些缺口使AC-INPUT和三codec旋转矩阵保持未通过 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1`退出码0，覆盖Deferred即时fallback、Sent目标匹配/超时、last-write-wins和reset取消；`tools/run_tablet_arkts_tests.ps1`退出码0；`build-freerdp-ohos.sh`完整OHOS arm64交叉构建退出码0（198.3s）；源码`rg`确认旧session接口及三个旧display包装均0引用；runtime与最终HAP内`readelf -Ws`仅见`freerdp_ohos_session_resize_ex`、`display_*_ex`；`build_hap.bat`退出码0，signed HAP 35,389,685 bytes；在线2in1 `3QC0124C11000711`安装成功、EntryAbility前台、首帧完成且无FATAL/SIGABRT。平板`5JB0223804000371`离线，按用户决策超时收口；平板旋转/分屏/触控/IME及真实RDP GDI/AVC420/AVC444矩阵待补 |
+| 关联FreeRDP提交/父仓提交 | FreeRDP `3c2aa31a1`；设计先行父仓提交`0326453`；实现父仓提交待本项提交后以Git历史为准 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
@@ -1140,7 +1139,7 @@ tablet 冷启动：
   - requested/sent orientation 与该次 displayProfileGeneration 的真实 rotation 一致，画面不侧转或倒转。
   - normalized target 与稳定 Surface 的差异符合 diagnostics 中记录的 clamp/alignment 规则。
 - 不支持 Display Control：
-  - 若接口返回 Deferred/Unsupported/Failed/LegacyUnknown，不进入 2 秒等待，立即保持 fallback。
+  - 若接口返回 Deferred/Unsupported/Failed/Unchanged，不进入 2 秒等待，立即保持 fallback。
   - 只有已经 Sent 但未收到目标帧时，才在发送后 2 秒内 timeout/fallback。
   - 最后可用画面继续显示，不永久黑屏。
 - 连续 resize：
@@ -1368,7 +1367,7 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 |---|---|---|---|
 | ArkUI/HAP | MuHub 工程 | 布局、能力过滤、权限、路由、IME 宿主 | RDP 协议语义 |
 | App Native adapter | MuHub 工程 | Surface 生命周期、最终 viewport/generation、诊断、N-API 转发 | 复制 FreeRDP 的远端坐标映射 |
-| harmony/third_party/FreeRDP client/OHOS | OHOS port fork/上游候选 | 兼容的 Display Control result、DPI、orientation、OHOS 输入映射 | MuHub 名称、页面断点、产品能力 |
+| harmony/third_party/FreeRDP client/OHOS | OHOS port fork/上游候选 | 版本化 Display Control result、DPI、orientation、OHOS 输入映射；本工程同步升级时不保留旧resize ABI | MuHub 名称、页面断点、产品能力 |
 | harmony/third_party/xrdp | OHOS port fork/上游候选 | 通用的 OHOS 服务端、编码、会话或平台问题 | tablet 是否显示/启动 XRDP 的产品策略 |
 
 同步规则：
