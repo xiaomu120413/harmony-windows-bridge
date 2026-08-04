@@ -164,6 +164,24 @@ napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value SetDisplayOrientation(napi_env env, napi_callback_info info)
+{
+    napi_value arg = GetFirstArgument(env, info);
+    uint32_t orientation = 0;
+    const bool hasOrientation = arg != nullptr && napi_get_value_uint32(env, arg, &orientation) == napi_ok;
+    std::string message;
+    const bool ok = hasOrientation && UpdateDisplayOrientation(orientation, message);
+    if (!hasOrientation) {
+        message = "display orientation must be a number";
+    }
+
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Updated" : "Failed");
+    SetString(env, result, "message", message);
+    return result;
+}
+
 napi_value RegisterCallback(napi_env env, napi_callback_info info, EventSink& sink, const char* name,
     bool mirrorToHilog = false, bool logRegistration = false)
 {
@@ -284,6 +302,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setDisplayOrientation", nullptr, SetDisplayOrientation, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},

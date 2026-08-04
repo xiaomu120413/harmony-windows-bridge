@@ -1013,11 +1013,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 目标和兼容 API 均为 22，不提供旧行为兼容开关；监听/读取异常时保留最后一次合法方向并记录日志。回退需同时删除 Tracker、N-API 接口和 Native 方向状态，不能只恢复 ArkTS 造成跨层不一致 |
 | 验收ID | AC-RESIZE：四个方向的 policy 单测、日志 orientation、Surface 尺寸与远端方向一致；AC-XC：四向旋转不重连、不重建 Controller；AC-ARCH：全仓 App resize 路径不存在固定 `ORIENTATION_LANDSCAPE`，系统方向只由 Tracker 读取。HAP 构建通过后标 Implemented，tablet 真机四向旋转及远端 Windows 方向/画面证据通过后升 Verified |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现回写 |
-| 设计偏差及原因 | 待实现回写 |
-| 测试命令/结果/证据 | 待实现回写 |
-| 关联提交 | 设计先行提交待本项提交后以 Git 历史为准；实现提交待回写 |
+| 实现状态 | Implemented（四向映射、主窗口 Display 跟踪、唯一 Session orientation 和四条 resize 路径已接入；tablet 真机四向远端 Windows 证据未完成，不能升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/rdp/DisplayOrientationPolicy.ets`、`DisplayOrientationTracker.ets`、`entryability/EntryAbility.ets`、`cpp/types/libentry/Index.d.ts`、`cpp/napi/api_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/session/rdp_session_core.h/.cpp`、`cpp/session/rdp_session_channels.h/.cpp`、`src/test/DisplayOrientationPolicy.test.ets`、`List.test.ets` |
+| 设计偏差及原因 | 无功能偏差；实现检查时发现 session connected 和 display-control connected 两条既有内部 resize 旁路，因此先补充 DesignReady 所有权记录并使其读取同一 `RdpSessionChannels` orientation，未保留固定 landscape 入口 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1`退出码0；`tools/run_tablet_arkts_tests.ps1`退出码0并新增四向映射4项，模块/native编译成功；`rg "width, height, ORIENTATION_LANDSCAPE|g_displayOrientation" harmony/app/entry/src/main/cpp`为0匹配。完整HAP和tablet真机旋转证据待与本轮IME实现一起补齐 |
+| 关联提交 | 设计先行提交 `d4ef334`；所有权补充提交 `4acb9c3`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 #### TAB-F-01：远程会话虚拟键盘焦点与提交隔离
 

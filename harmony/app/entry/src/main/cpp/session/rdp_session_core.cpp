@@ -321,6 +321,16 @@ struct RdpSession::Impl {
         return channels.RequestCurrentFrameRender(reason, message);
     }
 
+    void SetDisplayOrientation(uint32_t orientation)
+    {
+        channels.SetDisplayOrientation(orientation);
+    }
+
+    uint32_t DisplayOrientation() const
+    {
+        return channels.DisplayOrientation();
+    }
+
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
         std::string& message)
     {
@@ -666,6 +676,16 @@ bool RdpSession::RequestDisconnect()
 bool RdpSession::IsConnected() const
 {
     return impl_->IsConnected();
+}
+
+void RdpSession::SetDisplayOrientation(uint32_t orientation)
+{
+    impl_->SetDisplayOrientation(orientation);
+}
+
+uint32_t RdpSession::DisplayOrientation() const
+{
+    return impl_->DisplayOrientation();
 }
 
 bool RdpSession::SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
