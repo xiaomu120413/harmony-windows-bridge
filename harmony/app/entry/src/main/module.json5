@@ -91,12 +91,6 @@
         }
       }
     ],
-    "hnpPackages": [
-      {
-        "package": "xrdp.hnp",
-        "type": "private"
-      }
-    ],
     "pages": "$profile:main_pages",
     "abilities": [
       {

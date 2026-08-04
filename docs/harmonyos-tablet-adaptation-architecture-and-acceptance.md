@@ -97,7 +97,14 @@
 
 ### 2.3 单包条件下的现实边界
 
-一个 HAP 同时服务 tablet 和 2in1 时，xrdp.hnp 以及 module.json5 中声明的录屏权限仍会物理存在于同一个安装包中。若 D-01 采用本文推荐值，运行时需要保证：
+一个 HAP 同时服务 tablet 和 2in1 时，不能假设所有产品都支持 HNP。2026-08-04 的 tablet 真机验证表明：产品未启用 `const.startup.hnp.install.enable` 时，内嵌 `xrdp.hnp` 会以 HNP API `0x2009`（十进制 8201）失败，BMS 对外返回 9568407；仅删除 HNP 文件但保留 `hnpPackages` 声明则返回 9568409。因此“单 HAP + tablet 可安装”的发布基线必须满足：
+
+- canonical HAP 不声明 `hnpPackages`，也不执行 HNP 二次封包。
+- RDP 客户端和 XComponent 继续使用标准 HAP Native `.so`。
+- XRDP 被控服务若保留，必须使用标准 HAP 可承载的进程内 `.so` 和应用资源，不依赖产品级 HNP 安装开关。
+- 在进程内 XRDP 的配置/share 资源迁移和 2in1 回归完成前，不能把“单包被控服务兼容”标为 Verified。
+
+若 D-01 采用本文推荐值，运行时还需要保证：
 
 - tablet 不启动 XRDP。
 - tablet 不调用 XRDP N-API。
@@ -105,7 +112,7 @@
 - tablet 不创建 XRDP 状态卡和设置入口。
 - tablet 即使收到旧路由或非法路由也不能进入 XRDP 页面。
 
-但不能在同一个 HAP 中按设备物理删除 HNP 和权限声明。若未来要求安装包内容也按设备裁剪，就与“一个包”约束冲突，必须重新决策，不能靠运行时代码解决。
+录屏权限声明仍会物理存在于同一 HAP 中，但 HNP 不能再作为该单包的发布依赖。若未来要求权限声明也按设备物理裁剪，就与“一个包”约束冲突，必须重新决策，不能靠运行时代码解决。
 
 ## 3. 当前工程基线和风险
 
@@ -491,7 +498,8 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 | P0 | harmony/app/AppScope/app.json5 | 只新增 configuration profile 引用；不改 bundleName、版本身份和图标 | bundleName 仍为 com.muhub.desktop |
 | P0，新文件 | harmony/app/AppScope/resources/base/profile/configuration.json | followSystem，fontSizeMaxScale 1.75 | API 22 schema 校验和 1.75 真机验证通过 |
 | 不改 | harmony/app/build-profile.json5 | 保持一个 default product、一个 entry target | 构建仍只有一个 HAP |
-| 不改 | harmony/app/entry/src/main/module.json5（hnpPackages/requestPermissions） | 单包条件下保留，通过能力策略避免 tablet 调用 | tablet 冷启动无 XRDP/录屏行为 |
+| P0 | harmony/app/entry/src/main/module.json5（hnpPackages） | 删除产品级 HNP 声明，canonical 单 HAP 改用标准 Native `.so`/应用资源；权限声明仍由能力策略避免 tablet 调用 | tablet 可安装启动；包内无 HNP；2in1 进程内 XRDP 资源迁移和回归另验 |
+| 不改 | harmony/app/entry/src/main/module.json5（requestPermissions） | 单包条件下保留，通过能力策略避免 tablet 请求录屏权限 | tablet 冷启动无录屏请求 |
 
 当前 1280×760 manifest 会阻止真机进入 600×480，因此不能要求“先真机通过再改 manifest”。正确流程是：在未发布的适配候选中临时改为 600×480，构建同一个 default/entry HAP 做真机矩阵；通过后保留该发布值，失败则继续修布局并重测，不能直接发布，也不能用抬高下限掩盖问题。
 
@@ -830,6 +838,45 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 设计偏差及原因 | 无；仍是一个default product、一个entry module、一个bundleName和一个HAP，未夹带旋转、分屏或业务设备判断 |
 | 测试命令/结果/证据 | 2026-08-04：完整`assembleHap`的`ProcessProfile`、`PackingCheck`、`CompileArkTS`、`SignHap`通过；`intermediates/hap_metadata/default/output_metadata.json`及打包`module.json`均为`["2in1","tablet"]`。HNP重签产物41788502字节并在HAD-W32覆盖安装、启动成功；设备端`bm dump -n com.muhub.desktop`显示entry/ability的`deviceTypes`同时包含`2in1`和`tablet`。无tablet真机，因此未执行tablet安装、旋转和能力隔离验收 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
+
+#### TAB-C-03：同一应用启用系统字体缩放上限
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-C-03 |
+| 设计版本/章节 | v1.2；第 8.1、10.1、10.5、12.4 节 |
+| 目标 | 使用 AppScope configuration profile 让 ArkUI fp 字体跟随系统设置，并把应用最大字体比例限制为1.75；不以缩小字体或全局几何缩放掩盖布局问题 |
+| 计划代码文件 | 修改 `harmony/app/AppScope/app.json5`，新增 `harmony/app/AppScope/resources/base/profile/configuration.json`；不修改module清单、页面业务、Native、XComponent或远端DPI |
+| 配置 | `app.configuration="$profile:configuration"`；profile内`fontSizeScale="followSystem"`、`fontSizeMaxScale="1.75"`。两项均使用本机API 22 modulecheck schema声明的字符串枚举值 |
+| 缩放边界 | 只影响本地ArkUI fp；Icon继续使用既有vp视觉尺寸和独立48vp热区，XComponent Surface继续使用物理px，远端Windows DPI不读取该字体比例 |
+| 兼容与回退 | 删除app引用和profile即可恢复系统默认行为；构建必须通过profile/resource/schema检查。未在系统设置实际切到1.75并截图前只标Implemented，不标Verified |
+| 验收 ID | AC-FONT：打包配置为followSystem/1.75，默认字体下Home/Settings无回退，后续补1.75中英文/Compact/Expanded矩阵；AC-PKG：bundleName、deviceTypes、单HAP不变；AC-ARCH：无Native/XComponent/DPI依赖 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（profile/schema、标准字体平板首屏和单HAP安装已通过；系统1.75字体矩阵未执行，因此不标Verified） |
+| 实际代码文件 | `harmony/app/AppScope/app.json5`、`harmony/app/AppScope/resources/base/profile/configuration.json` |
+| 设计偏差及原因 | 无；安装验证同时发现并按TAB-C-04记录HNP产品门禁，字体配置本身未扩大到Native/XComponent/DPI |
+| 测试命令/结果/证据 | 2026-08-04：API22本机modulecheck schema确认`followSystem`/`1.75`为合法枚举；`harmony/app/build_hap.bat`的ProcessProfile、CompileResource、CompileArkTS、PackingCheck、SignHap通过；MatePad Pro PCE-W30标准字体横屏首屏启动且无裁切。尚未把系统字体切换到1.75，保留Implemented |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
+
+#### TAB-C-04：单 HAP 移除产品级 HNP 安装依赖
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-C-04 |
+| 设计版本/章节 | v1.3；第 2.3、7、10.1、10.5、12.2 节 |
+| 触发证据 | 2026-08-04 tablet 真机 `5JB0223804000371` 的 `const.product.devicetype=tablet`；带 HNP 的 HAP 安装返回9568407，hilog中`NativeInstallHnp ret: 8201`；标准HAP仍保留`hnpPackages`时返回9568409。OpenHarmony HNP API源码将8201定义为`HNP_API_ERRNO_HNP_INSTALL_DISABLED` |
+| 目标 | 保持一个default product、一个entry module、同一bundleName和一个canonical HAP；发布构建不再声明或二次封装HNP，使tablet先具备可安装/可启动基线 |
+| 计划代码文件 | 修改`harmony/app/entry/src/main/module.json5`删除`hnpPackages`；修改`harmony/app/build_hap.bat`停止默认调用HNP打包和二次封包。保留HNP工具脚本作为迁移期诊断工具，但不进入canonical构建 |
+| XRDP兼容边界 | 根目录`libs/arm64-v8a`已有`libxrdpserver.so`、`libxrdpohos.so`及依赖，可继续作为进程内加载候选；config/share迁移到标准HAP资源和2in1被控服务回归另设后续子项。在此之前tablet按D-01推荐策略隔离被控服务，2in1被控服务不得宣称Verified |
+| 非目标 | 本项不修改FreeRDP/xrdp社区代码、不修改XComponent/RDP客户端、不伪造2in1被控服务回归、不新增第二个product/module/HAP |
+| 兼容与回退 | 清单删除HNP后tablet可走标准HAP安装；如需临时诊断旧HNP可手工调用现有脚本，但该产物不是单包发布候选。回退HNP声明会重新导致不支持HNP的tablet安装失败，不能作为发布回退 |
+| 验收 ID | AC-PKG：标准HAP中无`hnp/`条目且打包module无`hnpPackages`，tablet安装/启动成功，bundleName/deviceTypes不变；AC-ARCH：仍为单product/module且构建入口不自动repack；AC-CAP：tablet XRDP四层隔离留给TAB-E，2in1进程内XRDP资源迁移留给后续子项 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（tablet单HAP安装启动已通过；2in1进程内XRDP资源迁移/回归和tablet功能隔离未完成，因此不标Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/module.json5`、`harmony/app/build_hap.bat` |
+| 设计偏差及原因 | 无；保留既有HNP工具脚本供诊断，但canonical构建入口不再调用。真机首屏仍显示XRDP状态卡，明确证明TAB-E功能/UI隔离尚未完成 |
+| 测试命令/结果/证据 | 2026-08-04：MatePad Pro PCE-W30（tablet、OpenHarmony-6.0.2.130）上，旧HNP HAP返回9568407/NativeInstallHnp 8201，缺HNP但有声明返回9568409；删除声明并停止repack后完整构建成功，canonical HAP 34441489字节、`hnp/`条目0，`hdc -t 5JB0223804000371 install -r`和`aa start`成功；包名`com.muhub.desktop`、entry、`[2in1,tablet]`不变 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
