@@ -10,6 +10,8 @@
 
 namespace rdp_bridge {
 
+class RemoteImeClient;
+
 struct XComponentInputRegisterResult {
     int32_t mouseRc = -1;
     int32_t focusRc = -1;
@@ -20,8 +22,10 @@ struct XComponentInputRegisterResult {
 };
 
 void ConfigureXComponentInputBridge(
-    RdpSession* session, std::function<void(const std::string&)> log);
+    RdpSession* session, RemoteImeClient* remoteIme,
+    std::function<void(const std::string&)> log);
 void ResetXComponentInputBridge();
+bool IsXComponentFocused();
 void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window);
 XComponentInputRegisterResult RegisterXComponentInputCallbacks(OH_NativeXComponent* component);
 

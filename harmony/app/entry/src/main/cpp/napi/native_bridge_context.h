@@ -12,7 +12,7 @@ namespace rdp_bridge {
 
 SessionEventHub& BridgeEvents();
 RdpSession& BridgeSession();
-bool UpdateDisplayOrientation(uint32_t orientation, std::string& message);
+bool ConfigureHostWindow(uint32_t windowId, uint32_t displayId, std::string& message);
 
 void InitializeNativeBridgeContext();
 bool RegisterNativeXComponent(napi_env env, napi_value exports);

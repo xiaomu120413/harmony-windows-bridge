@@ -100,6 +100,7 @@ add_library(entry SHARED
     input/xcomponent_input_registration.cpp
     input/xcomponent_key.cpp
     input/xcomponent_mouse.cpp
+    input/remote_ime_client.cpp
     input/xcomponent_touch_gesture.cpp
     napi/camera_permission_bridge.cpp
     napi/clipboard_permission_bridge.cpp
@@ -119,6 +120,7 @@ add_library(entry SHARED
     session/rdp_session_core.cpp
     session/rdp_session_channels.cpp
     session/rdp_display_resize_coordinator.cpp
+    session/rdp_display_orientation_monitor.cpp
     session/rdp_session_input.cpp
     surface/avc420_gpu_compositor.cpp
     surface/avc420_gpu_compositor_internal.cpp
@@ -149,6 +151,8 @@ target_link_libraries(entry PUBLIC
     libnative_media_vdec.so
     libnative_window.so
     libnative_buffer.so
+    libnative_display_manager.so
+    libohinputmethod.so
     libpasteboard.so
     libudmf.so
     libohprint.so

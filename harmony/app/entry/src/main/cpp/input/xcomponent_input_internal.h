@@ -43,8 +43,10 @@ struct NativeAxisState {
 };
 
 extern RdpSession* g_inputSession;
+extern RemoteImeClient* g_remoteIme;
 extern std::function<void(const std::string&)> g_inputLog;
 extern std::atomic_uint32_t g_nativeMouseButtons;
+extern std::atomic_bool g_xcomponentFocused;
 extern std::mutex g_nativeTouchMutex;
 extern NativeTouchState g_nativeTouch;
 extern std::mutex g_nativeAxisMutex;

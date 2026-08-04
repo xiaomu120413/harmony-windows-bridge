@@ -1,3 +1,4 @@
+import { KeyboardAvoidMode } from '@kit.ArkUI'
 import { REMOTE_SURFACE_FOCUS_ID } from '../../rdp/RdpConstants'
 
 @Component
@@ -7,6 +8,17 @@ export struct RdpSessionPage {
   @Prop noticeSubtitle: string = ''
   @Prop remoteLoginWaiting: boolean = false
   onSurfaceLoad: () => void = () => {
+  }
+  private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET
+
+  aboutToAppear(): void {
+    const uiContext = this.getUIContext()
+    this.previousKeyboardAvoidMode = uiContext.getKeyboardAvoidMode()
+    uiContext.setKeyboardAvoidMode(KeyboardAvoidMode.NONE)
+  }
+
+  aboutToDisappear(): void {
+    this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode)
   }
 
   private requireSurfaceController(): XComponentController {

@@ -1,12 +1,15 @@
 #include "input/xcomponent_input_internal.h"
+#include "input/remote_ime_client.h"
 
 #include <utility>
 
 namespace rdp_bridge {
 
 RdpSession* g_inputSession = nullptr;
+RemoteImeClient* g_remoteIme = nullptr;
 std::function<void(const std::string&)> g_inputLog;
 std::atomic_uint32_t g_nativeMouseButtons{0};
+std::atomic_bool g_xcomponentFocused{false};
 std::mutex g_nativeTouchMutex;
 NativeTouchState g_nativeTouch;
 std::mutex g_nativeAxisMutex;
@@ -94,14 +97,21 @@ bool SendNativePointer(const LocalPointerEvent& event, const std::string& label,
 }
 
 void ConfigureXComponentInputBridge(
-    RdpSession* session, std::function<void(const std::string&)> log)
+    RdpSession* session, RemoteImeClient* remoteIme,
+    std::function<void(const std::string&)> log)
 {
     g_inputSession = session;
+    g_remoteIme = remoteIme;
     g_inputLog = std::move(log);
 }
 
 void ResetXComponentInputBridge()
 {
+    g_xcomponentFocused.store(false);
+    if (g_remoteIme != nullptr) {
+        std::string message;
+        (void)g_remoteIme->Close(message);
+    }
     g_nativeMouseButtons.store(0);
     {
         std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
@@ -111,6 +121,11 @@ void ResetXComponentInputBridge()
         std::lock_guard<std::mutex> lock(g_nativeAxisMutex);
         g_nativeAxis = NativeAxisState{};
     }
+}
+
+bool IsXComponentFocused()
+{
+    return g_xcomponentFocused.load();
 }
 
 XComponentInputRegisterResult RegisterXComponentInputCallbacks(OH_NativeXComponent* component)
@@ -129,7 +144,7 @@ XComponentInputRegisterResult RegisterXComponentInputCallbacks(OH_NativeXCompone
     result.focusRc = OH_NativeXComponent_RegisterFocusEventCallback(component, OnXComponentFocusEvent);
     result.blurRc = OH_NativeXComponent_RegisterBlurEventCallback(component, OnXComponentBlurEvent);
     result.keyRc = OH_NativeXComponent_RegisterKeyEventCallbackWithResult(component, OnXComponentKeyEvent);
-    result.softKeyboardRc = OH_NativeXComponent_SetNeedSoftKeyboard(component, true);
+    result.softKeyboardRc = OH_NativeXComponent_SetNeedSoftKeyboard(component, false);
     result.axisRc = OH_NativeXComponent_RegisterUIInputEventCallback(
         component, OnXComponentAxisEvent, ARKUI_UIINPUTEVENT_TYPE_AXIS);
     return result;
