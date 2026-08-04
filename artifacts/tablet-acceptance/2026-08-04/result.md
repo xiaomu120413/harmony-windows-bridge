@@ -21,6 +21,7 @@
 3. Settings Expanded：左侧导航和右侧内容区同时可见；概览、基础设置、远控设置、项目帮助四个路由均可达，内容成功加载。
 4. 真实触控点击 Windows host 输入框后系统输入面板出现；输入 `10.0.0.1` 后 TextInput 状态正确更新，应用窗口尺寸和布局未跳变。
 5. ArkTS 平板策略测试：`tools/run_tablet_arkts_tests.ps1` 退出码 0，Hvigor `BUILD SUCCESSFUL`。
+6. `TAB-D-04` 连接表单改为组件宽度响应式：2in1 Expanded 保持3/9标签与输入分栏，固定190vp标签列及36～52vp文本行高已清理；完整 HAP 构建、HNP 重签、覆盖安装和 Expanded 截图回归通过。
 
 ## 未通过或尚未覆盖
 
@@ -40,6 +41,7 @@
 - `muhub-home-expanded.jpeg`
 - `muhub-settings-real.jpeg`
 - `muhub-ime-open.jpeg`
+- `muhub-d04-expanded.jpeg`
 - `muhub-layout-home.json`
 - `muhub-layout-settings.json`
 - `muhub-layout-settings-basic.json`

@@ -749,6 +749,27 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功且警告输出为空；执行 `rg -n '\.fill\(' harmony/app/entry/src/main/ets -g '*.ets'` 无匹配，计数 0；`git diff --check` 通过 |
 | 关联提交 | 设计先行提交 `db66966`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
+#### TAB-D-04：连接表单组件宽度重排与字体自然高度
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-04 |
+| 设计版本/章节 | v1.2；第 6.3、8.1、8.2、10.4、12.3、12.4、14.3 节 |
+| 目标 | 消除 `HomeConnectionDetails` 内部永久 190vp 标签列和 36～52vp 固定文本行高；表单根据组件自身可用宽度重排，使 Compact 页面以及较窄的 Expanded 详情 pane 都不会挤压、裁字或把操作移出可达区域 |
+| 计划代码文件 | 仅修改 `harmony/app/entry/src/main/ets/components/home/HomeConnectionDetails.ets`；不修改 Index、HomePage、Settings、manifest、Session/XComponent 或 Native |
+| 组件宽度策略 | 每个表单行使用 12 列 `GridRow/GridCol`，`breakpoints.reference = BreakpointsReference.ComponentSize`，唯一内部阈值为 600vp；xs 下标签与输入各占 12 列并上下排列，sm 下标签占 3 列、输入占 9 列。该内部断点只影响表单排版，不读取或修改全局 Compact/Expanded 状态 |
+| 字体与热区 | Windows host、Port、Username、Password、记住密码、Connect 和设备操作行取消固定 `height`，改用 `minHeight + padding + 自然高度`；标题允许两行；三个设备操作按钮真实最小高度提升到 48vp，图标仍保持 20/24vp，不随字体同比放大 |
+| 状态与行为 | host/port/username/password/rememberPassword、反馈文本和全部回调继续使用现有 Link/Prop；组件断点状态只用于标签对齐，不复制表单值，不触发连接、Native 或路由行为 |
+| 非目标 | 不修改 Home 外层 Compact/Expanded 拓扑，不处理系统字体 configuration，不新增第三套页面，不修改文本内容/表单校验/剪贴板/连接行为，不开放 tablet/旋转/分屏，不改 RDP/XRDP |
+| 兼容与回退 | GridRow、GridCol、BreakpointsReference.ComponentSize 均为当前 API 22 已支持能力；移除组件断点状态并恢复原 Row 即可回退，业务状态不受影响 |
+| 验收 ID | AC-LAYOUT：静态结构证明内部使用 ComponentSize 而非第二个窗口监听，xs 为纵向、sm 为 3/9；AC-FONT：文本容器无 36/40/44/52 固定高度，设备操作按钮至少 48vp，图标视觉尺寸不变；AC-ARCH：仅改计划文件且无业务/Native 依赖变化；本机编译和策略测试通过后标 Implemented，600/839/840vp 与 1.75 字体真机矩阵后再升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（本机编译、签名、安装及2in1 Expanded 回归通过；等待 Compact 与1.75字体矩阵后升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/components/home/HomeConnectionDetails.ets` |
+| 设计偏差及原因 | API 22 ArkTS 类型不提供直接 `.minHeight()` 修饰器，完整 HAP 首次编译据此失败；在不改变设计语义的前提下改用 API 22 支持的 `.constraintSize({ minHeight: 48 })`，仍是最小高度而非固定高度。其余组件断点、12列 span、状态边界和非目标无偏差 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1` 退出码 0，5/5 通过；首次完整 `assembleHap` 精确暴露8处 `.minHeight()` API 兼容错误，改用 `constraintSize` 后 `CompileArkTS`、`SignHap` 和完整构建通过；HNP 重签产物 41788752 字节，设备 `3QC0124C11000711` 覆盖安装成功。静态检查：`ComponentSize` 2处、内部阈值仅 `600vp`，190/170vp 标签宽与 36/40/44/52 固定高度均为0，文件无 window observer/deviceInfo/Native 新依赖。2in1 Expanded 截图 `artifacts/tablet-acceptance/2026-08-04/muhub-d04-expanded.jpeg` 无回退；Compact/1.75 字体仍被现有 manifest 最小窗口和设备条件阻塞 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text

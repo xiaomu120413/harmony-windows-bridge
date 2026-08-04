@@ -37,6 +37,7 @@ export struct HomeConnectionDetails {
   @State private pressedAction: string = ''
   @State private connectHovered: boolean = false
   @State private connectPressed: boolean = false
+  @State private formBreakpoint: string = 'xs'
 
   private hasSelectedProfile(): boolean {
     return this.selectedConnectionProfileId.length > 0
@@ -67,217 +68,167 @@ export struct HomeConnectionDetails {
   }
 
   @Builder
-  private buildHostField() {
-    Row({ space: 30 }) {
-      Text('Windows host')
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .textAlign(TextAlign.End)
-        .width(190)
-        .maxLines(1)
-      TextInput({ placeholder: 'Windows host', text: $$this.host })
-        .type(InputType.Normal)
-        .height(48)
-        .layoutWeight(1)
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .placeholderColor(SettingsTheme.mutedText(this.isDark))
-        .backgroundColor(HomeTheme.fieldBackground(this.isDark))
-        .borderRadius(6)
-        .border({
-          width: 1,
-          color: HomeTheme.mutedBorderColor(this.isDark),
-          style: BorderStyle.Solid
-        })
-        .onChange((value: string) => {
-          this.host = value
-          this.onHostChange(value)
-        })
-    }
-    .width('100%')
-    .height(52)
-    .alignItems(VerticalAlign.Center)
+  private buildFieldLabel(text: string) {
+    Text(text)
+      .fontSize(16)
+      .fontColor(SettingsTheme.primaryText(this.isDark))
+      .textAlign(this.formBreakpoint === 'xs' ? TextAlign.Start : TextAlign.End)
+      .width('100%')
+      .constraintSize({ minHeight: 48 })
+      .maxLines(2)
   }
 
   @Builder
-  private buildPortField() {
-    Row({ space: 30 }) {
-      Text('Port')
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .textAlign(TextAlign.End)
-        .width(190)
-        .maxLines(1)
-      TextInput({ placeholder: 'Port', text: $$this.port })
-        .type(InputType.Normal)
-        .height(48)
-        .layoutWeight(1)
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .placeholderColor(SettingsTheme.mutedText(this.isDark))
-        .backgroundColor(HomeTheme.fieldBackground(this.isDark))
-        .borderRadius(6)
-        .border({
-          width: 1,
-          color: HomeTheme.mutedBorderColor(this.isDark),
-          style: BorderStyle.Solid
-        })
-        .onChange((value: string) => {
-          this.port = value
-          this.onPortChange(value)
-        })
-    }
-    .width('100%')
-    .height(52)
-    .alignItems(VerticalAlign.Center)
+  private buildHostInput() {
+    TextInput({ placeholder: 'Windows host', text: $$this.host })
+      .type(InputType.Normal)
+      .constraintSize({ minHeight: 48 })
+      .width('100%')
+      .fontSize(16)
+      .fontColor(SettingsTheme.primaryText(this.isDark))
+      .placeholderColor(SettingsTheme.mutedText(this.isDark))
+      .backgroundColor(HomeTheme.fieldBackground(this.isDark))
+      .borderRadius(6)
+      .border({
+        width: 1,
+        color: HomeTheme.mutedBorderColor(this.isDark),
+        style: BorderStyle.Solid
+      })
+      .onChange((value: string) => {
+        this.host = value
+        this.onHostChange(value)
+      })
   }
 
   @Builder
-  private buildUsernameField() {
-    Row({ space: 30 }) {
-      Text('Username')
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .textAlign(TextAlign.End)
-        .width(190)
-        .maxLines(1)
-      TextInput({ placeholder: 'Username', text: $$this.username })
-        .type(InputType.Normal)
-        .height(48)
-        .layoutWeight(1)
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .placeholderColor(SettingsTheme.mutedText(this.isDark))
-        .backgroundColor(HomeTheme.fieldBackground(this.isDark))
-        .borderRadius(6)
-        .border({
-          width: 1,
-          color: HomeTheme.mutedBorderColor(this.isDark),
-          style: BorderStyle.Solid
-        })
-        .onChange((value: string) => {
-          this.username = value
-          this.onUsernameChange(value)
-        })
-    }
-    .width('100%')
-    .height(52)
-    .alignItems(VerticalAlign.Center)
+  private buildPortInput() {
+    TextInput({ placeholder: 'Port', text: $$this.port })
+      .type(InputType.Normal)
+      .constraintSize({ minHeight: 48 })
+      .width('100%')
+      .fontSize(16)
+      .fontColor(SettingsTheme.primaryText(this.isDark))
+      .placeholderColor(SettingsTheme.mutedText(this.isDark))
+      .backgroundColor(HomeTheme.fieldBackground(this.isDark))
+      .borderRadius(6)
+      .border({
+        width: 1,
+        color: HomeTheme.mutedBorderColor(this.isDark),
+        style: BorderStyle.Solid
+      })
+      .onChange((value: string) => {
+        this.port = value
+        this.onPortChange(value)
+      })
   }
 
   @Builder
-  private buildPasswordField() {
-    Row({ space: 30 }) {
-      Text('Password')
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .textAlign(TextAlign.End)
-        .width(190)
-        .maxLines(1)
-      TextInput({ placeholder: 'Password', text: $$this.password })
-        .type(InputType.Password)
-        .height(48)
-        .layoutWeight(1)
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .placeholderColor(SettingsTheme.mutedText(this.isDark))
-        .backgroundColor(HomeTheme.fieldBackground(this.isDark))
-        .borderRadius(6)
-        .border({
-          width: 1,
-          color: HomeTheme.mutedBorderColor(this.isDark),
-          style: BorderStyle.Solid
-        })
-        .onChange((value: string) => {
-          this.password = value
-          this.onPasswordChange(value)
-        })
-    }
-    .width('100%')
-    .height(52)
-    .alignItems(VerticalAlign.Center)
+  private buildUsernameInput() {
+    TextInput({ placeholder: 'Username', text: $$this.username })
+      .type(InputType.Normal)
+      .constraintSize({ minHeight: 48 })
+      .width('100%')
+      .fontSize(16)
+      .fontColor(SettingsTheme.primaryText(this.isDark))
+      .placeholderColor(SettingsTheme.mutedText(this.isDark))
+      .backgroundColor(HomeTheme.fieldBackground(this.isDark))
+      .borderRadius(6)
+      .border({
+        width: 1,
+        color: HomeTheme.mutedBorderColor(this.isDark),
+        style: BorderStyle.Solid
+      })
+      .onChange((value: string) => {
+        this.username = value
+        this.onUsernameChange(value)
+      })
   }
 
   @Builder
-  private buildRememberRow() {
-    Row({ space: 30 }) {
-      Text(HomeText.REMEMBER_PASSWORD)
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .textAlign(TextAlign.End)
-        .width(190)
-        .maxLines(1)
-      Row({ space: 12 }) {
-        Toggle({ type: ToggleType.Switch, isOn: this.rememberPassword })
-          .onChange((enabled: boolean) => {
-            this.rememberPassword = enabled
-            this.onRememberPasswordChange(enabled)
-          })
-        if (this.connectionFeedbackText.length > 0) {
-          Text(this.connectionFeedbackText)
-            .fontSize(12)
-            .fontColor(SettingsTheme.statusText(this.isDark, this.connectionFeedbackTone))
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-        }
+  private buildPasswordInput() {
+    TextInput({ placeholder: 'Password', text: $$this.password })
+      .type(InputType.Password)
+      .constraintSize({ minHeight: 48 })
+      .width('100%')
+      .fontSize(16)
+      .fontColor(SettingsTheme.primaryText(this.isDark))
+      .placeholderColor(SettingsTheme.mutedText(this.isDark))
+      .backgroundColor(HomeTheme.fieldBackground(this.isDark))
+      .borderRadius(6)
+      .border({
+        width: 1,
+        color: HomeTheme.mutedBorderColor(this.isDark),
+        style: BorderStyle.Solid
+      })
+      .onChange((value: string) => {
+        this.password = value
+        this.onPasswordChange(value)
+      })
+  }
+
+  @Builder
+  private buildRememberControl() {
+    Row({ space: 12 }) {
+      Toggle({ type: ToggleType.Switch, isOn: this.rememberPassword })
+        .onChange((enabled: boolean) => {
+          this.rememberPassword = enabled
+          this.onRememberPasswordChange(enabled)
+        })
+      if (this.connectionFeedbackText.length > 0) {
+        Text(this.connectionFeedbackText)
+          .fontSize(12)
+          .fontColor(SettingsTheme.statusText(this.isDark, this.connectionFeedbackTone))
+          .maxLines(3)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
       }
-      .layoutWeight(1)
-      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
-    .height(44)
+    .constraintSize({ minHeight: 48 })
     .alignItems(VerticalAlign.Center)
   }
 
   @Builder
   private buildConnectButton() {
-    Row({ space: 30 }) {
-      Text('')
-        .width(190)
-      Button() {
-        Row({ space: 10 }) {
-          Image(HomeResources.LINK_ICON)
-            .width(24)
-            .height(24)
-            .fillColor(Color.White)
-            .draggable(false)
-          Text('Connect')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(Color.White)
-            .maxLines(1)
-        }
-        .justifyContent(FlexAlign.Center)
-        .alignItems(VerticalAlign.Center)
+    Button() {
+      Row({ space: 10 }) {
+        Image(HomeResources.LINK_ICON)
+          .width(24)
+          .height(24)
+          .fillColor(Color.White)
+          .draggable(false)
+        Text('Connect')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
+          .maxLines(2)
       }
-      .type(ButtonType.Normal)
-      .height(48)
-      .layoutWeight(1)
-      .borderRadius(7)
-      .backgroundColor(HomeTheme.primaryButtonBackground(this.isDark, this.connectHovered, this.connectPressed))
-      .stateEffect(false)
-      .scale({ x: this.connectPressed ? 0.99 : 1, y: this.connectPressed ? 0.99 : 1 })
-      .onHover((hovered: boolean) => {
-        this.connectHovered = hovered
-      })
-      .onTouch((event: TouchEvent) => {
-        if (event.type === TouchType.Down) {
-          this.connectPressed = true
-          return
-        }
-        if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-          this.connectPressed = false
-        }
-      })
-      .onClick(() => {
-        this.connectPressed = false
-        this.onConnect()
-      })
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
     }
+    .type(ButtonType.Normal)
+    .constraintSize({ minHeight: 48 })
     .width('100%')
-    .height(52)
-    .alignItems(VerticalAlign.Center)
+    .borderRadius(7)
+    .backgroundColor(HomeTheme.primaryButtonBackground(this.isDark, this.connectHovered, this.connectPressed))
+    .stateEffect(false)
+    .scale({ x: this.connectPressed ? 0.99 : 1, y: this.connectPressed ? 0.99 : 1 })
+    .onHover((hovered: boolean) => {
+      this.connectHovered = hovered
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.connectPressed = true
+        return
+      }
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.connectPressed = false
+      }
+    })
+    .onClick(() => {
+      this.connectPressed = false
+      this.onConnect()
+    })
   }
 
   @Builder
@@ -303,8 +254,8 @@ export struct HomeConnectionDetails {
       .padding({ left: 6, right: 6 })
     }
     .type(ButtonType.Normal)
-    .height(36)
-    .layoutWeight(1)
+    .constraintSize({ minHeight: 48 })
+    .width('100%')
     .borderRadius(7)
     .backgroundColor(this.pressedAction === action ? SettingsTheme.statusBackground(this.isDark, tone) :
       (this.hoveredAction === action ? SettingsTheme.statusBackground(this.isDark, tone) :
@@ -336,39 +287,82 @@ export struct HomeConnectionDetails {
 
   @Builder
   private buildDeviceActions() {
-    Row({ space: 12 }) {
-      Text(HomeText.DEVICE_ACTIONS)
-        .fontSize(16)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .width(170)
-        .textAlign(TextAlign.End)
-      this.buildActionButton('delete', HomeText.DELETE_ACTION, HomeResources.TRASH_ICON, 'danger', () => {
-        this.onDeleteProfile()
-      })
-      this.buildActionButton('clearPassword', HomeText.CLEAR_PASSWORD_ACTION, HomeResources.LOCK_ICON, 'warning', () => {
-        this.onClearPassword()
-      })
-      this.buildActionButton('copyAddress', HomeText.COPY_ADDRESS_ACTION, HomeResources.COPY_ICON, 'info', () => {
-        this.copyCurrentAddress()
-      })
+    GridRow({
+      columns: 12,
+      gutter: { x: 12, y: 8 },
+      breakpoints: { value: ['600vp'], reference: BreakpointsReference.ComponentSize }
+    }) {
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildFieldLabel(HomeText.DEVICE_ACTIONS)
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildActionButton('delete', HomeText.DELETE_ACTION, HomeResources.TRASH_ICON, 'danger', () => {
+          this.onDeleteProfile()
+        })
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildActionButton('clearPassword', HomeText.CLEAR_PASSWORD_ACTION, HomeResources.LOCK_ICON, 'warning', () => {
+          this.onClearPassword()
+        })
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildActionButton('copyAddress', HomeText.COPY_ADDRESS_ACTION, HomeResources.COPY_ICON, 'info', () => {
+          this.copyCurrentAddress()
+        })
+      }
     }
     .width('100%')
-    .height(40)
-    .alignItems(VerticalAlign.Center)
+    .onBreakpointChange((breakpoint: string) => {
+      this.formBreakpoint = breakpoint
+    })
   }
 
   @Builder
   private buildConnectionFormFields() {
-    Column({ space: 12 }) {
-      this.buildHostField()
-      this.buildPortField()
-      this.buildUsernameField()
-      this.buildPasswordField()
-      this.buildRememberRow()
-      this.buildConnectButton()
+    GridRow({
+      columns: 12,
+      gutter: { x: 24, y: 12 },
+      breakpoints: { value: ['600vp'], reference: BreakpointsReference.ComponentSize }
+    }) {
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildFieldLabel('Windows host')
+      }
+      GridCol({ span: { xs: 12, sm: 9 } }) {
+        this.buildHostInput()
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildFieldLabel('Port')
+      }
+      GridCol({ span: { xs: 12, sm: 9 } }) {
+        this.buildPortInput()
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildFieldLabel('Username')
+      }
+      GridCol({ span: { xs: 12, sm: 9 } }) {
+        this.buildUsernameInput()
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildFieldLabel('Password')
+      }
+      GridCol({ span: { xs: 12, sm: 9 } }) {
+        this.buildPasswordInput()
+      }
+      GridCol({ span: { xs: 12, sm: 3 } }) {
+        this.buildFieldLabel(HomeText.REMEMBER_PASSWORD)
+      }
+      GridCol({ span: { xs: 12, sm: 9 } }) {
+        this.buildRememberControl()
+      }
+      GridCol({ span: { xs: 12, sm: 9 }, offset: { xs: 0, sm: 3 } }) {
+        this.buildConnectButton()
+      }
     }
     .width('100%')
     .padding({ top: 2, bottom: 6 })
+    .onBreakpointChange((breakpoint: string) => {
+      this.formBreakpoint = breakpoint
+    })
   }
 
   build() {
@@ -378,7 +372,7 @@ export struct HomeConnectionDetails {
         .fontWeight(FontWeight.Bold)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .width('100%')
-        .maxLines(1)
+        .maxLines(2)
 
       this.buildConnectionFormFields()
 
