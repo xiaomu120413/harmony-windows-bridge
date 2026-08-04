@@ -23,6 +23,7 @@ struct NativeTouchState {
     bool singleActive = false;
     bool leftDragActive = false;
     bool longPressSent = false;
+    bool doubleTapActive = false;
     bool scrollActive = false;
     uint64_t downAtMs = 0;
     float startX = 0.0f;

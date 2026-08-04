@@ -1067,14 +1067,14 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | Change ID | TAB-F-03 |
 | 设计版本/章节 | v1.5；第 10.7、12.8、12.9、14.1、14.2 节 |
 | 问题与根因 | 2026-08-04 真机反馈：远程 IME 弹出后“完成”无法收起，触屏双击不稳定。Native `OnSendEnter` 只发送远端 Enter，没有响应 `IME_ENTER_KEY_DONE` 隐藏软键盘；单指手势没有双击时间/距离状态，且 8px 拖动阈值在平板高密度触控上过小，第二次轻触容易退化为拖动 |
-| 交互决策 | `IME_ENTER_KEY_DONE` 先向远端发送 Enter，再只调用当前 `InputMethodProxy` 隐藏键盘并更新 Native visibility；不 detach editor proxy，下一次远端文本候选触摸可复用当前 attach 快速显示。普通触屏点击仍即时发送第一组 left down/up，不为等待双击而增加单击延迟；第二次 tap 在 350ms、32px 范围内标记为双击第二击并发送第二组 left down/up，由 Windows/RDP 既有双击语义处理。拖动启动阈值调整为 18px，长按和双指滚动保持原语义 |
+| 交互决策 | `IME_ENTER_KEY_DONE` 先向远端发送 Enter，再只调用当前 `InputMethodProxy` 隐藏键盘并更新 Native visibility；不 detach editor proxy，下一次远端文本候选触摸可复用当前 attach 快速显示。普通触屏点击仍即时发送第一组 left down/up，不为等待双击而增加单击延迟；第二次 tap 在 350ms、32px 范围内时，在第二次 touch-down 立即发送 left-down、touch-up 发送 left-up，缩短远端两击间隔并保留真实按压时长，由 Windows/RDP 既有双击语义处理。拖动启动阈值调整为 18px，长按和双指滚动保持原语义 |
 | 架构边界 | 不增加 ArkTS 按钮、键盘状态或手势识别；IME hide、visibility 与 Enter 提交属于 `RemoteImeClient`，tap/double-tap/drag 判定属于 Native XComponent input。双击没有独立 RDP Pointer flag，正确线协议仍是两组带相同按钮和邻近坐标的 pointer down/up |
 | 计划代码文件 | 本文；`cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_touch_gesture.cpp`；新建 `cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/tests/xcomponent_touch_policy_test.cpp`；修改 `cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1` |
 | 验收ID | AC-IME：文本区触摸显示后点系统“完成”，远端收到一次 Enter 且键盘隐藏；XComponent 保持焦点时再次触摸文本区可恢复。AC-TOUCH：两次 tap 间隔 50/200/350ms 且距离不超过32px时远端收到两组 left down/up；351ms或距离超过32px按两个普通单击；10px手抖不启动 drag，超过18px启动一次 drag；双击不产生 right-click/wheel。AC-ARCH：无 ArkTS 键盘/双击入口，无双击专用 RDP 私有协议 |
 | 设计状态 | DesignReady |
 | 实现状态 | Implemented（IME“完成”收起已真机通过；双击 Native 判定和线协议发送已实现，远端主机恢复后补文件/窗口动作证据再升 Verified） |
 | 实际代码文件 | `cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1` |
-| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，50/350/351ms及32/32.1px双击边界通过；`harmony/app/build_hap.bat debug` 完整构建、打包、签名成功，signed HAP 35,495,285 bytes；平板 `5JB0223804000371` 覆盖安装并进入真实 RDP，文本区按需显示键盘后点击“完成”，系统日志 `HidePanel success`/`OnPanelStatus type=hide`，截图确认键盘消失。随后远端连接出现 `ERRCONNECT_CONNECT_TRANSPORT_FAILED` 和 `connect_timed_out`，双击打开文件/窗口的最终真机动作证据待主机恢复后补，不误报 Verified |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，50/350/351ms及32/32.1px双击边界通过；第二击改为 touch-down/down、touch-up/up 后再次通过 Native 测试；`harmony/app/build_hap.bat debug` 完整构建、打包、签名成功，最新 signed HAP 35,494,385 bytes并覆盖安装到平板 `5JB0223804000371`。此前真实 RDP 文本区按需显示键盘后点击“完成”，系统日志 `HidePanel success`/`OnPanelStatus type=hide`，截图确认键盘消失。最新动作复测时远端主机持续 `connect_timed_out`，双击打开文件/窗口的最终真机动作证据待主机恢复后补，不误报 Verified |
 | 关联提交 | 待实现后回写 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
