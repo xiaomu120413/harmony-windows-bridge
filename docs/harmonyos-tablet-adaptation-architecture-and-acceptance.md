@@ -743,11 +743,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 三处属性可逐行恢复；API 22 行为为同尺寸实心圆背景，API 26+ 无功能差异 |
 | 验收 ID | AC-FONT：圆点视觉尺寸和颜色来源不变；AC-ARCH：ArkTS 模块编译中不再出现 `fill API is supported since SDK version 26`，全仓 ArkTS `.fill(` 计数为 0，现有 5 个策略测试通过 |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现后回写 |
-| 设计偏差及原因 | 待实现后回写 |
-| 测试命令/结果/证据 | 计划执行测试脚本并检查完整输出和 `rg -n '\.fill\('`；结果待回写 |
-| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+| 实现状态 | Verified |
+| 实际代码文件 | `components/settings/SettingsPrimitives.ets`、`components/home/HomeHeader.ets`、`components/home/HomeStatusFooter.ets` |
+| 设计偏差及原因 | 无；仅替换 3 个 Circle 的着色属性，尺寸、颜色函数、布局和交互均未改变 |
+| 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功且警告输出为空；执行 `rg -n '\.fill\(' harmony/app/entry/src/main/ets -g '*.ets'` 无匹配，计数 0；`git diff --check` 通过 |
+| 关联提交 | 设计先行提交 `db66966`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 

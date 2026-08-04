@@ -141,7 +141,7 @@ export struct HomeStatusFooter {
       Circle()
         .width(9)
         .height(9)
-        .fill(SettingsTheme.statusText(this.isDark, this.cardTone(config.section)))
+        .backgroundColor(SettingsTheme.statusText(this.isDark, this.cardTone(config.section)))
     }
     .height(52)
     .width(expanded ? 'auto' : '100%')

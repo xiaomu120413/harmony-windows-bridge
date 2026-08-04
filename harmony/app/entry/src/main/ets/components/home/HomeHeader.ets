@@ -34,7 +34,7 @@ export struct HomeHeader {
       Circle()
         .width(9)
         .height(9)
-        .fill(SettingsTheme.statusText(this.isDark, this.headerStatusTone()))
+        .backgroundColor(SettingsTheme.statusText(this.isDark, this.headerStatusTone()))
       Text(this.headerStatusText())
         .fontSize(15)
         .fontWeight(FontWeight.Medium)
