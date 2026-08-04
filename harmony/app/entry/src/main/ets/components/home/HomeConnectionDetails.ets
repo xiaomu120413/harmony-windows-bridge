@@ -385,8 +385,7 @@ export struct HomeConnectionDetails {
         this.buildDeviceActions()
       }
     }
-    .layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)
-    .height(this.layoutMode === LayoutMode.EXPANDED ? '100%' : 'auto')
+    .width('100%')
     .padding(this.layoutMode === LayoutMode.EXPANDED ?
       { left: 34, right: 34, top: 22, bottom: 20 } : { left: 20, right: 20, top: 16, bottom: 20 })
     .alignItems(HorizontalAlign.Start)
