@@ -679,11 +679,11 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 仅使用当前 compile/compatible SDK 22 已声明 API；注册或读取异常时保留 Compact 并记录日志；删除 Index 的状态、初始化和 on/off 即可回退，不影响连接与会话状态 |
 | 验收 ID | AC-LAYOUT：初始值和 observer 事件都经过同一纯策略；AC-ARCH：on/off 使用同一回调、无 pixel/deviceType 第二来源、ArkTS 单测与模块编译通过；AC-XC：showSession 最外层分支和 XComponent 节点无改动 |
 | 设计状态 | DesignReady |
-| 实现状态 | NotStarted |
-| 实际代码文件 | 待实现后回写 |
-| 设计偏差及原因 | 待实现后回写 |
-| 测试命令/结果/证据 | 计划执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，并静态核对监听/注销、第二状态源和 XComponent diff；结果待回写 |
-| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+| 实现状态 | Verified |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/pages/Index.ets` |
+| 设计偏差及原因 | 无；layoutMode、初始化、observer on/off、异常回退和非目标均与 DesignReady 记录一致 |
+| 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功；静态检查结果：callback 符号恰好出现 3 次（定义/on/off），`getWindowWidthBreakpoint()` 恰好 1 次，无 `getWindowProperties`、`windowSizeChange`、`deviceInfo/deviceType` 第二来源；`git diff --unified=0` 证明 showSession/XComponent/Home/Settings 构建分支无改动。仍有一条既有 `SettingsPrimitives.ets` API 26 `fill` 兼容警告，与本项无关 |
+| 关联提交 | 设计先行提交 `e26d8d1`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 

@@ -1,4 +1,9 @@
 import { common } from '@kit.AbilityKit'
+import { uiObserver } from '@kit.ArkUI'
+import {
+  LayoutMode,
+  layoutModeForWidthBreakpoint
+} from '../adaptive/WindowLayoutPolicy'
 import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
@@ -73,6 +78,7 @@ struct Index {
   @State private sessionNoticeSubtitle: string = ''
   @State private connectionFeedbackText: string = ''
   @State private connectionFeedbackTone: SettingsStatusTone = 'neutral'
+  @State private layoutMode: LayoutMode = LayoutMode.COMPACT
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
   private connected: boolean = false
@@ -86,6 +92,10 @@ struct Index {
   private connectionProfilesLoaded: boolean = false
   private pendingConnectionProfileSave: WindowsConnectionSaveInput | null = null
   private lastConnectionErrorMessage: string = ''
+  private windowLayoutObserverRegistered: boolean = false
+  private windowSizeLayoutBreakpointCallback = (info: uiObserver.WindowSizeLayoutBreakpointInfo): void => {
+    this.layoutMode = layoutModeForWidthBreakpoint(info.widthBreakpoint)
+  }
 
   private deferUiUpdate(task: () => void): void {
     setTimeout((): void => {
@@ -94,6 +104,7 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    this.registerWindowLayoutObserver()
     this.registerNativeCallbacks()
     this.loadConnectionProfiles()
     this.refreshScreenRecordingPermissionState()
@@ -112,7 +123,35 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.unregisterWindowLayoutObserver()
     this.releaseActiveModifiers()
+  }
+
+  private registerWindowLayoutObserver(): void {
+    try {
+      const uiContext = this.getUIContext()
+      this.layoutMode = layoutModeForWidthBreakpoint(uiContext.getWindowWidthBreakpoint())
+      if (this.windowLayoutObserverRegistered) {
+        return
+      }
+      uiContext.getUIObserver().on('windowSizeLayoutBreakpointChange', this.windowSizeLayoutBreakpointCallback)
+      this.windowLayoutObserverRegistered = true
+    } catch (error) {
+      RdpLogger.warn(`Window layout observer registration failed: ${JSON.stringify(error)}`)
+    }
+  }
+
+  private unregisterWindowLayoutObserver(): void {
+    if (!this.windowLayoutObserverRegistered) {
+      return
+    }
+    try {
+      this.getUIContext().getUIObserver().off('windowSizeLayoutBreakpointChange',
+        this.windowSizeLayoutBreakpointCallback)
+      this.windowLayoutObserverRegistered = false
+    } catch (error) {
+      RdpLogger.warn(`Window layout observer removal failed: ${JSON.stringify(error)}`)
+    }
   }
 
   private getUiAbilityContext(): common.UIAbilityContext | null {
