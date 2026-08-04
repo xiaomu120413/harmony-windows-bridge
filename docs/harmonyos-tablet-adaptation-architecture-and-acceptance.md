@@ -730,6 +730,25 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04 两次执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，均退出码 0、5/5 通过、模块 ArkTS 编译成功；静态检查：`@State compactPage` 仅 1 处且为 devices/details 联合类型，Home 子组件断点监听 0 处、libentry/deviceInfo 依赖 0 处、TabletHomePage/DesktopHomePage 0 个；Index diff 仅新增 HomePage.layoutMode 传参，showSession/XComponent 无改动；Compact 分支使用 100% 列表、可滚动详情、48vp 设置/新建/返回和 2×2 GridRow，260vp/31%/70vp 仅保留在 Expanded 分支。仍有一条既有 API 26 `fill` 兼容警告；真机与字体证据待补 |
 | 关联提交 | 设计先行提交 `1daee02`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
+#### TAB-D-03：状态圆点 API 22 兼容
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-03 |
+| 设计版本/章节 | v1.2；第 2.1、8.2、10.4、10.5、14.1、14.3 节 |
+| 目标 | 消除当前 compile/compatible SDK 22 下由 Circle `fill` 引起的 API 26 兼容警告，同时保持状态圆点尺寸、颜色语义和布局不变 |
+| 计划代码文件 | 修改 `components/settings/SettingsPrimitives.ets`、`components/home/HomeHeader.ets`、`components/home/HomeStatusFooter.ets` 中全部 3 处 Circle 状态圆点 |
+| API/行为 | 将 Circle 的 API 26 `fill(color)` 替换为 API 22 已支持的通用 `backgroundColor(color)`；继续使用同一个 SettingsTheme 状态颜色函数；不改变 width/height、文字、回调或布局拓扑 |
+| 非目标 | 不修改 SVG/Image 的 `fillColor`，不改 Icon 资源、不改主题色、不改其他组件、不引入 apiAvailable 分支、不改 Native/manifest |
+| 兼容与回退 | 三处属性可逐行恢复；API 22 行为为同尺寸实心圆背景，API 26+ 无功能差异 |
+| 验收 ID | AC-FONT：圆点视觉尺寸和颜色来源不变；AC-ARCH：ArkTS 模块编译中不再出现 `fill API is supported since SDK version 26`，全仓 ArkTS `.fill(` 计数为 0，现有 5 个策略测试通过 |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现后回写 |
+| 设计偏差及原因 | 待实现后回写 |
+| 测试命令/结果/证据 | 计划执行测试脚本并检查完整输出和 `rg -n '\.fill\('`；结果待回写 |
+| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
