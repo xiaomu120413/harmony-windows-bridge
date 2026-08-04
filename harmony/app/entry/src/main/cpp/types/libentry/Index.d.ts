@@ -36,6 +36,7 @@ declare const rdpNative: {
   connect(params: NativeConnectParams): NativeCommandResult;
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   getXrdpServerDiagnostics(): NativeXrdpServerResult;
+  setDisplayOrientation(orientation: number): NativeCommandResult;
   releaseAllKeys(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

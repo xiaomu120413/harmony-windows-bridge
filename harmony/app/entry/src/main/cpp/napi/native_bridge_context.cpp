@@ -96,7 +96,27 @@ DisplayResizeResult RequestRemoteDesktopResize(uint32_t width, uint32_t height,
     const std::string& reason)
 {
     return g_session.RequestDynamicDesktopResizeEx(
-        width, height, ORIENTATION_LANDSCAPE, reason);
+        width, height, g_session.DisplayOrientation(), reason);
+}
+
+void ApplyRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& source)
+{
+    DropPendingRenderFrame(source);
+    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(width, height, source);
+    g_resizeCoordinator.ApplyResult(resizeResult, source);
+    BridgeLogger::LogPublic(BridgeLogLevel::Info,
+        std::string("RDP_DISPLAY event=resize_request source=") + source + " requested=" +
+            std::to_string(width) + "x" + std::to_string(height) + " orientation=" +
+            std::to_string(g_session.DisplayOrientation()) + " normalized=" +
+            std::to_string(resizeResult.normalizedWidth) + "x" +
+            std::to_string(resizeResult.normalizedHeight) + " sent=" +
+            std::to_string(resizeResult.sentWidth) + "x" +
+            std::to_string(resizeResult.sentHeight) + " sent_orientation=" +
+            std::to_string(resizeResult.orientation) + " status=" +
+            DisplayResizeStatusName(resizeResult.status));
+    if (resizeResult.status != DisplayResizeStatus::Sent) {
+        RequestSurfaceRepaint(source + " immediate fallback");
+    }
 }
 
 void ConfigureRdpgfxPipelineCallbacks()
@@ -160,21 +180,7 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
     UpdateRdpgfxSurfaceTargetIfReady("surface changed");
     UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
-    DropPendingRenderFrame("surface changed");
-    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(
-        snapshot.width, snapshot.height, "surface changed");
-    g_resizeCoordinator.ApplyResult(resizeResult, "surface changed");
-    BridgeLogger::LogPublic(BridgeLogLevel::Info,
-        std::string("RDP_DISPLAY event=resize_request source=surface_changed requested=") +
-            std::to_string(snapshot.width) + "x" + std::to_string(snapshot.height) +
-            " normalized=" + std::to_string(resizeResult.normalizedWidth) + "x" +
-            std::to_string(resizeResult.normalizedHeight) + " sent=" +
-            std::to_string(resizeResult.sentWidth) + "x" +
-            std::to_string(resizeResult.sentHeight) + " status=" +
-            DisplayResizeStatusName(resizeResult.status));
-    if (resizeResult.status != DisplayResizeStatus::Sent) {
-        RequestSurfaceRepaint("surface resize immediate fallback");
-    }
+    ApplyRemoteDesktopResize(snapshot.width, snapshot.height, "surface_changed");
 }
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
@@ -205,6 +211,35 @@ SessionEventHub& BridgeEvents()
 RdpSession& BridgeSession()
 {
     return g_session;
+}
+
+bool UpdateDisplayOrientation(uint32_t orientation, std::string& message)
+{
+    if (orientation != ORIENTATION_LANDSCAPE && orientation != ORIENTATION_PORTRAIT &&
+        orientation != ORIENTATION_LANDSCAPE_FLIPPED &&
+        orientation != ORIENTATION_PORTRAIT_FLIPPED) {
+        message = "display orientation must be 0, 90, 180, or 270";
+        return false;
+    }
+
+    const uint32_t previous = g_session.DisplayOrientation();
+    if (previous == orientation) {
+        message = "display orientation unchanged";
+        return true;
+    }
+    g_session.SetDisplayOrientation(orientation);
+
+    const SurfaceSnapshot snapshot = g_surface.Snapshot();
+    message = "display orientation updated";
+    BridgeLogger::LogPublic(BridgeLogLevel::Info,
+        std::string("RDP_DISPLAY event=orientation_change previous=") +
+            std::to_string(previous) + " current=" + std::to_string(orientation) +
+            " surface=" + std::to_string(snapshot.width) + "x" +
+            std::to_string(snapshot.height) + " ready=" + (snapshot.ready ? "true" : "false"));
+    if (snapshot.ready && snapshot.width > 0 && snapshot.height > 0) {
+        ApplyRemoteDesktopResize(snapshot.width, snapshot.height, "orientation_changed");
+    }
+    return true;
 }
 
 void InitializeNativeBridgeContext()

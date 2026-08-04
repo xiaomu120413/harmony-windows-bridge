@@ -35,6 +35,16 @@ void RdpSessionChannels::RequestDisconnect()
     }
 }
 
+void RdpSessionChannels::SetDisplayOrientation(uint32_t orientation)
+{
+    displayOrientation_.store(orientation);
+}
+
+uint32_t RdpSessionChannels::DisplayOrientation() const
+{
+    return displayOrientation_.load();
+}
+
 bool RdpSessionChannels::RequestCurrentFrameRender(const std::string& reason, std::string& message)
 {
     std::lock_guard<std::mutex> lock(activeMutex_);
@@ -82,7 +92,7 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
     const std::string& reason, std::string& message)
 {
     const DisplayResizeResult result = RequestDynamicDesktopResizeEx(
-        width, height, ORIENTATION_LANDSCAPE, reason);
+        width, height, DisplayOrientation(), reason);
     message = result.message;
     return result.status != DisplayResizeStatus::Failed &&
         result.status != DisplayResizeStatus::Unsupported;

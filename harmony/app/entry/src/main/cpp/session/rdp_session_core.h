@@ -38,6 +38,8 @@ public:
     void Disconnect();
     bool RequestDisconnect();
     bool IsConnected() const;
+    void SetDisplayOrientation(uint32_t orientation);
+    uint32_t DisplayOrientation() const;
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message);
     bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message);

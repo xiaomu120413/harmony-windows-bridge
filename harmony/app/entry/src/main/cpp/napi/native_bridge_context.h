@@ -5,10 +5,14 @@
 #include "session/rdp_session_core.h"
 #include "surface/surface_bridge.h"
 
+#include <cstdint>
+#include <string>
+
 namespace rdp_bridge {
 
 SessionEventHub& BridgeEvents();
 RdpSession& BridgeSession();
+bool UpdateDisplayOrientation(uint32_t orientation, std::string& message);
 
 void InitializeNativeBridgeContext();
 bool RegisterNativeXComponent(napi_env env, napi_value exports);

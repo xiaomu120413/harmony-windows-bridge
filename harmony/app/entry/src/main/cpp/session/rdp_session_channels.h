@@ -4,6 +4,7 @@
 #include "session/rdp_display_resize_types.h"
 #include "surface/surface_bridge.h"
 
+#include <atomic>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -33,6 +34,8 @@ public:
         freerdpOhosSession* ohosSession);
     void ClearActive(freerdp* instance);
     void RequestDisconnect();
+    void SetDisplayOrientation(uint32_t orientation);
+    uint32_t DisplayOrientation() const;
     bool RequestCurrentFrameRender(const std::string& reason, std::string& message);
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
         std::string& message);
@@ -65,6 +68,7 @@ private:
     freerdpOhosSession* activeOhosSession_ = nullptr;
     DispClientContext* activeDisp_ = nullptr;
     RdpgfxClientContext* activeGfx_ = nullptr;
+    std::atomic_uint32_t displayOrientation_{ORIENTATION_LANDSCAPE};
 
     Callbacks callbacks_;
 };
