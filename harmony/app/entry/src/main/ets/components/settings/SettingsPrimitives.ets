@@ -13,7 +13,7 @@ export struct SettingsStatusChip {
       Circle()
         .width(7)
         .height(7)
-        .fill(SettingsTheme.statusText(this.isDark, this.tone))
+        .backgroundColor(SettingsTheme.statusText(this.isDark, this.tone))
 
       Text(this.text)
         .fontSize(11)
