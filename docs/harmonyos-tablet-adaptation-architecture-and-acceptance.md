@@ -811,6 +811,26 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：完整 `assembleHap` 的 `CompileArkTS`、`SignHap` 通过；HNP重签产物41788522字节，`hdc install -r`成功；包名仍为`com.muhub.desktop`。HAD-W32密度1.9真机窗口缩至1437×1229px（约756×647vp），Home切为单页设备列表，Settings概览无桌面侧栏，基础/远控子页可达。证据：`muhub-c01-home-compact.jpeg`、`muhub-c01-settings-compact.jpeg`及对应layout dump。XComponent会话、600vp下限和tablet未在本项验证 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
 
+#### TAB-C-02：同一 HAP 增加 tablet 安装声明
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-C-02 |
+| 设计版本/章节 | v1.2；第 3、6.1、8.1、10.1、12.2、12.5 节 |
+| 目标 | 在不增加 product、module、HAP 或 bundleName 的前提下，把 entry 模块 `deviceTypes` 从仅 `2in1` 改为 `2in1 + tablet`，使同一签名 HAP 具备在两类设备安装的清单声明 |
+| 计划代码文件 | 仅修改 `harmony/app/entry/src/main/module.json5` 的 `deviceTypes`；保留同文件中现有且与本项无关的打印扩展改动和已删除的最小窗口限制 |
+| 包与身份 | 继续使用 `default/entry`、`com.muhub.desktop` 和单 HAP；不建立 tablet product、tablet module、tablet bundleName 或条件分包 |
+| 能力与 UI 边界 | 本项只开放安装声明，不把设备类型判断写进 Home/Settings 布局。Compact/Expanded 仍只由 WidthBreakpoint 决定；tablet 的 XRDP 能力过滤仍属于 D-01/TAB-E，未完成前不得宣称功能隔离已 Verified |
+| 非目标 | 本项不同时启用 `auto_rotation`、`split` 或字体 configuration，不修改 Native/XRDP/XComponent/输入/IME，不伪造无 tablet 真机的安装与旋转证据 |
+| 兼容与回退 | 删除 `tablet` 字符串即可恢复仅2in1声明；构建清单必须同时包含且仅包含 `2in1`、`tablet`，Hvigor清单校验、签名和现有2in1覆盖安装均需通过 |
+| 验收 ID | AC-PKG：同一HAP、同一包名且清单包含两类设备；AC-CAP：2in1现有启动/Compact回归不退化，tablet真机安装与能力隔离保留为明确待测；AC-ARCH：无新增product/module/bundle和业务设备判断 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（清单、签名产物和2in1安装回归通过；等待tablet真机安装与能力隔离后升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/module.json5`（`deviceTypes`增加`tablet`） |
+| 设计偏差及原因 | 无；仍是一个default product、一个entry module、一个bundleName和一个HAP，未夹带旋转、分屏或业务设备判断 |
+| 测试命令/结果/证据 | 2026-08-04：完整`assembleHap`的`ProcessProfile`、`PackingCheck`、`CompileArkTS`、`SignHap`通过；`intermediates/hap_metadata/default/output_metadata.json`及打包`module.json`均为`["2in1","tablet"]`。HNP重签产物41788502字节并在HAD-W32覆盖安装、启动成功；设备端`bm dump -n com.muhub.desktop`显示entry/ability的`deviceTypes`同时包含`2in1`和`tablet`。无tablet真机，因此未执行tablet安装、旋转和能力隔离验收 |
+| 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
