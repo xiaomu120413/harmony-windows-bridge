@@ -707,6 +707,29 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04 执行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1`，退出码 0、5/5 通过、模块 ArkTS 编译成功；静态结构检查：`@State pageName` 仅 1 处、desktop nav 调用仅在 Expanded Builder 1 处、共享内容调用 1 处、无 TabletSettingsPage/DesktopSettingsPage 文件；Index diff 仅新增 layoutMode 传参，showSession/XComponent 无改动；SettingsBackButton 的真实 Button 为 48×48vp，内部图标仍为 18vp。仍有一条既有 API 26 `fill` 兼容警告；真机 600/839/840/1440vp、字体 1.0/1.75 和往返状态证据待补 |
 | 关联提交 | 设计先行提交 `083f9db`，48vp 设计补充提交 `5f4266a`；实现与本台账回写包含在同一后续提交（以 Git 历史为准） |
 
+#### TAB-D-02：首页 Compact/Expanded 外层拓扑与可达性
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-02 |
+| 设计版本/章节 | v1.2；第 5.1、6.2、6.3、8.2、10.2、10.4、12.3、12.4、14.2、14.3 节 |
+| 目标 | 在不复制表单/配置状态和业务回调的前提下，把首页固定桌面外壳改成真正的 Compact/Expanded 两种拓扑，并保证 600×480vp 下设备列表、连接详情、设置入口和四个状态入口均可到达 |
+| 计划代码文件 | 修改 `harmony/app/entry/src/main/ets/pages/Index.ets`、`components/home/HomePage.ets`、`HomeHeader.ets`、`HomeDeviceList.ets`、`HomeConnectionDetails.ets`、`HomeStatusFooter.ets`；复用 `adaptive/WindowLayoutPolicy.ets` 和 48vp SettingsBackButton，不新增 Tablet/Desktop 页面副本 |
+| 公共 API/状态 | Index 向 HomePage 传唯一 layoutMode；HomePage 向 Header/List/Details/Footer 传同一 layoutMode；HomePage 只新增展示路由 `compactPage = devices/details`，不复制 host/port/username/password/profile/服务状态。选中配置或新建配置后进入详情，详情顶部返回设备列表；Expanded 忽略 compactPage 并同时显示列表和详情 |
+| Header | Expanded 保留居中标题、状态、设置；Compact 删除左右 260vp 占位，标题/设置与服务状态自然换成两行；设置入口真实点击高度由 38vp 提升到 48vp，19vp 图标不放大 |
+| 主内容 | Expanded 保持 Row；Compact 使用单页 devices/details。列表宽度由上层拓扑决定，不再永久 31%；新建设备入口真实高度由 44vp 提升到 48vp。详情在 Compact 取消 `layoutWeight + 100% height`，由外层 Scroll 承载，确保小高度窗口字段可达 |
+| Footer | Expanded 保持四列；Compact 使用 2×2 GridRow，卡片 52vp 且整体自然增高，不再固定 70vp 横向挤压；本项不按设备能力过滤卡片，等待 D-01 决策后的 TAB-E 子项 |
+| 所有权与数据流 | WindowLayoutPolicy -> Index.layoutMode -> HomePage 展示拓扑 -> 子组件尺寸；所有连接值和回调仍由 Index 单向传入，Home 展示组件不 import libentry.so，不读取 deviceInfo，不产生第二断点 |
+| 非目标 | 不处理 HomeConnectionDetails 内部 190vp 标签列和所有固定行高（后续内部 Grid/字体任务）；不决定 XRDP 隔离；不修改 Session/XComponent/Native/manifest；不声称字体 1.75 已完成 |
+| 兼容与回退 | Expanded 保持当前结构和操作；切换 839/840 只改变展示节点，不修改 Index 表单或连接状态；删除 layoutMode/compactPage 和 Compact Builders 可恢复原布局；按钮高度和列表宽度改动可独立回退 |
+| 验收 ID | AC-LAYOUT：Compact 无 260vp 占位/31% 列表/70vp footer，设备与详情有明确往返路径且详情可滚动；Expanded 仍同时显示两 pane；AC-FONT：设置/新建/返回点击区至少 48vp，视觉图标不缩放；AC-ARCH：业务状态仍只在 Index，无 TabletHomePage/DesktopHomePage；AC-XC：showSession/XComponent diff 为零。本机完成编译与静态结构检查后标 Implemented，真机 600/839/840/1440vp、字体与状态往返证据通过后升 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | NotStarted |
+| 实际代码文件 | 待实现后回写 |
+| 设计偏差及原因 | 待实现后回写 |
+| 测试命令/结果/证据 | 计划执行 ArkTS 单测/模块编译；静态检查唯一 compactPage、子组件无断点读取、Compact 固定尺寸清理和 Index XComponent diff；真机证据待设备验收 |
+| 关联提交 | 设计先行记录待提交；实现提交待回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text
