@@ -131,11 +131,12 @@ struct Index {
   }
 
   onPageHide(): void {
+    this.releaseActiveInput()
   }
 
   aboutToDisappear(): void {
     this.unregisterWindowLayoutObserver()
-    this.releaseActiveModifiers()
+    this.releaseActiveInput()
   }
 
   private registerWindowLayoutObserver(): void {
@@ -1081,7 +1082,7 @@ struct Index {
 
   private setSessionVisible(visible: boolean): void {
     if (!visible && this.showSession && this.isConnected()) {
-      this.releaseActiveModifiers()
+      this.releaseActiveInput()
     }
     this.showSession = visible
     if (!visible) {
@@ -1105,18 +1106,14 @@ struct Index {
     })
   }
 
-  private releaseActiveModifiers(): void {
-    if (!this.isConnected()) {
-      return
-    }
-
+  private releaseActiveInput(): void {
     try {
-      const result: NativeCommandResult = rdpNative.releaseAllKeys()
+      const result: NativeCommandResult = rdpNative.releaseAllInput()
       if (!result.ok) {
         RdpLogger.warn(result.message)
       }
     } catch (error) {
-      RdpLogger.error(`Native release all keys failed: ${JSON.stringify(error)}`)
+      RdpLogger.error(`Native release all input failed: ${JSON.stringify(error)}`)
     }
   }
 

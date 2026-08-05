@@ -1,17 +1,11 @@
 #include "surface/native_rgba_copy.h"
+#include "surface/remote_content_geometry.h"
 
 #include <algorithm>
 #include <cstring>
 
 namespace rdp_bridge {
 namespace {
-
-constexpr uint32_t kOneToOneFitTolerancePx = 16;
-
-uint32_t DimensionDelta(uint32_t a, uint32_t b)
-{
-    return a > b ? a - b : b - a;
-}
 
 void CopyRgbaPixelToNative(uint8_t* pixel, int32_t format, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
@@ -109,38 +103,14 @@ int32_t ResolveRowBytes(const BufferHandle& handle, uint32_t drawWidth, uint32_t
 RenderViewport FitFrameIntoTarget(uint32_t targetWidth, uint32_t targetHeight,
     uint32_t sourceWidth, uint32_t sourceHeight)
 {
-    RenderViewport viewport;
-    if (targetWidth == 0 || targetHeight == 0 || sourceWidth == 0 || sourceHeight == 0) {
-        return viewport;
-    }
-
-    if (sourceWidth <= targetWidth && sourceHeight <= targetHeight &&
-        DimensionDelta(targetWidth, sourceWidth) <= kOneToOneFitTolerancePx &&
-        DimensionDelta(targetHeight, sourceHeight) <= kOneToOneFitTolerancePx) {
-        viewport.width = sourceWidth;
-        viewport.height = sourceHeight;
-        viewport.x = (targetWidth - viewport.width) / 2U;
-        viewport.y = (targetHeight - viewport.height) / 2U;
-        return viewport;
-    }
-
-    const uint64_t targetBySourceHeight = static_cast<uint64_t>(targetWidth) * sourceHeight;
-    const uint64_t targetHeightBySourceWidth = static_cast<uint64_t>(targetHeight) * sourceWidth;
-    if (targetBySourceHeight <= targetHeightBySourceWidth) {
-        viewport.width = targetWidth;
-        viewport.height = static_cast<uint32_t>(
-            std::max<uint64_t>(1, targetBySourceHeight / sourceWidth));
-    } else {
-        viewport.height = targetHeight;
-        viewport.width = static_cast<uint32_t>(
-            std::max<uint64_t>(1, targetHeightBySourceWidth / sourceHeight));
-    }
-
-    viewport.width = std::min(viewport.width, targetWidth);
-    viewport.height = std::min(viewport.height, targetHeight);
-    viewport.x = (targetWidth - viewport.width) / 2U;
-    viewport.y = (targetHeight - viewport.height) / 2U;
-    return viewport;
+    const RemoteContentGeometry geometry = FitRemoteContentIntoTarget(
+        targetWidth, targetHeight, sourceWidth, sourceHeight);
+    return RenderViewport {
+        geometry.contentX,
+        geometry.contentY,
+        geometry.contentWidth,
+        geometry.contentHeight,
+    };
 }
 
 void FillNativeLetterbox(const BufferHandle& handle, int32_t rowBytes,

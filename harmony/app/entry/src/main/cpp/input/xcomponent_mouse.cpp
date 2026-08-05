@@ -26,6 +26,8 @@ const char* NativeMouseActionName(OH_NativeXComponent_MouseEventAction action)
             return "release";
         case OH_NATIVEXCOMPONENT_MOUSE_MOVE:
             return "move";
+        case OH_NATIVEXCOMPONENT_MOUSE_CANCEL:
+            return "cancel";
         default:
             return "none";
     }
@@ -33,13 +35,30 @@ const char* NativeMouseActionName(OH_NativeXComponent_MouseEventAction action)
 
 void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent)
 {
+    if (mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_CANCEL) {
+        NativeMouseState cancelled;
+        {
+            std::lock_guard<std::mutex> lock(g_nativeMouseMutex);
+            cancelled = g_nativeMouse;
+            g_nativeMouse = NativeMouseState{};
+        }
+        for (uint32_t button : {LocalPointerButtonLeft, LocalPointerButtonRight,
+            LocalPointerButtonMiddle}) {
+            if ((cancelled.buttons & button) != 0) {
+                SendNativePointer(MakeNativePointer(LocalPointerAction::ButtonUp,
+                    cancelled.lastX, cancelled.lastY, button, 0, true),
+                    "mouse.cancel", true);
+            }
+        }
+        return;
+    }
     LocalPointerEvent event;
     const uint32_t buttonMask = NativeMouseButtonMask(mouseEvent.button);
-    const uint32_t currentButtons = g_nativeMouseButtons.load();
+    std::lock_guard<std::mutex> lock(g_nativeMouseMutex);
+    const uint32_t currentButtons = g_nativeMouse.buttons;
 
     event.x = RoundSurfaceCoordinate(mouseEvent.x);
     event.y = RoundSurfaceCoordinate(mouseEvent.y);
-    event.allowClamp = true;
 
     switch (mouseEvent.action) {
         case OH_NATIVEXCOMPONENT_MOUSE_PRESS:
@@ -48,7 +67,7 @@ void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent
             }
             event.action = LocalPointerAction::ButtonDown;
             event.buttons = buttonMask;
-            g_nativeMouseButtons.fetch_or(buttonMask);
+            event.allowClamp = false;
             break;
         case OH_NATIVEXCOMPONENT_MOUSE_RELEASE:
             event.action = LocalPointerAction::ButtonUp;
@@ -56,11 +75,12 @@ void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent
             if (event.buttons == LocalPointerButtonNone) {
                 return;
             }
-            g_nativeMouseButtons.fetch_and(~event.buttons);
+            event.allowClamp = true;
             break;
         case OH_NATIVEXCOMPONENT_MOUSE_MOVE:
             event.action = LocalPointerAction::Move;
             event.buttons = currentButtons;
+            event.allowClamp = currentButtons != LocalPointerButtonNone;
             break;
         default:
             return;
@@ -70,6 +90,15 @@ void DispatchNativeMousePointer(const OH_NativeXComponent_MouseEvent& mouseEvent
     const bool ok = g_inputSession != nullptr && g_inputSession->SendLocalPointer(event, message);
     if (g_inputSession == nullptr) {
         message = "input bridge not configured";
+    }
+    if (ok) {
+        g_nativeMouse.lastX = mouseEvent.x;
+        g_nativeMouse.lastY = mouseEvent.y;
+        if (mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_PRESS) {
+            g_nativeMouse.buttons |= buttonMask;
+        } else if (mouseEvent.action == OH_NATIVEXCOMPONENT_MOUSE_RELEASE) {
+            g_nativeMouse.buttons &= ~event.buttons;
+        }
     }
 
     static std::atomic_uint32_t mouseLogCount{0};

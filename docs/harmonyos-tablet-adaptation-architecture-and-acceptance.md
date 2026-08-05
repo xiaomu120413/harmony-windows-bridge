@@ -1077,6 +1077,49 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，50/350/351ms及32/32.1px双击边界通过；第二击改为 touch-down/down、touch-up/up 后再次通过 Native 测试；`harmony/app/build_hap.bat debug` 完整构建、打包、签名成功，最新 signed HAP 35,494,385 bytes并覆盖安装到平板 `5JB0223804000371`。此前真实 RDP 文本区按需显示键盘后点击“完成”，系统日志 `HidePanel success`/`OnPanelStatus type=hide`，截图确认键盘消失。最新动作复测时远端主机持续 `connect_timed_out`，双击打开文件/窗口的最终真机动作证据待主机恢复后补，不误报 Verified |
 | 关联提交 | 待实现后回写 |
 
+#### TAB-F-04：XComponent 输入手势 P0/P1 收敛
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-04 |
+| 设计版本/章节 | v1.6；第 10.7、12.8、14.1、14.2 节 |
+| 问题与根因 | 当前触摸识别依赖多组全局布尔状态，长按只有收到 MOVE/UP 才能触发；多指按数组下标取点而非 pointer ID；拖动、双击、双指滚动阈值使用物理 px；鼠标、触屏、触控板和 UNKNOWN 输入未严格分流。Axis 使用通用 action API、按符号直接发送固定滚轮步长，且 Blur/旋转/Surface 失效只清本地状态或只释放键盘，可能造成远端按钮粘滞。新按下允许坐标 clamp，黑边点击可能落到远端边缘。 |
+| 交互决策 | 目标 API 22 且不保留旧行为兼容分支。XComponent 固定采用远端鼠标模拟：单击=左键单击；双击=两组标准左键 down/up；长按 500ms=右键单击；单指移动超过 5vp=按住左键拖动；双指中心位移按 12vp 量化滚动。双击采用 300ms/60vp，与 API 22 Native Gesture 默认值对齐。当前没有本地 zoom transform，因此 pinch、旋转手势和惯性缩放不伪装成远端输入。鼠标保持原生按钮语义；触屏使用 Touch 流；触控板滚动只使用 Axis 流；UNKNOWN 不同时进入两套手势状态机。 |
+| Native 状态机 | 将 tap/double-tap/long-press/drag/two-finger-scroll 收敛为可纯测的 Native reducer，显式状态为 Idle、Pressed、Dragging、DoubleSecondDown、LongPressRecognized、Scrolling；追踪 active pointer ID，不依赖 touchPoints 顺序。长按使用可取消的单一调度器，在手指静止时到期触发；UP/CANCEL/多指切换/生命周期失效均取消计时并保证已下发按钮只释放一次。阈值先以 vp 表达，再用 `defaultDisplayDensityDpi / 160` 转为 px。 |
+| 坐标与释放 | 新 down/click 默认 `allowClamp=false`：Surface 未 ready、有效 viewport 为零、stale geometry 或落在 contain 黑边时直接拒绝。只有已经成功按下后的 drag move/button up 可 clamp。新增幂等 `ReleaseAllXComponentInput(reason)`，按最后有效坐标释放鼠标和触摸已按下按钮、释放键盘、取消长按与 Axis 余量，再清本地状态；Blur、方向变化、Surface change/destroy、页面隐藏和断连都必须在清 viewport/session 前调用。 |
+| Axis 策略 | 使用 `OH_ArkUI_AxisEvent_GetAxisAction` 区分 BEGIN/UPDATE/END/CANCEL；按 source/tool 分流。鼠标滚轮以 15° 为一个远端 notch，触控板以 12vp 为一个 notch，横纵轴分别累计并保留不足一个 notch 的余量；大幅滚动可产生多步，不再退化为 sign-only。pinch scale 事件不作为滚轮。Touch 流不再处理 touchpad 双指滚动，避免 Touch/Axis 重复发送。 |
+| 公共 ABI | 删除 `releaseAllKeys` N-API/声明，替换为 `releaseAllInput`；不提供别名。ArkTS 只在页面生命周期通知一次统一释放，不持有手势或按钮状态。 |
+| 计划代码文件 | 本文；`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_bridge.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/input/xcomponent_mouse.cpp`、`cpp/input/xcomponent_axis.cpp`、`cpp/input/xcomponent_key.cpp`、`cpp/session/rdp_session_input.cpp`、`cpp/napi/native_bridge_context.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/pages/Index.ets`、`cpp/tests/xcomponent_touch_policy_test.cpp` |
+| 兼容与回退 | 仅 API 22 最优实现；不保留旧阈值、旧 `releaseAllKeys`、错误 Axis action 或 touchpad 双路发送。未取得密度时仅以 1.0 作为安全诊断回退；Surface/viewport 无效时宁可拒绝新输入，不映射到远端边缘。无需修改 FreeRDP/xrdp 通用 core，远端仍接收标准 pointer down/up/wheel 序列。 |
+| 验收ID | AC-INPUT-P0：静止长按 500ms 无 MOVE 也只产生一组右键；CANCEL、Blur、旋转、Surface change/destroy、页面隐藏和断连后远端无粘键/粘按钮；黑边与零 viewport 的新按下不产生远端事件；拖动中的 UP 仅释放一次。AC-INPUT-P1：300/301ms、60/60.1vp 双击边界；5vp 拖动边界；不同 density 下手势物理语义一致；pointer 数组换序后双指滚动方向和余量不跳变；鼠标、触屏、触控板各只走一条路径；Axis BEGIN/UPDATE/END/CANCEL、横纵轴、小量累积和大幅多 notch 全序列可纯测。AC-ARCH：Native reducer 无 ArkUI 依赖，统一释放幂等，ArkTS 无手势状态，旧 N-API symbol 不存在。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（普通指针事件已在 TAB-F-05 修正后恢复；2026-08-05 真机反馈双击仍不生效，不能升 Verified，后续必须按独立子项重新定位真实事件序列） |
+| 实际代码文件 | `cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_bridge.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/input/xcomponent_mouse.cpp`、`cpp/input/xcomponent_axis.cpp`、`cpp/input/xcomponent_key.cpp`、`cpp/session/rdp_session_input.cpp`、`cpp/napi/native_bridge_context.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/pages/Index.ets`、`cpp/tests/xcomponent_touch_policy_test.cpp` |
+| 设计偏差及原因 | 无协议或交互偏差。Axis 量化策略与触摸 reducer 共用纯策略文件，避免为很小的无 ArkUI 逻辑新增模块；既有 CMake/test runner 已包含该策略源和测试目标，因此无需修改。断连回调发生在传输已断后，只能保证本地幂等清理；主动隐藏、页面退出、Blur、旋转和 Surface invalidation 均在会话/geometry 有效时先发送释放。鼠标 CANCEL 同样释放活动左/右/中键。 |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，覆盖 300/301ms、60/60.1vp、5vp、静止长按、CANCEL 幂等、pointer 换序、双指余量、Axis begin/update/end、source 切换与多 notch；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功。TAB-F-05 包覆盖安装后用户确认普通输入恢复，但双击仍不生效，说明纯策略测试尚未覆盖真实 XComponent 事件形态或远端时序；本项不得标记 Verified。文档中预告的 `tools/check_tablet_architecture.ps1` 在仓库不存在，未伪报通过。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-F-05：跨渲染路径的远端内容几何与输入逆变换
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-05 |
+| 设计版本/章节 | v1.7；第 10.5、10.7、12.6、12.8 节 |
+| 回归根因 | TAB-F-04 在 App 输入队列入口要求 `SurfaceSnapshot.viewportWidth/Height` 非零，但该字段只由 GDI/RGBA `RenderRgbaFrame` 成功路径回写；AVC420/AVC444 直接向 Decoder Surface/GPU present，虽已显示画面却保持 viewport 为零，导致鼠标、触摸和 Axis 在进入 FreeRDP 前全部被拒绝。旧版之所以可用，是 FreeRDP OHOS mapper 在 viewport 为零时退回整个 Surface；该回退无法正确拒绝 contain 黑边，不能作为最终方案。 |
+| 跨平台依据 | FreeRDP Android 由 View 的 draw matrix 及 inverse matrix 成对处理渲染与输入；X11 共用 scaledWidth/scaledHeight/offset；SDL 共用 window rect/offset 与 GDI 尺寸；Wayland 在事件发生时由 drawing-buffer geometry 与远端桌面尺寸解析变换。共同原则是输入消费渲染几何的逆变换，几何有效性不绑定某种 codec 或 CPU frame callback。 |
+| 通用能力 | 新增无 ArkUI、FreeRDP、codec 依赖的 `RemoteContentGeometry` 纯策略：输入为 target Surface、remote content 尺寸和可选已发布 content rect，输出唯一 contain rect、有效性与双向坐标关系。GDI、AVC420、AVC444 的 fit 计算和输入 viewport 构造必须调用同一策略；删除 SurfaceBridge 私有重复算法和 AVC420 私有 snap 分支，避免渲染与输入出现 1～16px 偏差。 |
+| 几何所有权 | `SurfaceBridge` 仍持有 Surface 生命周期与已发布 viewport；输入优先使用当前 Surface generation 内已发布 viewport。对不经过 CPU 回写的直接 GPU 路径，按 FreeRDP Wayland 模式从当前 ready Surface 尺寸与当前远端桌面尺寸解析同一 contain geometry。Surface/desktop 任一为零时才判定无效；不能再以“显式 viewport 为零”代表画面无效。后续若引入裁剪、平移或局部 zoom，必须由 renderer 发布显式 rect 覆盖派生值。 |
+| 输入边界 | 新 down/click/wheel 在 content rect 外拒绝；内部按逆变换映射。活动 drag move/button-up 可 clamp，保证跨黑边和生命周期中断仍能释放。Surface change/rotation 前仍使用旧有效 geometry release，之后新事件使用新 Surface 与 desktop geometry。FreeRDP 零 viewport 全 Surface fallback 不再进入正常路径：App 必须始终传入已发布或统一派生的非零 content rect。 |
+| 计划代码文件 | 本文；新建 `cpp/surface/remote_content_geometry.h/.cpp`、`cpp/tests/remote_content_geometry_test.cpp`；修改 `cpp/surface/native_rgba_copy.cpp`、`cpp/surface/surface_bridge.cpp`、`cpp/surface/avc420_gpu_compositor_internal.cpp`、`cpp/session/rdp_session_input.cpp`、`cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1`、`docs/CHANGELOG.md` |
+| 兼容与回退 | 目标 API 22 单一路径，不保留“viewport=0 即整个 Surface”的正常行为，也不按 GDI/AVC codec 分支输入。派生几何仅适用于当前无 pan/zoom/crop 的 contain 模式；未来出现额外视觉变换时必须显式发布 geometry，而不是在输入层猜测。 |
+| 验收ID | AC-GEOMETRY：16:9→4:3、4:3→16:9、同尺寸、奇数尺寸、零尺寸均与 GDI/AVC fit 一致；content 四角映射到远端四角，黑边拒绝。AC-CODEC-INPUT：GDI、AVC420、AVC444 画面出现后，即使 CPU viewport 未回写，鼠标移动/点击、触摸点击/拖动/长按/双击和 Axis 均生效；三 codec 同一点映射一致。AC-LIFECYCLE：旋转/Surface change 前释放，变更后不得复用旧 content rect。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（共享几何、自动测试、构建和安装完成；GDI/AVC 远端动作级输入待真机操作后升 Verified） |
+| 实际代码文件 | `cpp/surface/remote_content_geometry.h/.cpp`、`cpp/tests/remote_content_geometry_test.cpp`、`cpp/surface/native_rgba_copy.cpp`、`cpp/surface/surface_bridge.h/.cpp`、`cpp/surface/avc420_gpu_compositor_internal.cpp`、`cpp/session/rdp_session_input.cpp`、`cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1`、本文、`docs/CHANGELOG.md` |
+| 设计偏差及原因 | 无架构偏差。显式 published rect 增加对应 remoteWidth/remoteHeight 身份，只有与当前远端尺寸一致且完全位于 Surface 内时采用；AVC/过渡期使用同一纯策略派生 contain rect。没有为 codec 增加输入分支，也未恢复 FreeRDP 的零 viewport 全 Surface 回退。 |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，新增 16:9→4:3、4:3→16:9、16px 近一比一、奇数尺寸、零尺寸、黑边边界、published/stale/越界 rect 用例；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,547,212 bytes；平板 `5JB0223804000371` 覆盖安装并冷启动成功，PID 49235。用户随后确认此前全部失效的普通输入事件已恢复，双击仍不生效并继续归属 TAB-F-04；GDI/AVC420/AVC444 完整矩阵仍待补。 |
+| 关联提交 | 待实现后回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text

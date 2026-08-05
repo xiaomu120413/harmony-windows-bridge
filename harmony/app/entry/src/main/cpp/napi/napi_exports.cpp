@@ -4,6 +4,7 @@
 #include "napi/native_bridge_context.h"
 #include "common/bridge_types.h"
 #include "common/bridge_log.h"
+#include "input/xcomponent_input_bridge.h"
 #include "napi/camera_permission_bridge.h"
 #include "napi/clipboard_permission_bridge.h"
 #include "napi/location_bridge.h"
@@ -147,20 +148,14 @@ napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info info)
     return MakeXrdpServerResult(env, rdp_bridge::GetXrdpServerDiagnostics());
 }
 
-napi_value ReleaseAllKeys(napi_env env, napi_callback_info info)
+napi_value ReleaseAllInput(napi_env env, napi_callback_info info)
 {
     (void)info;
-    std::string message;
-    const bool ok = BridgeSession().ReleaseAllKeys(message);
-    const bool noActiveSession = !ok && message == "no active FreeRDP session";
-    if (!ok && !noActiveSession) {
-        BridgeLogger::Error(message);
-    }
-
+    ReleaseAllXComponentInput("arktsLifecycle");
     napi_value result = MakeObject(env);
-    SetBool(env, result, "ok", ok || noActiveSession);
-    SetString(env, result, "state", ok ? "Connected" : "Disconnected");
-    SetString(env, result, "message", message);
+    SetBool(env, result, "ok", true);
+    SetString(env, result, "state", "Released");
+    SetString(env, result, "message", "all active XComponent input released");
     return result;
 }
 
@@ -308,7 +303,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"bindImeHostWindow", nullptr, BindImeHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"releaseAllKeys", nullptr, ReleaseAllKeys, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"releaseAllInput", nullptr, ReleaseAllInput, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,

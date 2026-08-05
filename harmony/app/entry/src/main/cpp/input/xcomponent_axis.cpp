@@ -1,12 +1,15 @@
 #include "input/xcomponent_input_internal.h"
 
+#include <cstdlib>
+
 namespace rdp_bridge {
 namespace {
 
-bool ShouldSkipDuplicateAxisEvent(int32_t action, float x, float y, double deltaX, double deltaY)
+constexpr double kMouseWheelQuantumDegrees = 15.0;
+
+bool IsDuplicateAxisEvent(int32_t action, float x, float y, double deltaX, double deltaY)
 {
     const uint64_t now = NowMs();
-    std::lock_guard<std::mutex> lock(g_nativeAxisMutex);
     const bool duplicate = now - g_nativeAxis.lastAtMs <= kAxisEventDedupMs &&
         g_nativeAxis.lastAction == action &&
         std::fabs(g_nativeAxis.lastX - x) < 0.01f &&
@@ -22,32 +25,57 @@ bool ShouldSkipDuplicateAxisEvent(int32_t action, float x, float y, double delta
     return duplicate;
 }
 
+void SendAxisSteps(LocalPointerAction action, float x, float y, int32_t steps,
+    const std::string& label)
+{
+    const int32_t direction = steps < 0 ? -1 : 1;
+    for (int32_t index = 0; index < std::abs(steps); ++index) {
+        SendNativePointer(MakeNativePointer(action, x, y,
+            LocalPointerButtonNone, direction), label);
+    }
+}
+
 void DispatchNativeAxisPointer(const ArkUI_UIInputEvent* event)
 {
-    const int32_t action = OH_ArkUI_UIInputEvent_GetAction(event);
+    const int32_t action = OH_ArkUI_AxisEvent_GetAxisAction(event);
+    const int32_t source = OH_ArkUI_UIInputEvent_GetSourceType(event);
+    const int32_t tool = OH_ArkUI_UIInputEvent_GetToolType(event);
     const double deltaY = OH_ArkUI_AxisEvent_GetVerticalAxisValue(event);
     const double deltaX = OH_ArkUI_AxisEvent_GetHorizontalAxisValue(event);
     const float x = OH_ArkUI_PointerEvent_GetX(event);
     const float y = OH_ArkUI_PointerEvent_GetY(event);
-    if (ShouldSkipDuplicateAxisEvent(action, x, y, deltaX, deltaY)) {
-        return;
-    }
-    if (std::fabs(deltaY) < 0.01 && std::fabs(deltaX) < 0.01) {
-        return;
-    }
-    if (action == UI_AXIS_EVENT_ACTION_BEGIN ||
-        action == UI_AXIS_EVENT_ACTION_END ||
-        action == UI_AXIS_EVENT_ACTION_CANCEL) {
+
+    if (source != UI_INPUT_EVENT_SOURCE_TYPE_MOUSE ||
+        (tool != UI_INPUT_EVENT_TOOL_TYPE_MOUSE && tool != UI_INPUT_EVENT_TOOL_TYPE_TOUCHPAD)) {
         return;
     }
 
-    const bool vertical = std::fabs(deltaY) >= std::fabs(deltaX);
-    const double delta = vertical ? deltaY : deltaX;
-    const LocalPointerAction pointerAction =
-        vertical ? LocalPointerAction::WheelVertical : LocalPointerAction::WheelHorizontal;
-    SendNativePointer(MakeNativePointer(pointerAction, x, y, LocalPointerButtonNone,
-        static_cast<int32_t>(std::lround(delta))),
-        vertical ? "axis.wheel.vertical" : "axis.wheel.horizontal");
+    std::lock_guard<std::mutex> lock(g_nativeAxisMutex);
+    if (IsDuplicateAxisEvent(action, x, y, deltaX, deltaY)) {
+        return;
+    }
+    if (OH_ArkUI_AxisEvent_HasAxis(event, UI_AXIS_TYPE_PINCH_AXIS)) {
+        g_nativeAxis.scrollPolicy.End();
+        return;
+    }
+    const double quantum = tool == UI_INPUT_EVENT_TOOL_TYPE_TOUCHPAD
+        ? static_cast<double>(kNativeTouchWheelQuantumVp * g_inputDensity.load())
+        : kMouseWheelQuantumDegrees;
+    if (action == UI_AXIS_EVENT_ACTION_BEGIN) {
+        g_nativeAxis.scrollPolicy.Begin(tool, quantum);
+        return;
+    }
+    if (action == UI_AXIS_EVENT_ACTION_END || action == UI_AXIS_EVENT_ACTION_CANCEL) {
+        g_nativeAxis.scrollPolicy.End();
+        return;
+    }
+    if (action != UI_AXIS_EVENT_ACTION_UPDATE) {
+        return;
+    }
+    const NativeAxisSteps steps = g_nativeAxis.scrollPolicy.Update(
+        tool, quantum, deltaX, deltaY);
+    SendAxisSteps(LocalPointerAction::WheelVertical, x, y, steps.vertical, "axis.wheel.vertical");
+    SendAxisSteps(LocalPointerAction::WheelHorizontal, x, y, steps.horizontal, "axis.wheel.horizontal");
 }
 
 } // namespace

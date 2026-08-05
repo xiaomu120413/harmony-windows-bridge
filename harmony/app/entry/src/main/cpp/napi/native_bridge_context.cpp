@@ -140,6 +140,7 @@ void ConfigureRdpSessionCallbacks()
     g_session.SetCallbacks({
         [](const std::string& state) {
             if (state == "Disconnected") {
+                ReleaseAllXComponentInput("disconnected");
                 g_resizeCoordinator.Reset("session disconnected");
                 std::string imeMessage;
                 (void)g_remoteIme.Close(imeMessage);
@@ -174,6 +175,7 @@ void ConfigureRdpSessionCallbacks()
 void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 {
     g_surface.OnSurfaceCreated(component, window);
+    RefreshXComponentInputDensity();
     g_resizeCoordinator.Reset("surface created");
     UpdateRdpgfxSurfaceTargetIfReady("surface created");
     UpdateAvc420SurfaceOutputIfActive("surface created");
@@ -182,7 +184,9 @@ void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
 
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 {
+    ReleaseAllXComponentInput("surfaceChanged");
     g_surface.OnSurfaceChanged(component, window);
+    RefreshXComponentInputDensity();
     UpdateRdpgfxSurfaceTargetIfReady("surface changed");
     UpdateAvc420SurfaceOutputIfActive("surface changed");
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
@@ -191,6 +195,7 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
 {
+    ReleaseAllXComponentInput("surfaceDestroyed");
     std::string imeMessage;
     (void)g_remoteIme.Close(imeMessage);
     g_surface.OnSurfaceDestroyed(component, window);
@@ -235,7 +240,9 @@ bool UpdateDisplayOrientation(uint32_t orientation, std::string& message)
         message = "display orientation unchanged";
         return true;
     }
+    ReleaseAllXComponentInput("orientationChanged");
     g_session.SetDisplayOrientation(orientation);
+    RefreshXComponentInputDensity();
 
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
     message = "display orientation updated";

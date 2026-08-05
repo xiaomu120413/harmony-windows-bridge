@@ -2,6 +2,7 @@
 
 #include "common/bridge_log.h"
 #include "surface/gpu_rgba_renderer.h"
+#include "surface/native_rgba_copy.h"
 #include "surface/native_window_rgba_painter.h"
 
 #include <algorithm>
@@ -13,13 +14,6 @@
 #include <native_window/external_window.h>
 
 namespace rdp_bridge {
-
-static constexpr uint32_t kOneToOneFitTolerancePx = 16;
-
-static uint32_t DimensionDelta(uint32_t a, uint32_t b)
-{
-    return a > b ? a - b : b - a;
-}
 
 std::string ReadXComponentId(OH_NativeXComponent* component)
 {
@@ -220,6 +214,8 @@ private:
             viewportY_ = viewport.y;
             viewportWidth_ = viewport.width;
             viewportHeight_ = viewport.height;
+            viewportRemoteWidth_ = frame.width;
+            viewportRemoteHeight_ = frame.height;
             lastPaintMessage_ = result.message;
             return result;
         }
@@ -242,6 +238,8 @@ private:
             viewportY_ = viewport.y;
             viewportWidth_ = viewport.width;
             viewportHeight_ = viewport.height;
+            viewportRemoteWidth_ = frame.width;
+            viewportRemoteHeight_ = frame.height;
         }
         lastPaintMessage_ = result.message;
         return result;
@@ -253,6 +251,8 @@ private:
         viewportY_ = 0;
         viewportWidth_ = 0;
         viewportHeight_ = 0;
+        viewportRemoteWidth_ = 0;
+        viewportRemoteHeight_ = 0;
     }
 
     void ClearNativeWindowConfigLocked()
@@ -281,43 +281,6 @@ private:
         return true;
     }
 
-    static RenderViewport FitFrameIntoTarget(uint32_t targetWidth, uint32_t targetHeight,
-        uint32_t sourceWidth, uint32_t sourceHeight)
-    {
-        RenderViewport viewport;
-        if (targetWidth == 0 || targetHeight == 0 || sourceWidth == 0 || sourceHeight == 0) {
-            return viewport;
-        }
-
-        if (sourceWidth <= targetWidth && sourceHeight <= targetHeight &&
-            DimensionDelta(targetWidth, sourceWidth) <= kOneToOneFitTolerancePx &&
-            DimensionDelta(targetHeight, sourceHeight) <= kOneToOneFitTolerancePx) {
-            viewport.width = sourceWidth;
-            viewport.height = sourceHeight;
-            viewport.x = (targetWidth - viewport.width) / 2U;
-            viewport.y = (targetHeight - viewport.height) / 2U;
-            return viewport;
-        }
-
-        const uint64_t targetBySourceHeight = static_cast<uint64_t>(targetWidth) * sourceHeight;
-        const uint64_t targetHeightBySourceWidth = static_cast<uint64_t>(targetHeight) * sourceWidth;
-        if (targetBySourceHeight <= targetHeightBySourceWidth) {
-            viewport.width = targetWidth;
-            viewport.height = static_cast<uint32_t>(
-                std::max<uint64_t>(1, targetBySourceHeight / sourceWidth));
-        } else {
-            viewport.height = targetHeight;
-            viewport.width = static_cast<uint32_t>(
-                std::max<uint64_t>(1, targetHeightBySourceWidth / sourceHeight));
-        }
-
-        viewport.width = std::min(viewport.width, targetWidth);
-        viewport.height = std::min(viewport.height, targetHeight);
-        viewport.x = (targetWidth - viewport.width) / 2U;
-        viewport.y = (targetHeight - viewport.height) / 2U;
-        return viewport;
-    }
-
     SurfaceSnapshot SnapshotLocked() const
     {
         return SurfaceSnapshot{
@@ -330,6 +293,8 @@ private:
             viewportY_,
             viewportWidth_,
             viewportHeight_,
+            viewportRemoteWidth_,
+            viewportRemoteHeight_,
             createdCount_,
             changedCount_,
             destroyedCount_,
@@ -365,6 +330,8 @@ private:
     uint32_t viewportY_ = 0;
     uint32_t viewportWidth_ = 0;
     uint32_t viewportHeight_ = 0;
+    uint32_t viewportRemoteWidth_ = 0;
+    uint32_t viewportRemoteHeight_ = 0;
     uint32_t createdCount_ = 0;
     uint32_t changedCount_ = 0;
     uint32_t destroyedCount_ = 0;
