@@ -17,6 +17,7 @@
   "acls": {
     "allowed-acls": [
       "ohos.permission.CUSTOM_SCREEN_RECORDING",
+      "ohos.permission.CONTROL_DEVICE",
       "ohos.permission.READ_PASTEBOARD",
       "ohos.permission.ACCESS_USER_FULL_DISK"
     ]
@@ -24,6 +25,7 @@
   "permissions": {
     "restricted-permissions": [
       "ohos.permission.CUSTOM_SCREEN_RECORDING",
+      "ohos.permission.CONTROL_DEVICE",
       "ohos.permission.READ_PASTEBOARD",
       "ohos.permission.ACCESS_USER_FULL_DISK"
     ]

@@ -23,8 +23,8 @@ const HOME_STATUS_CARDS: HomeStatusCardConfig[] = [
     icon: HomeResources.MONITOR_ICON
   },
   {
-    section: SettingsRemoteControlSection.ACCESS,
-    label: HomeText.STATUS_ACCESS_LABEL,
+    section: SettingsRemoteControlSection.INPUT,
+    label: HomeText.STATUS_INPUT_LABEL,
     icon: HomeResources.SHIELD_ICON
   },
   {
@@ -44,7 +44,8 @@ export struct HomeStatusFooter {
   @Prop xrdpServerPort: number = 3390
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
-  @Prop remoteAccessCodeGateEnabled: boolean = false
+  @Prop inputInjectionPermissionGranted: boolean = false
+  @Prop inputInjectionPermissionBusy: boolean = false
   @Prop remoteControlServerAvailable: boolean = true
   onOpenSettings: (remoteControlSection: string) => void = (_remoteControlSection: string) => {
   }
@@ -64,30 +65,37 @@ export struct HomeStatusFooter {
     if (this.screenRecordingPermissionBusy) {
       return 'info'
     }
-    return this.screenRecordingPermissionGranted ? 'ok' : 'warning'
+    return this.screenRecordingPermissionGranted ? 'ok' : 'neutral'
   }
 
   private screenStatusText(): string {
     if (this.screenRecordingPermissionBusy) {
-      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
+      return SettingsText.REMOTE_PERMISSION_BUSY
     }
-    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
-    SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
+    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_PERMISSION_GRANTED :
+    SettingsText.REMOTE_PERMISSION_MISSING
   }
 
-  private accessStatusTone(): SettingsStatusTone {
-    return this.remoteAccessCodeGateEnabled ? 'ok' : 'neutral'
+  private inputStatusTone(): SettingsStatusTone {
+    if (this.inputInjectionPermissionBusy) {
+      return 'info'
+    }
+    return this.inputInjectionPermissionGranted ? 'ok' : 'neutral'
   }
 
-  private accessStatusText(): string {
-    return this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
+  private inputStatusText(): string {
+    if (this.inputInjectionPermissionBusy) {
+      return SettingsText.REMOTE_PERMISSION_BUSY
+    }
+    return this.inputInjectionPermissionGranted ? SettingsText.REMOTE_PERMISSION_GRANTED :
+      SettingsText.REMOTE_PERMISSION_MISSING
   }
 
   private cardValue(section: string): string {
     const values = new Map<string, string>()
     values.set(SettingsRemoteControlSection.SERVER, this.serviceStatusText())
     values.set(SettingsRemoteControlSection.SCREEN, this.screenStatusText())
-    values.set(SettingsRemoteControlSection.ACCESS, this.accessStatusText())
+    values.set(SettingsRemoteControlSection.INPUT, this.inputStatusText())
     values.set(SettingsRemoteControlSection.FILES, HomeText.STATUS_FILES_CONFIGURED)
     return values.get(section) || HomeText.STATUS_FILES_CONFIGURED
   }
@@ -96,7 +104,7 @@ export struct HomeStatusFooter {
     const tones = new Map<string, SettingsStatusTone>()
     tones.set(SettingsRemoteControlSection.SERVER, this.serviceStatusTone())
     tones.set(SettingsRemoteControlSection.SCREEN, this.screenStatusTone())
-    tones.set(SettingsRemoteControlSection.ACCESS, this.accessStatusTone())
+    tones.set(SettingsRemoteControlSection.INPUT, this.inputStatusTone())
     tones.set(SettingsRemoteControlSection.FILES, 'ok')
     return tones.get(section) || 'ok'
   }
@@ -115,26 +123,21 @@ export struct HomeStatusFooter {
   }
 
   @Builder
-  private buildStatusIcon(icon: Resource, tone: SettingsStatusTone) {
-    Column() {
-      Image(icon)
-        .width(20)
-        .height(20)
-        .fillColor(SettingsTheme.statusText(this.isDark, tone))
-        .draggable(false)
-    }
-    .width(32)
-    .height(32)
-    .borderRadius(8)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
-    .backgroundColor(SettingsTheme.statusBackground(this.isDark, tone))
-  }
-
-  @Builder
   private buildStatusCard(config: HomeStatusCardConfig, expanded: boolean) {
     Row({ space: 12 }) {
-      this.buildStatusIcon(config.icon, this.cardTone(config.section))
+      Column() {
+        Image(config.icon)
+          .width(20)
+          .height(20)
+          .fillColor(SettingsTheme.statusText(this.isDark, this.cardTone(config.section)))
+          .draggable(false)
+      }
+      .width(32)
+      .height(32)
+      .borderRadius(8)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .backgroundColor(SettingsTheme.statusBackground(this.isDark, this.cardTone(config.section)))
       Text(config.label)
         .fontSize(15)
         .fontWeight(FontWeight.Bold)

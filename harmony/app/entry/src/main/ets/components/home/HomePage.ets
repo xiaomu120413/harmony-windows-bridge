@@ -29,7 +29,8 @@ export struct HomePage {
   @Prop xrdpServerPort: number = 3390
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
-  @Prop remoteAccessCodeGateEnabled: boolean = false
+  @Prop inputInjectionPermissionGranted: boolean = false
+  @Prop inputInjectionPermissionBusy: boolean = false
   @Prop remoteControlServerAvailable: boolean = true
   @State private compactPage: HomeCompactPage = 'devices'
   onHostChange: (value: string) => void = (_value: string) => {
@@ -186,7 +187,8 @@ export struct HomePage {
         xrdpServerPort: this.xrdpServerPort,
         screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
         screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
-        remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+        inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
+        inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
         remoteControlServerAvailable: this.remoteControlServerAvailable,
         onOpenSettings: this.onOpenSettings
       })

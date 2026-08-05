@@ -1,5 +1,5 @@
 import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
-import { SettingsAccent, SettingsResources, SettingsTheme } from './SettingsUi'
+import { SettingsAccent, SettingsAccentName, SettingsResources, SettingsTheme } from './SettingsUi'
 
 @Component
 export struct XrdpServerCard {
@@ -394,9 +394,18 @@ export struct RemoteAccessCard {
 }
 
 @Component
-export struct ScreenRecordingCard {
+export struct RemotePermissionCard {
   @Prop isDark: boolean = false
   @Prop targetSection: string = ''
+  @Prop section: string = SettingsRemoteControlSection.SCREEN
+  @Prop title: string = SettingsText.REMOTE_SCREEN_PERMISSION_TITLE
+  @Prop description: string = SettingsText.REMOTE_SCREEN_PERMISSION_DESC
+  @Prop grantedText: string = SettingsText.REMOTE_PERMISSION_GRANTED
+  @Prop missingText: string = SettingsText.REMOTE_PERMISSION_MISSING
+  @Prop actionTextValue: string = SettingsText.REMOTE_PERMISSION_ACTION
+  @Prop busyText: string = SettingsText.REMOTE_PERMISSION_BUSY
+  @Prop icon: Resource = SettingsResources.REMOTE_SCREEN_ICON
+  @Prop accent: SettingsAccentName = SettingsAccent.CYAN
   @Prop granted: boolean = false
   @Prop busy: boolean = false
   onRequest: () => void = () => {
@@ -405,7 +414,7 @@ export struct ScreenRecordingCard {
   @State private pressed: boolean = false
 
   private isTarget(): boolean {
-    return this.targetSection === SettingsRemoteControlSection.SCREEN
+    return this.targetSection === this.section
   }
 
   private setHovered(hovered: boolean): void {
@@ -416,16 +425,16 @@ export struct ScreenRecordingCard {
 
   private statusText(): string {
     if (this.busy) {
-      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
+      return this.busyText
     }
-    return this.granted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED : SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
+    return this.granted ? this.grantedText : this.missingText
   }
 
   private actionText(): string {
     if (this.busy) {
-      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
+      return this.busyText
     }
-    return this.granted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED : SettingsText.REMOTE_SCREEN_PERMISSION_ACTION
+    return this.granted ? this.grantedText : this.actionTextValue
   }
 
   private actionDisabled(): boolean {
@@ -435,10 +444,10 @@ export struct ScreenRecordingCard {
   build() {
     Row({ space: 14 }) {
       Column() {
-        Image(SettingsResources.REMOTE_SCREEN_ICON)
+        Image(this.icon)
           .width(SettingsTheme.ICON_SIZE)
           .height(SettingsTheme.ICON_SIZE)
-          .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN))
+          .fillColor(SettingsTheme.accentColor(this.isDark, this.accent))
           .draggable(false)
       }
       .width(SettingsTheme.ICON_TILE_SIZE)
@@ -446,15 +455,15 @@ export struct ScreenRecordingCard {
       .justifyContent(FlexAlign.Center)
       .alignItems(HorizontalAlign.Center)
       .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(SettingsTheme.accentBackground(this.isDark, SettingsAccent.CYAN))
+      .backgroundColor(SettingsTheme.accentBackground(this.isDark, this.accent))
 
       Column({ space: 5 }) {
-        Text(SettingsText.REMOTE_SCREEN_PERMISSION_TITLE)
+        Text(this.title)
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor(SettingsTheme.primaryText(this.isDark))
           .width('100%')
-        Text(SettingsText.REMOTE_SCREEN_PERMISSION_DESC)
+        Text(this.description)
           .fontSize(13)
           .fontColor(SettingsTheme.mutedText(this.isDark))
           .lineHeight(19)
@@ -495,7 +504,7 @@ export struct ScreenRecordingCard {
     .borderRadius(SettingsTheme.CARD_RADIUS)
     .border({
       width: 1,
-      color: this.isTarget() ? SettingsTheme.accentColor(this.isDark, SettingsAccent.CYAN) :
+      color: this.isTarget() ? SettingsTheme.accentColor(this.isDark, this.accent) :
         SettingsTheme.borderColor(this.isDark)
     })
     .shadow(SettingsTheme.shadow(this.isDark, this.hovered || this.isTarget()))

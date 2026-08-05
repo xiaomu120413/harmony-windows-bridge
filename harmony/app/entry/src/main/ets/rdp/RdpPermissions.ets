@@ -2,6 +2,7 @@ import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.Abil
 import {
   APPROXIMATE_LOCATION_PERMISSION,
   CAMERA_PERMISSION,
+  CONTROL_DEVICE_PERMISSION,
   LOCATION_PERMISSION,
   MICROPHONE_PERMISSION,
   READ_PASTEBOARD_PERMISSION,
@@ -47,6 +48,7 @@ export class RdpPermissionManager {
   private cameraPermission: PermissionRequestState = { request: null, requested: false }
   private locationPermission: PermissionRequestState = { request: null, requested: false }
   private screenRecordingPermission: PermissionRequestState = { request: null, requested: false }
+  private controlDevicePermission: PermissionRequestState = { request: null, requested: false }
   private screenRecordingPermissionPromptDelayTimer: number | null = null
   private screenRecordingPermissionPromptDelayResolve: PermissionRequestResolver | null = null
 
@@ -145,6 +147,22 @@ export class RdpPermissionManager {
     return this.hasPermission(SCREEN_RECORDING_PERMISSION, 'Screen recording')
   }
 
+  requestControlDevicePermission(trigger: string): Promise<boolean> {
+    return this.ensurePermission(
+      this.controlDevicePermission,
+      'Input injection',
+      trigger,
+      (): boolean => this.hasControlDevicePermission(),
+      (context: common.UIAbilityContext): Promise<boolean> =>
+        this.openPermissionOnSetting(context, CONTROL_DEVICE_PERMISSION, 'Input injection'),
+      false
+    )
+  }
+
+  hasControlDevicePermission(): boolean {
+    return this.hasPermission(CONTROL_DEVICE_PERMISSION, 'Input injection')
+  }
+
   private ensurePermission(state: PermissionRequestState, label: string, trigger: string,
     isGranted: PermissionGrantChecker, request: PermissionRequestFactory, requestOnce: boolean): Promise<boolean> {
     if (isGranted()) {
@@ -217,8 +235,8 @@ export class RdpPermissionManager {
     return new Promise<boolean>((resolve) => {
       const poll = (): void => {
         const granted = this.hasPermission(permission, label)
-        RdpLogger.info(`${label} setting poll result: granted=${granted}`)
         if (granted) {
+          RdpLogger.info(`${label} setting poll result: granted=true`)
           resolve(true)
           return
         }

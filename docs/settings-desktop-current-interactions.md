@@ -13,7 +13,7 @@
 | 主页设置入口 | `harmony/app/entry/src/main/ets/pages/Index.ets` | 展示连接页、设置按钮、维护全局状态 | 只调整设置按钮视觉和打开设置前的刷新逻辑 |
 | 设置容器 / 导航 | `harmony/app/entry/src/main/ets/components/SettingsPage.ets` | 当前用 `pageName` 在三个设置页之间切换 | 桌面版改成左侧导航 + 右侧内容，继续复用 `pageName` |
 | 基础设置 | `harmony/app/entry/src/main/ets/components/settings/BasicSettingsPage.ets` | 外观模式、本机网络 IP | 桌面版只重排布局，不改能力 |
-| 远控设置 | `harmony/app/entry/src/main/ets/components/settings/RemoteControlSettingsPage.ets` | xrdp、验证码、录屏权限、远程文件目录 | 桌面版改成四个功能面板 |
+| 远控设置 | `harmony/app/entry/src/main/ets/components/settings/RemoteControlSettingsPage.ets` | xrdp、录屏权限、注入权限、验证码、远程文件目录 | 桌面版使用五个功能面板 |
 | 项目帮助 | `harmony/app/entry/src/main/ets/components/settings/ProjectHelpPage.ets` | 关于项目、使用说明、排查说明 | 桌面版改成分组知识区 |
 | 公共 UI | `harmony/app/entry/src/main/ets/components/settings/SettingsUi.ets` | Header、ListItem、Card、颜色、阴影 | 增加桌面行、状态 chip、状态面板组件 |
 | 文案常量 | `harmony/app/entry/src/main/ets/components/settings/SettingsConstants.ets` | 当前设置页所有中文文案 | 继续复用，缺少的状态短文案再补 |
@@ -32,6 +32,7 @@
 | 验证码 | `remoteAccessCode` | 门禁开启后展示当前验证码 |
 | 门禁开关 | `remoteAccessCodeGateEnabled` | 控制验证码门禁开启/关闭 |
 | 录屏权限 | `screenRecordingPermissionGranted` | 控制“已授权/未授权” |
+| 注入权限 | `inputInjectionPermissionGranted` | 控制 API 26 `CONTROL_DEVICE` 的“已授权/未授权” |
 | 外观模式 | `@StorageLink('settingsAppearanceMode') appearanceMode` | 主界面和设置页深浅色 |
 | 系统深色 | `@StorageLink('settingsSystemDark') systemDark` | 跟随系统模式时判断实际颜色 |
 
@@ -47,6 +48,8 @@
 | 重新生成验证码 | `onRemoteAccessCodeRegenerate` | `Index.regenerateRemoteAccessCodeFromSettings()` |
 | 请求录屏权限 | `onRequestScreenRecordingPermission` | `Index.requestScreenRecordingPermissionFromSettings()` |
 | 刷新录屏权限状态 | `onRefreshScreenRecordingPermission` | `Index.refreshScreenRecordingPermissionState()` |
+| 请求注入权限 | `onRequestInputInjectionPermission` | `Index.requestInputInjectionPermissionFromSettings()` |
+| 刷新注入权限状态 | `onRefreshInputInjectionPermission` | `Index.refreshInputInjectionPermissionState()` |
 | 打开共享目录 | `onOpenRemoteFilesDirectory` | `Index.openRemoteFilesDirectoryFromSettings()` |
 | 关闭设置页 | `onClose` | `Index` 中设置 `showSettings = false` |
 
@@ -60,7 +63,9 @@
 | 项目帮助入口 | `PROJECT_HELP_ENTRY_TITLE`、`PROJECT_HELP_ENTRY_DESC` |
 | xrdp 服务 | `REMOTE_SERVER_*` |
 | 验证码门禁 | `REMOTE_ACCESS_*` |
-| 录屏权限 | `REMOTE_SCREEN_*` |
+| 录屏权限 | `REMOTE_SCREEN_PERMISSION_TITLE`、`REMOTE_SCREEN_PERMISSION_DESC` |
+| 注入权限 | `REMOTE_INPUT_PERMISSION_TITLE`、`REMOTE_INPUT_PERMISSION_DESC` |
+| 通用权限状态 | `REMOTE_PERMISSION_GRANTED/MISSING/ACTION/BUSY` |
 | 远程文件 | `REMOTE_FILES_*` |
 | 本机网络 | `NETWORK_*` |
 | 使用说明 | `USAGE_*` |
@@ -113,7 +118,7 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 | 条件 | 状态点 |
 | --- | --- |
 | `xrdpServerBusy === true` | 蓝色，表示处理中 |
-| `!screenRecordingPermissionGranted` | 黄色，表示需要处理 |
+| 首页权限卡未授权 | 灰色，表示当前未具备该权限 |
 | `xrdpServerRunning === false` | 灰色，表示服务未启动 |
 | `xrdpServerRunning && screenRecordingPermissionGranted` | 绿色，表示可用 |
 
@@ -194,20 +199,22 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 
 ## 5. 远控设置页
 
-当前可做内容：xrdp 服务、验证码门禁、录屏权限、远程文件说明。
+当前可做内容：xrdp 服务、录屏权限、注入权限、验证码门禁、远程文件说明。
 
 进入页面时：
 
 1. 将 props 同步到 local state。
 2. 调用 `refreshScreenRecordingState()`。
-3. 调用 `refreshXrdpServerStatus()`。
+3. 调用 `refreshInputInjectionState()`。
+4. 调用 `refreshXrdpServerStatus()`。
 
 当前实现里建议展示顺序调整为：
 
 1. xrdp 服务
 2. 录屏权限
-3. 验证码门禁
-4. 远程文件
+3. 注入权限
+4. 验证码门禁
+5. 远程文件
 
 原因：`startXrdpServerFromSettings()` 现在会通过 `ensureXrdpServerStarted('remote control settings button', false, true)` 立即请求录屏权限，录屏权限是启动被控服务的前置条件，所以视觉顺序也应先讲清楚权限，再讲访问门禁。
 
@@ -284,6 +291,16 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 5. 失败：调用 `onRefreshScreenRecordingPermission()` 回读状态。
 6. finally：`screenPermissionBusy = false`。
 
+### 注入权限卡
+
+交互复用录屏权限卡的状态、按钮和系统设置页授权模式，但状态源独立：
+
+- 当前授权状态：`localInputInjectionGranted`
+- 忙碌状态：`inputInjectionPermissionBusy`
+- 未授权时点击“去授权”，调用 `onRequestInputInjectionPermission()` 打开系统权限设置。
+- 返回后通过 `onRefreshInputInjectionPermission()` 回读 `CONTROL_DEVICE`。
+- 该卡不替代验证码门禁；验证码卡继续负责连接认证。
+
 ### 远程文件卡
 
 当前已有打开共享目录能力，不要只做说明，也不要扩展成多目录管理。
@@ -334,11 +351,13 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 | 状态 | 颜色 | 使用位置 |
 | --- | --- | --- |
 | Running / Granted / Ready | 绿色 | xrdp 已启动、录屏已授权、本机 IP 成功 |
-| Stopped / Empty | 灰色 | xrdp 未启动、无网络 |
+| Stopped / Empty / Permission Missing | 灰色 | xrdp 未启动、无网络、首页权限卡未授权 |
 | Busy / Loading | 蓝色 | 正在启动服务、正在请求权限、正在读取 IP |
 | Failed | 红色 | 状态读取失败、权限请求失败 |
-| Warning / Missing | 黄色 | 权限缺失、门禁关闭提示、无可用 IP |
+| Warning | 黄色 | 门禁关闭提示、无可用 IP 等需要注意但不是失败的状态 |
 | ActiveSession | 蓝色 | xrdp 有活跃远程会话 |
+
+首页状态卡的图标前景、图标底色和右侧状态点必须读取同一个实时 tone；异步刷新服务或权限后，三处颜色需同时更新，不能保留首帧的灰色图标底。
 
 ## 8. 桌面布局规则
 

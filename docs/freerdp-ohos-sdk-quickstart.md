@@ -118,6 +118,7 @@ HAP 必须在 `module.json5` 声明首版实际启用的权限：
 
 - `ohos.permission.PRINT`
 - `ohos.permission.CUSTOM_SCREEN_RECORDING`
+- `ohos.permission.CONTROL_DEVICE`（API 26 被控端长期键鼠注入；需受限权限审核和 profile ACL）
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
 - `ohos.permission.CAMERA`

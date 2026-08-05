@@ -616,3 +616,17 @@ xrdp session summary:
   远程协助确认 UI；产品说明和验收用例需要按“可能出现系统确认”设计。
 - full-disk access 只用于用户授权后的文件类剪贴板/URI 长期访问，不作为绕过
   系统确认框的手段。
+
+## 18. API 26 输入注入授权兼容设计
+
+API 26 增加适合被控端长期使用的 `ohos.permission.CONTROL_DEVICE`。xrdp OHOS
+输入门禁按以下顺序判定：
+
+1. 通过 Ability Access Control Native API 检查当前应用的 `CONTROL_DEVICE`；已授予则
+   缓存成功状态并直接进入既有键鼠注入函数。未授权状态最多每秒重查一次，避免热路径持续 IPC。
+2. 未授予时继续查询旧的 injection dialog 状态；已授权则沿用该会话授权。
+3. 两者均未授权时，继续按现有 5 秒限频请求 injection dialog，避免每个输入事件弹框。
+
+API 26 的 `OH_Input_QueryAuthorizedStatus` 只返回 dialog 授权，不反映
+`CONTROL_DEVICE`，所以不能单独作为总权限状态。实现仅修改 OHOS backend 的授权适配层
+和链接库，不改变 xrdp 通用输入 ABI，不记录具体按键、文本或逐事件权限日志。

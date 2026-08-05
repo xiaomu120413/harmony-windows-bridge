@@ -162,6 +162,11 @@ T00 只建立验收基线，不改变业务逻辑。完成判定：
 
 ## 实施台账
 
+当前应用使用 API 26 compile/target SDK，并保持 API 22 compatible SDK。发布前除既有单 HAP、
+签名和设备矩阵外，还需验证 `CONTROL_DEVICE` 未授权、设置页授权、授权后重启保持，以及
+旧 injection dialog fallback；详见 `TAB-E-02`。本地调试 profile 已同步该受限权限 ACL，
+否则真机安装会返回 9568289；商店包必须使用 AGC 审核通过的正式 profile。
+
 | Change ID | 状态 | 修改范围 | 验收 ID | 验收条件 |
 | --- | --- | --- | --- | --- |
 | `SIGN-D-01` | `Verified` | 已恢复 `tools/hapsigner/material/**` 中5个已跟踪的自动签名解密材料；未修改业务代码、证书、P12、profile 或包名 | `SIGN-A-01` | `SignHap`、HNP 重签及真机覆盖安装均通过；日志不再出现 `DecipherUtil` 读取 `material` 失败 |

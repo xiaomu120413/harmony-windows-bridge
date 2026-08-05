@@ -35,6 +35,12 @@ export struct SettingsPage {
   onRefreshScreenRecordingPermission: () => boolean = () => {
     return false
   }
+  onRequestInputInjectionPermission: () => Promise<boolean> = () => {
+    return Promise.resolve(false)
+  }
+  onRefreshInputInjectionPermission: () => boolean = () => {
+    return false
+  }
   onRefreshXrdpServerStatus: () => XrdpServerStatus = () => {
     return {
       running: false,
@@ -59,12 +65,14 @@ export struct SettingsPage {
   @Prop remoteAccessCode: string = '000000'
   @Prop remoteAccessCodeGateEnabled: boolean = false
   @Prop screenRecordingPermissionGranted: boolean = false
+  @Prop inputInjectionPermissionGranted: boolean = false
   @Prop xrdpServerRunning: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
   @Prop xrdpServerPort: number = 3390
   @Prop xrdpServerMessage: string = ''
   @Prop xrdpServerBusy: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
+  @Prop inputInjectionPermissionBusy: boolean = false
   @Prop remoteControlServerAvailable: boolean = true
   @State private pageName: string = SettingsRoute.SETTINGS
   @State private remoteControlTargetSection: string = ''
@@ -106,10 +114,10 @@ export struct SettingsPage {
 
   private screenStatusText(): string {
     if (this.screenRecordingPermissionBusy) {
-      return SettingsText.REMOTE_SCREEN_PERMISSION_BUSY
+      return SettingsText.REMOTE_PERMISSION_BUSY
     }
-    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_SCREEN_PERMISSION_GRANTED :
-      SettingsText.REMOTE_SCREEN_PERMISSION_MISSING
+    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_PERMISSION_GRANTED :
+      SettingsText.REMOTE_PERMISSION_MISSING
   }
 
   private gateStatusTone(): SettingsStatusTone {
@@ -377,16 +385,20 @@ export struct SettingsPage {
         remoteAccessCode: this.remoteAccessCode,
         remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
         screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+        inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
         xrdpServerRunning: this.xrdpServerRunning,
         xrdpServerState: this.xrdpServerState,
         xrdpServerPort: this.xrdpServerPort,
         xrdpServerMessage: this.xrdpServerMessage,
         xrdpServerBusy: this.xrdpServerBusy,
         screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
+        inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
         onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
         onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
         onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,
         onRefreshScreenRecordingPermission: this.onRefreshScreenRecordingPermission,
+        onRequestInputInjectionPermission: this.onRequestInputInjectionPermission,
+        onRefreshInputInjectionPermission: this.onRefreshInputInjectionPermission,
         onRefreshXrdpServerStatus: this.onRefreshXrdpServerStatus,
         onStartXrdpServer: this.onStartXrdpServer,
         onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
