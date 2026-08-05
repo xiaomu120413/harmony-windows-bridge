@@ -319,7 +319,7 @@ export struct HomeConnectionDetails {
         this.buildPortInput()
       }
       GridCol({ span: { xs: 12, sm: 3 } }) {
-        this.buildFieldLabel('Username')
+        this.buildFieldLabel(HomeText.WINDOWS_USERNAME_LABEL)
       }
       GridCol({ span: { xs: 12, sm: 9 } }) {
         this.buildUsernameInput()

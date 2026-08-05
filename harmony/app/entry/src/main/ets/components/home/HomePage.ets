@@ -26,7 +26,6 @@ export struct HomePage {
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
   @Prop xrdpServerRunning: boolean = false
-  @Prop xrdpServerPort: number = 3390
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
   @Prop inputInjectionPermissionGranted: boolean = false
@@ -184,7 +183,6 @@ export struct HomePage {
         xrdpServerBusy: this.xrdpServerBusy,
         xrdpServerState: this.xrdpServerState,
         xrdpServerRunning: this.xrdpServerRunning,
-        xrdpServerPort: this.xrdpServerPort,
         screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
         screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
         inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,

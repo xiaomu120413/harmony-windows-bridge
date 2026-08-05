@@ -866,7 +866,6 @@ struct Index {
           xrdpServerBusy: this.xrdpServerBusy,
           xrdpServerState: this.xrdpServerState,
           xrdpServerRunning: this.xrdpServerRunning,
-          xrdpServerPort: this.xrdpServerPort,
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
           screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
           inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,

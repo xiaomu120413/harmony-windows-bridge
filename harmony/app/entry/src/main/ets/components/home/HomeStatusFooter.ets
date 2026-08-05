@@ -41,7 +41,6 @@ export struct HomeStatusFooter {
   @Prop xrdpServerBusy: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
   @Prop xrdpServerRunning: boolean = false
-  @Prop xrdpServerPort: number = 3390
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
   @Prop inputInjectionPermissionGranted: boolean = false
@@ -57,8 +56,10 @@ export struct HomeStatusFooter {
   }
 
   private serviceStatusText(): string {
-    return SettingsText.remoteServerStatusText(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState,
-      this.xrdpServerPort)
+    if (this.xrdpServerBusy) {
+      return SettingsText.REMOTE_SERVER_BUSY
+    }
+    return SettingsText.remoteServerStateLabel(this.xrdpServerRunning, this.xrdpServerState)
   }
 
   private screenStatusTone(): SettingsStatusTone {
