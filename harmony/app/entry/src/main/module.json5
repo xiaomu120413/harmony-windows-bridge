@@ -101,7 +101,8 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:transparent_start_icon",
         "startWindowBackground": "$color:start_window_background",
-        "supportWindowMode": ["fullscreen", "floating"],
+        "orientation": "auto_rotation",
+        "supportWindowMode": ["fullscreen", "floating", "split"],
         "exported": true,
         "skills": [
           {

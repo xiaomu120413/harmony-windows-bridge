@@ -6,7 +6,6 @@ export class HomeText {
   static readonly DEVICE_ACTIONS: string = '设备操作'
   static readonly DELETE_ACTION: string = '删除'
   static readonly CLEAR_PASSWORD_ACTION: string = '清除密码'
-  static readonly COPY_ADDRESS_ACTION: string = '复制地址'
 
   static readonly DEVICE_LIST_TITLE: string = '设备列表'
   static readonly NEW_DEVICE_ACTION: string = '新建设备'

@@ -1,5 +1,4 @@
 import { KeyboardAvoidMode, NodeContent } from '@kit.ArkUI'
-import rdpNative from 'libentry.so'
 
 @Component
 export struct RdpSessionPage {
@@ -8,6 +7,9 @@ export struct RdpSessionPage {
   @Prop noticeSubtitle: string = ''
   @Prop remoteLoginWaiting: boolean = false
   onSurfaceLoad: () => void = () => {
+  }
+  onAttachContent: (content: NodeContent) => boolean = (_content: NodeContent): boolean => false
+  onDetachContent: () => void = (): void => {
   }
   private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET
 
@@ -18,7 +20,7 @@ export struct RdpSessionPage {
   }
 
   aboutToDisappear(): void {
-    rdpNative.detachXComponentContent()
+    this.onDetachContent()
     this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode)
   }
 
@@ -60,8 +62,7 @@ export struct RdpSessionPage {
         .width('100%')
         .height('100%')
         .onAppear(() => {
-          const result = rdpNative.attachXComponentContent(this.surfaceContent)
-          if (result.ok) {
+          if (this.onAttachContent(this.surfaceContent)) {
             this.onSurfaceLoad()
           }
         })

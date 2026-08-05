@@ -24,6 +24,41 @@ $geometryTestSource = "$cppRoot/tests/remote_content_geometry_test.cpp"
 $geometryPolicySource = "$cppRoot/surface/remote_content_geometry.cpp"
 $geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
 
+$napiExportsSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/napi/napi_exports.cpp'
+$napiExportsText = Get-Content -Raw -Encoding utf8 $napiExportsSource
+$orientationMonitorSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/session/rdp_display_orientation_monitor.cpp'
+$orientationMonitorText = Get-Content -Raw -Encoding utf8 $orientationMonitorSource
+if ([regex]::Matches($orientationMonitorText, 'Refresh\("native_display_initial"').Count -ne 1) {
+  throw 'Native display monitor must refresh the initial orientation exactly once after registration.'
+}
+foreach ($required in @(
+  '{"onPermissionRequest", nullptr, OnPermissionRequest',
+  '{"completePermissionRequest", nullptr, CompletePermissionRequest',
+  '{"microphone", MicrophonePermissionRequestSink, CompleteMicrophonePermissionRequestFromUi}',
+  '{"camera", CameraPermissionRequestSink, CompleteCameraPermissionRequestFromUi}',
+  '{"clipboard", ClipboardPermissionRequestSink, CompleteClipboardPermissionRequestFromUi}',
+  '{"location", LocationPermissionRequestSink, CompleteLocationPermissionRequestFromUi}',
+  'FindPermissionRoute(typeName)'
+)) {
+  if (-not $napiExportsText.Contains($required)) {
+    throw "Unified native permission routing is incomplete: missing $required"
+  }
+}
+foreach ($forbidden in @(
+  '"onMicrophonePermissionRequest"',
+  '"onCameraPermissionRequest"',
+  '"onClipboardPermissionRequest"',
+  '"onLocationPermissionRequest"',
+  '"completeMicrophonePermissionRequest"',
+  '"completeCameraPermissionRequest"',
+  '"completeClipboardPermissionRequest"',
+  '"completeLocationPermissionRequest"'
+)) {
+  if ($napiExportsText.Contains($forbidden)) {
+    throw "Legacy native permission export remains: found $forbidden"
+  }
+}
+
 $gestureSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_native_gesture.cpp'
 $rawTouchSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_touch_gesture.cpp'
 $sessionPageSource = Join-Path $repoRoot 'harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets'

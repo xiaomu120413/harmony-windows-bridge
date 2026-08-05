@@ -1,11 +1,11 @@
 import { window } from '@kit.ArkUI'
-import rdpNative, { NativeCommandResult } from 'libentry.so'
+import { NativeCommandResult, NativeRdpGateway } from './NativeRdpGateway'
 import { RdpLogger } from './RdpLogger'
 
 export class ImeHostWindowBinder {
   bind(mainWindow: window.Window): void {
     try {
-      const result: NativeCommandResult = rdpNative.bindImeHostWindow(mainWindow.getWindowProperties().id)
+      const result: NativeCommandResult = NativeRdpGateway.bindImeHostWindow(mainWindow.getWindowProperties().id)
       if (!result.ok) {
         RdpLogger.warn(`IME host window rejected: ${result.message}`)
       }

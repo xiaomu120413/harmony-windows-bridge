@@ -1,8 +1,8 @@
 # MuHub HarmonyOS 单包平板适配架构、修改清单与验收方案
 
-> 状态：架构基线，尚未实施
-> 文档版本：1.5
-> 审阅日期：2026-08-04
+> 状态：核心平板适配已验证；TAB-A-06 架构拆分已实施，等待业务动作回归后升级
+> 文档版本：2.2
+> 审阅日期：2026-08-05
 > 适用工程：MuHub HarmonyOS 应用，目标/兼容 API 22
 > 本文目标：先固定修改边界、实施顺序、验收口径和架构门禁，再开始改业务代码。
 > 变更控制：任何相关代码修改前，先同步本文设计和实施台账；实现及验证后再回写状态与证据。
@@ -170,7 +170,6 @@ Index（页面协调器，不再承载底层算法）
 │  └─ RdpSessionPage
 │     ├─ 常驻 XComponent
 │     ├─ 状态/错误 overlay
-│     ├─ 浮动会话工具栏
 │     └─ XComponent focus 驱动的 Native IME
 │
 └─ showSession = false
@@ -214,7 +213,7 @@ FreeRDP OHOS 平台层
 
 1. 窗口断点变化不改变 sessionId。
 2. 会话期间 XComponentController 不重建。
-3. 会话页面可见且 Surface ready 时，createdCount - destroyedCount = 1；退出会话后为 0。
+3. 会话页面可见且 Surface ready 时，createdCount - destroyedCount = 1；用户关闭系统窗口后由应用进程退出统一销毁 Surface 和会话资源。
 4. NativeWindow 可以因 Surface changed 重建，但不触发 RDP reconnect。
 5. Surface 尺寸只取 Native XComponent 的物理像素，不从 ArkUI vp 推算。
 6. 渲染队列关联 targetGeneration，viewport 发布 geometryRevision，输入只消费当前 geometryRevision；旧请求不能覆盖新目标。
@@ -394,11 +393,10 @@ RdpSessionPage 固定为：
 Stack
 ├─ XComponent（唯一、100% × 100%、SURFACE、稳定 Controller）
 ├─ 连接状态/错误 overlay
-├─ 浮动会话工具栏
 └─ IME 输入宿主
 ~~~
 
-showSession 必须是 Index 最外层分支。Home/Settings 的 Compact/Expanded 分支只在非会话状态下存在。会话内工具栏可以根据可用宽度重排，但不能条件替换 XComponent 节点。
+showSession 必须是 Index 最外层分支。Home/Settings 的 Compact/Expanded 分支只在非会话状态下存在。当前产品不提供应用内返回、断开按钮或浮动会话工具栏：用户点击系统窗口 `X` 退出应用并结束会话，远端主动断开时回到首页。该决策不要求新增 `disconnect` N-API；若未来支持沉浸式全屏或隐藏系统标题栏，必须先新增可达的应用内退出路径并单独验收，不能沿用本决策。
 
 ### 9.2 resize 状态机
 
@@ -514,8 +512,8 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 
 | 优先级 | 文件 | 修改点 | 文件完成条件 |
 |---|---|---|---|
-| P0，新文件 | harmony/app/entry/src/main/ets/rdp/NativeRdpGateway.ets | 成为 libentry.so 唯一 import 点；薄封装 connect/disconnect/callback/输入/XRDP/diagnostics | components 和 controllers 不直接 import libentry.so |
-| P0，新文件 | harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 负责连接、断开、Native 回调注册、sessionId 和会话状态；通过回调/快照通知 Index | 不 import UI；同一会话 connectCount 为 1 |
+| P0，新文件 | harmony/app/entry/src/main/ets/rdp/NativeRdpGateway.ets | 成为 libentry.so 唯一 import 点；薄封装 connect/callback/输入/XComponent/IME/XRDP/diagnostics；当前产品决策不导出主动 disconnect | components 和 controllers 不直接 import libentry.so |
+| P0，新文件 | harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 负责连接、Native 状态/错误回调注册和输入释放，通过回调通知 Index；系统窗口关闭依赖进程退出清理，不虚构 disconnect | 不 import UI；同一会话只注册一次回调 |
 | P0 | harmony/app/entry/src/main/ets/rdp/XrdpServerController.ets | 接收 capability；unsupported 时 start/diagnostics 返回 unavailable，不进入 gateway | D-01 采用推荐值时，tablet native mock 调用数为 0 |
 | P0 | harmony/app/entry/src/main/ets/pages/Index.ets | 保留页面协调、表单和路由状态；移出 Native 调用细节；能力保护所有 XRDP 回调 | 不再包含 resize/输入算法；目标控制在 500 行左右 |
 
@@ -835,6 +833,43 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试通过；完整`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34470550字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装、启动成功，标准字体首页截图`%TEMP%/muhub-d07-home.jpeg`显示新建设备、搜索和空状态无回退。静态diff确认136×48按钮、18标签/Row、72设备卡和90空状态的固定文本容器已改为min约束，Icon尺寸未改。设备当前无保存项且系统字体未切到1.75，因此不伪造对应证据 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
+#### TAB-D-08：首页连接详情移除复制地址操作
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-08 |
+| 设计版本/章节 | v1.3；第 6.2、8.1、10.4、12.3 节 |
+| 目标 | 从首页连接详情的设备操作区移除“复制地址”按钮及其专用剪贴板调用，只保留“删除”和“清除密码”；Host、Port 展示编辑、连接流程及 RDP 剪贴板同步能力保持不变 |
+| 计划代码文件 | 修改 `components/home/HomeConnectionDetails.ets`、`HomeText.ets`、`HomeResources.ets`；不修改 Pasteboard 权限协调器、RDP cliprdr、连接状态、Native 或 FreeRDP |
+| 布局策略 | 继续使用现有 12 列 ComponentSize Grid；sm 下标签、删除、清除密码各占 3 列，保留末尾空白，不扩大按钮或引入条件占位；xs 下各项仍按 12 列纵向排列 |
+| 兼容与回退 | 删除仅由该按钮使用的 ArkTS pasteboard import、地址拼接方法、文案和图标常量；媒体资源文件暂保留，不影响其他能力。恢复上述入口即可回退 |
+| 验收 ID | AC-LAYOUT：连接详情设备操作区不再构建“复制地址”，删除和清除密码仍可达；AC-ARCH：全仓业务代码无 `copyAddress`/`COPY_ADDRESS_ACTION` 引用，RDP Pasteboard/cliprdr diff 为 0；ArkTS 策略测试及 Debug HAP 构建通过后标 Implemented |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（按钮及专用 ArkTS 剪贴板逻辑已移除，静态检查、ArkTS 测试和 Debug HAP 构建通过；未做真机视觉复核，因此不标 Verified） |
+| 实际代码文件 | `components/home/HomeConnectionDetails.ets`、`components/home/HomeText.ets`、`components/home/HomeResources.ets` |
+| 设计偏差及原因 | 无；保留了未再引用的 `home_copy` 媒体文件，避免把本次交互删除扩大为资源文件删除，业务和 RDP 剪贴板链路未改 |
+| 测试命令/结果/证据 | 2026-08-05：静态 `rg` 确认首页组件无 `copyAddress`、`COPY_ADDRESS_ACTION`、`COPY_ICON`、专用 pasteboard import 或地址拼接方法；`git diff --check` 通过；`tools/run_tablet_arkts_tests.ps1` 退出码 0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,532,987 bytes。首次构建调用因外层 1 秒超时产生 EPIPE，随后以正常时限重跑成功，不计为编译失败 |
+| 关联提交 | 实现与本台账回写包含在同一工作区变更（未创建提交） |
+
+#### TAB-D-09：首页设备操作双按钮对齐优化
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-D-09 |
+| 设计版本/章节 | v1.3；第 6.2、8.1、10.4、12.3、12.4 节 |
+| 触发证据 | 2026-08-05 MatePad Pro 约 1680×1318 窗口截图 `artifacts/design-audit/2026-08-05-copy-address-layout/03-recheck.png`：外层 12 列中标签、删除、清除密码各占 3 列，末尾遗留 3 列空白，按钮组缩在表单中部且与上方输入框右边界不齐；较窄窗口截图 `02-actions-before.png` 中两个按钮纵向堆叠，占用过多高度 |
+| 目标 | 设备操作标签继续遵循表单 3/9 对齐；剩余 9 列作为统一操作组，内部将删除和清除密码等分并排，使按钮组与输入框左右边界一致，消除无意义空白和窄窗纵向堆叠 |
+| 计划代码文件 | 仅修改 `harmony/app/entry/src/main/ets/components/home/HomeConnectionDetails.ets`；不改按钮文案、颜色、图标、回调、连接表单、Native 或 RDP 能力 |
+| 响应式策略 | 外层保持 `xs:12/sm:3` 标签和 `xs:12/sm:9` 操作组；操作组内部固定 12 列、两个按钮各 6 列。xs 下标签独占一行、两个按钮在下一行并排；sm 下标签与操作组同排，操作组边界与 Host/Port/Username/Password 输入框一致 |
+| 交互与无障碍 | 两按钮继续使用既有 `buildActionButton`，真实点击高度至少 48vp，危险/警告色、图标和 hover/press 状态不变；只改变布局容器，不改变操作确认语义 |
+| 验收 ID | AC-LAYOUT：宽窗按钮组与输入框左右边界一致且无末尾 3 列空白；窄窗两个按钮同排、文字不裁切、操作区高度不超过单个按钮行；AC-FONT：1.75 字体下允许按钮自然增高但不重叠；AC-ARCH：仅布局容器 diff，回调/Native/RDP diff 为 0。ArkTS 测试、Debug HAP 构建及同设备前后截图通过后标 Verified |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（标准字体下宽窗与窄窗真机布局、测试及完整构建通过；1.75 字体矩阵待补后升 Verified） |
+| 实际代码文件 | `harmony/app/entry/src/main/ets/components/home/HomeConnectionDetails.ets` |
+| 设计偏差及原因 | 无；外层 3/9 表单栅格和操作组内部 6/6 等分均按 DesignReady 记录实现，按钮文案、色调、图标和回调未改变 |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_arkts_tests.ps1` 退出码 0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,592,072 bytes；HAP 已覆盖安装并启动到 MatePad Pro `5JB0223804000371`。窄窗截图 `artifacts/design-audit/2026-08-05-copy-address-layout/06-actions-after.png` 显示标签换行后两按钮等分并排；最大化截图 `07-maximized-after.png` 及 UI tree 显示操作组与表单输入边界一致，删除/清除密码按钮宽度分别 651/651px、高 82px，无末尾空白；恢复窗口截图 `08-restored-after.png` 证明窗口模式切换无布局崩溃。1.75 字体尚未执行，因此不升 Verified |
+| 关联提交 | 实现与本台账回写包含在同一工作区变更（未创建提交） |
+
 #### TAB-C-01：适配候选解除应用声明的最小窗口限制
 
 | 字段 | 内容 |
@@ -1141,6 +1176,99 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实际代码文件 | `cpp/input/xcomponent_native_gesture.h/.cpp`、`cpp/surface/xcomponent_native_host.h/.cpp`、`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/components/session/RdpSessionPage.ets`、`ets/pages/Index.ets`、`cpp/CMakeLists.txt`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`tools/run_tablet_native_tests.ps1`、本文 |
 | 设计偏差及原因 | 无功能边界偏差。`ContentSlot` 本身不支持 width/height/onAppear 通用属性，因此用 100% `Stack` 承载显示槽与 attach 生命周期；NodeContent 仍只作为 Native node 的系统宿主，不持有 XComponent 或手势逻辑。系统 Pan offset 单位为 px，双指滚轮量化使用 display density 将12vp换算为px。Pinch/Rotation/Swipe 按“无已定义远端语义”明确不绑定。 |
 | 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，覆盖 single+double 仅两击且锚定首击坐标、Pan accept/update/end/cancel 按钮配对、双指累计 offset 横纵滚轮、Axis/geometry 回归，并静态检查 Parallel Tap 子组、外层 Exclusive、精确手指数及 ArkTS/Raw Touch 无手势所有权；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,542,202 bytes。HAP 已覆盖安装到平板 `5JB0223804000371` 并以 bundle `com.muhub.desktop` 冷启动成功，PID 2371；远端双击、长按、拖动和双指滚动动作矩阵待用户在会话页验证。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-F-07：权限请求 N-API 收敛与类型化
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-07 |
+| 设计版本/章节 | v2.0；第 11、14.2 节 |
+| 问题 | 麦克风、摄像头、剪贴板和位置权限各暴露一组 `on*PermissionRequest` 与 `complete*PermissionRequest`，8个 ABI 仅 type 和 Native bridge 不同；ArkTS 已用同一注册表处理，却仍重复包装。`attachXComponentContent` 和权限完成参数使用 `Object`，编译期无法约束字段。 |
+| 设计决策 | 删除8个专用权限 ABI，不保留别名；新增 `onPermissionRequest(callback)`，统一回调 `{ type, requestId }`；新增 `completePermissionRequest({ type, requestId, granted })`，Native 按严格 type 路由到既有4个独立 `PermissionRequestBridge`。各通道 pending ID、等待条件和超时保持隔离，不能合并为共享 pending 状态。未知 type、错误参数或非 pending ID 返回明确失败。 |
+| 类型边界 | 新增 `NativePermissionType` 字面量联合、`NativePermissionRequest`、`NativePermissionResult`；`attachXComponentContent` 参数改为 ArkUI `NodeContent`。状态/错误回调及 connect/xrdp/IME/XComponent/release ABI 保持不变。统一权限回调内部可为4个独立线程安全 sink 注册同一 JS callback，但 ArkTS 只注册一次。 |
+| 计划代码文件 | 本文；`cpp/napi/napi_event_sink.h/.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/pages/Index.ets`、相关 ArkTS 测试/架构检查 |
+| 兼容与回退 | 目标单包/API 22，不保留旧8接口；Native 各权限 bridge 和 FreeRDP/xrdp callback ABI 不变。任一 sink 注册失败时统一接口返回失败，不把部分注册误报为成功。 |
+| 验收ID | AC-PERM-ABI：d.ts/N-API exports/ArkTS 均只存在2个统一权限接口，旧8 symbol 不存在；NodeContent/permission 参数无裸 `Object`。AC-PERM-ROUTE：4种 type 分别进入正确 bridge，未知 type 拒绝；requestId/granted 原样回传，非 pending ID 失败。AC-PERM-REG：ArkTS 只注册一次回调，4通道请求仍各自触发正确 UI 权限流程。AC-REGRESSION：Native/ArkTS 测试和 Debug HAP 构建通过。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented；AC-PERM-ABI、静态 AC-PERM-ROUTE、编译与安装冒烟已通过；4类真实 RDP 通道触发的 AC-PERM-REG 待联机会话验收后升级为 Verified。 |
+| 实际代码文件 | 本文；`harmony/app/entry/obfuscation-rules.txt`；`cpp/napi/napi_event_sink.h/.cpp`；`cpp/napi/napi_exports.cpp`；`cpp/types/libentry/Index.d.ts`；`ets/pages/Index.ets`；`tools/run_tablet_arkts_tests.ps1`；`tools/run_tablet_native_tests.ps1` |
+| 设计偏差及原因 | 无接口和状态边界偏差。沿用既有4个 `EventSink` 和4个 `PermissionRequestBridge`，仅由统一注册入口给各 sink 绑定同一 ArkTS callback 并附加 type；不合并 pending 状态。 |
+| 测试命令/结果/证据 | 2026-08-05：`git diff --check` 通过；`tools/run_tablet_arkts_tests.ps1` 退出码0，检查强类型统一接口、单次 ArkTS 注册及旧8接口/裸 Object 消失，ArkTS 单测通过；`tools/run_tablet_native_tests.ps1` 退出码0，检查4类 type 路由、2个统一 N-API export、旧8 export 消失并通过既有 native 回归；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,543,326 bytes。HAP 已覆盖安装到平板 `5JB0223804000371`，bundle `com.muhub.desktop` 启动成功，进程 PID 12608。真实 microphone/camera/clipboard/location channel 请求仍需对应 RDP 服务端触发验收。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-A-05：Native Gateway 与 RDP 客户端协调器收口
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-05 |
+| 设计版本/章节 | v2.1；第 5.1、5.2、10.3、10.6、11、14.4 节 |
+| 问题 | `Index.ets`、`RdpSessionPage.ets`、`ImeHostWindowBinder.ets`、`XrdpServerController.ets` 均直接 import `libentry.so`；Index 同时承担 Native 状态/错误回调注册、连接调用和输入释放，违反既定依赖方向，也使后续平板会话能力难以独立验收。 |
+| 设计决策 | 新建 `NativeRdpGateway.ets` 作为 ArkTS 唯一 `libentry.so` import 点，逐项薄转发当前实际 ABI，不添加主动 disconnect。新建 `RdpClientController.ets` 负责一次性注册 state/error 回调、发起 connect、维护 Native 连接状态和 releaseAllInput；Index 保留表单、路由、提示文案、持久化和权限 UI 协调。XComponent、IME 和 XRDP 控制器只能调用 Gateway，展示组件不直接接触 Native 模块。 |
+| 状态与生命周期 | Controller 将 `Connected/RemoteLoginWaiting/RemoteDesktopReady` 归为 connected；Native state 与同步 connect result 都更新同一状态。Index 的 `aboutToAppear` 注册一次回调，`onPageHide/aboutToDisappear` 通过 Controller 幂等释放输入。系统窗口 `X` 关闭由进程退出结束会话，不增加断开按钮或未实现 ABI。 |
+| 计划代码文件 | 本文；新增 `ets/rdp/NativeRdpGateway.ets`、`ets/rdp/RdpClientController.ets`；修改 `ets/pages/Index.ets`、`ets/rdp/XrdpServerController.ets`、`ets/rdp/ImeHostWindowBinder.ets`、`ets/components/session/RdpSessionPage.ets`、`tools/run_tablet_arkts_tests.ps1`。 |
+| 兼容与回退 | N-API、FreeRDP/xrdp ABI、连接参数、状态字符串、权限流程、XComponent node 与 UI 均不变；Gateway 不吞异常，Controller 不持有 ArkUI Context。可按调用点逐项恢复直接 import 回退，但发布门禁要求最终仅 Gateway 可 import `libentry.so`。 |
+| 验收ID | AC-ARCH：ArkTS 全仓只有 `NativeRdpGateway.ets` import `libentry.so`，components 为0；Index 不出现 `rdpNative.`；Controller/Gateway 不 import UI组件、Capability或断点策略；Gateway 只薄转发。AC-REGRESSION：ArkTS测试、Debug HAP构建和真机安装启动通过；可用远端下连接/首帧/输入链不回退后升 Verified。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Verified（用户于2026-08-05确认可升级；唯一 Native import、Controller 状态所有权、展示组件回调隔离、构建、平板安装启动及实际使用均无回退） |
+| 实际代码文件 | 本文；`ets/rdp/NativeRdpGateway.ets`、`ets/rdp/RdpClientController.ets`、`ets/pages/Index.ets`、`ets/rdp/XrdpServerController.ets`、`ets/rdp/ImeHostWindowBinder.ets`、`ets/components/session/RdpSessionPage.ets`、`tools/run_tablet_arkts_tests.ps1` |
+| 设计偏差及原因 | 无 Native 边界偏差。`RdpSessionPage` 通过 NodeContent attach/detach 回调保持展示层零 Native 依赖；Index 仍是现有表单、持久化、XRDP权限和页面路由的页面协调器，文件规模尚未达到长期约500行目标，但不再持有 `rdpNative`、连接状态或 Native callback 注册细节，后续业务域拆分不得重新穿透 Gateway。Controller 显式传递回调前的 `wasConnected`，避免异步 UI 更新丢失首次 Connected 转换。 |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_arkts_tests.ps1`退出码0，静态确认ArkTS全仓仅Gateway一处`libentry.so` import、components无Gateway/Native依赖、Index无`rdpNative.`且Controller无UI/能力/断点依赖；`tools/run_tablet_native_tests.ps1`退出码0；`git diff --check`通过；`harmony/app/build_hap.bat debug`完整Native/ArkTS/打包/签名成功，signed HAP 35,549,099 bytes；平板`5JB0223804000371`覆盖安装并启动成功，PID 27536；用户确认实际会话使用通过并同意升级Verified。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-B-03：Native 显示监听首次方向同步
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-B-03 |
+| 设计版本/章节 | v2.1；第 9.2、9.3、10.7、12.7 节 |
+| 问题 | Native 已注册 display change listener，但启动后未读取默认显示的当前 orientation；若应用首次进入时设备为竖屏或倒置方向，会话仍从默认 landscape 开始，只有下一次 display change 才纠正。 |
+| 设计决策 | `RdpDisplayOrientationMonitor::Start` 在监听注册成功且释放内部 mutex 后立即执行一次 `Refresh("native_display_initial")`；首次查询失败只记录明确诊断并保留监听，不把已成功注册的 monitor 误报为启动失败。回调继续进入既有 `UpdateDisplayOrientation` 与 resize 路径，不新增 ArkTS 显示监听或第二方向来源。 |
+| 计划代码文件 | 本文；`cpp/session/rdp_display_orientation_monitor.cpp`及 Native 测试/静态门禁。 |
+| 兼容与回退 | 无公共 ABI 变化；删除首次 Refresh 即可回退为仅监听后续 change 的旧行为。第5项200ms resize尾随防抖按用户决策不在本轮处理。 |
+| 验收ID | AC-ROTATION：静态检查 Start 注册后存在唯一 `native_display_initial` Refresh，调用发生在 mutex 释放后；Native测试、Debug HAP构建通过。真机冷启动四方向及连接后方向矩阵通过后升 Verified。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Verified（用户于2026-08-05确认四向XComponent渲染及本轮方向能力可升级；首次方向查询、Native回归、完整构建和平板安装启动均通过） |
+| 实际代码文件 | 本文；`cpp/session/rdp_display_orientation_monitor.cpp`、`tools/run_tablet_native_tests.ps1` |
+| 设计偏差及原因 | 无；首次Refresh在注册成功并释放mutex后执行，失败只写诊断且保留已注册监听。按用户决策未实现第5项200ms resize尾随防抖。 |
+| 测试命令/结果/证据 | 2026-08-05：Native门禁确认唯一`Refresh("native_display_initial")`，`tools/run_tablet_native_tests.ps1`退出码0；Debug HAP完整构建成功并覆盖安装启动到平板`5JB0223804000371`，PID 27536；结合用户此前确认XComponent四向渲染正常并明确同意升级，标记Verified。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-C-05：开启自动旋转与分屏窗口声明
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-C-05 |
+| 设计版本/章节 | v2.1；第 10.1、12.1、12.7、14.5 节 |
+| 设计决策 | 保持一个 bundle、一个 entry、一个 default product 和同一 HAP；在 EntryAbility 增加 `orientation: auto_rotation`，并把 `split` 加入既有 `fullscreen/floating` 窗口模式。tablet/2in1 声明和当前最小窗口值不在本项重复调整。 |
+| 计划代码文件 | 本文；`harmony/app/entry/src/main/module.json5`、`tools/run_tablet_arkts_tests.ps1`。 |
+| 兼容与回退 | 目标设备/API 22，不保留“仅横屏”兼容分支；移除新增字段可回退。若 schema、签名、安装或启动失败则不得交付该候选。 |
+| 验收ID | AC-PKG：构建产物清单含 `auto_rotation` 与 `fullscreen/floating/split`，bundleName仍为`com.muhub.desktop`且只有一个entry HAP；AC-ROTATION/AC-LAYOUT：真机横竖四方向、50/50分屏和窗口恢复无崩溃、无不可达内容后升 Verified。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Verified（用户于2026-08-05确认可升级；schema、生成清单、完整构建、平板覆盖安装启动及实际窗口使用通过） |
+| 实际代码文件 | 本文；`harmony/app/entry/src/main/module.json5`、`tools/run_tablet_arkts_tests.ps1` |
+| 设计偏差及原因 | 无；保持同一bundle、entry、default product及tablet/2in1声明，仅增加自动旋转与split能力。 |
+| 测试命令/结果/证据 | 2026-08-05：ArkTS门禁与Hvigor schema处理通过；生成的`build/default/intermediates/package/default/module.json`含`orientation=auto_rotation`及`supportWindowMode=[fullscreen,floating,split]`，bundleName为`com.muhub.desktop`、deviceTypes为`2in1/tablet`；Debug HAP 35,549,099 bytes并在平板`5JB0223804000371`覆盖安装、启动成功，PID 27536；用户确认实际窗口使用并同意升级Verified。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-A-06：Index 页面协调器按业务域拆分
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-06 |
+| 设计版本/章节 | v2.2；第 5.1、5.2、10.3、11、14.4 节 |
+| 问题 | `Index.ets` 仍超过1200行，同时包含连接地址校验、配置存储异步编排、Native权限请求路由、XRDP权限/启动状态机和页面装配；虽然Native入口已收口，但页面协调器职责仍过宽，修改任一业务域都容易影响会话UI。 |
+| 设计决策 | 继续保持单HAP且不引入全局状态框架。抽出四个非UI职责：`RdpConnectionValidator`只做连接字段纯校验；`WindowsConnectionProfileCoordinator`只编排Store异步操作；`RdpPermissionRequestCoordinator`只路由四类Native权限请求；`RemoteControlCoordinator`只拥有XRDP权限、访问码、启动请求和状态快照。Index只保留ArkUI响应式字段、页面路由、组件回调装配、会话提示文案及把Coordinator快照应用到`@State`。 |
+| 状态与依赖 | Validator不得import UI/Native/Context；Profile Coordinator只依赖Store和日志，通过结果回调返回快照，不写ArkUI状态；Permission Coordinator依赖PermissionManager与Gateway，不持有UIContext；RemoteControl Coordinator依赖PermissionManager、XrdpServerController和文件目录provider，通过不可变快照通知Index。所有Native调用仍只经Gateway，components继续零Native依赖。 |
+| 计划代码文件 | 本文；新增`ets/rdp/RdpConnectionValidator.ets`、`WindowsConnectionProfileCoordinator.ets`、`RdpPermissionRequestCoordinator.ets`、`RemoteControlCoordinator.ets`、`RdpSurfaceContentHost.ets`及展示层映射`components/home/HomeConnectionValidation.ets`；新增`src/test/RdpConnectionValidator.test.ets`并修改测试入口、`ets/pages/Index.ets`和`tools/run_tablet_arkts_tests.ps1`。 |
+| 行为不变量 | 表单校验文案与顺序、TOFU默认值、配置选择/密码加载/删除/保存、四类权限路由、tablet XRDP fail-closed、2in1权限与启动时序、连接状态、XComponent/IME/手势及全部UI布局不变。拆分不新增兼容分支、不复制页面。 |
+| 兼容与回退 | 无N-API、FreeRDP/xrdp、manifest、资源和公共UI契约变化；各Coordinator可按业务域独立内联回Index回退。若Index仍直接出现Store方法、连接校验正则、权限type注册表或XRDP启动Promise状态机，则AC-ARCH不通过。 |
+| 验收ID | AC-ARCH：Index显著缩小并只保留页面协调；四类实现分别位于唯一文件；Validator/Controller无UI组件、能力断点依赖；全仓仍仅Gateway import `libentry.so`。AC-REGRESSION：ArkTS/Native测试、Debug HAP、平板覆盖安装启动及现有会话使用通过。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（职责拆分、单测、架构门禁、完整构建和平板安装启动通过；远端连接、配置增删/密码存储及2in1 XRDP动作回归后升Verified） |
+| 实际代码文件 | 本文；`ets/rdp/RdpConnectionValidator.ets`、`WindowsConnectionProfileCoordinator.ets`、`RdpPermissionRequestCoordinator.ets`、`RemoteControlCoordinator.ets`、`RdpSurfaceContentHost.ets`、`components/home/HomeConnectionValidation.ets`、`ets/pages/Index.ets`、`src/test/RdpConnectionValidator.test.ets`、`src/test/List.test.ets`、`tools/run_tablet_arkts_tests.ps1` |
+| 设计偏差及原因 | Index从1256行降至899行（减少357行，约28%），没有强行压到旧文档约500行目标。剩余主体是40余个响应式字段、连接配置表单状态应用、路由/生命周期、会话提示文案和Home/Settings参数装配；继续压缩需引入可观察ViewModel并改写大量UI绑定，超出“职责拆分且行为不变”的合理边界。新增文件最大为RemoteControlCoordinator 260行，均低于300行协调器预算；其余职责文件20～113行。 |
+| 测试命令/结果/证据 | 2026-08-05：新增5项连接校验单测，与原断点/能力测试一起通过；`tools/run_tablet_arkts_tests.ps1`退出码0并强制Index不超过950行、无Store/XRDP Controller/权限type/校验正则/Gateway细节；`tools/run_tablet_native_tests.ps1`退出码0；`git diff --check`通过；`harmony/app/build_hap.bat debug`完整Native/ArkTS/打包/签名成功，signed HAP 35,592,754 bytes；平板`5JB0223804000371`覆盖安装和EntryAbility启动成功，PID 34716。 |
 | 关联提交 | 待实现后回写 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：

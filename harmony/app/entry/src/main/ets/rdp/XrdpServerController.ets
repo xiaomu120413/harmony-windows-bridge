@@ -1,7 +1,8 @@
-import rdpNative, {
+import {
+  NativeRdpGateway,
   NativeXrdpServerParams,
   NativeXrdpServerResult
-} from 'libentry.so'
+} from './NativeRdpGateway'
 import { RdpLogger } from './RdpLogger'
 
 export interface XrdpServerStatus {
@@ -41,7 +42,7 @@ export class XrdpServerController {
       return this.unavailableStatus()
     }
     try {
-      const result: NativeXrdpServerResult = rdpNative.getXrdpServerDiagnostics()
+      const result: NativeXrdpServerResult = NativeRdpGateway.getXrdpServerDiagnostics()
       return this.toStatus(result)
     } catch (error) {
       RdpLogger.error(`xrdp diagnostics failed: ${JSON.stringify(error)}`)
@@ -55,7 +56,7 @@ export class XrdpServerController {
       return this.unavailableStatus()
     }
     try {
-      const result: NativeXrdpServerResult = rdpNative.ensureXrdpServerStarted(this.toNativeParams(options))
+      const result: NativeXrdpServerResult = NativeRdpGateway.ensureXrdpServerStarted(this.toNativeParams(options))
       return this.toStatus(result)
     } catch (error) {
       RdpLogger.error(`xrdp ensure start failed: ${JSON.stringify(error)}`)

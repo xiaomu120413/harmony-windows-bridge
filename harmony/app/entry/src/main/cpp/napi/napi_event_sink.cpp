@@ -9,6 +9,7 @@ namespace {
 
 struct CallbackData {
     std::string value;
+    std::string eventType;
 };
 
 void CallStringCallback(napi_env env, napi_value jsCallback, void*, void* data)
@@ -20,9 +21,22 @@ void CallStringCallback(napi_env env, napi_value jsCallback, void*, void* data)
 
     napi_value undefined = nullptr;
     napi_get_undefined(env, &undefined);
-    napi_value value = nullptr;
-    napi_create_string_utf8(env, callbackData->value.c_str(), callbackData->value.size(), &value);
-    napi_value argv[1] = {value};
+    napi_value argument = nullptr;
+    if (callbackData->eventType.empty()) {
+        napi_create_string_utf8(env, callbackData->value.c_str(),
+            callbackData->value.size(), &argument);
+    } else {
+        napi_create_object(env, &argument);
+        napi_value type = nullptr;
+        napi_create_string_utf8(env, callbackData->eventType.c_str(),
+            callbackData->eventType.size(), &type);
+        napi_set_named_property(env, argument, "type", type);
+        napi_value requestId = nullptr;
+        napi_create_string_utf8(env, callbackData->value.c_str(),
+            callbackData->value.size(), &requestId);
+        napi_set_named_property(env, argument, "requestId", requestId);
+    }
+    napi_value argv[1] = {argument};
     napi_call_function(env, undefined, jsCallback, 1, argv, nullptr);
 }
 
@@ -33,7 +47,8 @@ EventSink::~EventSink()
     Reset();
 }
 
-bool EventSink::Set(napi_env env, napi_value callback, const char* name, bool mirrorToHilog)
+bool EventSink::Set(napi_env env, napi_value callback, const char* name,
+    bool mirrorToHilog, const char* eventType)
 {
     napi_valuetype type = napi_undefined;
     napi_typeof(env, callback, &type);
@@ -67,6 +82,7 @@ bool EventSink::Set(napi_env env, napi_value callback, const char* name, bool mi
     }
     function_ = next;
     mirrorToHilog_.store(mirrorToHilog);
+    eventType_ = eventType == nullptr ? "" : eventType;
     return true;
 }
 
@@ -83,6 +99,7 @@ void EventSink::Emit(const std::string& value)
     }
 
     napi_threadsafe_function current = nullptr;
+    std::string eventType;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         current = function_;
@@ -90,9 +107,10 @@ void EventSink::Emit(const std::string& value)
             return;
         }
         napi_acquire_threadsafe_function(current);
+        eventType = eventType_;
     }
 
-    auto data = new CallbackData{value};
+    auto data = new CallbackData{value, eventType};
     napi_status status = napi_call_threadsafe_function(current, data, napi_tsfn_nonblocking);
     if (status != napi_ok) {
         delete data;
@@ -108,6 +126,7 @@ void EventSink::Reset()
         function_ = nullptr;
     }
     mirrorToHilog_.store(false);
+    eventType_.clear();
 }
 
 } // namespace rdp_bridge

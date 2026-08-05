@@ -45,35 +45,49 @@ RdpDisplayOrientationMonitor::~RdpDisplayOrientationMonitor()
 bool RdpDisplayOrientationMonitor::Start(OrientationCallback orientationCallback,
     LogCallback logCallback, std::string& message)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    orientationCallback_ = std::move(orientationCallback);
-    logCallback_ = std::move(logCallback);
-    if (started_) {
-        message = "native display orientation monitor already started";
-        return true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        orientationCallback_ = std::move(orientationCallback);
+        logCallback_ = std::move(logCallback);
+        if (started_) {
+            message = "native display orientation monitor already started";
+            return true;
+        }
+
+        uint64_t defaultDisplayId = 0;
+        const NativeDisplayManager_ErrorCode defaultResult =
+            OH_NativeDisplayManager_GetDefaultDisplayId(&defaultDisplayId);
+        if (defaultResult != DISPLAY_MANAGER_OK ||
+            defaultDisplayId > std::numeric_limits<uint32_t>::max()) {
+            message = "native default display id unavailable: rc=" +
+                std::to_string(static_cast<int32_t>(defaultResult));
+            return false;
+        }
+        activeDisplayId_ = static_cast<uint32_t>(defaultDisplayId);
+        g_activeMonitor.store(this);
+        const NativeDisplayManager_ErrorCode registerResult =
+            OH_NativeDisplayManager_RegisterDisplayChangeListener(OnDisplayChanged, &listenerIndex_);
+        if (registerResult != DISPLAY_MANAGER_OK) {
+            g_activeMonitor.store(nullptr);
+            message = "native display listener registration failed: rc=" +
+                std::to_string(static_cast<int32_t>(registerResult));
+            return false;
+        }
+        started_ = true;
     }
 
-    uint64_t defaultDisplayId = 0;
-    const NativeDisplayManager_ErrorCode defaultResult =
-        OH_NativeDisplayManager_GetDefaultDisplayId(&defaultDisplayId);
-    if (defaultResult != DISPLAY_MANAGER_OK ||
-        defaultDisplayId > std::numeric_limits<uint32_t>::max()) {
-        message = "native default display id unavailable: rc=" +
-            std::to_string(static_cast<int32_t>(defaultResult));
-        return false;
+    std::string initialMessage;
+    const bool initialRefreshSucceeded = Refresh("native_display_initial", initialMessage);
+    LogCallback log;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        log = logCallback_;
     }
-    activeDisplayId_ = static_cast<uint32_t>(defaultDisplayId);
-    g_activeMonitor.store(this);
-    const NativeDisplayManager_ErrorCode registerResult =
-        OH_NativeDisplayManager_RegisterDisplayChangeListener(OnDisplayChanged, &listenerIndex_);
-    if (registerResult != DISPLAY_MANAGER_OK) {
-        g_activeMonitor.store(nullptr);
-        message = "native display listener registration failed: rc=" +
-            std::to_string(static_cast<int32_t>(registerResult));
-        return false;
+    if (log != nullptr) {
+        log(initialMessage);
     }
-    started_ = true;
-    message = "native display orientation monitor started";
+    message = initialRefreshSucceeded ? "native display orientation monitor started" :
+        "native display orientation monitor started; initial refresh failed";
     return true;
 }
 
