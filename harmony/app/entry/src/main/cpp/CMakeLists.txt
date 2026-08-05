@@ -133,6 +133,7 @@ add_library(entry SHARED
     surface/native_rgba_copy.cpp
     surface/native_window_rgba_painter.cpp
     surface/render_output_owner.cpp
+    surface/remote_content_geometry.cpp
     surface/surface_bridge.cpp
     common/string_utils.cpp
     xrdp/xrdp_ini_builder.cpp

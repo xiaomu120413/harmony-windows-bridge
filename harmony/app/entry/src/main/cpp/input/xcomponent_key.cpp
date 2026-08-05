@@ -27,17 +27,7 @@ void OnXComponentBlurEvent(OH_NativeXComponent*, void*)
             EmitInputLog("XComponent native IME close failed: " + imeMessage);
         }
     }
-    g_nativeMouseButtons.store(0);
-    {
-        std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
-        g_nativeTouch = NativeTouchState{};
-    }
-
-    std::string message;
-    if (g_inputSession != nullptr && !g_inputSession->ReleaseAllKeys(message) &&
-        message != "no active FreeRDP session") {
-        EmitInputLog("XComponent blurred; release keys skipped: " + message);
-    }
+    ReleaseAllXComponentInput("blur");
 }
 
 bool OnXComponentKeyEvent(OH_NativeXComponent* component, void*)

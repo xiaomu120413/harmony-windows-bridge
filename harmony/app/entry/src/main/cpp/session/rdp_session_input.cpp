@@ -1,4 +1,5 @@
 #include "session/rdp_session_input.h"
+#include "surface/remote_content_geometry.h"
 
 #include <array>
 
@@ -50,13 +51,17 @@ uint32_t ToOhosPointerButtons(uint32_t buttons)
 FREERDP_OHOS_POINTER_VIEWPORT BuildOhosPointerViewport(
     const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight)
 {
+    const RemoteContentGeometry geometry = ResolveRemoteContentGeometry(
+        surface.width, surface.height, desktopWidth, desktopHeight,
+        surface.viewportX, surface.viewportY, surface.viewportWidth, surface.viewportHeight,
+        surface.viewportRemoteWidth, surface.viewportRemoteHeight);
     FREERDP_OHOS_POINTER_VIEWPORT viewport = {};
     viewport.surfaceWidth = surface.width;
     viewport.surfaceHeight = surface.height;
-    viewport.viewportX = surface.viewportX;
-    viewport.viewportY = surface.viewportY;
-    viewport.viewportWidth = surface.viewportWidth;
-    viewport.viewportHeight = surface.viewportHeight;
+    viewport.viewportX = geometry.contentX;
+    viewport.viewportY = geometry.contentY;
+    viewport.viewportWidth = geometry.contentWidth;
+    viewport.viewportHeight = geometry.contentHeight;
     viewport.desktopWidth = desktopWidth;
     viewport.desktopHeight = desktopHeight;
     return viewport;
@@ -151,12 +156,23 @@ bool RdpSessionInput::EnqueueLocalPointer(const LocalPointerEvent& pointer,
     const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight,
     std::string& message, const std::function<void(const std::string&)>& log)
 {
+    if (!surface.ready || surface.width == 0 || surface.height == 0 ||
+        desktopWidth == 0 || desktopHeight == 0) {
+        message = "pointer rejected: surface or remote geometry is unavailable";
+        LogInputFailure(message, log);
+        return false;
+    }
     if (!EnsureQueue(message, log)) {
         return false;
     }
 
     FREERDP_OHOS_POINTER_VIEWPORT viewport =
         BuildOhosPointerViewport(surface, desktopWidth, desktopHeight);
+    if (viewport.viewportWidth == 0 || viewport.viewportHeight == 0) {
+        message = "pointer rejected: remote content geometry is invalid";
+        LogInputFailure(message, log);
+        return false;
+    }
     FREERDP_OHOS_POINTER_EVENT nativeEvent = {};
     nativeEvent.action = ToOhosPointerAction(pointer.action);
     nativeEvent.buttons = ToOhosPointerButtons(pointer.buttons);

@@ -26,6 +26,8 @@ void ConfigureXComponentInputBridge(
     std::function<void(const std::string&)> log);
 void ResetXComponentInputBridge();
 bool IsXComponentFocused();
+void RefreshXComponentInputDensity();
+void ReleaseAllXComponentInput(const std::string& reason);
 void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window);
 XComponentInputRegisterResult RegisterXComponentInputCallbacks(OH_NativeXComponent* component);
 

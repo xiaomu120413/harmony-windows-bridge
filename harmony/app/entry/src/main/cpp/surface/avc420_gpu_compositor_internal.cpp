@@ -39,7 +39,6 @@ constexpr uint32_t kOutputSyncMaxAttempts = 8;
 constexpr uint64_t kTimingSampleInterval = 60U;
 constexpr uint64_t kActiveFailureFallbackThreshold = 3U;
 constexpr uint64_t kActiveResetIgnoreFallbackThreshold = 6U;
-constexpr uint32_t kPresentSnapTolerancePx = 16U;
 constexpr double kAvc420DecoderFrameRate = 60.0;
 
 #ifndef GL_TEXTURE_EXTERNAL_OES
@@ -85,29 +84,13 @@ uint64_t NowMicros()
         std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
-uint32_t DimensionDelta(uint32_t a, uint32_t b)
-{
-    return a > b ? a - b : b - a;
-}
-
 RenderViewport FitAvc420PresentViewport(uint32_t targetWidth, uint32_t targetHeight,
     uint32_t sourceWidth, uint32_t sourceHeight, bool& snapped)
 {
-    snapped = false;
-    RenderViewport viewport;
-    if (targetWidth == 0 || targetHeight == 0 || sourceWidth == 0 || sourceHeight == 0) {
-        return viewport;
-    }
-
-    if (DimensionDelta(targetWidth, sourceWidth) <= kPresentSnapTolerancePx &&
-        DimensionDelta(targetHeight, sourceHeight) <= kPresentSnapTolerancePx) {
-        viewport.width = targetWidth;
-        viewport.height = targetHeight;
-        snapped = true;
-        return viewport;
-    }
-
-    return FitFrameIntoTarget(targetWidth, targetHeight, sourceWidth, sourceHeight);
+    const RenderViewport viewport = FitFrameIntoTarget(
+        targetWidth, targetHeight, sourceWidth, sourceHeight);
+    snapped = viewport.width == targetWidth && viewport.height == targetHeight;
+    return viewport;
 }
 
 std::string FormatFixed(double value, int precision)

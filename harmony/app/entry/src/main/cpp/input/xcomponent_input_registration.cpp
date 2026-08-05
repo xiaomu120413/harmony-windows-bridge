@@ -3,16 +3,19 @@
 #include "input/remote_pointer_text_detector.h"
 
 #include <utility>
+#include <window_manager/oh_display_manager.h>
 
 namespace rdp_bridge {
 
 RdpSession* g_inputSession = nullptr;
 RemoteImeClient* g_remoteIme = nullptr;
 std::function<void(const std::string&)> g_inputLog;
-std::atomic_uint32_t g_nativeMouseButtons{0};
 std::atomic_bool g_xcomponentFocused{false};
+std::atomic<float> g_inputDensity{1.0f};
+std::mutex g_nativeMouseMutex;
+NativeMouseState g_nativeMouse;
 std::mutex g_nativeTouchMutex;
-NativeTouchState g_nativeTouch;
+NativeTouchGesturePolicy g_nativeTouchPolicy;
 std::mutex g_nativeAxisMutex;
 NativeAxisState g_nativeAxis;
 
@@ -61,7 +64,7 @@ const char* LocalPointerActionName(LocalPointerAction action)
 }
 
 LocalPointerEvent MakeNativePointer(LocalPointerAction action, float x, float y,
-    uint32_t buttons, int32_t delta)
+    uint32_t buttons, int32_t delta, bool allowClamp)
 {
     LocalPointerEvent event;
     event.action = action;
@@ -69,7 +72,7 @@ LocalPointerEvent MakeNativePointer(LocalPointerAction action, float x, float y,
     event.x = RoundSurfaceCoordinate(x);
     event.y = RoundSurfaceCoordinate(y);
     event.delta = delta;
-    event.allowClamp = true;
+    event.allowClamp = allowClamp;
     return event;
 }
 
@@ -123,22 +126,57 @@ void ConfigureXComponentInputBridge(
     }, EmitInputLog);
 }
 
+void RefreshXComponentInputDensity()
+{
+    int32_t densityDpi = 0;
+    const auto rc = OH_NativeDisplayManager_GetDefaultDisplayDensityDpi(&densityDpi);
+    const float density = rc == DISPLAY_MANAGER_OK && densityDpi > 0
+        ? static_cast<float>(densityDpi) / 160.0f : 1.0f;
+    g_inputDensity.store(density);
+    {
+        std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
+        g_nativeTouchPolicy.SetThresholds(NativeTouchThresholdsForDensity(density));
+    }
+    EmitInputLog("XComponent input density: dpi=" + std::to_string(densityDpi) +
+        " density=" + std::to_string(density) + " rc=" + std::to_string(rc));
+}
+
+void ReleaseAllXComponentInput(const std::string& reason)
+{
+    NativeMouseState mouse;
+    {
+        std::lock_guard<std::mutex> lock(g_nativeMouseMutex);
+        mouse = g_nativeMouse;
+        g_nativeMouse = NativeMouseState{};
+    }
+    for (uint32_t button : {LocalPointerButtonLeft, LocalPointerButtonRight,
+        LocalPointerButtonMiddle}) {
+        if ((mouse.buttons & button) != 0) {
+            SendNativePointer(MakeNativePointer(LocalPointerAction::ButtonUp,
+                mouse.lastX, mouse.lastY, button, 0, true),
+                "releaseAllInput.mouse." + reason, true);
+        }
+    }
+    CancelNativeTouchGesture(reason);
+    {
+        std::lock_guard<std::mutex> lock(g_nativeAxisMutex);
+        g_nativeAxis = NativeAxisState{};
+    }
+    std::string message;
+    if (g_inputSession != nullptr && !g_inputSession->ReleaseAllKeys(message) &&
+        message != "no active FreeRDP session") {
+        EmitInputLog("releaseAllInput keys skipped: reason=" + reason + " " + message);
+    }
+}
+
 void ResetXComponentInputBridge()
 {
+    ReleaseAllXComponentInput("bridgeReset");
     g_xcomponentFocused.store(false);
     ResetRemotePointerTextDetector();
     if (g_remoteIme != nullptr) {
         std::string message;
         (void)g_remoteIme->Close(message);
-    }
-    g_nativeMouseButtons.store(0);
-    {
-        std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
-        g_nativeTouch = NativeTouchState{};
-    }
-    {
-        std::lock_guard<std::mutex> lock(g_nativeAxisMutex);
-        g_nativeAxis = NativeAxisState{};
     }
 }
 
@@ -153,6 +191,7 @@ XComponentInputRegisterResult RegisterXComponentInputCallbacks(OH_NativeXCompone
     if (component == nullptr) {
         return result;
     }
+    RefreshXComponentInputDensity();
 
     static OH_NativeXComponent_MouseEvent_Callback mouseCallback = {
         OnXComponentMouseEvent,

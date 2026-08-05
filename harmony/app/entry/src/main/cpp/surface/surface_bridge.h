@@ -20,6 +20,8 @@ struct SurfaceSnapshot {
     uint32_t viewportY = 0;
     uint32_t viewportWidth = 0;
     uint32_t viewportHeight = 0;
+    uint32_t viewportRemoteWidth = 0;
+    uint32_t viewportRemoteHeight = 0;
     uint32_t createdCount = 0;
     uint32_t changedCount = 0;
     uint32_t destroyedCount = 0;

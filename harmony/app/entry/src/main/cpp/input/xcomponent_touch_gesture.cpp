@@ -1,63 +1,183 @@
 #include "input/xcomponent_input_internal.h"
 #include "input/remote_pointer_text_detector.h"
-#include "input/remote_ime_client.h"
-#include "input/xcomponent_touch_policy.h"
+
+#include <condition_variable>
+#include <cstdlib>
+#include <thread>
 
 namespace rdp_bridge {
 namespace {
 
-const char* NativeTouchTypeName(OH_NativeXComponent_TouchEventType type)
+class LongPressScheduler {
+public:
+    LongPressScheduler() : thread_([this]() { Run(); }) {}
+    ~LongPressScheduler()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopped_ = true;
+            ++generation_;
+        }
+        condition_.notify_all();
+        thread_.join();
+    }
+
+    void Schedule(uint64_t deadlineMs)
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            deadlineMs_ = deadlineMs;
+            scheduled_ = deadlineMs != 0;
+            ++generation_;
+        }
+        condition_.notify_all();
+    }
+
+    void Cancel()
+    {
+        Schedule(0);
+    }
+
+private:
+    void Run();
+
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::thread thread_;
+    uint64_t generation_ = 0;
+    uint64_t deadlineMs_ = 0;
+    bool scheduled_ = false;
+    bool stopped_ = false;
+};
+
+LongPressScheduler& Scheduler()
+{
+    static LongPressScheduler scheduler;
+    return scheduler;
+}
+
+bool SendTouchButton(uint32_t button, bool down, float x, float y, const std::string& label,
+    bool allowClamp)
+{
+    return SendNativePointer(MakeNativePointer(
+        down ? LocalPointerAction::ButtonDown : LocalPointerAction::ButtonUp,
+        x, y, button, 0, allowClamp), label, true);
+}
+
+bool DispatchGestureActions(const std::vector<NativeGestureAction>& actions,
+    const std::string& label)
+{
+    bool remoteLeftDownAccepted = true;
+    for (const NativeGestureAction& action : actions) {
+        switch (action.type) {
+            case NativeGestureActionType::Move:
+                if (remoteLeftDownAccepted) {
+                    SendNativePointer(MakeNativePointer(LocalPointerAction::Move,
+                        action.x, action.y,
+                        action.held ? LocalPointerButtonLeft : LocalPointerButtonNone,
+                        0, action.held), label + ".move", action.held);
+                }
+                break;
+            case NativeGestureActionType::LeftDown:
+                remoteLeftDownAccepted = SendTouchButton(LocalPointerButtonLeft, true,
+                    action.x, action.y, label + ".leftDown", false);
+                break;
+            case NativeGestureActionType::LeftUp:
+                if (remoteLeftDownAccepted) {
+                    SendTouchButton(LocalPointerButtonLeft, false, action.x, action.y,
+                        label + ".leftUp", true);
+                }
+                break;
+            case NativeGestureActionType::LeftClick:
+                SendNativePointer(MakeNativePointer(LocalPointerAction::Move,
+                    action.x, action.y), label + ".leftClick.move", true);
+                if (SendTouchButton(LocalPointerButtonLeft, true, action.x, action.y,
+                    label + ".leftClick.down", false)) {
+                    SendTouchButton(LocalPointerButtonLeft, false, action.x, action.y,
+                        label + ".leftClick.up", true);
+                }
+                break;
+            case NativeGestureActionType::RightClick:
+                SendNativePointer(MakeNativePointer(LocalPointerAction::Move,
+                    action.x, action.y), label + ".rightClick.move", true);
+                if (SendTouchButton(LocalPointerButtonRight, true, action.x, action.y,
+                    label + ".rightClick.down", false)) {
+                    SendTouchButton(LocalPointerButtonRight, false, action.x, action.y,
+                        label + ".rightClick.up", true);
+                }
+                break;
+            case NativeGestureActionType::WheelVertical:
+            case NativeGestureActionType::WheelHorizontal: {
+                const LocalPointerAction wheel = action.type == NativeGestureActionType::WheelVertical
+                    ? LocalPointerAction::WheelVertical : LocalPointerAction::WheelHorizontal;
+                const int32_t direction = action.steps < 0 ? -1 : 1;
+                for (int32_t i = 0; i < std::abs(action.steps); ++i) {
+                    SendNativePointer(MakeNativePointer(wheel, action.x, action.y,
+                        LocalPointerButtonNone, direction), label + ".wheel");
+                }
+                break;
+            }
+        }
+    }
+    return remoteLeftDownAccepted;
+}
+
+void LongPressScheduler::Run()
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (!stopped_) {
+        condition_.wait(lock, [this]() { return stopped_ || scheduled_; });
+        if (stopped_) {
+            break;
+        }
+        const uint64_t generation = generation_;
+        const uint64_t deadline = deadlineMs_;
+        const uint64_t now = NowMs();
+        if (deadline > now) {
+            condition_.wait_for(lock, std::chrono::milliseconds(deadline - now),
+                [this, generation]() { return stopped_ || generation_ != generation; });
+        }
+        if (stopped_ || generation_ != generation || !scheduled_) {
+            continue;
+        }
+        scheduled_ = false;
+        lock.unlock();
+        {
+            std::lock_guard<std::mutex> touchLock(g_nativeTouchMutex);
+            DispatchGestureActions(g_nativeTouchPolicy.HandleLongPressTimeout(NowMs()),
+                "touch.longPress.timeout");
+        }
+        lock.lock();
+    }
+}
+
+NativeTouchAction ResolveTouchAction(OH_NativeXComponent_TouchEventType type)
 {
     switch (type) {
         case OH_NATIVEXCOMPONENT_DOWN:
-            return "down";
-        case OH_NATIVEXCOMPONENT_UP:
-            return "up";
+            return NativeTouchAction::Down;
         case OH_NATIVEXCOMPONENT_MOVE:
-            return "move";
+            return NativeTouchAction::Move;
+        case OH_NATIVEXCOMPONENT_UP:
+            return NativeTouchAction::Up;
         case OH_NATIVEXCOMPONENT_CANCEL:
-            return "cancel";
         default:
-            return "unknown";
+            return NativeTouchAction::Cancel;
     }
 }
 
-const char* NativeTouchSourceName(OH_NativeXComponent_EventSourceType source)
-{
-    switch (source) {
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_MOUSE:
-            return "mouse";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHSCREEN:
-            return "touchscreen";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHPAD:
-            return "touchpad";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_JOYSTICK:
-            return "joystick";
-        case OH_NATIVEXCOMPONENT_SOURCE_TYPE_KEYBOARD:
-            return "keyboard";
-        default:
-            return "unknown";
-    }
-}
-
-OH_NativeXComponent_EventSourceType ResolveNativeTouchSource(
-    OH_NativeXComponent* component, const OH_NativeXComponent_TouchEvent& touchEvent)
+OH_NativeXComponent_EventSourceType ResolveTouchSource(
+    OH_NativeXComponent* component, const OH_NativeXComponent_TouchEvent& event)
 {
     OH_NativeXComponent_EventSourceType source = OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
-    if (component == nullptr) {
-        return source;
-    }
-
-    if (OH_NativeXComponent_GetTouchEventSourceType(component, touchEvent.id, &source) ==
-            OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
+    if (OH_NativeXComponent_GetTouchEventSourceType(component, event.id, &source) ==
+        OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
         source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN) {
         return source;
     }
-
-    for (uint32_t i = 0; i < touchEvent.numPoints; ++i) {
-        if (OH_NativeXComponent_GetTouchEventSourceType(
-                component, touchEvent.touchPoints[i].id, &source) ==
-                OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
+    for (uint32_t i = 0; i < event.numPoints; ++i) {
+        if (OH_NativeXComponent_GetTouchEventSourceType(component,
+            event.touchPoints[i].id, &source) == OH_NATIVEXCOMPONENT_RESULT_SUCCESS &&
             source != OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN) {
             return source;
         }
@@ -65,288 +185,77 @@ OH_NativeXComponent_EventSourceType ResolveNativeTouchSource(
     return OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
 }
 
-bool NativePrimaryTouchPoint(const OH_NativeXComponent_TouchEvent& touchEvent, float& x, float& y)
-{
-    if (touchEvent.numPoints < 1) {
-        return false;
-    }
-    x = touchEvent.touchPoints[0].x;
-    y = touchEvent.touchPoints[0].y;
-    return true;
-}
-
-bool NativeTouchCenter(const OH_NativeXComponent_TouchEvent& touchEvent, float& x, float& y)
-{
-    if (touchEvent.numPoints < 2) {
-        return false;
-    }
-    x = (touchEvent.touchPoints[0].x + touchEvent.touchPoints[1].x) / 2.0f;
-    y = (touchEvent.touchPoints[0].y + touchEvent.touchPoints[1].y) / 2.0f;
-    return true;
-}
-
-float NativeTouchDistance(float x1, float y1, float x2, float y2)
-{
-    const float dx = x1 - x2;
-    const float dy = y1 - y2;
-    return std::sqrt((dx * dx) + (dy * dy));
-}
-
-bool IsNativeTouchscreenLikeSource(OH_NativeXComponent_EventSourceType source)
+bool IsDirectTouch(OH_NativeXComponent_EventSourceType source)
 {
     return source == OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHSCREEN ||
         source == OH_NATIVEXCOMPONENT_SOURCE_TYPE_UNKNOWN;
 }
 
-void SendNativeTouchMove(float x, float y, uint32_t buttons, const std::string& label,
-    bool forceLog = false)
+NativeTouchSample MakeTouchSample(const OH_NativeXComponent_TouchEvent& event)
 {
-    SendNativePointer(MakeNativePointer(LocalPointerAction::Move, x, y, buttons),
-        label, forceLog);
-}
-
-void SendNativeTouchButton(uint32_t button, bool down, float x, float y,
-    const std::string& label)
-{
-    SendNativePointer(MakeNativePointer(
-        down ? LocalPointerAction::ButtonDown : LocalPointerAction::ButtonUp, x, y, button),
-        label, true);
-}
-
-void SendNativeTouchClick(uint32_t button, float x, float y, const std::string& label)
-{
-    SendNativeTouchMove(x, y, LocalPointerButtonNone, label + ".move", true);
-    SendNativeTouchButton(button, true, x, y, label + ".down");
-    SendNativeTouchButton(button, false, x, y, label + ".up");
-}
-
-void ReleaseNativeTouchLeftDrag(float x, float y, const std::string& label)
-{
-    SendNativeTouchMove(x, y, LocalPointerButtonNone, label + ".move", true);
-    SendNativeTouchButton(LocalPointerButtonLeft, false, x, y, label + ".up");
-}
-
-void ResetNativeTouchGesture()
-{
-    g_nativeTouch.singleActive = false;
-    g_nativeTouch.leftDragActive = false;
-    g_nativeTouch.longPressSent = false;
-    g_nativeTouch.doubleTapActive = false;
-}
-
-bool DispatchNativeTouchScroll(const OH_NativeXComponent_TouchEvent& touchEvent,
-    OH_NativeXComponent_EventSourceType source)
-{
-    constexpr float kWheelThreshold = 24.0f;
-    const bool scrollSource = source == OH_NATIVEXCOMPONENT_SOURCE_TYPE_TOUCHPAD ||
-        IsNativeTouchscreenLikeSource(source);
-    if (!scrollSource) {
-        g_nativeTouch.scrollActive = false;
-        return false;
+    NativeTouchSample sample;
+    sample.action = ResolveTouchAction(event.type);
+    sample.atMs = NowMs();
+    sample.points.reserve(event.numPoints == 0 ? 1 : event.numPoints);
+    for (uint32_t i = 0; i < event.numPoints; ++i) {
+        sample.points.push_back(NativeTouchPoint {
+            static_cast<int32_t>(event.touchPoints[i].id),
+            event.touchPoints[i].x,
+            event.touchPoints[i].y,
+        });
     }
-
-    if (touchEvent.type == OH_NATIVEXCOMPONENT_UP ||
-        touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL ||
-        touchEvent.numPoints < 2) {
-        if (g_nativeTouch.scrollActive) {
-            g_nativeTouch.scrollActive = false;
-            ResetNativeTouchGesture();
-            return true;
-        }
-        return false;
+    if (sample.points.empty() && event.type != OH_NATIVEXCOMPONENT_CANCEL) {
+        sample.points.push_back(NativeTouchPoint {
+            static_cast<int32_t>(event.id), event.x, event.y});
     }
-
-    float centerX = 0.0f;
-    float centerY = 0.0f;
-    if (!NativeTouchCenter(touchEvent, centerX, centerY)) {
-        return false;
-    }
-
-    if (g_nativeTouch.leftDragActive) {
-        ReleaseNativeTouchLeftDrag(g_nativeTouch.lastX, g_nativeTouch.lastY,
-            "touch.scroll.releaseDrag");
-    }
-    if (g_nativeTouch.doubleTapActive) {
-        ReleaseNativeTouchLeftDrag(g_nativeTouch.lastX, g_nativeTouch.lastY,
-            "touch.scroll.releaseDoubleTap");
-    }
-    ResetNativeTouchGesture();
-    g_nativeTouch.lastTapValid = false;
-
-    if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN || !g_nativeTouch.scrollActive) {
-        g_nativeTouch.scrollActive = true;
-        g_nativeTouch.scrollLastX = centerX;
-        g_nativeTouch.scrollLastY = centerY;
-        EmitInputLog("XComponent native touch scroll start: source=" +
-            std::string(NativeTouchSourceName(source)) +
-            " type=" + NativeTouchTypeName(touchEvent.type) +
-            " points=" + std::to_string(touchEvent.numPoints) +
-            " center=" + std::to_string(RoundSurfaceCoordinate(centerX)) + "," +
-            std::to_string(RoundSurfaceCoordinate(centerY)));
-        return true;
-    }
-
-    if (touchEvent.type != OH_NATIVEXCOMPONENT_MOVE) {
-        return true;
-    }
-
-    const float deltaX = centerX - g_nativeTouch.scrollLastX;
-    const float deltaY = centerY - g_nativeTouch.scrollLastY;
-    if (std::fabs(deltaY) < kWheelThreshold && std::fabs(deltaX) < kWheelThreshold) {
-        return true;
-    }
-
-    g_nativeTouch.scrollLastX = centerX;
-    g_nativeTouch.scrollLastY = centerY;
-    const bool vertical = std::fabs(deltaY) >= std::fabs(deltaX);
-    SendNativePointer(MakeNativePointer(
-        vertical ? LocalPointerAction::WheelVertical : LocalPointerAction::WheelHorizontal,
-        centerX, centerY, LocalPointerButtonNone,
-        static_cast<int32_t>(std::lround(vertical ? deltaY : deltaX))),
-        vertical ? "touch.scroll.vertical" : "touch.scroll.horizontal");
-    return true;
-}
-
-bool DispatchNativeSingleTouch(const OH_NativeXComponent_TouchEvent& touchEvent,
-    OH_NativeXComponent_EventSourceType source)
-{
-    constexpr uint64_t kLongPressTimeoutMs = 550;
-    if (!IsNativeTouchscreenLikeSource(source)) {
-        return false;
-    }
-
-    float x = g_nativeTouch.lastX;
-    float y = g_nativeTouch.lastY;
-    NativePrimaryTouchPoint(touchEvent, x, y);
-
-    if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN) {
-        const uint64_t downAtMs = NowMs();
-        const bool doubleTap = g_nativeTouch.lastTapValid && IsNativeDoubleTap(
-            g_nativeTouch.lastTapAtMs, g_nativeTouch.lastTapX, g_nativeTouch.lastTapY,
-            downAtMs, x, y);
-        g_nativeTouch.scrollActive = false;
-        g_nativeTouch.singleActive = true;
-        g_nativeTouch.leftDragActive = false;
-        g_nativeTouch.longPressSent = false;
-        g_nativeTouch.doubleTapActive = doubleTap;
-        g_nativeTouch.downAtMs = downAtMs;
-        g_nativeTouch.startX = x;
-        g_nativeTouch.startY = y;
-        g_nativeTouch.lastX = x;
-        g_nativeTouch.lastY = y;
-        EmitInputLog("XComponent native touch down: source=" +
-            std::string(NativeTouchSourceName(source)) +
-            " x=" + std::to_string(RoundSurfaceCoordinate(x)) +
-            " y=" + std::to_string(RoundSurfaceCoordinate(y)));
-        if (doubleTap) {
-            g_nativeTouch.lastTapValid = false;
-            SendNativeTouchMove(x, y, LocalPointerButtonNone,
-                "touch.doubleTap.left.second.move", true);
-            SendNativeTouchButton(LocalPointerButtonLeft, true, x, y,
-                "touch.doubleTap.left.second.down");
-        }
-        return true;
-    }
-
-    if (!g_nativeTouch.singleActive) {
-        return false;
-    }
-
-    const uint64_t ageMs = NowMs() - g_nativeTouch.downAtMs;
-    const float distance = NativeTouchDistance(x, y, g_nativeTouch.startX, g_nativeTouch.startY);
-    g_nativeTouch.lastX = x;
-    g_nativeTouch.lastY = y;
-
-    if (touchEvent.type == OH_NATIVEXCOMPONENT_MOVE) {
-        if (g_nativeTouch.doubleTapActive) {
-            SendNativeTouchMove(x, y, LocalPointerButtonLeft,
-                "touch.doubleTap.left.second.move");
-            return true;
-        }
-        if (!g_nativeTouch.leftDragActive && !g_nativeTouch.longPressSent &&
-            ageMs >= kLongPressTimeoutMs && distance < kNativeTouchDragThresholdPx) {
-            SendNativeTouchClick(LocalPointerButtonRight, g_nativeTouch.startX,
-                g_nativeTouch.startY, "touch.longPress.right");
-            g_nativeTouch.longPressSent = true;
-            g_nativeTouch.lastTapValid = false;
-            ResetNativeTouchGesture();
-            return true;
-        }
-        if (!g_nativeTouch.leftDragActive && distance >= kNativeTouchDragThresholdPx) {
-            g_nativeTouch.leftDragActive = true;
-            g_nativeTouch.lastTapValid = false;
-            SendNativeTouchMove(g_nativeTouch.startX, g_nativeTouch.startY,
-                LocalPointerButtonNone, "touch.drag.start.move", true);
-            SendNativeTouchButton(LocalPointerButtonLeft, true, g_nativeTouch.startX,
-                g_nativeTouch.startY, "touch.drag.start.down");
-        }
-        if (g_nativeTouch.leftDragActive) {
-            SendNativeTouchMove(x, y, LocalPointerButtonLeft, "touch.drag.move");
-        }
-        return true;
-    }
-
-    if (touchEvent.type == OH_NATIVEXCOMPONENT_UP ||
-        touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL) {
-        const bool cancelled = touchEvent.type == OH_NATIVEXCOMPONENT_CANCEL;
-        if (g_nativeTouch.doubleTapActive) {
-            SendNativeTouchMove(x, y, LocalPointerButtonLeft,
-                "touch.doubleTap.left.second.releaseMove", true);
-            SendNativeTouchButton(LocalPointerButtonLeft, false, x, y,
-                cancelled ? "touch.doubleTap.left.second.cancel" :
-                    "touch.doubleTap.left.second.up");
-            g_nativeTouch.lastTapValid = false;
-        } else if (g_nativeTouch.leftDragActive) {
-            ReleaseNativeTouchLeftDrag(x, y, "touch.drag.release");
-        } else if (!cancelled && !g_nativeTouch.longPressSent) {
-            if (ageMs >= kLongPressTimeoutMs && distance < kNativeTouchDragThresholdPx) {
-                SendNativeTouchClick(LocalPointerButtonRight, g_nativeTouch.startX,
-                    g_nativeTouch.startY, "touch.longPress.right");
-                g_nativeTouch.lastTapValid = false;
-            } else {
-                const uint64_t tapAtMs = NowMs();
-                SendNativeTouchClick(LocalPointerButtonLeft, x, y, "touch.tap.left");
-                g_nativeTouch.lastTapValid = true;
-                g_nativeTouch.lastTapAtMs = tapAtMs;
-                g_nativeTouch.lastTapX = x;
-                g_nativeTouch.lastTapY = y;
-            }
-        } else if (cancelled) {
-            g_nativeTouch.lastTapValid = false;
-        }
-        ResetNativeTouchGesture();
-        return true;
-    }
-    return false;
+    return sample;
 }
 
 } // namespace
+
+void CancelNativeTouchGesture(const std::string& reason)
+{
+    Scheduler().Cancel();
+    std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
+    DispatchGestureActions(g_nativeTouchPolicy.Cancel(), "touch.cancel." + reason);
+}
 
 void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window)
 {
     if (component == nullptr) {
         return;
     }
-
-    OH_NativeXComponent_TouchEvent touchEvent{};
-    const int32_t rc = OH_NativeXComponent_GetTouchEvent(component, window, &touchEvent);
+    OH_NativeXComponent_TouchEvent event{};
+    const int32_t rc = OH_NativeXComponent_GetTouchEvent(component, window, &event);
     if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
-        EmitInputLog("XComponent native touch skipped: get touch event failed rc=" +
-            std::to_string(rc));
+        EmitInputLog("XComponent native touch skipped: get event rc=" + std::to_string(rc));
         return;
     }
 
-    const OH_NativeXComponent_EventSourceType source =
-        ResolveNativeTouchSource(component, touchEvent);
-    if (touchEvent.type == OH_NATIVEXCOMPONENT_DOWN &&
-        IsNativeTouchscreenLikeSource(source) && IsXComponentFocused()) {
+    const auto source = ResolveTouchSource(component, event);
+    if (!IsDirectTouch(source)) {
+        return;
+    }
+    if (event.type == OH_NATIVEXCOMPONENT_DOWN && IsXComponentFocused()) {
         NotifyRemotePointerDirectTouch(NowMs());
     }
-    std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
-    if (DispatchNativeTouchScroll(touchEvent, source)) {
-        return;
+
+    const NativeTouchSample sample = MakeTouchSample(event);
+    uint64_t deadline = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
+        const auto actions = g_nativeTouchPolicy.Handle(sample);
+        const bool downAccepted = DispatchGestureActions(actions, "touch.gesture");
+        if (!downAccepted) {
+            DispatchGestureActions(g_nativeTouchPolicy.Cancel(), "touch.rejected");
+        }
+        deadline = g_nativeTouchPolicy.LongPressDeadlineMs();
     }
-    (void)DispatchNativeSingleTouch(touchEvent, source);
+    if (deadline == 0) {
+        Scheduler().Cancel();
+    } else {
+        Scheduler().Schedule(deadline);
+    }
 }
 
 } // namespace rdp_bridge

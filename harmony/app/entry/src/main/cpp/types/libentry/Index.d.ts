@@ -37,7 +37,7 @@ declare const rdpNative: {
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   getXrdpServerDiagnostics(): NativeXrdpServerResult;
   bindImeHostWindow(windowId: number): NativeCommandResult;
-  releaseAllKeys(): NativeCommandResult;
+  releaseAllInput(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
   onMicrophonePermissionRequest(callback: (requestId: string) => void): NativeCommandResult;

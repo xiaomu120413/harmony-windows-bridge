@@ -20,19 +20,24 @@ $pointerTestBinary = '/tmp/muhub-remote-pointer-text-test'
 $touchTestSource = "$cppRoot/tests/xcomponent_touch_policy_test.cpp"
 $touchPolicySource = "$cppRoot/input/xcomponent_touch_policy.cpp"
 $touchTestBinary = '/tmp/muhub-xcomponent-touch-policy-test'
+$geometryTestSource = "$cppRoot/tests/remote_content_geometry_test.cpp"
+$geometryPolicySource = "$cppRoot/surface/remote_content_geometry.cpp"
+$geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
 
-$command = "set -e; trap 'rm -f $resizeTestBinary $pointerTestBinary $touchTestBinary' EXIT; " +
+$command = "set -e; trap 'rm -f $resizeTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary' EXIT; " +
   "g++ -std=c++17 -pthread " +
   "-I'$cppRoot' -I'$freeRdpRoot' -I'$freeRdpInclude' " +
   "'$resizeTestSource' '$coordinatorSource' -o '$resizeTestBinary'; '$resizeTestBinary'; " +
   "g++ -std=c++17 -I'$cppRoot' '$pointerTestSource' '$pointerPolicySource' " +
   "-o '$pointerTestBinary'; '$pointerTestBinary'; " +
   "g++ -std=c++17 -I'$cppRoot' '$touchTestSource' '$touchPolicySource' " +
-  "-o '$touchTestBinary'; '$touchTestBinary'"
+  "-o '$touchTestBinary'; '$touchTestBinary'; " +
+  "g++ -std=c++17 -I'$cppRoot' '$geometryTestSource' '$geometryPolicySource' " +
+  "-o '$geometryTestBinary'; '$geometryTestBinary'"
 
 & wsl.exe bash -lc $command
 if ($LASTEXITCODE -ne 0) {
   throw "Tablet native tests failed with exit code $LASTEXITCODE."
 }
 
-Write-Output 'Tablet native resize, remote pointer text, and touch gesture policy tests passed.'
+Write-Output 'Tablet native resize, remote pointer text, touch gesture, and content geometry tests passed.'
