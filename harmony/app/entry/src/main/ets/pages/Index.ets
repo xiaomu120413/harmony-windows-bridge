@@ -56,6 +56,8 @@ struct Index {
   @State private remoteAccessCodeGateEnabled: boolean = false
   @State private screenRecordingPermissionGranted: boolean = false
   @State private screenRecordingPermissionBusy: boolean = false
+  @State private inputInjectionPermissionGranted: boolean = false
+  @State private inputInjectionPermissionBusy: boolean = false
   @State private xrdpServerRunning: boolean = false
   @State private xrdpServerState: string = 'Stopped'
   @State private xrdpServerPort: number = 3390
@@ -101,6 +103,7 @@ struct Index {
     this.loadConnectionProfiles()
     if (this.remoteControlServerAvailable()) {
       this.refreshScreenRecordingPermissionState()
+      this.refreshInputInjectionPermissionState()
       this.refreshXrdpServerDiagnostics()
       this.ensureXrdpServerStarted('page appear')
     }
@@ -587,6 +590,7 @@ struct Index {
   private openSettingsFromHome(remoteControlSection: string): void {
     if (this.remoteControlServerAvailable()) {
       this.refreshScreenRecordingPermissionState()
+      this.refreshInputInjectionPermissionState()
       this.refreshXrdpServerDiagnostics()
       this.settingsRemoteControlSection = remoteControlSection
       this.settingsInitialPageName = remoteControlSection.length > 0 ? SettingsRoute.REMOTE_CONTROL :
@@ -608,6 +612,14 @@ struct Index {
 
   private requestScreenRecordingPermissionFromSettings(): Promise<boolean> {
     return this.getRemoteControlCoordinator().requestPermissionFromSettings()
+  }
+
+  private refreshInputInjectionPermissionState(): boolean {
+    return this.getRemoteControlCoordinator().refreshInputInjectionPermissionState()
+  }
+
+  private requestInputInjectionPermissionFromSettings(): Promise<boolean> {
+    return this.getRemoteControlCoordinator().requestInputInjectionPermissionFromSettings()
   }
 
   private refreshXrdpServerDiagnostics(): XrdpServerStatus {
@@ -641,6 +653,8 @@ struct Index {
     this.remoteAccessCodeGateEnabled = snapshot.accessCodeGateEnabled
     this.screenRecordingPermissionGranted = snapshot.screenRecordingPermissionGranted
     this.screenRecordingPermissionBusy = snapshot.screenRecordingPermissionBusy
+    this.inputInjectionPermissionGranted = snapshot.inputInjectionPermissionGranted
+    this.inputInjectionPermissionBusy = snapshot.inputInjectionPermissionBusy
     this.xrdpServerRunning = snapshot.serverRunning
     this.xrdpServerState = snapshot.serverState
     this.xrdpServerPort = snapshot.serverPort
@@ -809,6 +823,8 @@ struct Index {
           remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
           screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
+          inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
+          inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
           xrdpServerRunning: this.xrdpServerRunning,
           xrdpServerState: this.xrdpServerState,
           xrdpServerPort: this.xrdpServerPort,
@@ -819,6 +835,9 @@ struct Index {
           onRemoteAccessCodeRegenerate: (): string => this.regenerateRemoteAccessCodeFromSettings(),
           onRequestScreenRecordingPermission: (): Promise<boolean> => this.requestScreenRecordingPermissionFromSettings(),
           onRefreshScreenRecordingPermission: (): boolean => this.refreshScreenRecordingPermissionState(),
+          onRequestInputInjectionPermission: (): Promise<boolean> =>
+            this.requestInputInjectionPermissionFromSettings(),
+          onRefreshInputInjectionPermission: (): boolean => this.refreshInputInjectionPermissionState(),
           onRefreshXrdpServerStatus: (): XrdpServerStatus => this.refreshXrdpServerDiagnostics(),
           onStartXrdpServer: (): Promise<XrdpServerStatus> => this.startXrdpServerFromSettings(),
           onOpenRemoteFilesDirectory: (): void => this.openRemoteFilesDirectoryFromSettings(),
@@ -850,7 +869,8 @@ struct Index {
           xrdpServerPort: this.xrdpServerPort,
           screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
           screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
-          remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+          inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
+          inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
           remoteControlServerAvailable: this.remoteControlServerAvailable(),
           onHostChange: (value: string): void => {
             this.host = value

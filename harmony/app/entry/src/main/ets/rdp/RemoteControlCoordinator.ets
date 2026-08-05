@@ -12,6 +12,8 @@ export interface RemoteControlSnapshot {
   accessCodeGateEnabled: boolean
   screenRecordingPermissionGranted: boolean
   screenRecordingPermissionBusy: boolean
+  inputInjectionPermissionGranted: boolean
+  inputInjectionPermissionBusy: boolean
   serverRunning: boolean
   serverState: string
   serverPort: number
@@ -31,6 +33,8 @@ export class RemoteControlCoordinator {
   private accessCodeInitialized: boolean = false
   private permissionGranted: boolean = false
   private permissionBusy: boolean = false
+  private inputInjectionPermissionGranted: boolean = false
+  private inputInjectionPermissionBusy: boolean = false
   private serverRunning: boolean = false
   private serverState: string = 'Stopped'
   private serverPort: number = 3390
@@ -53,6 +57,8 @@ export class RemoteControlCoordinator {
       accessCodeGateEnabled: this.accessCodeGateEnabled,
       screenRecordingPermissionGranted: this.permissionGranted,
       screenRecordingPermissionBusy: this.permissionBusy,
+      inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
+      inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
       serverRunning: this.serverRunning,
       serverState: this.serverState,
       serverPort: this.serverPort,
@@ -78,6 +84,42 @@ export class RemoteControlCoordinator {
     return this.permissionGranted
   }
 
+  refreshInputInjectionPermissionState(): boolean {
+    if (!this.available) {
+      this.inputInjectionPermissionGranted = false
+      this.inputInjectionPermissionBusy = false
+      this.publish()
+      return false
+    }
+    this.inputInjectionPermissionGranted = this.permissionManager().hasControlDevicePermission()
+    this.publish()
+    return this.inputInjectionPermissionGranted
+  }
+
+  requestInputInjectionPermissionFromSettings(): Promise<boolean> {
+    if (!this.available || this.inputInjectionPermissionBusy) {
+      return Promise.resolve(false)
+    }
+    this.inputInjectionPermissionBusy = true
+    this.publish()
+    return this.permissionManager().requestControlDevicePermission('remote control settings')
+      .then((granted: boolean): boolean => {
+        this.inputInjectionPermissionGranted = granted ||
+          this.permissionManager().hasControlDevicePermission()
+        RdpLogger.info(`input injection permission result applied: allowed=${this.inputInjectionPermissionGranted}`)
+        return this.inputInjectionPermissionGranted
+      })
+      .catch((error: Error): boolean => {
+        RdpLogger.error(`input injection permission request failed: ${JSON.stringify(error)}`)
+        this.inputInjectionPermissionGranted = this.permissionManager().hasControlDevicePermission()
+        return this.inputInjectionPermissionGranted
+      })
+      .finally((): void => {
+        this.inputInjectionPermissionBusy = false
+        this.publish()
+      })
+  }
+
   refreshDiagnostics(): XrdpServerStatus {
     return this.applyStatus(this.serverController.diagnostics())
   }
@@ -87,6 +129,7 @@ export class RemoteControlCoordinator {
       this.clearServerBusy('remote control readiness refreshed')
     }
     this.refreshPermissionState()
+    this.refreshInputInjectionPermissionState()
     return this.refreshDiagnostics()
   }
 

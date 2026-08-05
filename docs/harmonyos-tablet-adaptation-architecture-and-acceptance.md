@@ -1736,3 +1736,46 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 - UI/功能隔离：ArkTS 页面不增加手写笔或多屏判断；Native 输入模块按 tool type 分流，FreeRDP OHOS port 持有 RDPEI 与 monitor layout 协议状态。
 - 渲染边界：多显示器形成一个组合远端桌面，继续由唯一 XComponent 和统一 viewport 呈现；多本地窗口不在本次范围。
 - 验收入口：`AC-PEN-01..03`、`AC-MON-01..03`、`AC-REG-01`。
+
+## 20. API 26 输入注入长期权限增量
+
+### 20.1 设计边界
+
+- `TAB-E-02`：`DesignReady`。工程的 compile/target SDK 升级到 API 26，`compatibleSdkVersion`
+  保持 API 22，使现有 API 22+ 设备继续使用同一 HAP；不按 API 或设备类型拆包。
+- 单 HAP 的 Entry 声明 `ohos.permission.CONTROL_DEVICE`。该权限采用 `manual_settings`，
+  ArkTS 通过 AccessToken 查询状态并打开系统权限设置；只有现有 `2in1` 被控端暴露和使用
+  该能力，tablet 仍由 `DeviceCapabilityPolicy` 隔离 xrdp 服务端及其权限入口。
+- `CONTROL_DEVICE` 是受限权限，调试包的签名 profile 必须同步加入 allowed ACL 和
+  restricted permissions；商店发布仍需使用 AGC 审核通过后下发的正式 profile，不能只靠
+  manifest 声明或本地调试 ACL 替代审核。
+- 首页第三个状态入口由“验证码”改为“注入权限”，展示“已授权/未授权/授权中”，点击后
+  定位到远控设置中的注入权限卡；验证码门禁功能及远控设置卡继续保留。
+- xrdp Native 输入门禁先调用 `OH_AT_CheckSelfPermission("ohos.permission.CONTROL_DEVICE")`。
+  已授权时直接允许系统输入注入；未授权或旧系统不支持时继续使用现有
+  `OH_Input_QueryAuthorizedStatus` / `OH_Input_RequestInjection` 弹窗授权路径。
+- `OH_Input_QueryAuthorizedStatus` 从 API 26 起只表示弹窗授权状态，禁止用它推断
+  `CONTROL_DEVICE` 是否已授予。权限检查只在输入授权门禁和显式状态刷新中执行，不增加
+  每帧、每音频包或额外逐输入 INFO 日志。
+
+### 20.2 文件与验收
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-E-02 |
+| 设计版本/章节 | 第 10.1、10.3～10.5、15、20 节 |
+| 计划代码文件 | `harmony/app/build-profile.json5`、`harmony/app/entry/src/main/module.json5`、`rdp/RdpConstants.ets`、`rdp/RdpPermissions.ets`、`rdp/RemoteControlCoordinator.ets`、`pages/Index.ets`、`components/SettingsPage.ets`、`components/home/HomePage.ets`、`components/home/HomeStatusFooter.ets`、`components/home/HomeText.ets`、`components/settings/SettingsConstants.ets`、`components/settings/RemoteControlCards.ets`、`components/settings/RemoteControlSettingsPage.ets`、`harmony/third_party/xrdp/configure.ac`、`harmony/third_party/xrdp/ohos/ohos_input_auth.c`、`tools/hapsigner/UnsgnedDebugProfileTemplate.json`、`tools/hapsigner/ohos_provision_debug.p7b`及受影响文档 |
+| 公共 API/状态 | `RemoteControlSnapshot` 增加输入注入权限 granted/busy 状态；`RdpPermissionManager` 增加 CONTROL_DEVICE 查询和设置页授权；不改变 xrdp 公共 module ABI |
+| 兼容与回退 | API 22+ 继续安装；API 26 长期权限优先，旧弹窗授权保底；权限缺失只影响远端输入，不阻止录屏服务启动和只读会话 |
+| 验收 ID | AC-API26：SDK 配置、单 HAP 和模块编译；AC-INPUT-PERM：未授权/授权中/已授权 UI，长期授权和旧弹窗两条 Native 路径；AC-ISOLATION：tablet 无入口且不启动 xrdp；AC-REG：验证码设置仍可用、录屏权限和文件入口无回归 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（本机测试、交叉编译与 Debug HAP 通过；等待 API 26 2in1 真机授权/重启/回退动作验收后升 Verified） |
+| 实际代码文件 | 与计划文件一致，并补充权限原因资源 `harmony/app/entry/src/main/resources/base/element/string.json`、当前交互事实文档 `docs/settings-desktop-current-interactions.md`、签名说明与构建说明 |
+| 设计偏差及原因 | 首次真机安装返回 9568289，确认 manifest 声明之外还必须同步调试 profile ACL；据此补充签名设计、模板和生成后的 p7b。业务/UI/Native 回退设计无偏差 |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_arkts_tests.ps1` 通过；`tools/run_tablet_native_tests.ps1` 通过；`wsl bash harmony/scripts/wsl/build-xrdp-ohos.sh` 通过，`libxrdpohos.so` 明确依赖 `libability_access_control.so` 与 `libohinput.so`；新 xrdp runtime 同步后 `harmony/app/build_hap.bat debug` 编译、打包、签名通过。构建元数据为 compile `26.0.0.23`、target API 26、min API 22，且包含 `CONTROL_DEVICE`。补齐调试 profile ACL 后真机覆盖安装及冷启动成功；layout dump 确认首页显示“注入权限”且不再显示“验证码”，点击可进入同时包含“键鼠输入注入授权”和“主控连接验证码”的远控设置，点击“去授权”可打开系统权限页。实际授权、重启保持与旧弹窗回退仍待人工动作验收 |
+
+官方依据：
+
+- [CONTROL_DEVICE 受限权限](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/restricted-permissions#ohospermissioncontrol_device)
+- [OH_Input_RequestInjection](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h#oh_input_requestinjection)
+- [OH_Input_QueryAuthorizedStatus](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h#oh_input_queryauthorizedstatus)

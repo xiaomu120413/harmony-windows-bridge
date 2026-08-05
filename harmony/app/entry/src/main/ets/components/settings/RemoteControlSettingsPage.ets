@@ -4,11 +4,12 @@ import {
   SettingsTheme
 } from './SettingsUi'
 import { XrdpServerStatus } from '../../rdp/XrdpServerController'
-import { SettingsText } from './SettingsConstants'
+import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
+import { SettingsAccent, SettingsResources } from './SettingsUi'
 import {
   RemoteAccessCard,
   RemoteFilesCard,
-  ScreenRecordingCard,
+  RemotePermissionCard,
   XrdpServerCard
 } from './RemoteControlCards'
 
@@ -26,6 +27,12 @@ export struct RemoteControlSettingsPage {
     return Promise.resolve(false)
   }
   onRefreshScreenRecordingPermission: () => boolean = () => {
+    return false
+  }
+  onRequestInputInjectionPermission: () => Promise<boolean> = () => {
+    return Promise.resolve(false)
+  }
+  onRefreshInputInjectionPermission: () => boolean = () => {
     return false
   }
   onRefreshXrdpServerStatus: () => XrdpServerStatus = () => {
@@ -52,32 +59,38 @@ export struct RemoteControlSettingsPage {
   @Prop remoteAccessCode: string = '000000'
   @Prop remoteAccessCodeGateEnabled: boolean = false
   @Prop screenRecordingPermissionGranted: boolean = false
+  @Prop inputInjectionPermissionGranted: boolean = false
   @Prop xrdpServerRunning: boolean = false
   @Prop xrdpServerState: string = 'Stopped'
   @Prop xrdpServerPort: number = 3390
   @Prop xrdpServerMessage: string = ''
   @Prop xrdpServerBusy: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
+  @Prop inputInjectionPermissionBusy: boolean = false
   @State private localAccessCode: string = '000000'
   @State private localGateEnabled: boolean = false
   @State private localScreenRecordingGranted: boolean = false
+  @State private localInputInjectionGranted: boolean = false
   @State private localXrdpServerRunning: boolean = false
   @State private localXrdpServerState: string = 'Stopped'
   @State private localXrdpServerPort: number = 3390
   @State private localXrdpServerMessage: string = ''
   @State private localXrdpServerBusy: boolean = false
   private screenPermissionRequestPending: boolean = false
+  private inputPermissionRequestPending: boolean = false
 
   aboutToAppear(): void {
     this.localAccessCode = this.remoteAccessCode
     this.localGateEnabled = this.remoteAccessCodeGateEnabled
     this.localScreenRecordingGranted = this.screenRecordingPermissionGranted
+    this.localInputInjectionGranted = this.inputInjectionPermissionGranted
     this.localXrdpServerRunning = this.xrdpServerRunning
     this.localXrdpServerState = this.xrdpServerState
     this.localXrdpServerPort = this.xrdpServerPort
     this.localXrdpServerMessage = this.xrdpServerMessage
     this.localXrdpServerBusy = false
     this.refreshScreenRecordingState()
+    this.refreshInputInjectionState()
     this.refreshXrdpServerStatus()
   }
 
@@ -155,6 +168,27 @@ export struct RemoteControlSettingsPage {
       })
   }
 
+  private refreshInputInjectionState(): void {
+    this.localInputInjectionGranted = this.onRefreshInputInjectionPermission()
+  }
+
+  private requestInputInjectionPermission(): void {
+    if (this.inputPermissionRequestPending || this.inputInjectionPermissionBusy) {
+      return
+    }
+    this.inputPermissionRequestPending = true
+    this.onRequestInputInjectionPermission()
+      .then((granted: boolean) => {
+        this.localInputInjectionGranted = granted || this.onRefreshInputInjectionPermission()
+      })
+      .catch((_error: Error) => {
+        this.localInputInjectionGranted = this.onRefreshInputInjectionPermission()
+      })
+      .finally(() => {
+        this.inputPermissionRequestPending = false
+      })
+  }
+
   build() {
     Column() {
       SettingsPageHeader({
@@ -187,13 +221,28 @@ export struct RemoteControlSettingsPage {
               this.startXrdpServer()
             }
           })
-          ScreenRecordingCard({
+          RemotePermissionCard({
             isDark: this.isDark,
             targetSection: this.targetSection,
+            section: SettingsRemoteControlSection.SCREEN,
             granted: this.localScreenRecordingGranted,
             busy: this.screenRecordingPermissionBusy,
             onRequest: (): void => {
               this.requestScreenRecordingPermission()
+            }
+          })
+          RemotePermissionCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            section: SettingsRemoteControlSection.INPUT,
+            title: SettingsText.REMOTE_INPUT_PERMISSION_TITLE,
+            description: SettingsText.REMOTE_INPUT_PERMISSION_DESC,
+            icon: SettingsResources.REMOTE_ACCESS_ICON,
+            accent: SettingsAccent.PURPLE,
+            granted: this.localInputInjectionGranted,
+            busy: this.inputInjectionPermissionBusy,
+            onRequest: (): void => {
+              this.requestInputInjectionPermission()
             }
           })
           RemoteAccessCard({

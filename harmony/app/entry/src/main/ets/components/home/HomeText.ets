@@ -19,7 +19,7 @@ export class HomeText {
 
   static readonly STATUS_SERVICE_LABEL: string = '被控服务'
   static readonly STATUS_SCREEN_LABEL: string = '录屏权限'
-  static readonly STATUS_ACCESS_LABEL: string = '验证码'
+  static readonly STATUS_INPUT_LABEL: string = '注入权限'
   static readonly STATUS_FILES_LABEL: string = '共享目录'
   static readonly STATUS_FILES_CONFIGURED: string = '已配置'
 

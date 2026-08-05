@@ -48,6 +48,7 @@ profile.
 - `ohos.permission.INTERNET`
 - `ohos.permission.GET_NETWORK_INFO`
 - `ohos.permission.CUSTOM_SCREEN_RECORDING`
+- `ohos.permission.CONTROL_DEVICE`
 - `ohos.permission.PRINT`
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
@@ -55,7 +56,9 @@ profile.
 - `ohos.permission.APPROXIMATELY_LOCATION`
 - `ohos.permission.LOCATION`
 
-Declaring a permission is not the same as prompting at connection start.
+Declaring a permission is not the same as prompting at connection start. On API 26,
+`CONTROL_DEVICE` is opened from the remote-control settings page and also requires an
+approved signing-profile ACL; older injection-dialog authorization remains the native fallback.
 Pasteboard, microphone, camera and enabled location prompts are driven by a
 shared native permission-request bridge when the matching RDP feature is used.
 Screen recording is requested before starting the local xrdp-controlled desktop
