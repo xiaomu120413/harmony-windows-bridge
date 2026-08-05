@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| `CHG-20260805-005` | `feat(xrdp): add OHOS audin playback backend` | 功能/xrdp OHOS 音频输入重定向 | 在 xrdp core/module ABI 中增加通用动态虚拟通道桥，并为 OHOS backend 接入标准 MS-RDPEAI `audin` 流程，将 Windows 客户端重定向的 PCM 通过 OHAudio Renderer 播放；默认配置启用 `audin`，不引入产品私有协议。 | `build-xrdp-ohos.sh` OHOS arm64 干净交叉编译及符号检查；MSTSC + 真机动作级验收待补。关联 `docs/xrdp-ohos-mstsc-penetration-plan.md` 第 9 节。 |
 | `CHG-20260805-004` | `feat(freerdp): add native pen and multimon support` | 功能/FreeRDP OHOS、XComponent 输入与显示拓扑 | 接入 Native XComponent 手写笔压力/倾角/橡皮到 FreeRDP RDPEI；枚举并监听本地多显示器，在首次连接和 `disp` 动态更新中同步组合桌面布局，回到单屏时恢复现有 surface resize。ArkTS/N-API 不新增开关或页面分支。 | FreeRDP OHOS arm64 交叉编译、Native/ArkTS 测试、Debug HAP 编译与签名通过；手写笔和外接屏动作级真机验收待补。关联 PEN-MON-D1。 |
 | `CHG-20260805-003` | `feat(tablet): finalize adaptive session architecture` | 功能/平板适配与会话架构 | 完成单 HAP 的平板自动旋转、首次方向同步和权限桥接收口；将首页连接校验、配置、权限、XRDP、远程会话及 XComponent 宿主职责拆分到独立协调器，并同步系统关闭行为和验收状态。忽略本地验收产物与签名辅助脚本。 | ArkTS 14/14、Native 测试和 Debug HAP 构建通过；平板覆盖安装、冷启动成功。关联 TAB-A-05/A-06、TAB-B-03、TAB-C-05、TAB-F-07。 |
 | `CHG-20260805-002` | `feat(input): use native xcomponent system gestures` | 功能/Native XComponent 与触控 | 改由 Native Node API 直接创建 XComponent，并用系统 Tap、LongPress、1指 Pan、2指 Pan 识别单/双击、右键、拖动和滚动；ArkTS 只保留 NodeContent 宿主，删除手写 Touch 手势 reducer 和声明式 XComponent 所有权。 | Native/ArkTS 测试及 Debug HAP 构建通过，平板覆盖安装并冷启动成功；远端动作级手势矩阵待真机操作确认。关联 TAB-F-06。 |
