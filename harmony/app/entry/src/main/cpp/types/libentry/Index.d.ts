@@ -1,3 +1,5 @@
+import { NodeContent } from '@kit.ArkUI';
+
 export interface NativeConnectParams {
   host: string;
   port: string;
@@ -32,24 +34,31 @@ export interface NativeXrdpServerResult extends NativeCommandResult {
   port: number;
 }
 
+export type NativePermissionType = 'microphone' | 'camera' | 'clipboard' | 'location';
+
+export interface NativePermissionRequest {
+  type: NativePermissionType;
+  requestId: string;
+}
+
+export interface NativePermissionResult {
+  type: NativePermissionType;
+  requestId: number;
+  granted: boolean;
+}
+
 declare const rdpNative: {
   connect(params: NativeConnectParams): NativeCommandResult;
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   getXrdpServerDiagnostics(): NativeXrdpServerResult;
   bindImeHostWindow(windowId: number): NativeCommandResult;
-  attachXComponentContent(nodeContent: Object): NativeCommandResult;
+  attachXComponentContent(nodeContent: NodeContent): NativeCommandResult;
   detachXComponentContent(): NativeCommandResult;
   releaseAllInput(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
-  onMicrophonePermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
-  onCameraPermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
-  onClipboardPermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
-  onLocationPermissionRequest(callback: (requestId: string) => void): NativeCommandResult;
-  completeClipboardPermissionRequest(result: Object): NativeCommandResult;
-  completeMicrophonePermissionRequest(result: Object): NativeCommandResult;
-  completeCameraPermissionRequest(result: Object): NativeCommandResult;
-  completeLocationPermissionRequest(result: Object): NativeCommandResult;
+  onPermissionRequest(callback: (request: NativePermissionRequest) => void): NativeCommandResult;
+  completePermissionRequest(result: NativePermissionResult): NativeCommandResult;
 };
 
 export default rdpNative;

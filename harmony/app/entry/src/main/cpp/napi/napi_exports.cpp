@@ -240,34 +240,54 @@ napi_value OnError(napi_env env, napi_callback_info info)
     return RegisterCallback(env, info, BridgeEvents().error, "rdpErrorCallback", true);
 }
 
-napi_value OnMicrophonePermissionRequest(napi_env env, napi_callback_info info)
-{
-    return RegisterCallback(env, info, MicrophonePermissionRequestSink(),
-        "rdpMicrophonePermissionRequestCallback");
-}
-
-napi_value OnCameraPermissionRequest(napi_env env, napi_callback_info info)
-{
-    return RegisterCallback(env, info, CameraPermissionRequestSink(),
-        "rdpCameraPermissionRequestCallback");
-}
-
-napi_value OnClipboardPermissionRequest(napi_env env, napi_callback_info info)
-{
-    return RegisterCallback(env, info, ClipboardPermissionRequestSink(),
-        "rdpClipboardPermissionRequestCallback");
-}
-
-napi_value OnLocationPermissionRequest(napi_env env, napi_callback_info info)
-{
-    return RegisterCallback(env, info, LocationPermissionRequestSink(),
-        "rdpLocationPermissionRequestCallback");
-}
-
 using CompletePermissionRequestFn = bool (*)(uint32_t, bool);
 
-napi_value CompletePermissionRequest(napi_env env, napi_callback_info info, const char* label,
-    CompletePermissionRequestFn complete)
+struct PermissionRoute {
+    const char* type;
+    EventSink& (*sink)();
+    CompletePermissionRequestFn complete;
+};
+
+const PermissionRoute kPermissionRoutes[] = {
+    {"microphone", MicrophonePermissionRequestSink, CompleteMicrophonePermissionRequestFromUi},
+    {"camera", CameraPermissionRequestSink, CompleteCameraPermissionRequestFromUi},
+    {"clipboard", ClipboardPermissionRequestSink, CompleteClipboardPermissionRequestFromUi},
+    {"location", LocationPermissionRequestSink, CompleteLocationPermissionRequestFromUi},
+};
+
+const PermissionRoute* FindPermissionRoute(const std::string& type)
+{
+    for (const PermissionRoute& route : kPermissionRoutes) {
+        if (type == route.type) {
+            return &route;
+        }
+    }
+    return nullptr;
+}
+
+napi_value OnPermissionRequest(napi_env env, napi_callback_info info)
+{
+    napi_value callback = GetFirstArgument(env, info);
+    bool ok = callback != nullptr;
+    for (const PermissionRoute& route : kPermissionRoutes) {
+        ok = ok && route.sink().Set(env, callback,
+            "rdpPermissionRequestCallback", false, route.type);
+    }
+    if (!ok) {
+        for (const PermissionRoute& route : kPermissionRoutes) {
+            route.sink().Reset();
+        }
+        BridgeLogger::Error("unified permission callback registration failed");
+    }
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Idle" : "Failed");
+    SetString(env, result, "message", ok ? "permission callback registered" :
+        "permission callback must be a function");
+    return result;
+}
+
+napi_value CompletePermissionRequest(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
     napi_valuetype type = napi_undefined;
@@ -279,47 +299,35 @@ napi_value CompletePermissionRequest(napi_env env, napi_callback_info info, cons
     if (arg == nullptr || type != napi_object) {
         SetBool(env, result, "ok", false);
         SetString(env, result, "state", "Failed");
-        SetString(env, result, "message",
-            std::string(label) + " permission completion requires an object argument");
-        BridgeLogger::Error(std::string(label) + " permission completion parameter validation failed");
+        SetString(env, result, "message", "permission completion requires an object argument");
+        BridgeLogger::Error("permission completion parameter validation failed");
         return result;
     }
 
+    const std::string typeName = GetStringProperty(env, arg, "type");
+    const PermissionRoute* route = FindPermissionRoute(typeName);
+    if (route == nullptr) {
+        SetBool(env, result, "ok", false);
+        SetString(env, result, "state", "Failed");
+        SetString(env, result, "message", "unknown permission type: " + typeName);
+        BridgeLogger::Error("unknown permission completion type: " + typeName);
+        return result;
+    }
     const uint32_t requestId = GetUint32Property(env, arg, "requestId");
     const bool granted = GetBoolProperty(env, arg, "granted");
-    const bool ok = complete(requestId, granted);
+    const bool ok = route->complete(requestId, granted);
 
     SetBool(env, result, "ok", ok);
     SetString(env, result, "state", ok ? "Updated" : "Failed");
-    SetString(env, result, "message", ok ? std::string(label) + " permission result accepted" :
-        std::string(label) + " permission request is not pending");
-    const std::string logLine = std::string(label) + " permission completion requestId=" +
+    SetString(env, result, "message", ok ? typeName + " permission result accepted" :
+        typeName + " permission request is not pending");
+    const std::string logLine = typeName + " permission completion requestId=" +
         std::to_string(requestId) +
         " granted=" + std::string(granted ? "true" : "false");
     if (!ok) {
         BridgeLogger::Error(logLine + " failed: request is not pending");
     }
     return result;
-}
-
-napi_value CompleteClipboardPermissionRequest(napi_env env, napi_callback_info info)
-{
-    return CompletePermissionRequest(env, info, "clipboard", CompleteClipboardPermissionRequestFromUi);
-}
-
-napi_value CompleteLocationPermissionRequest(napi_env env, napi_callback_info info)
-{
-    return CompletePermissionRequest(env, info, "location", CompleteLocationPermissionRequestFromUi);
-}
-
-napi_value CompleteCameraPermissionRequest(napi_env env, napi_callback_info info)
-{
-    return CompletePermissionRequest(env, info, "camera", CompleteCameraPermissionRequestFromUi);
-}
-
-napi_value CompleteMicrophonePermissionRequest(napi_env env, napi_callback_info info)
-{
-    return CompletePermissionRequest(env, info, "microphone", CompleteMicrophonePermissionRequestFromUi);
 }
 
 } // namespace
@@ -338,22 +346,10 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"releaseAllInput", nullptr, ReleaseAllInput, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"onMicrophonePermissionRequest", nullptr, OnMicrophonePermissionRequest, nullptr, nullptr, nullptr,
+        {"onPermissionRequest", nullptr, OnPermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
-        {"onCameraPermissionRequest", nullptr, OnCameraPermissionRequest, nullptr, nullptr, nullptr,
+        {"completePermissionRequest", nullptr, CompletePermissionRequest, nullptr, nullptr, nullptr,
             napi_default, nullptr},
-        {"onClipboardPermissionRequest", nullptr, OnClipboardPermissionRequest, nullptr, nullptr, nullptr,
-            napi_default, nullptr},
-        {"onLocationPermissionRequest", nullptr, OnLocationPermissionRequest, nullptr, nullptr, nullptr,
-            napi_default, nullptr},
-        {"completeClipboardPermissionRequest", nullptr, CompleteClipboardPermissionRequest, nullptr, nullptr,
-            nullptr, napi_default, nullptr},
-        {"completeMicrophonePermissionRequest", nullptr, CompleteMicrophonePermissionRequest, nullptr, nullptr,
-            nullptr, napi_default, nullptr},
-        {"completeCameraPermissionRequest", nullptr, CompleteCameraPermissionRequest, nullptr, nullptr,
-            nullptr, napi_default, nullptr},
-        {"completeLocationPermissionRequest", nullptr, CompleteLocationPermissionRequest, nullptr, nullptr,
-            nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     InitializeNativeBridgeContext();

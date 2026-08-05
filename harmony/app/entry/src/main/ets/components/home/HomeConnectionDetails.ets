@@ -1,4 +1,3 @@
-import pasteboard from '@ohos.pasteboard'
 import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
@@ -41,24 +40,6 @@ export struct HomeConnectionDetails {
 
   private hasSelectedProfile(): boolean {
     return this.selectedConnectionProfileId.length > 0
-  }
-
-  private currentAddressText(): string {
-    const hostText = this.host.trim()
-    const portText = this.port.trim()
-    return portText.length > 0 ? `${hostText}:${portText}` : hostText
-  }
-
-  private copyCurrentAddress(): void {
-    const addressText = this.currentAddressText()
-    if (addressText.length === 0) {
-      return
-    }
-    try {
-      const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, addressText)
-      pasteboard.getSystemPasteboard().setData(data)
-    } catch (_error) {
-    }
   }
 
   private setHoveredAction(action: string, hovered: boolean): void {
@@ -295,20 +276,21 @@ export struct HomeConnectionDetails {
       GridCol({ span: { xs: 12, sm: 3 } }) {
         this.buildFieldLabel(HomeText.DEVICE_ACTIONS)
       }
-      GridCol({ span: { xs: 12, sm: 3 } }) {
-        this.buildActionButton('delete', HomeText.DELETE_ACTION, HomeResources.TRASH_ICON, 'danger', () => {
-          this.onDeleteProfile()
-        })
-      }
-      GridCol({ span: { xs: 12, sm: 3 } }) {
-        this.buildActionButton('clearPassword', HomeText.CLEAR_PASSWORD_ACTION, HomeResources.LOCK_ICON, 'warning', () => {
-          this.onClearPassword()
-        })
-      }
-      GridCol({ span: { xs: 12, sm: 3 } }) {
-        this.buildActionButton('copyAddress', HomeText.COPY_ADDRESS_ACTION, HomeResources.COPY_ICON, 'info', () => {
-          this.copyCurrentAddress()
-        })
+      GridCol({ span: { xs: 12, sm: 9 } }) {
+        GridRow({ columns: 12, gutter: { x: 12, y: 8 } }) {
+          GridCol({ span: 6 }) {
+            this.buildActionButton('delete', HomeText.DELETE_ACTION, HomeResources.TRASH_ICON, 'danger', () => {
+              this.onDeleteProfile()
+            })
+          }
+          GridCol({ span: 6 }) {
+            this.buildActionButton('clearPassword', HomeText.CLEAR_PASSWORD_ACTION,
+              HomeResources.LOCK_ICON, 'warning', () => {
+                this.onClearPassword()
+              })
+          }
+        }
+        .width('100%')
       }
     }
     .width('100%')

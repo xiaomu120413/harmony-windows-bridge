@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit'
-import { uiObserver } from '@kit.ArkUI'
+import { NodeContent, uiObserver } from '@kit.ArkUI'
 import {
   LayoutMode,
   layoutModeForWidthBreakpoint
@@ -12,48 +12,34 @@ import {
 import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
-import { RdpLogger } from '../rdp/RdpLogger'
-import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
+import { RdpClientController } from '../rdp/RdpClientController'
 import {
-  XrdpServerController,
+  ConnectionValidationResult,
+  RdpConnectionValidator
+} from '../rdp/RdpConnectionValidator'
+import { RdpLogger } from '../rdp/RdpLogger'
+import { RdpPermissionRequestCoordinator } from '../rdp/RdpPermissionRequestCoordinator'
+import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
+import { RemoteControlCoordinator, RemoteControlSnapshot } from '../rdp/RemoteControlCoordinator'
+import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
+import { RdpSurfaceContentHost } from '../rdp/RdpSurfaceContentHost'
+import {
   XrdpServerDisplayMessages,
-  XrdpServerStartOptions,
   XrdpServerStatus
 } from '../rdp/XrdpServerController'
 import {
   WindowsConnectionProfile,
   WindowsConnectionSaveInput,
-  WindowsConnectionSnapshot,
-  WindowsConnectionStore
+  WindowsConnectionSnapshot
 } from '../rdp/WindowsConnectionStore'
+import { WindowsConnectionProfileCoordinator } from '../rdp/WindowsConnectionProfileCoordinator'
+import { HomeConnectionValidation } from '../components/home/HomeConnectionValidation'
 import { HomePage } from '../components/home/HomePage'
 import { HomeText } from '../components/home/HomeText'
 import { RdpSessionPage } from '../components/session/RdpSessionPage'
 import { SettingsPage } from '../components/SettingsPage'
 import { SettingsRoute, SettingsText } from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
-import rdpNative, {
-  NativeCommandResult
-} from 'libentry.so'
-
-interface ConnectionValidationResult {
-  ok: boolean
-  message: string
-  host: string
-  port: string
-  username: string
-  password: string
-}
-
-interface NativePermissionCallbackRegistration {
-  label: string
-  trigger: string
-  onRequest: (callback: (requestId: string) => void) => NativeCommandResult
-  ensurePermission: (trigger: string) => Promise<boolean>
-  completeRequest: (requestId: number, granted: boolean) => NativeCommandResult
-}
-
 @Entry
 @Component
 struct Index {
@@ -88,13 +74,13 @@ struct Index {
   private readonly deviceCapabilities: DeviceCapabilitySnapshot = currentDeviceCapabilities()
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
-  private connected: boolean = false
   private callbacksRegistered: boolean = false
-  private remoteAccessCodeInitialized: boolean = false
+  private readonly rdpClientController: RdpClientController = new RdpClientController()
+  private readonly rdpSurfaceContentHost: RdpSurfaceContentHost = new RdpSurfaceContentHost()
   private permissionManager: RdpPermissionManager | null = null
-  private xrdpServerController: XrdpServerController | null = null
-  private xrdpServerStartRequest: Promise<XrdpServerStatus> | null = null
-  private windowsConnectionStore: WindowsConnectionStore | null = null
+  private permissionRequestCoordinator: RdpPermissionRequestCoordinator | null = null
+  private remoteControlCoordinator: RemoteControlCoordinator | null = null
+  private connectionProfileCoordinator: WindowsConnectionProfileCoordinator | null = null
   private connectionProfilesLoaded: boolean = false
   private pendingConnectionProfileSave: WindowsConnectionSaveInput | null = null
   private lastConnectionErrorMessage: string = ''
@@ -188,25 +174,41 @@ struct Index {
         (): common.UIAbilityContext | null => this.getUiAbilityContext()
       )
       this.permissionManager = new RdpPermissionManager(delegate, (): void => {
-        this.onScreenRecordingPermissionPromptOpen()
+        this.getRemoteControlCoordinator().permissionPromptOpened()
       })
     }
     return this.permissionManager
   }
 
-  private getXrdpServerController(): XrdpServerController {
-    if (this.xrdpServerController === null) {
-      this.xrdpServerController = new XrdpServerController(
-        this.xrdpServerDisplayMessages(),
-        this.remoteControlServerAvailable()
+  private getPermissionRequestCoordinator(): RdpPermissionRequestCoordinator {
+    if (this.permissionRequestCoordinator === null) {
+      this.permissionRequestCoordinator = new RdpPermissionRequestCoordinator(
+        this.getPermissionManager(),
+        (task: () => void): void => this.deferUiUpdate(task)
       )
     }
-    return this.xrdpServerController
+    return this.permissionRequestCoordinator
   }
 
-  private getWindowsConnectionStore(): WindowsConnectionStore | null {
-    if (this.windowsConnectionStore !== null) {
-      return this.windowsConnectionStore
+  private getRemoteControlCoordinator(): RemoteControlCoordinator {
+    if (this.remoteControlCoordinator === null) {
+      this.remoteControlCoordinator = new RemoteControlCoordinator(
+        this.remoteControlServerAvailable(),
+        this.xrdpServerDisplayMessages(),
+        (): RdpPermissionManager => this.getPermissionManager(),
+        (): string => this.getAppFilesDir(),
+        (snapshot: RemoteControlSnapshot): void => {
+          this.deferUiUpdate((): void => this.applyRemoteControlSnapshot(snapshot))
+        }
+      )
+      this.applyRemoteControlSnapshot(this.remoteControlCoordinator.snapshot())
+    }
+    return this.remoteControlCoordinator
+  }
+
+  private getConnectionProfileCoordinator(): WindowsConnectionProfileCoordinator | null {
+    if (this.connectionProfileCoordinator !== null) {
+      return this.connectionProfileCoordinator
     }
 
     const context = this.getUiAbilityContext()
@@ -214,25 +216,25 @@ struct Index {
       return null
     }
 
-    this.windowsConnectionStore = new WindowsConnectionStore(context)
-    return this.windowsConnectionStore
+    this.connectionProfileCoordinator = new WindowsConnectionProfileCoordinator(context)
+    return this.connectionProfileCoordinator
   }
 
   private loadConnectionProfiles(): void {
-    const store = this.getWindowsConnectionStore()
-    if (store === null) {
+    const coordinator = this.getConnectionProfileCoordinator()
+    if (coordinator === null) {
       return
     }
 
-    store.loadSnapshot()
-      .then((snapshot: WindowsConnectionSnapshot) => {
+    coordinator.load()
+      .then((snapshot: WindowsConnectionSnapshot | null) => {
+        if (snapshot === null) {
+          return
+        }
         this.deferUiUpdate(() => {
           this.connectionProfilesLoaded = true
           this.applyConnectionSnapshot(snapshot, true, false)
         })
-      })
-      .catch((error: Error) => {
-        RdpLogger.warn(`windows connection profiles load failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -298,20 +300,20 @@ struct Index {
       return
     }
 
-    const store = this.getWindowsConnectionStore()
-    if (store === null) {
+    const coordinator = this.getConnectionProfileCoordinator()
+    if (coordinator === null) {
       return
     }
-    store.loadPassword(profile)
-      .then((savedPassword: string) => {
+    coordinator.loadPassword(profile)
+      .then((savedPassword: string | null) => {
+        if (savedPassword === null) {
+          return
+        }
         this.deferUiUpdate(() => {
           if (this.selectedConnectionProfileId === profile.id) {
             this.password = savedPassword
           }
         })
-      })
-      .catch((error: Error) => {
-        RdpLogger.warn(`windows connection profile password select failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -332,19 +334,19 @@ struct Index {
       return
     }
 
-    const store = this.getWindowsConnectionStore()
-    if (store === null) {
+    const coordinator = this.getConnectionProfileCoordinator()
+    if (coordinator === null) {
       return
     }
 
-    store.deleteProfile(this.selectedConnectionProfileId)
-      .then((snapshot: WindowsConnectionSnapshot) => {
+    coordinator.deleteProfile(this.selectedConnectionProfileId)
+      .then((snapshot: WindowsConnectionSnapshot | null) => {
+        if (snapshot === null) {
+          return
+        }
         this.deferUiUpdate(() => {
           this.applyConnectionSnapshot(snapshot, true, true)
         })
-      })
-      .catch((error: Error) => {
-        RdpLogger.warn(`windows connection profile delete failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -353,33 +355,24 @@ struct Index {
   }
 
   private saveConnectionProfile(input: WindowsConnectionSaveInput): void {
-    const store = this.getWindowsConnectionStore()
-    if (store === null) {
+    const coordinator = this.getConnectionProfileCoordinator()
+    if (coordinator === null) {
       return
     }
 
-    store.saveProfile(input)
-      .then((profile: WindowsConnectionProfile | null) => {
-        if (profile === null) {
-          return
-        }
-        this.deferUiUpdate(() => {
-          this.selectedConnectionProfileId = profile.id
-          this.rememberConnectionPassword = profile.rememberPassword
-        })
-        return store.loadSnapshot()
-      })
-      .then((snapshot: WindowsConnectionSnapshot | void) => {
-        if (!snapshot) {
+    coordinator.saveProfile(input)
+      .then((snapshot: WindowsConnectionSnapshot | null) => {
+        if (snapshot === null) {
           return
         }
         this.deferUiUpdate(() => {
           this.connectionProfiles = snapshot.profiles
           this.selectedConnectionProfileId = snapshot.selectedProfileId
+          const selected = this.findConnectionProfileIn(snapshot.profiles, snapshot.selectedProfileId)
+          if (selected !== null) {
+            this.rememberConnectionPassword = selected.rememberPassword
+          }
         })
-      })
-      .catch((error: Error) => {
-        RdpLogger.warn(`windows connection profile save failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -400,24 +393,26 @@ struct Index {
       return
     }
 
-    const store = this.getWindowsConnectionStore()
-    if (store === null) {
+    const coordinator = this.getConnectionProfileCoordinator()
+    if (coordinator === null) {
       this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_STORAGE_UNAVAILABLE, 'danger')
       return
     }
 
-    store.clearPassword(this.selectedConnectionProfileId)
-      .then((snapshot: WindowsConnectionSnapshot) => {
+    coordinator.clearPassword(this.selectedConnectionProfileId)
+      .then((snapshot: WindowsConnectionSnapshot | null) => {
+        if (snapshot === null) {
+          this.deferUiUpdate(() => {
+            this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_FAILED, 'danger')
+          })
+          return
+        }
         this.deferUiUpdate(() => {
           this.applyConnectionSnapshot(snapshot, true, false)
           this.password = ''
           this.rememberConnectionPassword = false
           this.setConnectionFeedback(HomeText.PASSWORD_CLEARED_SAVED, 'ok')
         })
-      })
-      .catch((error: Error) => {
-        this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_FAILED, 'danger')
-        RdpLogger.warn(`windows connection password clear failed: ${JSON.stringify(error)}`)
       })
   }
 
@@ -448,120 +443,7 @@ struct Index {
   }
 
   private validateConnectionForm(): ConnectionValidationResult {
-    const host = this.host.trim()
-    const port = this.port.trim()
-    const username = this.username.trim()
-    const password = this.password
-    const messages: string[] = []
-    const hostMessage = this.validateHost(host)
-    if (hostMessage.length > 0) {
-      messages.push(hostMessage)
-    }
-    const portMessage = this.validatePort(port)
-    if (portMessage.length > 0) {
-      messages.push(portMessage)
-    }
-    if (username.length === 0) {
-      messages.push(HomeText.USERNAME_REQUIRED)
-    }
-    if (password.trim().length === 0) {
-      messages.push(HomeText.PASSWORD_REQUIRED)
-    }
-    if (messages.length > 0) {
-      return this.connectionValidationError(messages.join(HomeText.VALIDATION_SEPARATOR), host, port, username, password)
-    }
-    return {
-      ok: true,
-      message: '',
-      host: host,
-      port: port,
-      username: username,
-      password: password
-    }
-  }
-
-  private connectionValidationError(message: string, host: string, port: string, username: string,
-    password: string): ConnectionValidationResult {
-    return {
-      ok: false,
-      message: message,
-      host: host,
-      port: port,
-      username: username,
-      password: password
-    }
-  }
-
-  private validateHost(host: string): string {
-    if (host.length === 0) {
-      return HomeText.HOST_REQUIRED
-    }
-    if (host.length > 253) {
-      return HomeText.HOST_TOO_LONG
-    }
-    if (/\s/.test(host)) {
-      return HomeText.HOST_NO_SPACES
-    }
-    if (host.indexOf('/') >= 0 || host.indexOf('\\') >= 0 || host.indexOf('://') >= 0) {
-      return HomeText.HOST_NO_PROTOCOL_OR_PATH
-    }
-    if (host.indexOf(':') >= 0) {
-      return this.isValidIpv6Host(host) ? '' : HomeText.HOST_FORMAT_INVALID
-    }
-    if (this.isIpv4Candidate(host)) {
-      return this.isValidIpv4Host(host) ? '' : HomeText.HOST_IP_FORMAT_INVALID
-    }
-    return this.isValidDnsHost(host) ? '' : HomeText.HOST_FORMAT_INVALID
-  }
-
-  private validatePort(port: string): string {
-    if (port.length === 0) {
-      return HomeText.PORT_REQUIRED
-    }
-    if (!/^[0-9]+$/.test(port)) {
-      return HomeText.PORT_DIGITS_ONLY
-    }
-    const portNumber = Number(port)
-    if (portNumber < 1 || portNumber > 65535) {
-      return HomeText.PORT_RANGE_INVALID
-    }
-    return ''
-  }
-
-  private isIpv4Candidate(host: string): boolean {
-    return /^[0-9.]+$/.test(host) && host.indexOf('.') >= 0
-  }
-
-  private isValidIpv4Host(host: string): boolean {
-    const parts = host.split('.')
-    if (parts.length !== 4) {
-      return false
-    }
-    for (const part of parts) {
-      if (part.length === 0 || !/^[0-9]+$/.test(part)) {
-        return false
-      }
-      const value = Number(part)
-      if (value < 0 || value > 255 || Math.floor(value) !== value) {
-        return false
-      }
-    }
-    return true
-  }
-
-  private isValidIpv6Host(host: string): boolean {
-    return /^[0-9A-Fa-f:]+$/.test(host) && host.indexOf(':') >= 0 && host.split(':').length >= 3
-  }
-
-  private isValidDnsHost(host: string): boolean {
-    const labels = host.split('.')
-    const labelPattern = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
-    for (const label of labels) {
-      if (label.length === 0 || label.length > 63 || !labelPattern.test(label)) {
-        return false
-      }
-    }
-    return true
+    return RdpConnectionValidator.validate(this.host, this.port, this.username, this.password)
   }
 
   private xrdpServerDisplayMessages(): XrdpServerDisplayMessages {
@@ -581,48 +463,57 @@ struct Index {
     }
 
     try {
-      rdpNative.onState((state: string) => {
-        this.deferUiUpdate(() => {
-          const wasConnected = this.isConnected()
-          const nextConnected = this.isConnectedNativeState(state)
-          if (!nextConnected && (state === 'Disconnected' || state === 'Failed' || state === 'Idle')) {
+      const callbackResult = this.rdpClientController.registerCallbacks({
+        onState: (state: string, wasConnected: boolean): void => {
+          this.deferUiUpdate(() => {
+            const nextConnected = this.isConnectedNativeState(state)
+            if (!nextConnected && (state === 'Disconnected' || state === 'Failed' || state === 'Idle')) {
+              if (wasConnected) {
+                this.releaseActiveInput()
+              }
+              this.setSessionVisible(false)
+            }
+            this.updateSessionNoticeForNativeState(state)
+            if (nextConnected && !wasConnected) {
+              this.setSessionVisible(true)
+              this.focusRemoteSurface()
+              this.lastConnectionErrorMessage = ''
+              this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
+              this.persistPendingConnectionProfile()
+            }
+            if (state === 'Failed') {
+              this.pendingConnectionProfileSave = null
+              this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
+                HomeText.CONNECTION_FAILURE_CREDENTIALS), 'danger')
+              RdpLogger.error(`Native state: ${state}`)
+            } else if ((state === 'Disconnected' || state === 'Idle') && this.pendingConnectionProfileSave !== null) {
+              this.pendingConnectionProfileSave = null
+              this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
+                HomeText.CONNECTION_FAILURE_NO_SESSION), 'danger')
+            } else if (state === 'Connected' || state === 'Disconnected' ||
+              state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady') {
+              RdpLogger.info(`Native state: ${state}`)
+            }
+          })
+        },
+        onError: (message: string, wasConnected: boolean): void => {
+          this.deferUiUpdate(() => {
+            if (wasConnected) {
+              this.releaseActiveInput()
+            }
             this.setSessionVisible(false)
-          }
-          this.connected = nextConnected
-          this.updateSessionNoticeForNativeState(state)
-          if (nextConnected && !wasConnected) {
-            this.setSessionVisible(true)
-            this.focusRemoteSurface()
-            this.lastConnectionErrorMessage = ''
-            this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
-            this.persistPendingConnectionProfile()
-          }
-          if (state === 'Failed') {
+            this.clearSessionNotice()
             this.pendingConnectionProfileSave = null
-            this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-              HomeText.CONNECTION_FAILURE_CREDENTIALS), 'danger')
-            RdpLogger.error(`Native state: ${state}`)
-          } else if ((state === 'Disconnected' || state === 'Idle') && this.pendingConnectionProfileSave !== null) {
-            this.pendingConnectionProfileSave = null
-            this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-              HomeText.CONNECTION_FAILURE_NO_SESSION), 'danger')
-          } else if (state === 'Connected' || state === 'Disconnected' ||
-            state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady') {
-            RdpLogger.info(`Native state: ${state}`)
-          }
-        })
+            this.lastConnectionErrorMessage = message
+            this.setConnectionFeedback(this.connectionFailureMessage(message), 'danger')
+            RdpLogger.error(`Native error: ${message}`)
+          })
+        }
       })
-      rdpNative.onError((message: string) => {
-        this.deferUiUpdate(() => {
-          this.setSessionVisible(false)
-          this.connected = false
-          this.clearSessionNotice()
-          this.pendingConnectionProfileSave = null
-          this.lastConnectionErrorMessage = message
-          this.setConnectionFeedback(this.connectionFailureMessage(message), 'danger')
-          RdpLogger.error(`Native error: ${message}`)
-        })
-      })
+      if (!callbackResult.ok) {
+        RdpLogger.error(`Native callback registration failed: ${callbackResult.message}`)
+        return
+      }
       this.registerNativePermissionCallbacks()
       this.callbacksRegistered = true
     } catch (error) {
@@ -631,7 +522,7 @@ struct Index {
   }
 
   private isConnectedNativeState(state: string): boolean {
-    return state === 'Connected' || state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady'
+    return RdpClientController.isConnectedState(state)
   }
 
   private clearSessionNotice(): void {
@@ -708,299 +599,63 @@ struct Index {
   }
 
   private registerNativePermissionCallbacks(): void {
-    const registrations: NativePermissionCallbackRegistration[] = [
-      {
-        label: 'Remote audio capture requested microphone permission',
-        trigger: 'remote audio capture',
-        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
-          rdpNative.onMicrophonePermissionRequest(callback),
-        ensurePermission: (trigger: string): Promise<boolean> =>
-          this.getPermissionManager().ensureMicrophonePermission(trigger),
-        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
-          rdpNative.completeMicrophonePermissionRequest({ requestId: requestId, granted: granted })
-      },
-      {
-        label: 'Remote camera redirection requested camera permission',
-        trigger: 'remote camera redirection',
-        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
-          rdpNative.onCameraPermissionRequest(callback),
-        ensurePermission: (trigger: string): Promise<boolean> =>
-          this.getPermissionManager().ensureCameraPermission(trigger),
-        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
-          rdpNative.completeCameraPermissionRequest({ requestId: requestId, granted: granted })
-      },
-      {
-        label: 'Clipboard sync requested pasteboard permission',
-        trigger: 'clipboard read',
-        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
-          rdpNative.onClipboardPermissionRequest(callback),
-        ensurePermission: (trigger: string): Promise<boolean> =>
-          this.getPermissionManager().ensurePasteboardReadPermission(trigger),
-        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
-          rdpNative.completeClipboardPermissionRequest({ requestId: requestId, granted: granted })
-      },
-      {
-        label: 'RDP location channel requested location permission',
-        trigger: 'remote location redirection',
-        onRequest: (callback: (requestId: string) => void): NativeCommandResult =>
-          rdpNative.onLocationPermissionRequest(callback),
-        ensurePermission: (trigger: string): Promise<boolean> =>
-          this.getPermissionManager().ensureLocationPermission(trigger),
-        completeRequest: (requestId: number, granted: boolean): NativeCommandResult =>
-          rdpNative.completeLocationPermissionRequest({ requestId: requestId, granted: granted })
-      }
-    ]
-
-    for (let i = 0; i < registrations.length; i++) {
-      const registration = registrations[i]
-      registration.onRequest((requestIdText: string) => {
-        this.deferUiUpdate(() => {
-          this.handleNativePermissionRequest(
-            requestIdText,
-            registration.label,
-            registration.trigger,
-            registration.ensurePermission,
-            registration.completeRequest
-          )
-        })
-      })
-    }
-  }
-
-  private handleNativePermissionRequest(requestIdText: string, label: string, trigger: string,
-    ensurePermission: (trigger: string) => Promise<boolean>,
-    completeRequest: (requestId: number, granted: boolean) => NativeCommandResult): void {
-    const requestId = Number(requestIdText)
-    const safeRequestId = isNaN(requestId) ? 0 : requestId
-    RdpLogger.info(`${label}: requestId=${requestIdText}`)
-    ensurePermission(trigger)
-      .then((granted: boolean) => {
-        const result: NativeCommandResult = completeRequest(safeRequestId, granted)
-        if (!granted || !result.ok) {
-          RdpLogger.warn(`${result.message}: granted=${granted}`)
-        }
-      })
-      .catch((error: Error) => {
-        RdpLogger.error(`${label} failed: ${JSON.stringify(error)}`)
-        const result: NativeCommandResult = completeRequest(safeRequestId, false)
-        RdpLogger.warn(`${result.message}: granted=false`)
-      })
-  }
-
-  private generateRemoteAccessCode(): string {
-    const value = Math.floor(100000 + Math.random() * 900000)
-    return `${value}`
-  }
-
-  private ensureRemoteAccessCode(): string {
-    if (!this.remoteAccessCodeInitialized || this.remoteAccessCode === '000000') {
-      this.remoteAccessCode = this.generateRemoteAccessCode()
-      this.remoteAccessCodeInitialized = true
-    }
-    return this.remoteAccessCode
-  }
-
-  private hasScreenRecordingPermission(): boolean {
-    if (!this.remoteControlServerAvailable()) {
-      return false
-    }
-    return this.getPermissionManager().hasScreenRecordingPermission()
+    this.getPermissionRequestCoordinator().register()
   }
 
   private refreshScreenRecordingPermissionState(): boolean {
-    if (!this.remoteControlServerAvailable()) {
-      this.screenRecordingPermissionGranted = false
-      this.screenRecordingPermissionBusy = false
-      return false
-    }
-    this.screenRecordingPermissionGranted = this.hasScreenRecordingPermission()
-    return this.screenRecordingPermissionGranted
-  }
-
-  private clearXrdpServerBusy(reason: string): void {
-    if (this.xrdpServerBusy) {
-      RdpLogger.info(`xrdp busy cleared: ${reason}`)
-    }
-    this.xrdpServerBusy = false
-  }
-
-  private setScreenRecordingPermissionBusy(busy: boolean): void {
-    this.screenRecordingPermissionBusy = busy
-    if (busy) {
-      this.xrdpServerBusy = true
-    }
-  }
-
-  private onScreenRecordingPermissionPromptOpen(): void {
-    RdpLogger.info('screen recording permission prompt opened')
-    this.setScreenRecordingPermissionBusy(true)
-  }
-
-  private applyScreenRecordingPermissionResult(granted: boolean, clearBusy: boolean = false): boolean {
-    const allowed = granted || this.hasScreenRecordingPermission()
-    RdpLogger.info(`screen recording permission result applied: granted=${granted} allowed=${allowed}`)
-    this.screenRecordingPermissionGranted = allowed
-    if (clearBusy || !allowed) {
-      this.clearXrdpServerBusy('screen recording permission not granted')
-    }
-    this.refreshXrdpServerDiagnostics()
-    return allowed
+    return this.getRemoteControlCoordinator().refreshPermissionState()
   }
 
   private requestScreenRecordingPermissionFromSettings(): Promise<boolean> {
-    if (!this.remoteControlServerAvailable()) {
-      return Promise.resolve(false)
-    }
-    return this.getPermissionManager().requestScreenRecordingPermission('remote control settings')
-      .then((granted: boolean) => {
-        const allowed = this.applyScreenRecordingPermissionResult(granted, !granted)
-        if (!allowed) {
-          return false
-        }
-        return this.ensureXrdpServerStarted('screen recording permission granted')
-          .then((_status: XrdpServerStatus) => {
-            return this.applyScreenRecordingPermissionResult(true)
-          })
-      })
-      .catch((error: Error) => {
-        RdpLogger.error(`screen recording permission request from settings failed: ${JSON.stringify(error)}`)
-        return this.applyScreenRecordingPermissionResult(false, true)
-      })
-      .finally(() => {
-        this.setScreenRecordingPermissionBusy(false)
-      })
-  }
-
-  private currentXrdpServerStatus(): XrdpServerStatus {
-    return {
-      running: this.xrdpServerRunning,
-      state: this.xrdpServerState,
-      port: this.xrdpServerPort,
-      message: this.xrdpServerMessage
-    }
-  }
-
-  private applyXrdpServerStatus(status: XrdpServerStatus): XrdpServerStatus {
-    this.xrdpServerRunning = status.running
-    this.xrdpServerState = status.state
-    this.xrdpServerPort = status.port
-    this.xrdpServerMessage = status.message
-    return status
+    return this.getRemoteControlCoordinator().requestPermissionFromSettings()
   }
 
   private refreshXrdpServerDiagnostics(): XrdpServerStatus {
-    return this.applyXrdpServerStatus(this.getXrdpServerController().diagnostics())
+    return this.getRemoteControlCoordinator().refreshDiagnostics()
   }
 
   private refreshRemoteControlReadiness(clearBusy: boolean = false): XrdpServerStatus {
-    if (clearBusy) {
-      this.clearXrdpServerBusy('remote control readiness refreshed')
-    }
-    this.refreshScreenRecordingPermissionState()
-    return this.refreshXrdpServerDiagnostics()
+    return this.getRemoteControlCoordinator().refreshReadiness(clearBusy)
   }
 
   private startXrdpServerFromSettings(): Promise<XrdpServerStatus> {
-    return this.ensureXrdpServerStarted('remote control settings button', false, true)
+    return this.getRemoteControlCoordinator().startFromSettings()
   }
 
   private setRemoteAccessCodeGateFromSettings(enabled: boolean): string {
-    this.setRemoteAccessCodeGateEnabled(enabled)
-    return this.remoteAccessCode
+    return this.getRemoteControlCoordinator().setAccessCodeGate(enabled)
   }
 
   private regenerateRemoteAccessCodeFromSettings(): string {
-    this.remoteAccessCode = this.generateRemoteAccessCode()
-    this.remoteAccessCodeInitialized = true
-    if (this.remoteAccessCodeGateEnabled) {
-      this.ensureXrdpServerStarted('access code regenerated', true)
-    }
-    return this.remoteAccessCode
-  }
-
-  private xrdpServerStartOptions(restartIfRunning: boolean = false): XrdpServerStartOptions {
-    return {
-      appFilesDir: this.getAppFilesDir(),
-      accessCode: this.remoteAccessCodeGateEnabled ? this.ensureRemoteAccessCode() : '',
-      accessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
-      restartIfRunning: restartIfRunning
-    }
+    return this.getRemoteControlCoordinator().regenerateAccessCode()
   }
 
   private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false,
     requestScreenRecordingImmediately: boolean = false): Promise<XrdpServerStatus> {
-    if (!this.remoteControlServerAvailable()) {
-      return Promise.resolve(this.refreshXrdpServerDiagnostics())
-    }
-    if (this.xrdpServerStartRequest !== null && !restartIfRunning) {
-      if (requestScreenRecordingImmediately) {
-        this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`)
-          .then((granted: boolean) => {
-            this.applyScreenRecordingPermissionResult(granted, !granted)
-          })
-          .catch((error: Error) => {
-            RdpLogger.error(`xrdp immediate permission request failed: ${JSON.stringify(error)}`)
-            this.applyScreenRecordingPermissionResult(false, true)
-          })
-          .finally(() => {
-            this.setScreenRecordingPermissionBusy(false)
-          })
-      }
-      return this.xrdpServerStartRequest
-    }
-    this.xrdpServerBusy = this.hasScreenRecordingPermission()
-    const screenRecordingPermissionRequest = requestScreenRecordingImmediately ?
-      this.getPermissionManager().requestScreenRecordingPermission(`xrdp ${trigger}`) :
-      this.getPermissionManager().ensureScreenRecordingPermission(`xrdp ${trigger}`)
-    this.xrdpServerStartRequest = screenRecordingPermissionRequest
-      .then((granted: boolean) => {
-        const allowed = this.applyScreenRecordingPermissionResult(granted, !granted)
-        if (!allowed) {
-          RdpLogger.warn(`xrdp start skipped: screen recording permission denied: ${trigger}`)
-          return this.refreshRemoteControlReadiness(true)
-        }
-        return this.startXrdpServerAfterPermissions(trigger, restartIfRunning)
-      })
-      .catch((error: Error) => {
-        RdpLogger.error(`xrdp permission check failed: ${JSON.stringify(error)}`)
-        this.applyScreenRecordingPermissionResult(false, true)
-        return this.refreshXrdpServerDiagnostics()
-      })
-      .finally(() => {
-        this.xrdpServerStartRequest = null
-        this.clearXrdpServerBusy('xrdp start request finished')
-        this.setScreenRecordingPermissionBusy(false)
-        this.refreshRemoteControlReadiness()
-      })
-    return this.xrdpServerStartRequest
+    return this.getRemoteControlCoordinator().ensureStarted(
+      trigger, restartIfRunning, requestScreenRecordingImmediately)
   }
 
-  private startXrdpServerAfterPermissions(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
-    const status = this.getXrdpServerController().start(this.xrdpServerStartOptions(restartIfRunning), trigger)
-    return this.applyXrdpServerStatus(status)
-  }
-
-  private setRemoteAccessCodeGateEnabled(enabled: boolean): void {
-    if (!this.remoteControlServerAvailable()) {
-      return
-    }
-    if (this.remoteAccessCodeGateEnabled === enabled) {
-      return
-    }
-    this.remoteAccessCodeGateEnabled = enabled
-    if (enabled) {
-      this.ensureRemoteAccessCode()
-    }
-    this.ensureXrdpServerStarted(enabled ? 'access code gate enabled' : 'access code gate disabled', true)
+  private applyRemoteControlSnapshot(snapshot: RemoteControlSnapshot): void {
+    this.remoteAccessCode = snapshot.accessCode
+    this.remoteAccessCodeGateEnabled = snapshot.accessCodeGateEnabled
+    this.screenRecordingPermissionGranted = snapshot.screenRecordingPermissionGranted
+    this.screenRecordingPermissionBusy = snapshot.screenRecordingPermissionBusy
+    this.xrdpServerRunning = snapshot.serverRunning
+    this.xrdpServerState = snapshot.serverState
+    this.xrdpServerPort = snapshot.serverPort
+    this.xrdpServerMessage = snapshot.serverMessage
+    this.xrdpServerBusy = snapshot.serverBusy
   }
 
   private connectNative(): void {
     const validation = this.validateConnectionForm()
     if (!validation.ok) {
-      this.connected = false
+      const validationMessage = HomeConnectionValidation.message(validation.issues)
+      this.rdpClientController.beginConnect()
       this.pendingConnectionProfileSave = null
-      this.setConnectionFeedback(validation.message, 'warning')
-      RdpLogger.warn(`Connection validation failed: ${validation.message}`)
+      this.setConnectionFeedback(validationMessage, 'warning')
+      RdpLogger.warn(`Connection validation failed: ${validationMessage}`)
       return
     }
 
@@ -1023,7 +678,7 @@ struct Index {
       rememberPassword: this.rememberConnectionPassword
     }
     this.lastConnectionErrorMessage = ''
-    this.connected = false
+    this.rdpClientController.beginConnect()
     this.remoteLoginWaiting = false
     this.setConnectionFeedback(HomeText.CONNECTION_CONNECTING, 'info')
     this.sessionNoticeTitle = HomeText.SESSION_CONNECTING_TITLE
@@ -1042,7 +697,7 @@ struct Index {
   private startNativeConnect(host: string, port: string, username: string, password: string,
     policy: string, appFilesDir: string): void {
     try {
-      const result: NativeCommandResult = rdpNative.connect({
+      const result = this.rdpClientController.connect({
         host: host,
         port: port,
         username: username,
@@ -1051,9 +706,8 @@ struct Index {
         appFilesDir: appFilesDir
       })
       if (result.ok) {
-        this.connected = this.isConnectedNativeState(result.state)
         this.setSessionVisible(true)
-        if (this.connected) {
+        if (this.isConnected()) {
           this.lastConnectionErrorMessage = ''
           this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
           this.persistPendingConnectionProfile()
@@ -1061,7 +715,6 @@ struct Index {
       } else {
         RdpLogger.error(result.message)
         this.setSessionVisible(false)
-        this.connected = false
         this.clearSessionNotice()
         this.pendingConnectionProfileSave = null
         this.lastConnectionErrorMessage = result.message
@@ -1069,7 +722,6 @@ struct Index {
       }
     } catch (error) {
       this.setSessionVisible(false)
-      this.connected = false
       this.clearSessionNotice()
       this.pendingConnectionProfileSave = null
       this.lastConnectionErrorMessage = this.errorMessage(error as Error)
@@ -1090,7 +742,7 @@ struct Index {
   }
 
   private isConnected(): boolean {
-    return this.connected
+    return this.rdpClientController.isConnected()
   }
 
   private focusRemoteSurface(): void {
@@ -1107,7 +759,7 @@ struct Index {
 
   private releaseActiveInput(): void {
     try {
-      const result: NativeCommandResult = rdpNative.releaseAllInput()
+      const result = this.rdpClientController.releaseAllInput()
       if (!result.ok) {
         RdpLogger.warn(result.message)
       }
@@ -1138,6 +790,10 @@ struct Index {
           noticeTitle: this.sessionNoticeTitle,
           noticeSubtitle: this.sessionNoticeSubtitle,
           remoteLoginWaiting: this.remoteLoginWaiting,
+          onAttachContent: (content: NodeContent): boolean => this.rdpSurfaceContentHost.attach(content),
+          onDetachContent: (): void => {
+            this.rdpSurfaceContentHost.detach()
+          },
           onSurfaceLoad: (): void => {
             this.deferUiUpdate(() => {
               this.focusRemoteSurface()

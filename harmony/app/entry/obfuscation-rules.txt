@@ -32,14 +32,8 @@ getXrdpServerDiagnostics
 releaseAllKeys
 onState
 onError
-onMicrophonePermissionRequest
-onCameraPermissionRequest
-onClipboardPermissionRequest
-onLocationPermissionRequest
-completeClipboardPermissionRequest
-completeMicrophonePermissionRequest
-completeCameraPermissionRequest
-completeLocationPermissionRequest
+onPermissionRequest
+completePermissionRequest
 host
 port
 username
@@ -51,6 +45,7 @@ appFilesDir
 accessCode
 accessCodeGateEnabled
 restartIfRunning
+type
 requestId
 granted
 ok
