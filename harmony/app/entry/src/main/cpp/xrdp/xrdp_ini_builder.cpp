@@ -91,6 +91,7 @@ bool BuildSecureXrdpIni(const XrdpResolvedPaths& paths, const XrdpServerParams& 
         << "username=ohos\n"
         << "password=ask\n"
         << "access_code=" << accessCode << "\n"
+        << "audin=true\n"
         << "max_desktop_width=" << kDefaultMaxDesktopWidth << "\n"
         << "max_desktop_height=" << kDefaultMaxDesktopHeight << "\n"
         << "port=0\n"
