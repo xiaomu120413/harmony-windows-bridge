@@ -5,6 +5,7 @@
 #include "common/bridge_types.h"
 #include "common/bridge_log.h"
 #include "input/xcomponent_input_bridge.h"
+#include "surface/xcomponent_native_host.h"
 #include "napi/camera_permission_bridge.h"
 #include "napi/clipboard_permission_bridge.h"
 #include "napi/location_bridge.h"
@@ -159,6 +160,33 @@ napi_value ReleaseAllInput(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value AttachXComponentContent(napi_env env, napi_callback_info info)
+{
+    napi_value nodeContent = GetFirstArgument(env, info);
+    std::string message;
+    const bool ok = nodeContent != nullptr &&
+        AttachNativeXComponentContent(env, nodeContent, message);
+    if (nodeContent == nullptr) {
+        message = "XComponent NodeContent is required";
+    }
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", ok);
+    SetString(env, result, "state", ok ? "Attached" : "Failed");
+    SetString(env, result, "message", message);
+    return result;
+}
+
+napi_value DetachXComponentContent(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    DetachNativeXComponentContent();
+    napi_value result = MakeObject(env);
+    SetBool(env, result, "ok", true);
+    SetString(env, result, "state", "Detached");
+    SetString(env, result, "message", "native XComponent content detached");
+    return result;
+}
+
 napi_value BindImeHostWindow(napi_env env, napi_callback_info info)
 {
     napi_value arg = GetFirstArgument(env, info);
@@ -303,6 +331,10 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"bindImeHostWindow", nullptr, BindImeHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"attachXComponentContent", nullptr, AttachXComponentContent, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
+        {"detachXComponentContent", nullptr, DetachXComponentContent, nullptr, nullptr, nullptr,
+            napi_default, nullptr},
         {"releaseAllInput", nullptr, ReleaseAllInput, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -325,6 +357,5 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     InitializeNativeBridgeContext();
-    RegisterNativeXComponent(env, exports);
     return exports;
 }

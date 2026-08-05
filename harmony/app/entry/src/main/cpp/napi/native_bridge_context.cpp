@@ -286,21 +286,12 @@ void InitializeNativeBridgeContext()
     }
 }
 
-bool RegisterNativeXComponent(napi_env env, napi_value exports)
+bool RegisterNativeXComponentInstance(OH_NativeXComponent* component)
 {
+    if (component == nullptr) {
+        return false;
+    }
     g_surface.SetLogSink(EmitNativeLog);
-
-    napi_value nativeXComponentValue = nullptr;
-    napi_status status = napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &nativeXComponentValue);
-    if (status != napi_ok || nativeXComponentValue == nullptr) {
-        return false;
-    }
-
-    OH_NativeXComponent* component = nullptr;
-    status = napi_unwrap(env, nativeXComponentValue, reinterpret_cast<void**>(&component));
-    if (status != napi_ok || component == nullptr) {
-        return false;
-    }
 
     static OH_NativeXComponent_Callback callback = {
         OnXComponentSurfaceCreated,

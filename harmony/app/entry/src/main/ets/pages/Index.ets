@@ -91,7 +91,6 @@ struct Index {
   private connected: boolean = false
   private callbacksRegistered: boolean = false
   private remoteAccessCodeInitialized: boolean = false
-  private surfaceController: XComponentController = new XComponentController()
   private permissionManager: RdpPermissionManager | null = null
   private xrdpServerController: XrdpServerController | null = null
   private xrdpServerStartRequest: Promise<XrdpServerStatus> | null = null
@@ -1136,7 +1135,6 @@ struct Index {
     Column() {
       if (this.showSession) {
         RdpSessionPage({
-          surfaceController: this.surfaceController,
           noticeTitle: this.sessionNoticeTitle,
           noticeSubtitle: this.sessionNoticeSubtitle,
           remoteLoginWaiting: this.remoteLoginWaiting,

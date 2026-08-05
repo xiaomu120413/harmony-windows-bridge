@@ -37,6 +37,8 @@ declare const rdpNative: {
   ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult;
   getXrdpServerDiagnostics(): NativeXrdpServerResult;
   bindImeHostWindow(windowId: number): NativeCommandResult;
+  attachXComponentContent(nodeContent: Object): NativeCommandResult;
+  detachXComponentContent(): NativeCommandResult;
   releaseAllInput(): NativeCommandResult;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;

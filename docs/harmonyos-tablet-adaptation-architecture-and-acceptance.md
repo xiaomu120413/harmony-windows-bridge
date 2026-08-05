@@ -1120,6 +1120,29 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，新增 16:9→4:3、4:3→16:9、16px 近一比一、奇数尺寸、零尺寸、黑边边界、published/stale/越界 rect 用例；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,547,212 bytes；平板 `5JB0223804000371` 覆盖安装并冷启动成功，PID 49235。用户随后确认此前全部失效的普通输入事件已恢复，双击仍不生效并继续归属 TAB-F-04；GDI/AVC420/AVC444 完整矩阵仍待补。 |
 | 关联提交 | 待实现后回写 |
 
+#### TAB-F-06：触屏双击抖动隔离与远端坐标稳定
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-F-06 |
+| 设计版本/章节 | v1.9；第 10.5、10.7、12.8、14.2 节 |
+| 真机根因 | 平板 XComponent 的真实 touchscreen 流在一次按下与抬起之间会产生 6～15 个 MOVE 样本，观测到的两击间隔约 110～240ms，时序满足系统双击窗口。现有 reducer 自行重复实现 tap/double-tap 竞争，并在第二次 DOWN 后把每个 MOVE 都作为 held move 发送；远端因此可能把第二击按拖动处理。纯策略测试只覆盖理想序列，没有覆盖系统真实事件仲裁。 |
+| 官方能力与平台依据 | API 22 `ArkUI_NativeGestureAPI_1` 原生提供 Tap、LongPress、Pan、Pinch、Rotation、Swipe 识别器以及 group/精确手指数限制；双击规则明确为两击间隔 300ms、位置距离 60vp。单击与双击不能放在 Exclusive 同类型组：第一击会先满足单击，导致双击失败；应并行识别并由业务翻译层把 single ACCEPT 作为首击、double ACCEPT 作为第二击。不同语义的 Tap/LongPress/Pan 再由外层 Exclusive 竞争。Android/桌面远控同样优先使用平台 GestureDetector/touch-slop，再转换为标准鼠标事件。 |
+| 系统手势映射 | 1指 Tap(1)/Tap(2) 使用系统 Parallel 子组：single ACCEPT 立即发送首组 left down/up 并保存坐标，double ACCEPT 只补第二组且固定使用首击坐标，避免三击和远端坐标阈值漂移。1指 LongPress(500ms) ACCEPT=右键单击。1指 Pan(5vp) ACCEPT=在起点 left-down，UPDATE=held move，END/CANCEL=left-up。2指 Pan(12vp) 使用精确2指限制，按系统累计 offset 的增量量化为横/纵 wheel。外层 Exclusive 让 Tap、LongPress、1指 Pan、2指 Pan 只成功一条；所有 recognizer 调用 `OH_ArkUI_SetGestureRecognizerLimitFingerCount(true)`，避免1指 Pan被两指触发。 |
+| 原始事件与非映射手势 | 原始 XComponent Touch callback 只保留直接触摸通知，用于远端文本光标/IME 按需判断，不再识别或发送 tap、drag、long-press、scroll。Pinch、Rotation、Swipe 当前没有已定义的 RDP/本地缩放语义，不绑定也不伪装成滚轮；未来引入本地 zoom transform 时单独设计 Pinch。鼠标按钮、Hover、键盘和触控板 Axis 本身已有系统原生事件接口，继续直通对应 Native callback，不重复挂 Gesture。 |
+| Native/ArkTS 边界 | 不再由 ArkTS 声明 XComponent 后反传 FrameNode。Native 通过 `ArkUI_NativeNodeAPI_1::createNode(ARKUI_NODE_XCOMPONENT)` 直接创建 XComponent node，以 `OH_NativeXComponent_GetNativeXComponent(node)` 获取 Surface/Input 接口，在同一 node 上注册 Surface、鼠标、键盘、Axis 和系统 Gesture。ArkTS 仅创建 SDK 要求的 `NodeContent` 宿主对象并用 `ContentSlot` 占位，将 NodeContent 交给 Native 挂载/卸载；ArkTS 不持有 XComponentController、node、gesture 参数、状态或回调。 |
+| 节点属性与生命周期 | Native node 显式设置 100% 宽高、黑色背景、focusable、focus-on-touch、default-focus 和既有组件 ID，保持当前布局/焦点语义。attach 时依次创建 node、取得 `OH_NativeXComponent`、注册既有 Surface/Input callback、挂系统手势、加入 NodeContent；任一步失败按逆序回滚。detach 时先统一释放输入，再从 NodeContent 移除、卸载/销毁手势和 node。重复 attach 同一 content 幂等，不保留 ArkTS 声明 XComponent 的兼容路径。 |
+| 计划代码文件 | 本文；新建 `cpp/input/xcomponent_native_gesture.h/.cpp`、`cpp/surface/xcomponent_native_host.h/.cpp`；修改 `cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/components/session/RdpSessionPage.ets`、`cpp/CMakeLists.txt`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`tools/run_tablet_native_tests.ps1` |
+| 公共 ABI | 新增内部 N-API `attachXComponentContent(nodeContent)` / `detachXComponentContent()`，仅承载 Native node 的 UI 宿主生命周期；删除未发布的 `bindXComponentGestures(frameNode)` / `unbindXComponentGestures()` 草案。无 ArkTS 手势动作 ABI，无 FreeRDP/xrdp ABI 变化。 |
+| 兼容与回退 | 仅保留 API 22 Native XComponent node + Native Gesture 单一路径，不保留 ArkTS XComponent 或手写双击兼容分支；node 创建、callback 注册、addGesture 或 NodeContent add 失败必须记录明确错误并完整回滚。异常 CANCEL/Blur/Surface 生命周期仍走统一释放。 |
+| 验收ID | AC-GESTURE-UNIT：raw Touch 不产生远端动作；single ACCEPT=1击，single+double ACCEPT=首击同坐标的2击且不产生第3击；1指 Pan begin/update/end/cancel 按钮严格配对；2指 Pan 小量累计、大量多 notch、横纵增量正确；精确手指数、Parallel Tap 子组和外层 Exclusive 的创建结果均检查。AC-GESTURE-DEVICE：文件/标题栏双击10/10；单击、拖动、长按右键、双指纵横滚动各10次成功且互不串动作；Pinch/Rotation 不产生远端滚轮/按钮。AC-LIFECYCLE：Blur、旋转、页面销毁和 Surface 失效可释放系统 Pan 的活动左键与滚动余量；重复 attach 无重复回调、悬空 node、Surface 或粘键。AC-ARCH：ArkTS 只有 NodeContent/ContentSlot 宿主，无 XComponentController、手势参数/状态/回调，无双击专用协议，FreeRDP/xrdp 通用 core 无修改。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（全 Native XComponent node 及系统 Tap/LongPress/1指Pan/2指Pan 已完成；等待远端动作级真机验收后升 Verified） |
+| 实际代码文件 | `cpp/input/xcomponent_native_gesture.h/.cpp`、`cpp/surface/xcomponent_native_host.h/.cpp`、`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/components/session/RdpSessionPage.ets`、`ets/pages/Index.ets`、`cpp/CMakeLists.txt`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`tools/run_tablet_native_tests.ps1`、本文 |
+| 设计偏差及原因 | 无功能边界偏差。`ContentSlot` 本身不支持 width/height/onAppear 通用属性，因此用 100% `Stack` 承载显示槽与 attach 生命周期；NodeContent 仍只作为 Native node 的系统宿主，不持有 XComponent 或手势逻辑。系统 Pan offset 单位为 px，双指滚轮量化使用 display density 将12vp换算为px。Pinch/Rotation/Swipe 按“无已定义远端语义”明确不绑定。 |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，覆盖 single+double 仅两击且锚定首击坐标、Pan accept/update/end/cancel 按钮配对、双指累计 offset 横纵滚轮、Axis/geometry 回归，并静态检查 Parallel Tap 子组、外层 Exclusive、精确手指数及 ArkTS/Raw Touch 无手势所有权；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,542,202 bytes。HAP 已覆盖安装到平板 `5JB0223804000371` 并以 bundle `com.muhub.desktop` 冷启动成功，PID 2371；远端双击、长按、拖动和双指滚动动作矩阵待用户在会话页验证。 |
+| 关联提交 | 待实现后回写 |
+
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：
 
 ~~~text

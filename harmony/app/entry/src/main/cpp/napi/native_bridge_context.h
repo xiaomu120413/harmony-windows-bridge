@@ -1,6 +1,5 @@
 #pragma once
 
-#include "napi/native_api.h"
 #include "napi/napi_event_sink.h"
 #include "session/rdp_session_core.h"
 #include "surface/surface_bridge.h"
@@ -15,6 +14,6 @@ RdpSession& BridgeSession();
 bool BindImeHostWindow(uint32_t windowId, std::string& message);
 
 void InitializeNativeBridgeContext();
-bool RegisterNativeXComponent(napi_env env, napi_value exports);
+bool RegisterNativeXComponentInstance(OH_NativeXComponent* component);
 
 } // namespace rdp_bridge

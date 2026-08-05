@@ -100,6 +100,7 @@ add_library(entry SHARED
     input/xcomponent_input_registration.cpp
     input/xcomponent_key.cpp
     input/xcomponent_mouse.cpp
+    input/xcomponent_native_gesture.cpp
     input/remote_ime_client.cpp
     input/remote_pointer_text_policy.cpp
     input/remote_pointer_text_detector.cpp
@@ -135,6 +136,7 @@ add_library(entry SHARED
     surface/render_output_owner.cpp
     surface/remote_content_geometry.cpp
     surface/surface_bridge.cpp
+    surface/xcomponent_native_host.cpp
     common/string_utils.cpp
     xrdp/xrdp_ini_builder.cpp
     xrdp/xrdp_runtime_config.cpp
