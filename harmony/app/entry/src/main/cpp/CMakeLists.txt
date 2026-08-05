@@ -38,6 +38,7 @@ set(FREERDP_OHOS_REQUIRED_HEADERS
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_keyboard.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_location.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_pointer.h
+    ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_pen.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_rdpgfx.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session.h
     ${FREERDP_OHOS_SOURCE_ROOT}/client/OHOS/ohos_session_config.h)
@@ -100,6 +101,7 @@ add_library(entry SHARED
     input/xcomponent_input_registration.cpp
     input/xcomponent_key.cpp
     input/xcomponent_mouse.cpp
+    input/xcomponent_pen.cpp
     input/xcomponent_native_gesture.cpp
     input/remote_ime_client.cpp
     input/remote_pointer_text_policy.cpp
@@ -124,7 +126,7 @@ add_library(entry SHARED
     session/rdp_session_core.cpp
     session/rdp_session_channels.cpp
     session/rdp_display_resize_coordinator.cpp
-    session/rdp_display_orientation_monitor.cpp
+    session/rdp_display_layout_monitor.cpp
     session/rdp_session_input.cpp
     surface/avc420_gpu_compositor.cpp
     surface/avc420_gpu_compositor_internal.cpp

@@ -1,6 +1,6 @@
 # FreeRDP OHOS Feature Matrix
 
-更新时间：2026-05-26
+更新时间：2026-08-05
 
 ## 结论
 
@@ -60,12 +60,14 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | RDPGFX/H.264 + AVC444 GPU compositor | 首版交付 | 默认 `rdpgfx-h264`，AVC444 GPU compositor 开启 | 无新增权限 | 待真机确认协商、首帧、resize、fallback |
 | GDI/software render | 保留 fallback | 图形失败时可回退 | 无新增权限 | 待真机确认失败场景不黑屏 |
 | 动态分辨率 `disp` | 首版交付 | 默认请求 | 无新增权限 | 待真机确认 resize 和服务端不支持提示 |
+| FreeRDP 多显示器 `disp/multimon` | 已实现，待动作级真机验收 | 仅检测到 2 块及以上本地显示器时启用；回到单屏自动清除多屏快照 | 无新增权限 | OHOS 交叉编译与 HAP 构建通过；待外接屏热插拔、拓扑和四角输入验收 |
+| 手写笔 `RDPEI` | 已实现，待动作级真机验收 | Native XComponent 检测到 pen 时自动启用；不提供 ArkTS 开关 | 无新增权限 | 压力/倾角/橡皮字段及生命周期静态检查通过；待 Windows Ink 真机验收 |
 | Geometry tracking `geometry` | 首版交付 | 默认注册动态虚拟通道 | 无新增权限 | 待真机确认服务端是否协商；当前不消费 region 数据 |
 | 剪贴板文本 `cliprdr` + Pasteboard | 首版交付 | 默认接入，按需授权 | `READ_PASTEBOARD` | 待真机确认双向文本、拒绝权限和 change echo |
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 已覆盖延迟、断连、前后台和路由回归 |
 | 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 已覆盖授权、拒绝、采集路径和断连回归 |
-| 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 待真机确认授权、拒绝、采集路径 |
+| 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 已覆盖授权、拒绝、采集路径和断连释放回归 |
 | 地理位置 `location` | 后端就绪，默认关闭 channel | 默认 session config 关闭；启用后远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝、channel 开关和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 首版交付 | 默认映射固定 Download 子目录，不暴露任意路径 | 不声明额外文件权限；依赖下载控件授权 | 已真机确认启动后创建 `Download/com.muhub.desktop`；仍需 Windows `\\tsclient\Downloads` 读写回归 |
 | 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已覆盖 Harmony PDF Printer/CUPS job、真实打印机选择、失败提示和多设备回归 |
@@ -135,6 +137,8 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 10. 启动 App 后确认系统下载目录下存在 `com.muhub.desktop`；连接 Windows 后验证 `\\tsclient\Downloads` 能列出该目录内容并完成小文件读写。
 11. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
 12. 有 RD Gateway 服务端环境后再启动 RD Gateway 专项：补 UI 参数和 settings 映射，并验证网关认证、证书、错误提示和目标机透传。
+13. 使用 HarmonyOS 手写笔在 Windows Ink/画图验证轻压、重压、X/Y 倾斜、橡皮和失焦/断连释放；确认笔事件不会同时触发 finger Tap/Pan。
+14. 连接外接屏，确认 Windows 显示设置中的数量、主屏和相对拓扑一致；热拔插后无需重连，并验证每块屏幕四角点击坐标。
 
 ## 影响
 

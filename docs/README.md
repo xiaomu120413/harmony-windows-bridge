@@ -17,6 +17,8 @@ validation notes live under `docs/archive/`.
 
 - `freerdp-ohos-feature-matrix.md`: current OHOS FreeRDP feature status,
   default channel policy, permissions and fallback behavior.
+- `freerdp-ohos-pen-and-multimon-design.md`: DesignReady ownership, ABI,
+  fallback and acceptance contract for native stylus and multi-monitor support.
 - `freerdp-ohos-validation-baseline.md`: repeatable build, runtime sync, HAP
   packaging and true-device validation checklist.
 - `freerdp-ohos-sdk-quickstart.md`: public OHOS FreeRDP SDK integration guide.

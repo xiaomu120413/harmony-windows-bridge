@@ -9,6 +9,7 @@
 #include <freerdp/client/channels.h>
 #include <freerdp/client/disp.h>
 #include <freerdp/client/rdpgfx.h>
+#include <freerdp/client/rdpei.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
 #include <freerdp/graphics.h>
@@ -25,6 +26,7 @@
 #include <client/OHOS/ohos_keyboard.h>
 #include <client/OHOS/ohos_location.h>
 #include <client/OHOS/ohos_pointer.h>
+#include <client/OHOS/ohos_pen.h>
 #include <client/OHOS/ohos_rdpgfx.h>
 #include <client/OHOS/ohos_session.h>
 #include <client/OHOS/ohos_session_config.h>
@@ -142,6 +144,13 @@ public:
     using OhosSessionAttachDisplayControlFn = BOOL (*)(
         freerdpOhosSession*, DispClientContext*, char*, size_t);
     using OhosSessionDetachDisplayControlFn = void (*)(freerdpOhosSession*, DispClientContext*);
+    using OhosSessionSendPenFn = BOOL (*)(freerdpOhosSession*,
+        const FREERDP_OHOS_POINTER_VIEWPORT*, const FREERDP_OHOS_PEN_EVENT*, char*, size_t);
+    using OhosSessionAttachPenInputFn = BOOL (*)(freerdpOhosSession*, RdpeiClientContext*,
+        char*, size_t);
+    using OhosSessionDetachPenInputFn = void (*)(freerdpOhosSession*, RdpeiClientContext*);
+    using OhosSessionSetMonitorLayoutFn = BOOL (*)(freerdpOhosSession*,
+        const FREERDP_OHOS_MONITOR_LAYOUT_REQUEST*, char*, size_t);
     using OhosSessionResizeExFn = BOOL (*)(freerdpOhosSession*,
         const FREERDP_OHOS_SESSION_RESIZE_REQUEST*, FREERDP_OHOS_SESSION_RESIZE_RESULT*, char*,
         size_t);
@@ -218,6 +227,10 @@ public:
     OhosSessionDisconnectFn ohosSessionDisconnect = nullptr;
     OhosSessionAttachDisplayControlFn ohosSessionAttachDisplayControl = nullptr;
     OhosSessionDetachDisplayControlFn ohosSessionDetachDisplayControl = nullptr;
+    OhosSessionSendPenFn ohosSessionSendPen = nullptr;
+    OhosSessionAttachPenInputFn ohosSessionAttachPenInput = nullptr;
+    OhosSessionDetachPenInputFn ohosSessionDetachPenInput = nullptr;
+    OhosSessionSetMonitorLayoutFn ohosSessionSetMonitorLayout = nullptr;
     OhosSessionResizeExFn ohosSessionResizeEx = nullptr;
     OhosSessionGetDiagnosticsFn ohosSessionGetDiagnostics = nullptr;
     OhosAvcodecGetDiagnosticsFn ohosAvcodecGetDiagnostics = nullptr;

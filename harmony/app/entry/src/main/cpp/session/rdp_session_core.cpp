@@ -231,6 +231,46 @@ struct RdpSession::Impl {
         return accepted;
     }
 
+    bool SendLocalPen(const LocalPenEvent& pen, std::string& message)
+    {
+        if (!connected.load()) {
+            message = "no active FreeRDP session";
+            return false;
+        }
+        uint32_t action = FREERDP_OHOS_PEN_ACTION_MOVE;
+        switch (pen.action) {
+            case LocalPenAction::Down:
+                action = FREERDP_OHOS_PEN_ACTION_DOWN;
+                break;
+            case LocalPenAction::Up:
+                action = FREERDP_OHOS_PEN_ACTION_UP;
+                break;
+            case LocalPenAction::Cancel:
+                action = FREERDP_OHOS_PEN_ACTION_CANCEL;
+                break;
+            case LocalPenAction::Move:
+            default:
+                break;
+        }
+        uint32_t flags = 0;
+        if ((pen.flags & LocalPenFlagEraser) != 0) {
+            flags |= FREERDP_OHOS_PEN_FLAG_ERASER;
+        }
+        if ((pen.flags & LocalPenFlagInverted) != 0) {
+            flags |= FREERDP_OHOS_PEN_FLAG_INVERTED;
+        }
+        if ((pen.flags & LocalPenFlagBarrel) != 0) {
+            flags |= FREERDP_OHOS_PEN_FLAG_BARREL;
+        }
+        const FREERDP_OHOS_PEN_EVENT event {
+            sizeof(FREERDP_OHOS_PEN_EVENT), FREERDP_OHOS_PEN_EVENT_VERSION, action,
+            pen.deviceId, pen.x, pen.y, pen.pressure, pen.tiltX, pen.tiltY, 0,
+            flags, pen.allowClamp ? TRUE : FALSE,
+        };
+        return channels.SendPen(BuildOhosPointerViewport(SurfaceSnapshotValue(),
+            RdpDesktopWidth(), RdpDesktopHeight()), event, message);
+    }
+
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message)
     {
         if (!connected.load()) {
@@ -329,6 +369,11 @@ struct RdpSession::Impl {
     uint32_t DisplayOrientation() const
     {
         return channels.DisplayOrientation();
+    }
+
+    void SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors)
+    {
+        channels.SetMonitorLayout(std::move(monitors));
     }
 
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
@@ -540,7 +585,8 @@ struct RdpSession::Impl {
             attemptParams.graphicsMode = graphicsModes[attempt];
             lastAttemptMode = attemptParams.graphicsMode;
             bool attemptConnected = false;
-            session = RunFreerdpSession(attemptParams, diagnosticSessionId, running, callbacks,
+            session = RunFreerdpSession(attemptParams, diagnosticSessionId,
+                channels.MonitorLayout(), running, callbacks,
                 [this](FreerdpRuntimeApi* api, freerdp* instance, rdpContext* context,
                     freerdpOhosSession* ohosSession) {
                     SetActiveNative(api, instance, context, ohosSession);
@@ -688,6 +734,11 @@ uint32_t RdpSession::DisplayOrientation() const
     return impl_->DisplayOrientation();
 }
 
+void RdpSession::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors)
+{
+    impl_->SetMonitorLayout(std::move(monitors));
+}
+
 bool RdpSession::SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)
 {
     return impl_->SendPointer(flags, x, y, message);
@@ -757,6 +808,11 @@ bool RdpSession::RequestDynamicDesktopResize(uint32_t width, uint32_t height,
     const std::string& reason, std::string& message)
 {
     return impl_->RequestDynamicDesktopResize(width, height, reason, message);
+}
+
+bool RdpSession::SendLocalPen(const LocalPenEvent& pen, std::string& message)
+{
+    return impl_->SendLocalPen(pen, message);
 }
 
 DisplayResizeResult RdpSession::RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,

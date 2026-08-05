@@ -11,6 +11,7 @@
 
 #include <freerdp/client/channels.h>
 #include <freerdp/channels/disp.h>
+#include <freerdp/channels/rdpei.h>
 #include <freerdp/channels/rdpgfx.h>
 
 namespace rdp_bridge {
@@ -177,6 +178,7 @@ void RdpSessionChannels::SetActive(FreerdpRuntimeApi* api, freerdp* instance, rd
         activeOhosSession_ = ohosSession;
         activeDisp_ = nullptr;
         activeGfx_ = nullptr;
+        activeRdpei_ = nullptr;
     }
 
     RegisterSession(context, this);
@@ -199,6 +201,10 @@ void RdpSessionChannels::ClearActive(freerdp* instance)
     oldContext = activeContext_;
     oldApi = activeApi_;
     DetachGraphicsPipelineLocked(activeGfx_);
+    if (activeRdpei_ != nullptr && activeOhosSession_ != nullptr && oldApi != nullptr &&
+        oldApi->ohosSessionDetachPenInput != nullptr) {
+        oldApi->ohosSessionDetachPenInput(activeOhosSession_, activeRdpei_);
+    }
     if (oldApi != nullptr && oldApi->pubSubUnsubscribe != nullptr && oldContext != nullptr &&
         oldContext->pubSub != nullptr) {
         (void)oldApi->pubSubUnsubscribe(oldContext->pubSub, "ChannelConnected", OnChannelConnected);
@@ -211,6 +217,7 @@ void RdpSessionChannels::ClearActive(freerdp* instance)
     activeOhosSession_ = nullptr;
     activeDisp_ = nullptr;
     activeGfx_ = nullptr;
+    activeRdpei_ = nullptr;
 }
 
 std::mutex& RdpSessionChannels::RegistryMutex()
@@ -262,6 +269,11 @@ bool RdpSessionChannels::IsGraphicsPipelineChannel(const char* name)
     return name != nullptr && std::strcmp(name, RDPGFX_DVC_CHANNEL_NAME) == 0;
 }
 
+bool RdpSessionChannels::IsPenInputChannel(const char* name)
+{
+    return name != nullptr && std::strcmp(name, RDPEI_DVC_CHANNEL_NAME) == 0;
+}
+
 void RdpSessionChannels::OnChannelConnected(void* context, const ChannelConnectedEventArgs* event)
 {
     if (context == nullptr || event == nullptr || event->name == nullptr) {
@@ -276,6 +288,8 @@ void RdpSessionChannels::OnChannelConnected(void* context, const ChannelConnecte
         session->AttachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
     } else if (IsGraphicsPipelineChannel(event->name)) {
         session->AttachGraphicsPipeline(static_cast<RdpgfxClientContext*>(event->pInterface));
+    } else if (IsPenInputChannel(event->name)) {
+        session->AttachPenInput(static_cast<RdpeiClientContext*>(event->pInterface));
     }
 }
 
@@ -293,6 +307,81 @@ void RdpSessionChannels::OnChannelDisconnected(void* context, const ChannelDisco
         session->DetachDisplayControl(static_cast<DispClientContext*>(event->pInterface));
     } else if (IsGraphicsPipelineChannel(event->name)) {
         session->DetachGraphicsPipeline(static_cast<RdpgfxClientContext*>(event->pInterface));
+    } else if (IsPenInputChannel(event->name)) {
+        session->DetachPenInput(static_cast<RdpeiClientContext*>(event->pInterface));
+    }
+}
+
+void RdpSessionChannels::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors)
+{
+    std::array<char, 256> detail {};
+    std::lock_guard<std::mutex> lock(activeMutex_);
+    monitorLayout_ = std::move(monitors);
+    if (activeApi_ == nullptr || activeOhosSession_ == nullptr ||
+        activeApi_->ohosSessionSetMonitorLayout == nullptr) {
+        return;
+    }
+    const FREERDP_OHOS_MONITOR_LAYOUT_REQUEST request {
+        sizeof(FREERDP_OHOS_MONITOR_LAYOUT_REQUEST),
+        FREERDP_OHOS_MONITOR_LAYOUT_VERSION,
+        static_cast<uint32_t>(monitorLayout_.size()),
+        monitorLayout_.empty() ? nullptr : monitorLayout_.data(),
+    };
+    if (!activeApi_->ohosSessionSetMonitorLayout(activeOhosSession_, &request,
+        detail.data(), detail.size())) {
+        EmitLog(detail[0] != '\0' ? detail.data() : "monitor layout update failed");
+    } else {
+        EmitLog(detail.data());
+    }
+}
+
+std::vector<FREERDP_OHOS_MONITOR_LAYOUT> RdpSessionChannels::MonitorLayout() const
+{
+    std::lock_guard<std::mutex> lock(activeMutex_);
+    return monitorLayout_;
+}
+
+bool RdpSessionChannels::SendPen(const FREERDP_OHOS_POINTER_VIEWPORT& viewport,
+    const FREERDP_OHOS_PEN_EVENT& event, std::string& message)
+{
+    std::array<char, 192> detail {};
+    std::lock_guard<std::mutex> lock(activeMutex_);
+    if (activeApi_ == nullptr || activeOhosSession_ == nullptr ||
+        activeApi_->ohosSessionSendPen == nullptr || activeRdpei_ == nullptr) {
+        message = "FreeRDP RDPEI pen input is unavailable";
+        return false;
+    }
+    const BOOL ok = activeApi_->ohosSessionSendPen(activeOhosSession_, &viewport, &event,
+        detail.data(), detail.size());
+    message = detail.data();
+    return ok == TRUE;
+}
+
+void RdpSessionChannels::AttachPenInput(RdpeiClientContext* rdpei)
+{
+    std::array<char, 160> detail {};
+    std::lock_guard<std::mutex> lock(activeMutex_);
+    if (rdpei == nullptr || activeApi_ == nullptr || activeOhosSession_ == nullptr ||
+        activeApi_->ohosSessionAttachPenInput == nullptr) {
+        EmitLog("RDPEI connected but OHOS pen attach symbol is unavailable");
+        return;
+    }
+    if (activeApi_->ohosSessionAttachPenInput(activeOhosSession_, rdpei,
+        detail.data(), detail.size())) {
+        activeRdpei_ = rdpei;
+    }
+    EmitLog(detail.data());
+}
+
+void RdpSessionChannels::DetachPenInput(RdpeiClientContext* rdpei)
+{
+    std::lock_guard<std::mutex> lock(activeMutex_);
+    if (activeRdpei_ == rdpei) {
+        if (activeApi_ != nullptr && activeOhosSession_ != nullptr &&
+            activeApi_->ohosSessionDetachPenInput != nullptr) {
+            activeApi_->ohosSessionDetachPenInput(activeOhosSession_, rdpei);
+        }
+        activeRdpei_ = nullptr;
     }
 }
 

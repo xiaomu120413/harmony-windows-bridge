@@ -48,6 +48,8 @@ uint32_t ToOhosPointerButtons(uint32_t buttons)
     return result;
 }
 
+} // namespace
+
 FREERDP_OHOS_POINTER_VIEWPORT BuildOhosPointerViewport(
     const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight)
 {
@@ -79,8 +81,6 @@ FREERDP_OHOS_KEY_EVENT ToOhosKeyEvent(const OhosKeyEvent& event)
         event.meta ? 1 : 0,
     };
 }
-
-} // namespace
 
 bool RdpSessionInput::EnsureQueue(
     std::string& message, const std::function<void(const std::string&)>& log)

@@ -132,6 +132,9 @@ public:
             BridgeLogger::Error("native gesture callback has no raw input event");
             return;
         }
+        if (OH_ArkUI_UIInputEvent_GetToolType(raw) == UI_INPUT_EVENT_TOOL_TYPE_PEN) {
+            return;
+        }
         const ArkUI_GestureEventActionType action = OH_ArkUI_GestureEvent_GetActionType(event);
         const GesturePoint point = GestureCenter(raw,
             kind == SystemGestureKind::TwoFingerPan ? 2U : 1U);

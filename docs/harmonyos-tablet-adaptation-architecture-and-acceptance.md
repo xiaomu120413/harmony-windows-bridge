@@ -91,7 +91,8 @@
 - 不做五套完全不同的 XS/SM/MD/LG/XL 页面。
 - 不把所有固定 vp 机械替换为百分比。
 - 不新增 Redux、全局路由框架或完整 Design System。
-- 不在首版实现多显示器、跨设备流转、复杂捏合缩放、手写笔专用协议。
+- 不在首版实现跨设备流转和复杂捏合缩放。手写笔与 FreeRDP 多显示器按
+  [PEN-MON-D1](freerdp-ohos-pen-and-multimon-design.md) 增量设计实现，且不引入 ArkTS 手势分支或产品私有协议。
 - 不因为应用布局修改 FreeRDP 通用协议核心。
 - 不把“隐藏按钮”当成功能隔离。
 
@@ -466,7 +467,7 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 - 双指滚动 = 远端滚轮。
 - 物理鼠标/触控板 hover、点击、滚轮保持可用。
 
-8px、24px 等阈值改为由 density 换算的 vp 语义。首版不强制捏合缩放、惯性滚动和手写笔专用映射；这些在基础点击和 resize 正确后再做。
+8px、24px 等阈值改为由 density 换算的 vp 语义。首版不强制捏合缩放和惯性滚动；手写笔使用 Native XComponent 原始笔字段和 FreeRDP RDPEI，不复用 finger Tap/Pan reducer，具体见 PEN-MON-D1。
 
 ### 9.5 虚拟键盘和中文输入
 
@@ -1191,10 +1192,10 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 目标单包/API 22，不保留旧8接口；Native 各权限 bridge 和 FreeRDP/xrdp callback ABI 不变。任一 sink 注册失败时统一接口返回失败，不把部分注册误报为成功。 |
 | 验收ID | AC-PERM-ABI：d.ts/N-API exports/ArkTS 均只存在2个统一权限接口，旧8 symbol 不存在；NodeContent/permission 参数无裸 `Object`。AC-PERM-ROUTE：4种 type 分别进入正确 bridge，未知 type 拒绝；requestId/granted 原样回传，非 pending ID 失败。AC-PERM-REG：ArkTS 只注册一次回调，4通道请求仍各自触发正确 UI 权限流程。AC-REGRESSION：Native/ArkTS 测试和 Debug HAP 构建通过。 |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented；AC-PERM-ABI、静态 AC-PERM-ROUTE、编译与安装冒烟已通过；4类真实 RDP 通道触发的 AC-PERM-REG 待联机会话验收后升级为 Verified。 |
+| 实现状态 | Implemented；AC-PERM-ABI、静态 AC-PERM-ROUTE、编译与安装冒烟已通过；真实 RDP `microphone` / `camera` 权限通道已验证，`clipboard` / `location` 仍待联机会话验收后升级为 Verified。 |
 | 实际代码文件 | 本文；`harmony/app/entry/obfuscation-rules.txt`；`cpp/napi/napi_event_sink.h/.cpp`；`cpp/napi/napi_exports.cpp`；`cpp/types/libentry/Index.d.ts`；`ets/pages/Index.ets`；`tools/run_tablet_arkts_tests.ps1`；`tools/run_tablet_native_tests.ps1` |
 | 设计偏差及原因 | 无接口和状态边界偏差。沿用既有4个 `EventSink` 和4个 `PermissionRequestBridge`，仅由统一注册入口给各 sink 绑定同一 ArkTS callback 并附加 type；不合并 pending 状态。 |
-| 测试命令/结果/证据 | 2026-08-05：`git diff --check` 通过；`tools/run_tablet_arkts_tests.ps1` 退出码0，检查强类型统一接口、单次 ArkTS 注册及旧8接口/裸 Object 消失，ArkTS 单测通过；`tools/run_tablet_native_tests.ps1` 退出码0，检查4类 type 路由、2个统一 N-API export、旧8 export 消失并通过既有 native 回归；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,543,326 bytes。HAP 已覆盖安装到平板 `5JB0223804000371`，bundle `com.muhub.desktop` 启动成功，进程 PID 12608。真实 microphone/camera/clipboard/location channel 请求仍需对应 RDP 服务端触发验收。 |
+| 测试命令/结果/证据 | 2026-08-05：`git diff --check` 通过；`tools/run_tablet_arkts_tests.ps1` 退出码0，检查强类型统一接口、单次 ArkTS 注册及旧8接口/裸 Object 消失，ArkTS 单测通过；`tools/run_tablet_native_tests.ps1` 退出码0，检查4类 type 路由、2个统一 N-API export、旧8 export 消失并通过既有 native 回归；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,543,326 bytes。HAP 已覆盖安装到平板 `5JB0223804000371`，bundle `com.muhub.desktop` 启动成功，进程 PID 12608。真实 `microphone` / `camera` RDP 通道请求已确认正常；`clipboard` / `location` 仍需对应 RDP 服务端触发验收。 |
 | 关联提交 | 待实现后回写 |
 
 #### TAB-A-05：Native Gateway 与 RDP 客户端协调器收口
@@ -1725,3 +1726,13 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 11. 静态架构检查、纯逻辑测试、Debug/Release 构建通过。
 12. 截图、diagnostics、hilog、设备矩阵形成可复核证据包。
 13. 所有实现提交都有 DesignReady 先行记录；实施台账、实际代码文件、设计偏差、验收 ID、证据和当前事实文档已经同步。
+
+## 19. 手写笔与 FreeRDP 多显示器增量
+
+本节登记增量入口，详细接口、状态、fallback、文件清单和验收以
+[FreeRDP OHOS 手写笔与多显示器设计](freerdp-ohos-pen-and-multimon-design.md) 为准。
+
+- `PEN-MON-D1`：`Implemented`；FreeRDP OHOS 交叉编译、Native/ArkTS 测试和 Debug HAP 已通过，手写笔与外接屏动作级真机验收待补。
+- UI/功能隔离：ArkTS 页面不增加手写笔或多屏判断；Native 输入模块按 tool type 分流，FreeRDP OHOS port 持有 RDPEI 与 monitor layout 协议状态。
+- 渲染边界：多显示器形成一个组合远端桌面，继续由唯一 XComponent 和统一 viewport 呈现；多本地窗口不在本次范围。
+- 验收入口：`AC-PEN-01..03`、`AC-MON-01..03`、`AC-REG-01`。

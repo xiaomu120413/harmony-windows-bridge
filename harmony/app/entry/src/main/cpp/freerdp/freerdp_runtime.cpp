@@ -188,6 +188,13 @@ bool FreerdpRuntimeApi::Load(std::string& error)
             ohosSessionAttachDisplayControl);
         LoadOptionalClientSymbol("freerdp_ohos_session_detach_display_control",
             ohosSessionDetachDisplayControl);
+        LoadOptionalClientSymbol("freerdp_ohos_session_send_pen", ohosSessionSendPen);
+        LoadOptionalClientSymbol("freerdp_ohos_session_attach_pen_input",
+            ohosSessionAttachPenInput);
+        LoadOptionalClientSymbol("freerdp_ohos_session_detach_pen_input",
+            ohosSessionDetachPenInput);
+        LoadOptionalClientSymbol("freerdp_ohos_session_set_monitor_layout",
+            ohosSessionSetMonitorLayout);
         LoadOptionalClientSymbol("freerdp_ohos_session_resize_ex",
             ohosSessionResizeEx);
         LoadOptionalClientSymbol("freerdp_ohos_session_get_diagnostics",

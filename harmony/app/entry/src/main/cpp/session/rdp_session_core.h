@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace rdp_bridge {
 
@@ -40,9 +41,11 @@ public:
     bool IsConnected() const;
     void SetDisplayOrientation(uint32_t orientation);
     uint32_t DisplayOrientation() const;
+    void SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors);
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message);
     bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message);
+    bool SendLocalPen(const LocalPenEvent& pen, std::string& message);
     bool SendKey(uint32_t rdpScancode, bool down, bool repeat, std::string& message);
     bool SendPlatformKey(const OhosKeyEvent& event, std::string& message);
     bool SendUnicode(uint32_t code, bool down, std::string& message);

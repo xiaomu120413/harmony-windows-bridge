@@ -167,6 +167,19 @@ in progress. New code should still follow the target ownership rules below.
 - Has no HarmonyOS, NativeWindow, FreeRDP, channel, surface, or N-API dependencies,
   so the coordinator state machine remains host-testable.
 
+`input/xcomponent_pen.*`
+
+- Owns Native XComponent pen tool classification, pressure/tilt extraction and active-pen cleanup.
+- Reuses session input geometry mapping and delegates RDPEI semantics to the FreeRDP OHOS session API.
+- Must not add ArkTS callbacks, UI switches or a second viewport algorithm.
+
+`session/rdp_display_layout_monitor.*`
+
+- Owns `OH_NativeDisplayManager` display enumeration/listeners and conversion to the versioned
+  FreeRDP OHOS monitor-layout request.
+- Must not own Surface rendering, ArkTS window layout or RDPEDISP wire encoding.
+- Keeps primary-display translation and physical-display metadata host-testable in pure helpers.
+
 `surface/gpu_rgba_renderer.*`
 
 - Owns GLES RGBA texture upload/rendering only.

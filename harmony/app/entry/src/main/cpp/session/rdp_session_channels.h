@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "freerdp/freerdp_runtime.h"
 
@@ -41,6 +42,10 @@ public:
         std::string& message);
     DisplayResizeResult RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
         uint32_t orientation, const std::string& reason);
+    void SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors);
+    std::vector<FREERDP_OHOS_MONITOR_LAYOUT> MonitorLayout() const;
+    bool SendPen(const FREERDP_OHOS_POINTER_VIEWPORT& viewport,
+        const FREERDP_OHOS_PEN_EVENT& event, std::string& message);
 
 private:
     void EmitLog(const std::string& line);
@@ -52,6 +57,7 @@ private:
     static RdpSessionChannels* FindSession(rdpContext* context);
     static bool IsDisplayControlChannel(const char* name);
     static bool IsGraphicsPipelineChannel(const char* name);
+    static bool IsPenInputChannel(const char* name);
     static void OnChannelConnected(void* context, const ChannelConnectedEventArgs* event);
     static void OnChannelDisconnected(void* context, const ChannelDisconnectedEventArgs* event);
 
@@ -59,15 +65,19 @@ private:
     void DetachDisplayControl(DispClientContext* disp);
     void AttachGraphicsPipeline(RdpgfxClientContext* gfx);
     void DetachGraphicsPipeline(RdpgfxClientContext* gfx);
+    void AttachPenInput(RdpeiClientContext* rdpei);
+    void DetachPenInput(RdpeiClientContext* rdpei);
     bool DetachGraphicsPipelineLocked(RdpgfxClientContext* gfx);
 
-    std::mutex activeMutex_;
+    mutable std::mutex activeMutex_;
     FreerdpRuntimeApi* activeApi_ = nullptr;
     freerdp* activeInstance_ = nullptr;
     rdpContext* activeContext_ = nullptr;
     freerdpOhosSession* activeOhosSession_ = nullptr;
     DispClientContext* activeDisp_ = nullptr;
     RdpgfxClientContext* activeGfx_ = nullptr;
+    RdpeiClientContext* activeRdpei_ = nullptr;
+    std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitorLayout_;
     std::atomic_uint32_t displayOrientation_{ORIENTATION_LANDSCAPE};
 
     Callbacks callbacks_;
