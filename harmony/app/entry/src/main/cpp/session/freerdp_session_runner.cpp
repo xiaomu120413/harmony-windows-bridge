@@ -338,6 +338,7 @@ struct OhosSessionAdapter {
 } // namespace
 
 RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, uint64_t diagnosticSessionId,
+    const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& initialMonitors,
     std::atomic_bool& running, const RdpSessionCallbacks& callbacks, const FreerdpSetActiveFn& setActive,
     const FreerdpClearActiveFn& clearActive, const std::function<void(const std::string&)>& log,
     const FreerdpConnectedFn& onConnected, const FreerdpInputPumpFn& pumpInput)
@@ -404,6 +405,19 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, uint64_t diag
         result.message = "freerdp_ohos_session_new failed";
         result.failed = true;
         return result;
+    }
+    if (!initialMonitors.empty() && api.ohosSessionSetMonitorLayout != nullptr) {
+        const FREERDP_OHOS_MONITOR_LAYOUT_REQUEST request {
+            sizeof(FREERDP_OHOS_MONITOR_LAYOUT_REQUEST), FREERDP_OHOS_MONITOR_LAYOUT_VERSION,
+            static_cast<uint32_t>(initialMonitors.size()), initialMonitors.data(),
+        };
+        detail.fill('\0');
+        if (!api.ohosSessionSetMonitorLayout(session, &request, detail.data(), detail.size())) {
+            log(detail[0] == '\0' ? "initial monitor layout rejected; using single desktop" :
+                detail.data());
+        } else if (detail[0] != '\0') {
+            log(detail.data());
+        }
     }
 
     OhosSessionAdapter adapter {

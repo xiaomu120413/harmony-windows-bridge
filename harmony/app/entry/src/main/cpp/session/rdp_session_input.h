@@ -14,6 +14,9 @@
 
 namespace rdp_bridge {
 
+FREERDP_OHOS_POINTER_VIEWPORT BuildOhosPointerViewport(
+    const SurfaceSnapshot& surface, uint32_t desktopWidth, uint32_t desktopHeight);
+
 class RdpSessionInput {
 public:
     RdpSessionInput();

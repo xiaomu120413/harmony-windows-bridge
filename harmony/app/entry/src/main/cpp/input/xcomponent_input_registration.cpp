@@ -2,6 +2,7 @@
 #include "input/remote_ime_client.h"
 #include "input/remote_pointer_text_detector.h"
 #include "input/xcomponent_native_gesture.h"
+#include "input/xcomponent_pen.h"
 
 #include <utility>
 #include <window_manager/oh_display_manager.h>
@@ -138,6 +139,7 @@ void RefreshXComponentInputDensity()
 
 void ReleaseAllXComponentInput(const std::string& reason)
 {
+    CancelXComponentPenInput(reason);
     NativeMouseState mouse;
     {
         std::lock_guard<std::mutex> lock(g_nativeMouseMutex);

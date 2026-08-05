@@ -100,6 +100,32 @@ struct LocalPointerEvent {
     bool allowClamp = false;
 };
 
+enum class LocalPenAction {
+    Down,
+    Move,
+    Up,
+    Cancel,
+};
+
+enum LocalPenFlag : uint32_t {
+    LocalPenFlagNone = 0,
+    LocalPenFlagEraser = 1U << 0U,
+    LocalPenFlagInverted = 1U << 1U,
+    LocalPenFlagBarrel = 1U << 2U,
+};
+
+struct LocalPenEvent {
+    LocalPenAction action = LocalPenAction::Move;
+    int32_t deviceId = 0;
+    uint32_t x = 0;
+    uint32_t y = 0;
+    float pressure = 0.0f;
+    int16_t tiltX = 0;
+    int16_t tiltY = 0;
+    uint32_t flags = LocalPenFlagNone;
+    bool allowClamp = false;
+};
+
 struct DecoderSurfaceTarget {
     OHNativeWindow* window = nullptr;
     uint32_t width = 0;

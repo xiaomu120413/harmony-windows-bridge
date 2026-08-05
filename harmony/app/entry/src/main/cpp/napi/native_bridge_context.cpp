@@ -7,7 +7,7 @@
 #include "freerdp/freerdp_runtime.h"
 #include "input/xcomponent_input_bridge.h"
 #include "input/remote_ime_client.h"
-#include "session/rdp_display_orientation_monitor.h"
+#include "session/rdp_display_layout_monitor.h"
 #include "session/rdp_display_resize_coordinator.h"
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
@@ -25,7 +25,7 @@ SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
 RdpSession g_session;
 RdpDisplayResizeCoordinator g_resizeCoordinator;
-RdpDisplayOrientationMonitor g_orientationMonitor;
+RdpDisplayLayoutMonitor g_displayLayoutMonitor;
 RemoteImeClient g_remoteIme;
 
 void EmitNativeLog(const std::string& line)
@@ -273,16 +273,19 @@ void InitializeNativeBridgeContext()
     ConfigureRdpgfxPipelineCallbacks();
     ConfigureRdpSessionCallbacks();
     ConfigureXComponentInputBridge(&g_session, &g_remoteIme, EmitNativeLog);
-    std::string orientationMessage;
-    if (!g_orientationMonitor.Start(
-        [](uint32_t displayId, uint32_t orientation, const std::string& source) {
+    std::string layoutMessage;
+    if (!g_displayLayoutMonitor.Start(
+        [](uint32_t orientation, const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& layout,
+            const std::string& source) {
             std::string updateMessage;
             if (!UpdateDisplayOrientation(orientation, updateMessage)) {
-                EmitNativeLog("native display orientation rejected: displayId=" +
-                    std::to_string(displayId) + " source=" + source + " " + updateMessage);
+                EmitNativeLog("native display orientation rejected: source=" + source + " " +
+                    updateMessage);
             }
-        }, EmitNativeLog, orientationMessage)) {
-        EmitNativeLog(orientationMessage);
+            g_session.SetMonitorLayout(layout.size() > 1
+                ? layout : std::vector<FREERDP_OHOS_MONITOR_LAYOUT>{});
+        }, EmitNativeLog, layoutMessage)) {
+        EmitNativeLog(layoutMessage);
     }
 }
 

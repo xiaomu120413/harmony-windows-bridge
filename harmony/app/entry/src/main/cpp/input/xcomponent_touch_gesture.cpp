@@ -1,5 +1,6 @@
 #include "input/xcomponent_input_internal.h"
 #include "input/remote_pointer_text_detector.h"
+#include "input/xcomponent_pen.h"
 
 #include <cstdlib>
 
@@ -111,6 +112,9 @@ void OnXComponentTouchEvent(OH_NativeXComponent* component, void* window)
     const int32_t rc = OH_NativeXComponent_GetTouchEvent(component, window, &event);
     if (rc != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
         EmitInputLog("XComponent native touch skipped: get event rc=" + std::to_string(rc));
+        return;
+    }
+    if (TryHandleXComponentPenEvent(component, event)) {
         return;
     }
     if (event.type == OH_NATIVEXCOMPONENT_DOWN &&

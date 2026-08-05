@@ -26,10 +26,19 @@ $geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
 
 $napiExportsSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/napi/napi_exports.cpp'
 $napiExportsText = Get-Content -Raw -Encoding utf8 $napiExportsSource
-$orientationMonitorSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/session/rdp_display_orientation_monitor.cpp'
-$orientationMonitorText = Get-Content -Raw -Encoding utf8 $orientationMonitorSource
-if ([regex]::Matches($orientationMonitorText, 'Refresh\("native_display_initial"').Count -ne 1) {
-  throw 'Native display monitor must refresh the initial orientation exactly once after registration.'
+$displayMonitorSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/session/rdp_display_layout_monitor.cpp'
+$displayMonitorText = Get-Content -Raw -Encoding utf8 $displayMonitorSource
+foreach ($required in @(
+  'CreatePrimaryDisplay',
+  'CreateAllDisplays',
+  'GetDisplayPosition',
+  'RegisterDisplayAddListener',
+  'RegisterDisplayRemoveListener',
+  'native_display_initial'
+)) {
+  if (-not $displayMonitorText.Contains($required)) {
+    throw "Native multi-display monitor is incomplete: missing $required"
+  }
 }
 foreach ($required in @(
   '{"onPermissionRequest", nullptr, OnPermissionRequest',
@@ -82,6 +91,23 @@ foreach ($forbidden in @('NativeTouchGesturePolicy', 'HandleLongPressTimeout')) 
     throw "Raw XComponent Touch still owns gesture semantics: found $forbidden"
   }
 }
+$penSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_pen.cpp'
+$penText = Get-Content -Raw -Encoding utf8 $penSource
+foreach ($required in @(
+  'GetTouchPointToolType',
+  'GetTouchPointTiltX',
+  'GetTouchPointTiltY',
+  'SendLocalPen',
+  'LocalPenFlagEraser',
+  'CancelXComponentPenInput'
+)) {
+  if (-not $penText.Contains($required)) {
+    throw "Native stylus path is incomplete: missing $required"
+  }
+}
+if (-not $gestureText.Contains('UI_INPUT_EVENT_TOOL_TYPE_PEN')) {
+  throw 'System finger gesture recognizers must ignore stylus events.'
+}
 $sessionPageText = Get-Content -Raw -Encoding utf8 $sessionPageSource
 foreach ($forbidden in @('XComponent({', 'XComponentController', 'TapGesture', 'PanGesture', 'LongPressGesture')) {
   if ($sessionPageText.Contains($forbidden)) {
@@ -105,4 +131,4 @@ if ($LASTEXITCODE -ne 0) {
   throw "Tablet native tests failed with exit code $LASTEXITCODE."
 }
 
-Write-Output 'Tablet native resize, remote pointer text, touch gesture, and content geometry tests passed.'
+Write-Output 'Tablet native resize, display layout, stylus, remote pointer text, touch gesture, and content geometry tests passed.'
