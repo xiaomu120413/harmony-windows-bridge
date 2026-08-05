@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| `CHG-20260805-002` | `feat(input): use native xcomponent system gestures` | 功能/Native XComponent 与触控 | 改由 Native Node API 直接创建 XComponent，并用系统 Tap、LongPress、1指 Pan、2指 Pan 识别单/双击、右键、拖动和滚动；ArkTS 只保留 NodeContent 宿主，删除手写 Touch 手势 reducer 和声明式 XComponent 所有权。 | Native/ArkTS 测试及 Debug HAP 构建通过，平板覆盖安装并冷启动成功；远端动作级手势矩阵待真机操作确认。关联 TAB-F-06。 |
 | `CHG-20260805-001` | `fix(input): harden native remote gestures` | 修复/XComponent 输入 | 将触屏手势和 Axis 量化收敛为 API 22 Native 纯策略，补齐统一释放；新增 GDI/AVC 共用的远端内容几何与输入逆变换，修复 AVC 画面可见但 viewport 未由 CPU 回写时全部指针事件被拒绝的问题，同时保留黑边拒绝。 | Native/ArkTS/通用几何测试和 Debug HAP 构建通过；平板覆盖安装后普通输入恢复。双击真机仍不生效，未误报完成，后续独立修正；关联 TAB-F-04、TAB-F-05。 |
 
 ## 2026-08-04

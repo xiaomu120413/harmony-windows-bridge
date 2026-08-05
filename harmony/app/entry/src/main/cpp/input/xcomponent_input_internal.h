@@ -43,8 +43,6 @@ extern std::atomic_bool g_xcomponentFocused;
 extern std::atomic<float> g_inputDensity;
 extern std::mutex g_nativeMouseMutex;
 extern NativeMouseState g_nativeMouse;
-extern std::mutex g_nativeTouchMutex;
-extern NativeTouchGesturePolicy g_nativeTouchPolicy;
 extern std::mutex g_nativeAxisMutex;
 extern NativeAxisState g_nativeAxis;
 
@@ -57,7 +55,8 @@ LocalPointerEvent MakeNativePointer(LocalPointerAction action, float x, float y,
 bool SendNativePointer(const LocalPointerEvent& event, const std::string& label,
     bool forceLog = false);
 void RefreshXComponentInputDensity();
-void CancelNativeTouchGesture(const std::string& reason);
+bool DispatchNativeGestureActions(const std::vector<NativeGestureAction>& actions,
+    const std::string& label);
 void ReleaseAllXComponentInput(const std::string& reason);
 
 void OnXComponentMouseEvent(OH_NativeXComponent* component, void* window);

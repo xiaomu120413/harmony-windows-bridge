@@ -1,6 +1,7 @@
 #include "input/xcomponent_input_internal.h"
 #include "input/remote_ime_client.h"
 #include "input/remote_pointer_text_detector.h"
+#include "input/xcomponent_native_gesture.h"
 
 #include <utility>
 #include <window_manager/oh_display_manager.h>
@@ -14,8 +15,6 @@ std::atomic_bool g_xcomponentFocused{false};
 std::atomic<float> g_inputDensity{1.0f};
 std::mutex g_nativeMouseMutex;
 NativeMouseState g_nativeMouse;
-std::mutex g_nativeTouchMutex;
-NativeTouchGesturePolicy g_nativeTouchPolicy;
 std::mutex g_nativeAxisMutex;
 NativeAxisState g_nativeAxis;
 
@@ -133,10 +132,6 @@ void RefreshXComponentInputDensity()
     const float density = rc == DISPLAY_MANAGER_OK && densityDpi > 0
         ? static_cast<float>(densityDpi) / 160.0f : 1.0f;
     g_inputDensity.store(density);
-    {
-        std::lock_guard<std::mutex> lock(g_nativeTouchMutex);
-        g_nativeTouchPolicy.SetThresholds(NativeTouchThresholdsForDensity(density));
-    }
     EmitInputLog("XComponent input density: dpi=" + std::to_string(densityDpi) +
         " density=" + std::to_string(density) + " rc=" + std::to_string(rc));
 }
@@ -157,7 +152,7 @@ void ReleaseAllXComponentInput(const std::string& reason)
                 "releaseAllInput.mouse." + reason, true);
         }
     }
-    CancelNativeTouchGesture(reason);
+    CancelXComponentNativeGestures(reason);
     {
         std::lock_guard<std::mutex> lock(g_nativeAxisMutex);
         g_nativeAxis = NativeAxisState{};

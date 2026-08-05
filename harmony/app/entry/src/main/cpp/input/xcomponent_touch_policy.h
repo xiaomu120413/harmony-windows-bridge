@@ -5,17 +5,9 @@
 
 namespace rdp_bridge {
 
-constexpr uint64_t kNativeDoubleTapIntervalMs = 300;
 constexpr uint64_t kNativeLongPressIntervalMs = 500;
-constexpr float kNativeDoubleTapDistanceVp = 60.0f;
 constexpr float kNativeTouchDragThresholdVp = 5.0f;
 constexpr float kNativeTouchWheelQuantumVp = 12.0f;
-
-struct NativeTouchThresholds {
-    float doubleTapDistancePx = kNativeDoubleTapDistanceVp;
-    float dragDistancePx = kNativeTouchDragThresholdVp;
-    float wheelQuantumPx = kNativeTouchWheelQuantumVp;
-};
 
 struct NativeAxisSteps {
     int32_t horizontal = 0;
@@ -33,27 +25,6 @@ private:
     double quantum_ = 1.0;
     double remainderX_ = 0.0;
     double remainderY_ = 0.0;
-};
-
-NativeTouchThresholds NativeTouchThresholdsForDensity(float density);
-
-enum class NativeTouchAction : uint8_t {
-    Down,
-    Move,
-    Up,
-    Cancel,
-};
-
-struct NativeTouchPoint {
-    int32_t id = -1;
-    float x = 0.0f;
-    float y = 0.0f;
-};
-
-struct NativeTouchSample {
-    NativeTouchAction action = NativeTouchAction::Cancel;
-    uint64_t atMs = 0;
-    std::vector<NativeTouchPoint> points;
 };
 
 enum class NativeGestureActionType : uint8_t {
@@ -74,48 +45,48 @@ struct NativeGestureAction {
     bool held = false;
 };
 
-class NativeTouchGesturePolicy {
-public:
-    explicit NativeTouchGesturePolicy(NativeTouchThresholds thresholds = {});
+std::vector<NativeGestureAction> BuildNativeClickActions(
+    uint32_t clickCount, float x, float y);
+std::vector<NativeGestureAction> BuildNativeRightClickActions(float x, float y);
 
-    std::vector<NativeGestureAction> Handle(const NativeTouchSample& sample);
-    std::vector<NativeGestureAction> HandleLongPressTimeout(uint64_t atMs);
-    std::vector<NativeGestureAction> Cancel();
-    void SetThresholds(NativeTouchThresholds thresholds);
-    bool IsLongPressPending() const;
-    uint64_t LongPressDeadlineMs() const;
+class NativeSystemTapPolicy {
+public:
+    std::vector<NativeGestureAction> SingleAccepted(float x, float y);
+    std::vector<NativeGestureAction> DoubleAccepted(float x, float y);
+    void Cancel();
 
 private:
-    enum class State : uint8_t {
-        Idle,
-        Pressed,
-        Dragging,
-        DoubleSecondDown,
-        LongPressRecognized,
-        Scrolling,
-    };
+    bool firstAccepted_ = false;
+    float firstX_ = 0.0f;
+    float firstY_ = 0.0f;
+};
 
-    const NativeTouchPoint* FindPoint(const NativeTouchSample& sample, int32_t id) const;
-    void ResetActive();
+class NativeSystemPanPolicy {
+public:
+    std::vector<NativeGestureAction> Accept(
+        float startX, float startY, float currentX, float currentY);
+    std::vector<NativeGestureAction> Update(float x, float y);
+    std::vector<NativeGestureAction> End(float x, float y);
+    std::vector<NativeGestureAction> Cancel();
 
-    NativeTouchThresholds thresholds_;
-    State state_ = State::Idle;
-    int32_t primaryId_ = -1;
-    int32_t secondaryId_ = -1;
-    uint64_t downAtMs_ = 0;
-    float startX_ = 0.0f;
-    float startY_ = 0.0f;
+private:
+    bool active_ = false;
     float lastX_ = 0.0f;
     float lastY_ = 0.0f;
-    float scrollLastX_ = 0.0f;
-    float scrollLastY_ = 0.0f;
-    float scrollRemainderX_ = 0.0f;
-    float scrollRemainderY_ = 0.0f;
-    bool remoteLeftDown_ = false;
-    bool lastTapValid_ = false;
-    uint64_t lastTapAtMs_ = 0;
-    float lastTapX_ = 0.0f;
-    float lastTapY_ = 0.0f;
+};
+
+class NativeSystemScrollPolicy {
+public:
+    void Begin(float offsetX, float offsetY, float quantumPx);
+    std::vector<NativeGestureAction> Update(
+        float x, float y, float offsetX, float offsetY, float quantumPx);
+    void End();
+
+private:
+    bool active_ = false;
+    float lastOffsetX_ = 0.0f;
+    float lastOffsetY_ = 0.0f;
+    NativeAxisScrollPolicy steps_;
 };
 
 } // namespace rdp_bridge

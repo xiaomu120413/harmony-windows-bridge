@@ -24,6 +24,36 @@ $geometryTestSource = "$cppRoot/tests/remote_content_geometry_test.cpp"
 $geometryPolicySource = "$cppRoot/surface/remote_content_geometry.cpp"
 $geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
 
+$gestureSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_native_gesture.cpp'
+$rawTouchSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_touch_gesture.cpp'
+$sessionPageSource = Join-Path $repoRoot 'harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets'
+$gestureText = Get-Content -Raw -Encoding utf8 $gestureSource
+foreach ($required in @(
+  'createGroupGesture(PARALLEL_GROUP)',
+  'createGroupGesture(EXCLUSIVE_GROUP)',
+  'createTapGesture(1, 1)',
+  'createTapGesture(2, 1)',
+  'createLongPressGesture(1, false',
+  'createPanGesture(',
+  'OH_ArkUI_SetGestureRecognizerLimitFingerCount'
+)) {
+  if (-not $gestureText.Contains($required)) {
+    throw "Native system gesture topology is incomplete: missing $required"
+  }
+}
+$rawTouchText = Get-Content -Raw -Encoding utf8 $rawTouchSource
+foreach ($forbidden in @('NativeTouchGesturePolicy', 'HandleLongPressTimeout')) {
+  if ($rawTouchText.Contains($forbidden)) {
+    throw "Raw XComponent Touch still owns gesture semantics: found $forbidden"
+  }
+}
+$sessionPageText = Get-Content -Raw -Encoding utf8 $sessionPageSource
+foreach ($forbidden in @('XComponent({', 'XComponentController', 'TapGesture', 'PanGesture', 'LongPressGesture')) {
+  if ($sessionPageText.Contains($forbidden)) {
+    throw "ArkTS session page still owns XComponent/gesture behavior: found $forbidden"
+  }
+}
+
 $command = "set -e; trap 'rm -f $resizeTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary' EXIT; " +
   "g++ -std=c++17 -pthread " +
   "-I'$cppRoot' -I'$freeRdpRoot' -I'$freeRdpInclude' " +

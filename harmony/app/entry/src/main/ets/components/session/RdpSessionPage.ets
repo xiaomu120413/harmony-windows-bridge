@@ -1,9 +1,9 @@
-import { KeyboardAvoidMode } from '@kit.ArkUI'
-import { REMOTE_SURFACE_FOCUS_ID } from '../../rdp/RdpConstants'
+import { KeyboardAvoidMode, NodeContent } from '@kit.ArkUI'
+import rdpNative from 'libentry.so'
 
 @Component
 export struct RdpSessionPage {
-  surfaceController: XComponentController | undefined = undefined
+  private surfaceContent: NodeContent = new NodeContent()
   @Prop noticeTitle: string = ''
   @Prop noticeSubtitle: string = ''
   @Prop remoteLoginWaiting: boolean = false
@@ -18,14 +18,8 @@ export struct RdpSessionPage {
   }
 
   aboutToDisappear(): void {
+    rdpNative.detachXComponentContent()
     this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode)
-  }
-
-  private requireSurfaceController(): XComponentController {
-    if (this.surfaceController === undefined) {
-      throw new Error('RdpSessionPage requires the existing XComponentController')
-    }
-    return this.surfaceController
   }
 
   @Builder
@@ -60,23 +54,18 @@ export struct RdpSessionPage {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
-      XComponent({
-        id: 'rdpSurface',
-        type: XComponentType.SURFACE,
-        libraryname: 'entry',
-        controller: this.requireSurfaceController()
-      })
+      Stack() {
+        ContentSlot(this.surfaceContent)
+      }
         .width('100%')
         .height('100%')
-        .onLoad(() => {
-          this.onSurfaceLoad()
+        .onAppear(() => {
+          const result = rdpNative.attachXComponentContent(this.surfaceContent)
+          if (result.ok) {
+            this.onSurfaceLoad()
+          }
         })
-        .id(REMOTE_SURFACE_FOCUS_ID)
-        .focusable(true)
-        .focusOnTouch(true)
-        .defaultFocus(true)
         .backgroundColor(Color.Black)
-        .renderFit(RenderFit.CENTER)
       if (this.noticeTitle.length > 0) {
         this.buildSessionNotice()
       }
