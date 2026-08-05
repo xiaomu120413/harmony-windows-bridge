@@ -89,21 +89,27 @@ export class SettingsText {
   static readonly PROJECT_HELP_ABOUT_SECTION: string = '关于项目'
 
   static readonly USAGE_SECTION_PREP: string = '连接流程'
-  static readonly USAGE_SECTION_PREP_DESC: string = '先确认目标机和网络，再填写连接信息。'
+  static readonly USAGE_SECTION_PREP_DESC: string = '按顺序完成 Windows 设置、账号确认和连接信息填写。'
   static readonly USAGE_SECTION_SECURITY: string = '安全与排查'
   static readonly USAGE_SECTION_SECURITY_DESC: string = '证书策略和常见连接失败原因。'
   static readonly USAGE_PREP_TITLE: string = '连接前准备'
   static readonly USAGE_PREP_BODY: string =
-    '确认目标 Windows 电脑已经开启远程桌面服务，并且当前设备能访问目标机的 3389 端口。目标账号需要允许远程登录，且不能使用空密码。'
-  static readonly USAGE_FORM_TITLE: string = '填写连接信息'
+    '确认当前设备和 Windows 电脑网络互通，并能访问 Windows 的远程桌面端口（默认 3389）。远程登录账号需要设置非空密码。'
+  static readonly USAGE_FORM_TITLE: string = '4. 填写连接信息'
   static readonly USAGE_FORM_BODY: string =
-    '在主界面填写 Windows host、Port、Username 和 Password。host 可以是目标电脑 IP 或主机名，默认端口是 3389。'
-static readonly USAGE_CERT_TITLE: string = '证书策略'
+    'Host 填 Windows 电脑的 IP 或设备名，Port 通常为 3389，Username 按上一步的账号格式填写，Password 填该 Windows 账号密码（不要填 Windows Hello PIN）。'
+  static readonly USAGE_CERT_TITLE: string = '证书策略'
   static readonly USAGE_CERT_BODY: string =
     '当前版本暂时固定使用 TOFU 证书策略，适合测试和内网首次连接，会在首次连接时信任目标证书。后续需要更严格校验时再开放策略选择入口。'
-  static readonly USAGE_WINDOWS_RDP_TITLE: string = 'Windows 远程桌面开关'
+  static readonly USAGE_WINDOWS_RDP_TITLE: string = '1. 开启 Windows 远程桌面'
   static readonly USAGE_WINDOWS_RDP_BODY: string =
-    '连接失败时，先在目标 Windows 的“设置 > 系统 > 远程桌面”确认远程桌面已开启，并允许当前账号远程登录。用户名建议按“设备名\\登录用户名”填写；首次开启远程桌面后，建议重启 Windows 再连接，避免服务和防火墙规则未即时生效。'
+    '在被连接的 Windows 电脑打开“设置 > 系统 > 远程桌面”，开启“远程桌面”，并确认防火墙允许远程桌面、当前账号允许远程登录。首次开启后建议重启 Windows。'
+  static readonly USAGE_USERNAME_TITLE: string = '2. 确认 Windows 用户名'
+  static readonly USAGE_USERNAME_BODY: string =
+    '不要填写显示昵称。本地账号填“设备名\\用户名”，域账号填“域名\\用户名”，微软账号填“MicrosoftAccount\\登录邮箱”。设备名可在“设置 > 系统 > 系统信息”查看；本地或域账号可在命令提示符运行 whoami 核对。'
+  static readonly USAGE_HARDWARE_ACCEL_TITLE: string = '3. 开启 Windows 视频硬件加速（可选）'
+  static readonly USAGE_HARDWARE_ACCEL_BODY: string =
+    'Windows 专业版/企业版/教育版：按 Win+R，输入 gpedit.msc，进入“计算机配置 > 管理模板 > Windows 组件 > 远程桌面服务 > 远程桌面会话主机 > 远程会话环境”，启用“为所有远程桌面服务会话使用硬件图形适配器”“配置远程桌面连接的 H.264/AVC 硬件编码”和“为远程桌面连接优先使用 H.264/AVC 444 图形模式”，然后重启 Windows。家庭版通常没有本地组策略编辑器；显卡或驱动不支持时会回退软件编码。'
   static readonly USAGE_TROUBLESHOOT_TITLE: string = '常见排查'
   static readonly USAGE_TROUBLESHOOT_BODY: string =
     '连不上时优先确认本机 IP、目标 IP、同一网络、Windows 防火墙、远程桌面开关、账号权限和端口 3389 是否可达。'

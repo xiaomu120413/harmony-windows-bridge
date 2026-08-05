@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| `CHG-20260805-007` | `fix(ux): clarify Windows connection guidance` | 修复/首页与项目帮助 | 首页被控服务状态不再显示端口；连接详情用标签和占位示例明确 Windows 用户名；项目帮助按操作顺序补充用户名识别、账号密码说明和 Windows RDP 视频硬件加速策略。 | ArkTS 策略测试与 Debug HAP 构建签名通过；真机覆盖安装后确认首页无端口、用户名示例及项目帮助 1～4 步完整渲染。关联 `docs/settings-desktop-current-interactions.md`。 |
 | `CHG-20260805-006` | `feat(ohos): add API 26 persistent input permission` | 功能/HAP 权限与 xrdp OHOS 输入 | 目标 SDK 升级 API 26 并申请 `CONTROL_DEVICE`，同步调试 profile ACL；首页“验证码”状态改为“注入权限”，远控设置保留验证码门禁并增加长期注入授权；Native 优先长期权限、未授权时回退旧注入弹窗。 | ArkTS/Native 测试、xrdp OHOS 交叉编译及 Debug HAP 编译签名通过；补 ACL 后真机覆盖安装、冷启动、首页/远控设置布局和系统权限页跳转通过。实际授权、重启保持和旧弹窗回退待补。关联 `TAB-E-02`。 |
 | `CHG-20260805-005` | `feat(xrdp): add OHOS audin playback backend` | 功能/xrdp OHOS 音频输入重定向 | 在 xrdp core/module ABI 中增加通用动态虚拟通道桥，并为 OHOS backend 接入标准 MS-RDPEAI `audin` 流程，将 Windows 客户端重定向的 PCM 通过 OHAudio Renderer 播放；默认配置启用 `audin`，不引入产品私有协议。 | `build-xrdp-ohos.sh` OHOS arm64 干净交叉编译及符号检查；MSTSC + 真机动作级验收待补。关联 `docs/xrdp-ohos-mstsc-penetration-plan.md` 第 9 节。 |
 | `CHG-20260805-004` | `feat(freerdp): add native pen and multimon support` | 功能/FreeRDP OHOS、XComponent 输入与显示拓扑 | 接入 Native XComponent 手写笔压力/倾角/橡皮到 FreeRDP RDPEI；枚举并监听本地多显示器，在首次连接和 `disp` 动态更新中同步组合桌面布局，回到单屏时恢复现有 surface resize。ArkTS/N-API 不新增开关或页面分支。 | FreeRDP OHOS arm64 交叉编译、Native/ArkTS 测试、Debug HAP 编译与签名通过；手写笔和外接屏动作级真机验收待补。关联 PEN-MON-D1。 |

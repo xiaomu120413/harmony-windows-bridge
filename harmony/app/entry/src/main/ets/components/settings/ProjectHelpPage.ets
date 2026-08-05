@@ -117,6 +117,16 @@ export struct ProjectHelpPage {
             isDark: this.isDark
           })
           SettingsInfoCard({
+            title: SettingsText.USAGE_USERNAME_TITLE,
+            body: SettingsText.USAGE_USERNAME_BODY,
+            isDark: this.isDark
+          })
+          SettingsInfoCard({
+            title: SettingsText.USAGE_HARDWARE_ACCEL_TITLE,
+            body: SettingsText.USAGE_HARDWARE_ACCEL_BODY,
+            isDark: this.isDark
+          })
+          SettingsInfoCard({
             title: SettingsText.USAGE_FORM_TITLE,
             body: SettingsText.USAGE_FORM_BODY,
             isDark: this.isDark
