@@ -200,7 +200,7 @@ Phase 2 可能需要：
 可以做但暂缓：
 
 - RDPGFX/H264：OHOS 有视频编码接口，但 xrdp server 侧要补 RDPGFX/H264 packetization 和编码器适配，投入高，等基础帧链路稳定后再做。
-- 音频：`rdpsnd` 已由 OHOS backend 采集设备播放音频并发送给 Windows；`audin` 已按标准 MS-RDPEAI / `AUDIO_INPUT` 动态通道接入，将 Windows 客户端重定向的麦克风 PCM 交给 OHAudio Renderer 在 OHOS 端播放。两者都复用 xrdp 通用协议语义，只把平台采集/播放接口适配为 OHOS；`audin` 已通过 OHOS arm64 干净交叉编译和链接，MSTSC + 真机动作级验收待补。
+- 音频：`rdpsnd` 已由 OHOS backend 采集设备播放音频并发送给 Windows；`audin` 已按标准 MS-RDPEAI / `AUDIO_INPUT` 动态通道接入，将 Windows 客户端重定向的麦克风 PCM 交给 OHAudio Renderer 在 OHOS 端播放。两者都复用 xrdp 通用协议语义，只把平台采集/播放接口适配为 OHOS；`audin` 已通过 OHOS arm64 干净交叉编译、链接及 MSTSC + OHOS 真机数据闭环验收。
 - 文件/磁盘重定向：xrdp 原生 devredir/FUSE 路线依赖 Linux FUSE，不适合 OHOS app 环境；如需要，只做 app sandbox 内的虚拟文件通道。
 - 多显示器：DisplayManager 能查询显示信息，但采集、坐标注入和 RDP multimon 映射都要单独适配，先保持单显示器稳定。
 
@@ -235,5 +235,8 @@ Phase 2 可能需要：
 - OHOS backend 按 xrdp `chansrv/audin.c` 的 MS-RDPEAI 流程实现 `VERSION -> FORMATS -> OPEN -> DATA`，支持 PCM16 单/双声道的 8 kHz、16 kHz、44.1 kHz、48 kHz 协商子集。
 - 平台层仅使用 OHAudio Renderer、有限环形缓冲、静音补帧和溢出丢旧帧策略，并记录 open/packet/byte/drop/underrun/error 诊断。
 - 默认配置为 `[OHOS] audin=true`，依赖 `[Channels] drdynvc=true`。
-- `wsl bash harmony/scripts/wsl/build-xrdp-ohos.sh` 干净构建、安装和产物符号校验通过；状态为“代码与构建已完成，MSTSC + OHOS 真机待验收”。
+- `wsl bash harmony/scripts/wsl/build-xrdp-ohos.sh` 干净构建、安装和产物符号校验通过；状态为“代码、构建及 MSTSC + OHOS 真机数据闭环验收完成”。
 - `rdpecam` 摄像头重定向尚未实现；本次不把它误标为完成。
+- 2026-08-05 首轮真机验证：`HAD-W32` 2in1（`3QC0124C11000711`）完成 HAP 覆盖安装、启动和屏幕录制授权，但 `libxrdpohos.so` 首次加载失败；HiLog 记录 C++ renderer 将 C `log_message` 错误解析为 `_Z11log_message9logLevelsPKcz`，并同时提示 `libimage_ndk.z.so` namespace 加载警告。此轮尚未进入 `AUDIO_INPUT` 协商，状态保持“真机待验收”，修复动态链接后重测。
+- 动态链接修复后，xrdp 可监听 3390 且 MSTSC 显示、输入、H.264、`rdpsnd` 会话正常；显式使用 `audiocapturemode:i:1` 重连仍无 `audin` open。时序证据显示 MS-RDPEDYC capability 在 backend module 加载前完成，原 ready 通知因 module 尚不存在而丢失。通用 DVC bridge 需保存 ready 状态，并在 module 晚加载后补发且每个 module 实例只通知一次。
+- 通用 DVC bridge 保存并向晚加载 module 补发 ready 状态后，真机重测通过：MSTSC 打开 `AUDIO_INPUT` 通道，协商 `48 kHz / mono / PCM16`，OHOS OHAudio Renderer 成功启动；会话收到 683 包、1,523,090 字节，`dropped=0`、`errors=0`，renderer 记录 `pushed=1,523,090`。`audin` 状态更新为“真机数据闭环已验收”。
