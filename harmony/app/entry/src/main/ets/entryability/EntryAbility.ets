@@ -6,6 +6,7 @@ import {
   RemoteFilesDirectory,
   SettingsTheme
 } from 'common'
+import { entryRemoteControlPort } from '../rdp/EntryRemoteControlPort'
 
 const TAG = 'EntryAbility'
 
@@ -21,6 +22,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    entryRemoteControlPort.stop('EntryAbility destroyed')
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
@@ -36,6 +38,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageDestroy(): void {
+    entryRemoteControlPort.stop('window stage destroyed')
   }
 
   onForeground(): void {

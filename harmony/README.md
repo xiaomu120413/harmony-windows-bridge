@@ -5,7 +5,9 @@ desktop client.
 
 ## Current Runtime
 
-- ArkTS calls the native N-API bridge in `libentry.so`.
+- Shared ArkTS calls the RDP client N-API bridge in `librdpclient.so` from the
+  `common` HSP. The 2in1-only Entry injects `libxrdpcontrol.so`; tablet never
+  packages or loads that control library.
 - The native bridge loads FreeRDP/WinPR runtime libraries synced from
   `harmony/out/ohos-arm64/runtime-libs`.
 - `probe()`, `connect(params)`, `disconnect()`, `resize(input)`,
@@ -43,12 +45,14 @@ profile.
 
 ## Permissions
 
-`entry/src/main/module.json5` declares:
+Both device entries declare the client permissions below. The two PC-only
+permissions marked below exist only in `entry/src/main/module.json5`, never in
+`entry_tablet`:
 
 - `ohos.permission.INTERNET`
 - `ohos.permission.GET_NETWORK_INFO`
-- `ohos.permission.CUSTOM_SCREEN_RECORDING`
-- `ohos.permission.CONTROL_DEVICE`
+- `ohos.permission.CUSTOM_SCREEN_RECORDING` (2in1 only)
+- `ohos.permission.CONTROL_DEVICE` (2in1 only)
 - `ohos.permission.PRINT`
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
@@ -81,25 +85,32 @@ Sync the runtime libraries into the HAP project:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harmony\scripts\windows\sync-freerdp-runtime.ps1
 ```
 
-Build the signed HAP:
+Build the complete App Pack, tablet-only HAP set, or 2in1-only HAP set:
 
 ```powershell
-.\harmony\app\build_hap.bat
+.\harmony\app\build_hap.bat app
+.\harmony\app\build_hap.bat tablet
+.\harmony\app\build_hap.bat 2in1
 ```
 
-The output path is:
+The principal output paths are:
 
 ```text
+harmony/app/build/outputs/default/app-default-signed.app
+harmony/app/common/build/default/outputs/default/common-default-signed.hsp
 harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
+harmony/app/entry_tablet/build/default/outputs/default/entry_tablet-default-signed.hap
 ```
 
 Install to a connected device:
 
 ```powershell
-hdc install -r harmony\app\entry\build\default\outputs\default\entry-default-signed.hap
+hdc install -r harmony\app\common\build\default\outputs\default\common-default-signed.hsp
+hdc install -r harmony\app\entry_tablet\build\default\outputs\default\entry_tablet-default-signed.hap
 ```
 
-Local build outputs and synced runtime libraries under `entry/libs/` are ignored
+Install `common.hsp` before the device-matching Entry HAP. Local build outputs
+and synced runtime libraries under `common/libs/` are ignored
 by git.
 
 ## Current Docs

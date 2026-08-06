@@ -104,7 +104,8 @@ T00 已把后续任务的可重复验收口径整理到 `docs/freerdp-ohos-valid
 - 地理位置后端已进包，但当前默认 session config 关闭 `location` channel；若后续启用后连接中弹定位权限，触发源应是服务端发起 `LocationStart`，不是打印链路依赖。
 - 文件重定向默认只共享系统下载目录下的 `com.muhub.desktop`；App 启动时用下载控件准备目录，RDP 连接时 FreeRDP 映射为 `\\tsclient\Downloads`。
 - 打印功能新增 OHOS PrintKit backend；连接时只注册虚拟打印机，远端提交打印作业后才进入 PrintKit。
-- 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat`
+- 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat app`；
+  设备定向构建使用 `tablet` 或 `2in1` 参数。
 
 ## 本轮验证命令
 
@@ -117,10 +118,13 @@ harmony/scripts/wsl/build-freerdp-ohos.sh
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harmony\scripts\windows\sync-freerdp-runtime.ps1
 ```
 
-HAP 构建使用 `harmony/app/build_hap.bat`，目标产物：
+多设备构建使用 `harmony/app/build_hap.bat app`，目标产物：
 
 ```text
+harmony/app/build/outputs/default/app-default-signed.app
+harmony/app/common/build/default/outputs/default/common-default-signed.hsp
 harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
+harmony/app/entry_tablet/build/default/outputs/default/entry_tablet-default-signed.hap
 ```
 
 每个 T01-T18 任务完成后，应在任务说明中明确是否已覆盖 FreeRDP build、runtime sync、HAP build 和真机检查。未覆盖的检查不能默认为通过。

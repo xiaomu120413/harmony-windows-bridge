@@ -1,5 +1,5 @@
 import { NodeContent } from '@kit.ArkUI'
-import rdpNative from 'libentry.so'
+import rdpNative from 'librdpclient.so'
 
 export interface NativeConnectParams {
   host: string
@@ -18,30 +18,6 @@ export interface NativeCommandResult {
   message: string
 }
 
-export interface NativeXrdpServerParams {
-  appFilesDir?: string
-  accessCode?: string
-  accessCodeGateEnabled?: boolean
-  restartIfRunning?: boolean
-}
-
-export interface NativeXrdpServerResult extends NativeCommandResult {
-  libraryPath: string
-  runtimeRoot: string
-  configPath: string
-  modulePath: string
-  logPath: string
-  activeMstscSession: boolean
-  port: number
-  rdpecamDeviceName: string
-  rdpecamFormat: number
-  rdpecamWidth: number
-  rdpecamHeight: number
-  rdpecamSampleCount: number
-  rdpecamBytes: number
-  rdpecamErrors: number
-}
-
 export type NativePermissionType = 'microphone' | 'camera' | 'clipboard' | 'location'
 
 export interface NativePermissionRequest {
@@ -58,14 +34,6 @@ export interface NativePermissionResult {
 export class NativeRdpGateway {
   static connect(params: NativeConnectParams): NativeCommandResult {
     return rdpNative.connect(params)
-  }
-
-  static ensureXrdpServerStarted(params?: NativeXrdpServerParams): NativeXrdpServerResult {
-    return rdpNative.ensureXrdpServerStarted(params)
-  }
-
-  static getXrdpServerDiagnostics(): NativeXrdpServerResult {
-    return rdpNative.getXrdpServerDiagnostics()
   }
 
   static bindImeHostWindow(windowId: number): NativeCommandResult {

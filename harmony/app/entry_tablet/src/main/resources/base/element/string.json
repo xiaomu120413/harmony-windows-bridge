@@ -11,6 +11,22 @@
     {
       "name": "EntryAbility_label",
       "value": "木枢"
+    },
+    {
+      "name": "read_pasteboard_reason",
+      "value": "读取本地剪贴板，用于在远程桌面会话中同步文本、文件和图片粘贴。"
+    },
+    {
+      "name": "microphone_reason",
+      "value": "采集麦克风音频，用于远程桌面音频输入重定向。"
+    },
+    {
+      "name": "camera_reason",
+      "value": "采集摄像头视频，用于远程桌面摄像头重定向。"
+    },
+    {
+      "name": "location_reason",
+      "value": "获取本机当前位置，用于远程桌面会话中的地理位置重定向。"
     }
   ]
 }

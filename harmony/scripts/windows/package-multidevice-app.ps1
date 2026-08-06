@@ -97,9 +97,9 @@ $appStream = [System.IO.File]::OpenRead($signedApp)
 $appZip = [System.IO.Compression.ZipArchive]::new($appStream, [System.IO.Compression.ZipArchiveMode]::Read)
 try {
   $expected = @{
-    "common" = @{ Type = "shared"; Devices = @("2in1", "tablet"); Hnp = 0; LibEntry = 1 }
-    "entry" = @{ Type = "entry"; Devices = @("2in1"); Hnp = 1; LibEntry = 0 }
-    "entry_tablet" = @{ Type = "entry"; Devices = @("tablet"); Hnp = 0; LibEntry = 0 }
+    "common" = @{ Type = "shared"; Devices = @("2in1", "tablet"); Hnp = 0; RdpClient = 1; XrdpControl = 0 }
+    "entry" = @{ Type = "entry"; Devices = @("2in1"); Hnp = 1; RdpClient = 0; XrdpControl = 1 }
+    "entry_tablet" = @{ Type = "entry"; Devices = @("tablet"); Hnp = 0; RdpClient = 0; XrdpControl = 0 }
   }
   $seen = @{}
 
@@ -119,18 +119,31 @@ try {
       $rule = $expected[$name]
       $devices = @($manifest.module.deviceTypes)
       $hnpCount = @($packageZip.Entries | Where-Object { $_.FullName -like "hnp/*" }).Count
-      $libEntryCount = @($packageZip.Entries | Where-Object {
-        $_.FullName -eq "libs/arm64-v8a/libentry.so"
+      $rdpClientCount = @($packageZip.Entries | Where-Object {
+        $_.FullName -eq "libs/arm64-v8a/librdpclient.so"
+      }).Count
+      $xrdpControlCount = @($packageZip.Entries | Where-Object {
+        $_.FullName -eq "libs/arm64-v8a/libxrdpcontrol.so"
       }).Count
       if ($manifest.module.type -ne $rule.Type -or
           (Compare-Object $devices $rule.Devices) -or
           $hnpCount -ne $rule.Hnp -or
-          $libEntryCount -ne $rule.LibEntry) {
-        throw "Module boundary check failed: $name type=$($manifest.module.type) devices=$($devices -join ',') hnp=$hnpCount libentry=$libEntryCount"
+          $rdpClientCount -ne $rule.RdpClient -or
+          $xrdpControlCount -ne $rule.XrdpControl) {
+        throw "Module boundary check failed: $name type=$($manifest.module.type) devices=$($devices -join ',') hnp=$hnpCount rdpclient=$rdpClientCount xrdpcontrol=$xrdpControlCount"
       }
       if ($name -eq "entry_tablet") {
         $tabletPermissions = @($manifest.module.requestPermissions | ForEach-Object { $_.name })
-        $allowed = @("ohos.permission.INTERNET", "ohos.permission.GET_NETWORK_INFO")
+        $allowed = @(
+          "ohos.permission.INTERNET",
+          "ohos.permission.GET_NETWORK_INFO",
+          "ohos.permission.PRINT",
+          "ohos.permission.READ_PASTEBOARD",
+          "ohos.permission.MICROPHONE",
+          "ohos.permission.CAMERA",
+          "ohos.permission.APPROXIMATELY_LOCATION",
+          "ohos.permission.LOCATION"
+        )
         if (Compare-Object $tabletPermissions $allowed) {
           throw "Tablet permission boundary check failed: $($tabletPermissions -join ',')"
         }
