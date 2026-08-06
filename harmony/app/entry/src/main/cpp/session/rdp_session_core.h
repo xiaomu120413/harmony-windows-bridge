@@ -64,6 +64,7 @@ public:
         std::string& message);
     DisplayResizeResult RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
         uint32_t orientation, const std::string& reason);
+    DisplayResizeResult RequestDynamicDesktopResizeEx(const DisplayResizeRequest& request);
 
 private:
     struct Impl;

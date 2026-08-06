@@ -55,9 +55,9 @@ OH_NativeDisplayManager_CreateAllDisplays
 - 只采纳 alive、宽高有效的显示器；上限遵循服务端 `DisplayControlCaps.maxNumMonitors` 和 FreeRDP/RDPEDISP 限制。
 - 使用系统 primary display；将其左上角平移为 `(0,0)`，其余显示器保留相对位置。每个布局仅允许一个 primary。
 - width/height、物理毫米、orientation、desktop/device scale 均逐显示器传递并严格校验；H.264 尺寸按现有 alignment 策略逐屏规范化。
-- 首版 desktop/device scale 固定为 100，保持远端像素坐标与 XComponent viewport 一致；本地 density 只用于推导缺失的物理毫米，不在未验收前放大远端 UI。
-- 首次连接前若有效显示器数大于 1，设置 `UseMultimon`、`SupportMonitorLayoutPdu` 和 `MonitorDefArray`；单屏保持现有连接行为。
-- 外接屏移除并回到单屏时，用 `monitorCount=0` 清除 OHOS 多屏快照，再恢复现有 XComponent surface resize；清除请求不作为远端零屏布局发送。
+- desktop scale 按本地 `densityDPI` 映射到 RDP 支持值，device scale 保持 100；物理毫米优先使用显示器 DPI 推导，并按 Surface 与显示器像素比例缩放。
+- 首次连接前无论单屏或多屏都保存完整 desired monitor layout；多屏同时设置 `UseMultimon`、`SupportMonitorLayoutPdu` 和 `MonitorDefArray`，单屏使用同一份布局初始化 DesktopWidth/Height、方向、物理尺寸和 scale。
+- 外接屏移除并回到单屏时，用当前 XComponent Surface 和主显示器属性替换 desired layout，并立即通过既有 Display Control 状态机应用；不发送零屏布局。
 - 连接后监听 display add/remove/change。布局变化经 `disp` 发送；caps 未就绪时缓存最后一版，caps 到达后发送。
 - 服务端拒绝、数量/面积超限或系统枚举失败时保留最近一次已确认布局；首次连接无有效多屏快照时回退单屏，不中断会话。
 - 远端帧和输入继续使用显示器联合矩形形成的组合桌面尺寸，禁止为各 codec 或各输入方式复制坐标算法。
@@ -105,3 +105,26 @@ OH_NativeDisplayManager_CreateAllDisplays
 - App Native：XComponent pen tool/pressure/tilt/eraser 分流、finger 系统手势排除 pen、blur/surface/disconnect cancel；DisplayManager 首次枚举和 add/remove/change 监听接入。
 - 验证：FreeRDP OHOS arm64 交叉编译通过；`tools/run_tablet_native_tests.ps1`、`tools/run_tablet_arkts_tests.ps1` 退出码 0；`harmony/app/build_hap.bat debug` 完成 Native 编译、打包与 `SignHap`，产物 35753953 字节。
 - 未覆盖：Windows Ink 压感/倾角/橡皮动作级真机测试；外接屏热插拔后的 Windows 显示器数量、拓扑和各屏四角点击。因此状态保持 `Implemented`。
+
+## 9. 单屏期望布局状态命名优化
+
+Change ID：`MON-DESIRED-LAYOUT-001`
+
+设计状态：`DesignReady`
+
+实现状态：`Implemented`
+
+- App Native 持有的是最新“期望布局”，不是一份永远延迟发送的 cache。会话未激活时，`RdpSessionChannels::SetMonitorLayout` 只保存 desired layout，供创建 OHOS session 时作为 initial monitor layout；会话已激活时，同一入口立即更新 Display Control 状态。
+- 单屏辅助函数命名为 `UpdateDesiredSingleMonitorLayout`，明确它既可连接前缓存，也可连接后应用。函数接收调用方已生成的同一份 `DisplayResizeRequest`，不重复读取 Surface/Display 快照，并统一负责校验和失败日志；日志使用 `desired single monitor layout updated`，携带 `session_connected` 和底层 detail，不通过字符串反推协议状态。
+- Surface 稳定变化继续走 200ms trailing coalescer；只有连接前初始化和多屏回单屏的拓扑切换直接更新 desired layout，不新增 resize 旁路或第二套状态机。
+- 不修改公共 ABI、Monitor Layout 字段、对齐算法、fallback、generation 或渲染行为。
+
+计划代码文件：`harmony/app/entry/src/main/cpp/napi/native_bridge_context.cpp`。
+
+验收：`AC-MON-02`、`AC-REG-01`；代码中无旧 cache 辅助函数引用，Native tests、App Native 构建和 Debug HAP 通过。
+
+实施证据（2026-08-06）：
+
+- 实际代码文件与计划一致；`CacheCurrentSingleMonitorLayout` 已替换为接收预计算 request 的 `UpdateDesiredSingleMonitorLayout`，调用点不再丢弃 bool 返回值或重复读取快照，日志包含 `session_connected` 和底层 detail。
+- `tools/run_tablet_native_tests.ps1` 退出码 0；App Native arm64 CMake 编译、链接通过；`harmony/app/build_hap.bat` 完成打包和签名，HAP 为 35,854,621 字节。
+- 文档记录的 `tools/check_tablet_architecture.ps1` 在当前仓库不存在，因此未宣称该项通过；本次仅重命名和日志语义收敛，不改变 ABI 或运行行为。

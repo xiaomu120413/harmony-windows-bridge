@@ -23,6 +23,17 @@ struct DisplayResizeResult {
     std::string message;
 };
 
+struct DisplayResizeRequest {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t physicalWidth = 0;
+    uint32_t physicalHeight = 0;
+    uint32_t orientation = 0;
+    uint32_t desktopScaleFactor = 100;
+    uint32_t deviceScaleFactor = 100;
+    std::string reason;
+};
+
 inline const char* DisplayResizeStatusName(DisplayResizeStatus status)
 {
     switch (status) {

@@ -59,7 +59,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 基础 RDP/TLS/NLA | 首版交付 | 默认启用 | `INTERNET`、网络状态 | 待按 T00 基线复测连接、认证、证书 |
 | RDPGFX/H.264 + AVC444 GPU compositor | 首版交付 | 默认 `rdpgfx-h264`，AVC444 GPU compositor 开启 | 无新增权限 | 待真机确认协商、首帧、resize、fallback |
 | GDI/software render | 保留 fallback | 图形失败时可回退 | 无新增权限 | 待真机确认失败场景不黑屏 |
-| 动态分辨率 `disp` | 首版交付 | 默认请求 | 无新增权限 | 待真机确认 resize 和服务端不支持提示 |
+| 动态分辨率 `disp` | 首版交付 | 默认请求；单屏发送完整像素/物理尺寸/方向/scale，窗口变化 trailing debounce | 无新增权限 | API 22 2in1 真机确认全屏 `3120×1872`、浮窗 `2080×1312` 请求均为 Sent；服务端不支持提示待补 |
 | FreeRDP 多显示器 `disp/multimon` | 已实现，待动作级真机验收 | 仅检测到 2 块及以上本地显示器时启用；回到单屏自动清除多屏快照 | 无新增权限 | OHOS 交叉编译与 HAP 构建通过；待外接屏热插拔、拓扑和四角输入验收 |
 | 手写笔 `RDPEI` | 已实现，待动作级真机验收 | Native XComponent 检测到 pen 时自动启用；不提供 ArkTS 开关 | 无新增权限 | 压力/倾角/橡皮字段及生命周期静态检查通过；待 Windows Ink 真机验收 |
 | Geometry tracking `geometry` | 首版交付 | 默认注册动态虚拟通道 | 无新增权限 | 待真机确认服务端是否协商；当前不消费 region 数据 |
@@ -83,6 +83,10 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | `rdpgfx-h264` 到 `rdpgfx`/`gdi` | 保留 | 图形协商、codec、surface 或 compositor 路径失败 | 只在图形失败时重试下一档 | 密码、证书、TCP 失败不能触发图形 fallback |
 | AVC444 GPU compositor 到 FreeRDP native GDI | 保留 | 单条 AVC444 command 不可消费或 Surface 不可用 | 该 command 交回 native GDI/RGB 输出 | 不允许 GPU/GDI 双写、旧帧或黑屏 |
 | `disp` resize 失败到固定分辨率 | 保留 | 服务端不支持 display-control 或 caps 未就绪 | 保持当前桌面尺寸并记录原因 | 日志说明未发送、待重试或服务端不支持 |
+
+`disp` 是客户端主导的 RDP 会话布局协议：本地窗口、方向或本地显示拓扑变化会请求
+Windows 调整虚拟桌面。Windows 主机物理显示器的分辨率/缩放变化不属于该通道的
+上报范围；需要此能力时必须另行设计 Windows 侧代理或自定义虚拟通道。
 | Pasteboard 权限拒绝到剪贴板操作失败 | 保留 | 用户拒绝或权限请求超时 | 本次剪贴板读写失败，会话继续 | 不崩溃，不在连接开始弹权限 |
 | 麦克风权限拒绝到 `audin` open 失败 | 保留 | 用户拒绝或权限请求超时 | 采集通道失败，会话和播放继续 | 日志说明拒绝；不影响基础 RDP |
 | 地理位置权限拒绝到 location sample 失败 | 保留 | 用户拒绝、定位服务关闭或权限请求超时 | 本次 location sample 不发送，会话继续 | 日志说明拒绝或采样失败；不影响基础 RDP |

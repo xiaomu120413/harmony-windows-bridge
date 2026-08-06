@@ -146,7 +146,7 @@ build_app projectPath=harmony/app
 9. 验证地理位置：启用 `location` channel 后，服务端发起 `LocationStart` 才申请定位权限，授权后发送样本，拒绝或定位服务关闭时会话继续。
 10. 验证文件重定向：Windows 中打开 `\\tsclient\Downloads`，确认对应 HarmonyOS `Download/com.muhub.desktop`，并完成一个小文件读写回归。
 11. 验证打印：连接开始不初始化/连接 PrintKit；Windows 打印时生成临时 spool 文件并进入 OHOS printer backend，Harmony Print/虚拟 PDF 打印成功或失败都不影响 RDP 会话。
-12. 验证 display resize：连接前分辨率、连接后 resize 请求、服务端不支持时错误原因。
+12. 验证 display resize：连接前完整单屏布局，连接后窗口/方向变化携带像素尺寸、物理毫米、desktop/device scale，重复请求去重，服务端不支持时错误原因；不把 Windows 主机物理显示器变化误判为 `disp` 能力。
 13. 验证 geometry：动态通道协商和日志正常；当前不要求 region 数据影响画面布局。
 14. 验证生命周期：快速连接/断开、页面切换、App 后台、网络失败、凭据错误、证书变化。
 15. 验证手写笔：轻压、重压、X/Y 倾斜、橡皮、抬笔、取消、失焦和断连；笔输入不得同时触发 finger Tap/Pan，RDPEI 不可用时只回退一次基础指针。

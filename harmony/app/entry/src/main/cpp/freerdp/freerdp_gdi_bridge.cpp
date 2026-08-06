@@ -390,6 +390,12 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
     const uint32_t width = api.settingsGetUint32(context->settings, FreeRDP_DesktopWidth);
     const uint32_t height = api.settingsGetUint32(context->settings, FreeRDP_DesktopHeight);
+    const uint16_t orientation = api.settingsGetUint16(
+        context->settings, FreeRDP_DesktopOrientation);
+    const uint32_t desktopScaleFactor = api.settingsGetUint32(
+        context->settings, FreeRDP_DesktopScaleFactor);
+    const uint32_t deviceScaleFactor = api.settingsGetUint32(
+        context->settings, FreeRDP_DeviceScaleFactor);
     const bool sizeChanged = RdpDesktopWidth() != width || RdpDesktopHeight() != height;
     StopGdiRenderPipeline();
     if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
@@ -411,6 +417,10 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     } else {
         StartGdiRenderPipeline();
     }
+    EmitGdiLog("FreeRDP desktop resize applied: " + std::to_string(width) + "x" +
+        std::to_string(height) + " orientation=" + std::to_string(orientation) +
+        " scale=" + std::to_string(desktopScaleFactor) + "/" +
+        std::to_string(deviceScaleFactor));
     return TRUE;
 }
 

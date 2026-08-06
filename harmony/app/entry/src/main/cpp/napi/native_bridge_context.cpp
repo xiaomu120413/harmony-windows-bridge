@@ -13,9 +13,12 @@
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <ace/xcomponent/native_interface_xcomponent.h>
 
@@ -100,16 +103,14 @@ std::string BuildRenderStatsLog()
     return g_frameRenderer.BuildStatsLog();
 }
 
-DisplayResizeResult RequestRemoteDesktopResize(uint32_t width, uint32_t height,
-    uint32_t orientation, const std::string& reason)
+DisplayResizeResult RequestRemoteDesktopResize(const DisplayResizeRequest& request)
 {
-    return g_session.RequestDynamicDesktopResizeEx(width, height, orientation, reason);
+    return g_session.RequestDynamicDesktopResizeEx(request);
 }
 
 void ApplyRemoteDesktopResize(const DisplayResizeRequest& request)
 {
-    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(
-        request.width, request.height, request.orientation, request.reason);
+    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(request);
     if (resizeResult.status == DisplayResizeStatus::Sent) {
         g_resizeCoordinator.ApplyResult(resizeResult, request.reason);
         DropPendingRenderFrame(request.reason);
@@ -119,7 +120,11 @@ void ApplyRemoteDesktopResize(const DisplayResizeRequest& request)
     BridgeLogger::LogPublic(BridgeLogLevel::Info,
         std::string("RDP_DISPLAY event=resize_request source=") + request.reason + " requested=" +
             std::to_string(request.width) + "x" + std::to_string(request.height) + " orientation=" +
-            std::to_string(request.orientation) + " normalized=" +
+            std::to_string(request.orientation) + " physical_mm=" +
+            std::to_string(request.physicalWidth) + "x" +
+            std::to_string(request.physicalHeight) + " scale=" +
+            std::to_string(request.desktopScaleFactor) + "/" +
+            std::to_string(request.deviceScaleFactor) + " normalized=" +
             std::to_string(resizeResult.normalizedWidth) + "x" +
             std::to_string(resizeResult.normalizedHeight) + " sent=" +
             std::to_string(resizeResult.sentWidth) + "x" +
@@ -131,10 +136,69 @@ void ApplyRemoteDesktopResize(const DisplayResizeRequest& request)
     }
 }
 
+uint32_t ScalePhysicalDimension(uint32_t surfacePixels, uint32_t displayPixels,
+    uint32_t displayMillimeters)
+{
+    if (displayPixels == 0 || displayMillimeters == 0) {
+        return std::clamp(surfacePixels, 10U, 10000U);
+    }
+    const auto millimeters = static_cast<long>(std::lround(
+        static_cast<double>(surfacePixels) * displayMillimeters / displayPixels));
+    return static_cast<uint32_t>(std::clamp(millimeters, 10L, 10000L));
+}
+
 DisplayResizeRequest CurrentSurfaceResizeRequest(const std::string& reason)
 {
     const SurfaceSnapshot snapshot = g_surface.Snapshot();
-    return {snapshot.width, snapshot.height, g_session.DisplayOrientation(), reason};
+    DisplayResizeRequest request;
+    request.width = snapshot.width;
+    request.height = snapshot.height;
+    request.orientation = g_session.DisplayOrientation();
+    request.reason = reason;
+    const auto layout = g_displayLayoutMonitor.Snapshot();
+    if (layout.size() == 1) {
+        const auto& monitor = layout.front();
+        request.physicalWidth = ScalePhysicalDimension(
+            snapshot.width, monitor.width, monitor.physicalWidth);
+        request.physicalHeight = ScalePhysicalDimension(
+            snapshot.height, monitor.height, monitor.physicalHeight);
+        request.orientation = monitor.orientation;
+        request.desktopScaleFactor = monitor.desktopScaleFactor;
+        request.deviceScaleFactor = monitor.deviceScaleFactor;
+    } else {
+        request.physicalWidth = std::clamp(snapshot.width, 10U, 10000U);
+        request.physicalHeight = std::clamp(snapshot.height, 10U, 10000U);
+    }
+    return request;
+}
+
+void UpdateDesiredSingleMonitorLayout(const DisplayResizeRequest& request)
+{
+    if (request.width == 0 || request.height == 0) {
+        EmitNativeLog("desired single monitor layout skipped: source=" + request.reason +
+            " reason=empty_surface");
+        return;
+    }
+    const bool sessionConnected = g_session.IsConnected();
+    FREERDP_OHOS_MONITOR_LAYOUT monitor {
+        sizeof(FREERDP_OHOS_MONITOR_LAYOUT), FREERDP_OHOS_MONITOR_LAYOUT_VERSION,
+        0, 0, request.width, request.height, request.physicalWidth, request.physicalHeight,
+        request.orientation, request.desktopScaleFactor, request.deviceScaleFactor, TRUE,
+    };
+    std::string message;
+    if (!g_session.SetMonitorLayout({monitor}, message)) {
+        EmitNativeLog("desired single monitor layout update failed: source=" + request.reason +
+            " session_connected=" + (sessionConnected ? "yes" : "no") + " detail=" + message);
+        return;
+    }
+    EmitNativeLog("desired single monitor layout updated: source=" + request.reason +
+        " session_connected=" + (sessionConnected ? "yes" : "no") + " size=" +
+        std::to_string(request.width) + "x" + std::to_string(request.height) +
+        " physical_mm=" + std::to_string(request.physicalWidth) + "x" +
+        std::to_string(request.physicalHeight) + " scale=" +
+        std::to_string(request.desktopScaleFactor) + "/" +
+        std::to_string(request.deviceScaleFactor) + " orientation=" +
+        std::to_string(request.orientation) + " detail=" + message);
 }
 
 void ScheduleCurrentSurfaceResize(const std::string& reason)
@@ -144,6 +208,10 @@ void ScheduleCurrentSurfaceResize(const std::string& reason)
     }
     const DisplayResizeRequest request = CurrentSurfaceResizeRequest(reason);
     if (request.width > 0 && request.height > 0) {
+        if (!g_session.IsConnected()) {
+            UpdateDesiredSingleMonitorLayout(request);
+            return;
+        }
         g_resizeRequestCoalescer.Schedule(request);
     }
 }
@@ -152,6 +220,10 @@ void FlushCurrentSurfaceResize(const std::string& reason)
 {
     const DisplayResizeRequest request = CurrentSurfaceResizeRequest(reason);
     if (request.width > 0 && request.height > 0) {
+        if (!g_session.IsConnected()) {
+            UpdateDesiredSingleMonitorLayout(request);
+            return;
+        }
         g_resizeRequestCoalescer.Flush(request);
     }
 }
@@ -320,8 +392,8 @@ void InitializeNativeBridgeContext()
                 EmitNativeLog("native display orientation rejected: source=" + source + " " +
                     updateMessage);
             }
-            std::string monitorMessage;
             if (multimon) {
+                std::string monitorMessage;
                 if (!g_session.SetMonitorLayout(layout, monitorMessage)) {
                     EmitNativeLog("native multimon layout failed: source=" + source + " " +
                         monitorMessage);
@@ -329,14 +401,11 @@ void InitializeNativeBridgeContext()
                 return;
             }
             if (wasMultimon) {
-                if (!g_session.SetMonitorLayout({}, monitorMessage)) {
-                    EmitNativeLog("native multimon clear failed: source=" + source + " " +
-                        monitorMessage);
-                    return;
-                }
-                FlushCurrentSurfaceResize("multimon_to_single");
-            } else if (orientationChanged) {
-                ScheduleCurrentSurfaceResize("orientation_changed_stable");
+                UpdateDesiredSingleMonitorLayout(
+                    CurrentSurfaceResizeRequest("multimon_to_single"));
+            } else {
+                ScheduleCurrentSurfaceResize(orientationChanged ?
+                    "orientation_changed_stable" : "native_display_changed_stable");
             }
         }, EmitNativeLog, layoutMessage)) {
         EmitNativeLog(layoutMessage);

@@ -391,6 +391,13 @@ struct RdpSession::Impl {
     DisplayResizeResult RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
         uint32_t orientation, const std::string& reason)
     {
+        return RequestDynamicDesktopResizeEx({
+            width, height, 0, 0, orientation, 100, 100, reason,
+        });
+    }
+
+    DisplayResizeResult RequestDynamicDesktopResizeEx(const DisplayResizeRequest& request)
+    {
         if (!connected.load()) {
             DisplayResizeResult result;
             result.status = DisplayResizeStatus::Failed;
@@ -398,7 +405,7 @@ struct RdpSession::Impl {
             return result;
         }
 
-        return channels.RequestDynamicDesktopResizeEx(width, height, orientation, reason);
+        return channels.RequestDynamicDesktopResizeEx(request);
     }
 
     void EmitState(const std::string& state)
@@ -617,12 +624,6 @@ struct RdpSession::Impl {
                         EmitLog("FreeRDP focus-in skipped after session connected: " +
                             focusMessage);
                     }
-                    const SurfaceSnapshot snapshot = SurfaceSnapshotValue();
-                    if (snapshot.width > 0 && snapshot.height > 0) {
-                        std::string resizeMessage;
-                        (void)RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-                            "session connected", resizeMessage);
-                    }
                 },
                 [this](FreerdpRuntimeApi* api, rdpContext* context) {
                     input.Drain(api, context, [this](const std::string& line) {
@@ -821,6 +822,11 @@ DisplayResizeResult RdpSession::RequestDynamicDesktopResizeEx(uint32_t width, ui
     uint32_t orientation, const std::string& reason)
 {
     return impl_->RequestDynamicDesktopResizeEx(width, height, orientation, reason);
+}
+
+DisplayResizeResult RdpSession::RequestDynamicDesktopResizeEx(const DisplayResizeRequest& request)
+{
+    return impl_->RequestDynamicDesktopResizeEx(request);
 }
 
 } // namespace rdp_bridge

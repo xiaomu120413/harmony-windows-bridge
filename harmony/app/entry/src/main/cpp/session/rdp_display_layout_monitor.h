@@ -18,6 +18,7 @@ public:
     ~RdpDisplayLayoutMonitor();
     bool Start(LayoutCallback layoutCallback, LogCallback logCallback, std::string& message);
     void Stop();
+    std::vector<FREERDP_OHOS_MONITOR_LAYOUT> Snapshot() const;
 
 private:
     static void OnDisplayChanged(uint64_t displayId);
@@ -26,7 +27,7 @@ private:
     void HandleChange(const std::string& source, uint64_t displayId);
     bool Refresh(const std::string& source, std::string& message);
 
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     uint32_t changeListener_ = 0;
     uint32_t addListener_ = 0;
     uint32_t removeListener_ = 0;
