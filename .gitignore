@@ -20,6 +20,8 @@ tools/hapsigner/*.bat
 harmony/app/.hvigor/
 harmony/app/oh_modules/
 harmony/app/**/oh_modules/
+harmony/app/**/.cxx/
+harmony/app/**/.test/
 harmony/app/entry/libs/
 harmony/app/common/libs/
 harmony/app/entry/hnp/
