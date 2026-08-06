@@ -2,6 +2,7 @@ export class HomeText {
   static readonly APP_TAGLINE: string = 'HarmonyOS 与 Windows 互联的局域网远程桌面工具'
 
   static readonly CONNECTION_DETAILS_TITLE: string = '连接详情'
+  static readonly WINDOWS_USERNAME_LABEL: string = 'Windows 用户名'
   static readonly WINDOWS_USERNAME_PLACEHOLDER: string = '例如：DESKTOP-ABC\\zhangsan'
   static readonly REMEMBER_PASSWORD: string = '记住密码'
   static readonly DEVICE_ACTIONS: string = '设备操作'

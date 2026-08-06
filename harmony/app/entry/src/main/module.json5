@@ -113,6 +113,8 @@
         "startWindowBackground": "$color:start_window_background",
         "orientation": "auto_rotation",
         "supportWindowMode": ["fullscreen", "floating", "split"],
+        "minWindowWidth": 720,
+        "minWindowHeight": 560,
         "exported": true,
         "skills": [
           {
