@@ -42,6 +42,7 @@ public:
         std::string& message);
     DisplayResizeResult RequestDynamicDesktopResizeEx(uint32_t width, uint32_t height,
         uint32_t orientation, const std::string& reason);
+    DisplayResizeResult RequestDynamicDesktopResizeEx(const DisplayResizeRequest& request);
     bool SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors,
         std::string& message);
     std::vector<FREERDP_OHOS_MONITOR_LAYOUT> MonitorLayout() const;

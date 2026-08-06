@@ -124,6 +124,14 @@ bool RdpSessionChannels::RequestDynamicDesktopResize(uint32_t width, uint32_t he
 DisplayResizeResult RdpSessionChannels::RequestDynamicDesktopResizeEx(uint32_t width,
     uint32_t height, uint32_t orientation, const std::string& reason)
 {
+    return RequestDynamicDesktopResizeEx({
+        width, height, 0, 0, orientation, 100, 100, reason,
+    });
+}
+
+DisplayResizeResult RdpSessionChannels::RequestDynamicDesktopResizeEx(
+    const DisplayResizeRequest& request)
+{
     DisplayResizeResult result;
     std::lock_guard<std::mutex> lock(activeMutex_);
     if (activeApi_ == nullptr) {
@@ -139,16 +147,20 @@ DisplayResizeResult RdpSessionChannels::RequestDynamicDesktopResizeEx(uint32_t w
 
     std::array<char, 192> detail {};
     if (activeApi_->ohosSessionResizeEx != nullptr) {
-        FREERDP_OHOS_SESSION_RESIZE_REQUEST request {
+        FREERDP_OHOS_SESSION_RESIZE_REQUEST nativeRequest {
             sizeof(FREERDP_OHOS_SESSION_RESIZE_REQUEST),
             FREERDP_OHOS_SESSION_RESIZE_VERSION,
-            width,
-            height,
-            orientation,
+            request.width,
+            request.height,
+            request.orientation,
+            request.physicalWidth,
+            request.physicalHeight,
+            request.desktopScaleFactor,
+            request.deviceScaleFactor,
         };
         FREERDP_OHOS_SESSION_RESIZE_RESULT nativeResult {};
         nativeResult.structSize = sizeof(nativeResult);
-        if (!activeApi_->ohosSessionResizeEx(activeOhosSession_, &request, &nativeResult,
+        if (!activeApi_->ohosSessionResizeEx(activeOhosSession_, &nativeRequest, &nativeResult,
             detail.data(), detail.size())) {
             result.status = DisplayResizeStatus::Failed;
             result.message = detail[0] != '\0' ? detail.data() :
@@ -438,15 +450,6 @@ void RdpSessionChannels::AttachDisplayControl(DispClientContext* disp)
             return;
         }
         activeDisp_ = disp;
-    }
-    if (callbacks_.surfaceSnapshot == nullptr) {
-        return;
-    }
-    const SurfaceSnapshot snapshot = callbacks_.surfaceSnapshot();
-    if (snapshot.width > 0 && snapshot.height > 0) {
-        std::string resizeMessage;
-        (void)RequestDynamicDesktopResize(snapshot.width, snapshot.height,
-            "display-control connected", resizeMessage);
     }
 }
 

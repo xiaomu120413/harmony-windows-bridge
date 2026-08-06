@@ -38,6 +38,18 @@ uint32_t PhysicalMillimeters(int32_t pixels, float dpi)
     return static_cast<uint32_t>(std::clamp(value, 10L, 10000L));
 }
 
+uint32_t DesktopScaleFactor(float densityDpi)
+{
+    constexpr uint32_t supported[] = {100, 125, 150, 175, 200, 250, 300, 400, 500};
+    const double dpi = std::isfinite(densityDpi) && densityDpi > 0.0f ? densityDpi : 160.0;
+    const long requested = std::lround(dpi * 100.0 / 160.0);
+    return *std::min_element(std::begin(supported), std::end(supported),
+        [requested](uint32_t left, uint32_t right) {
+            return std::abs(static_cast<long>(left) - requested) <
+                std::abs(static_cast<long>(right) - requested);
+        });
+}
+
 bool SameMonitor(const FREERDP_OHOS_MONITOR_LAYOUT& left,
     const FREERDP_OHOS_MONITOR_LAYOUT& right)
 {
@@ -124,6 +136,12 @@ void RdpDisplayLayoutMonitor::Stop()
     lastLayout_.clear();
 }
 
+std::vector<FREERDP_OHOS_MONITOR_LAYOUT> RdpDisplayLayoutMonitor::Snapshot() const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return lastLayout_;
+}
+
 void RdpDisplayLayoutMonitor::OnDisplayChanged(uint64_t displayId)
 {
     if (auto* monitor = g_activeLayoutMonitor.load(); monitor != nullptr) {
@@ -197,7 +215,7 @@ bool RdpDisplayLayoutMonitor::Refresh(const std::string& source, std::string& me
             static_cast<uint32_t>(display.height),
             PhysicalMillimeters(display.width, display.xDPI > 0.0f ? display.xDPI : display.densityDPI),
             PhysicalMillimeters(display.height, display.yDPI > 0.0f ? display.yDPI : display.densityDPI),
-            ToRdpOrientation(display.orientation), 100, 100,
+            ToRdpOrientation(display.orientation), DesktopScaleFactor(display.densityDPI), 100,
             display.id == primaryId ? TRUE : FALSE,
         });
     }

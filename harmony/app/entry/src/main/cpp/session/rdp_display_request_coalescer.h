@@ -1,5 +1,7 @@
 #pragma once
 
+#include "session/rdp_display_resize_types.h"
+
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -9,13 +11,6 @@
 #include <thread>
 
 namespace rdp_bridge {
-
-struct DisplayResizeRequest {
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t orientation = 0;
-    std::string reason;
-};
 
 class RdpDisplayRequestCoalescer {
 public:
