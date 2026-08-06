@@ -54,18 +54,41 @@ if exist "%PROJECT_DIR%\..\out\xrdp-ohos-arm64\sysroot\lib\libxrdpserver.so" (
   )
 )
 
-call "%HVIGORW_CMD%" --no-daemon assembleHap --mode module -p product=default -p module=entry@default
+if not defined HAP_SIGN_PASSWORD set "HAP_SIGN_PASSWORD=123456"
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\package-xrdp-hnp.ps1"
 if errorlevel 1 (
-  echo hvigor assembleHap failed with exit code %ERRORLEVEL%.
+  echo package-xrdp-hnp failed with exit code %ERRORLEVEL%.
   endlocal
   exit /b %ERRORLEVEL%
 )
 
-if not exist "entry\build\default\outputs\default\entry-default-signed.hap" (
-  echo Build output not found: entry\build\default\outputs\default\entry-default-signed.hap
+call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleApp -p product=default -p buildMode=debug
+if errorlevel 1 (
+  echo hvigor assembleApp failed with exit code %ERRORLEVEL%.
+  endlocal
+  exit /b %ERRORLEVEL%
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\repack-hap-with-hnp.ps1"
+if errorlevel 1 (
+  echo repack-hap-with-hnp failed with exit code %ERRORLEVEL%.
+  endlocal
+  exit /b %ERRORLEVEL%
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\package-multidevice-app.ps1"
+if errorlevel 1 (
+  echo package-multidevice-app failed with exit code %ERRORLEVEL%.
+  endlocal
+  exit /b %ERRORLEVEL%
+)
+
+if not exist "build\outputs\default\app-default-signed.app" (
+  echo Build output not found: build\outputs\default\app-default-signed.app
   endlocal
   exit /b 1
 )
 
-for %%I in ("entry\build\default\outputs\default\entry-default-signed.hap") do echo HAP %%~fI ^| size=%%~zI ^| time=%%~tI
+for %%I in ("build\outputs\default\app-default-signed.app") do echo APP %%~fI ^| size=%%~zI ^| time=%%~tI
 endlocal

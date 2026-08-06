@@ -1,0 +1,50 @@
+{
+  "module": {
+    "name": "entry_tablet",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "TabletEntryAbility",
+    "deviceTypes": [
+      "tablet"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
+      }
+    ],
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "TabletEntryAbility",
+        "srcEntry": "./ets/entryability/TabletEntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:probe_icon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:probe_icon",
+        "startWindowBackground": "$color:start_window_background",
+        "orientation": "auto_rotation",
+        "supportWindowMode": [
+          "fullscreen",
+          "floating",
+          "split"
+        ],
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "ohos.want.action.home"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

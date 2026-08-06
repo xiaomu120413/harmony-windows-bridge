@@ -1,0 +1,102 @@
+Ôr@œªassertions¤code´customTransformCache¢id¤meta¬originalCode±originalSourcemap«resolvedIds®sourcemapChainµsyntheticNamedExportsµtransformDependencies¨cacheAstÔrA ÂÙˆC:\Users\mu\Desktop\code\demo\harmony\app\oh_modules\.ohpm\@ohos+hypium@1.0.24\oh_modules\@ohos\hypium\src\main\module\kit\SysTestKit.jsÔrB˜±isLocalDependency¯isNodeEntryFile§pkgPath§pkgNameªpkgVersion±belongProjectPath±dependencyPkgInfo¨commonjsÂÂÙfC:\Users\mu\Desktop\code\demo\harmony\app\oh_modules\.ohpm\@ohos+hypium@1.0.24\oh_modules\@ohos\hypium¬@ohos/hypium¦1.0.24Ù)C:\Users\mu\Desktop\code\demo\harmony\appÔrC’§pkgNameªpkgVersion¬@ohos/hypium¦1.0.24ÔrD’°hasDefaultExportªisCommonJSÃÂÚß/*
+ * Copyright (c) 2022-2023 Huawei Device Co., Ltd.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {TAG} from '../../Constant';
+import Core from '../../core.js';
+
+export default class SysTestKit {
+
+  static delegator = null;
+  static systemTime = null;
+  static workerPort = null;
+
+  constructor() {
+    this.id = 'sysTestKit';
+    this.index = 0;
+  }
+
+  static getDescribeName() {
+    return Core.getInstance().getDefaultService('suite').getCurrentRunningSuite().description;
+  }
+
+  static getItName() {
+    return Core.getInstance().getDefaultService('spec').getCurrentRunningSpec().description;
+  }
+
+  static getItAttribute() {
+    return Core.getInstance().getDefaultService('spec').getCurrentRunningSpec().fi;
+  }
+
+  static actionStart(tag) {
+    console.info(`${TAG}${JSON.stringify(tag)}`);
+    var message = '\n' + 'OHOS_REPORT_ACTIONSTART: ' + JSON.stringify(tag) + '\n';
+    SysTestKit.print(message);
+    console.info(`${TAG}${JSON.stringify(tag)} actionStart print success`);
+  }
+
+  static actionEnd(tag) {
+    console.info(`${TAG}${JSON.stringify(tag)}`);
+    var message = '\n' + 'OHOS_REPORT_ACTIONEND: ' + JSON.stringify(tag) + '\n';
+    SysTestKit.print(message);
+    console.info(`${TAG}${JSON.stringify(tag)}  actionEnd print success`);
+  }
+
+  static async existKeyword(keyword, timeout) {
+    let reg = new RegExp(/^[a-zA-Z0-9]{1,}$/);
+    if (!reg.test(keyword)) {
+      throw new Error('keyword must contain more than one string, and only letters and numbers are supported.');
+    }
+    timeout = timeout || 4;
+
+    let searchResult = false;
+    let cmd = 'hilog -x | grep -i \'' + keyword + '\' | wc -l';
+    await executePromise(cmd, timeout).then((data) => {
+      searchResult = data;
+    });
+    return searchResult;
+  }
+  static async print(message) {
+    if ('printSync' in SysTestKit.delegator) {
+      console.info(`${TAG}printSync called ...`);
+      SysTestKit.delegator.printSync(message);
+    } else {
+      await SysTestKit.delegator.print(message);
+    }
+  }
+
+  static async getRealTime() {
+    let currentTime = new Date().getTime();
+    if (SysTestKit.systemTime !== null && SysTestKit.systemTime !== undefined) {
+      await SysTestKit.systemTime.getRealTime().then((time) => {
+        console.info(`${TAG}systemTime.getRealTime success data: ${JSON.stringify(time)}`);
+        currentTime = time;
+      }).catch((error) => {
+        console.error(`${TAG}failed to systemTime.getRealTime because ${JSON.stringify(error)}`);
+      });
+    }
+    return currentTime;
+  }
+}
+
+function executePromise(cmd, timeout) {
+  return new Promise((resolve, reject) => {
+    SysTestKit.delegator.executeShellCommand(cmd, timeout,
+      (error, data) => {
+        console.info(`${TAG}existKeyword CallBack: err : ${JSON.stringify(error)}`);
+        console.info(`${TAG}existKeyword CallBack: data : ${JSON.stringify(data)}`);
+        resolve(parseInt(data.stdResult) > 3 ? true : false);
+      });
+  });
+}ÀÔrE’®../../Constant­../../core.jsÔrF–ªassertions¨external¢id¤metaªresolvedByµsyntheticNamedExportsAÂÙ{C:\Users\mu\Desktop\code\demo\harmony\app\oh_modules\.ohpm\@ohos+hypium@1.0.24\oh_modules\@ohos\hypium\src\main\Constant.jsAªoh-resolveÂFAÂÙwC:\Users\mu\Desktop\code\demo\harmony\app\oh_modules\.ohpm\@ohos+hypium@1.0.24\oh_modules\@ohos\hypium\src\main\core.jsAªoh-resolveÂÂÔrG”²dynamicImportCache¹exportAllDeclarationCache»exportNamedDeclarationCache«importCache’ÔrH•¤type¥start£endªspecifiers¦source±ImportDeclarationÍuÍ˜‘ÔrI•¤type¥start£end¨imported¥local¯ImportSpecifierÍ}Í€ÔrJ”¤type¥start£end¤nameªIdentifierÍ}Í€£TAGJªIdentifierÍ}Í€£TAGÔrK•¤type¥start£end¥value£raw§LiteralÍ‡Í—®../../Constant°'../../Constant'H±ImportDeclarationÍšÍ»‘ÔrL”¤type¥start£end¥local¶ImportDefaultSpecifierÍ¡Í¥JªIdentifierÍ¡Í¥¤CoreK§LiteralÍ«Íº­../../core.js¯'../../core.js'

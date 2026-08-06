@@ -1,0 +1,11 @@
+{
+  "name": "entry_tablet",
+  "version": "1.0.0",
+  "description": "MuHub tablet packaging probe entry.",
+  "main": "",
+  "author": "MuHub",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "common": "file:../common"
+  }
+}

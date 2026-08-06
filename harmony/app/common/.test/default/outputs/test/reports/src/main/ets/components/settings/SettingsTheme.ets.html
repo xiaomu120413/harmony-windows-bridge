@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Import style -->
+  <link rel="stylesheet" href="..\..\..\..\..\index.css" />
+  <link rel="stylesheet" href="..\..\..\..\..\prettify.css" />
+  <!-- Import Vue 3 -->
+  <script src="..\..\..\..\..\vue.global.prod.js"></script>
+  <!-- Import component library -->
+  <script src="..\..\..\..\..\index.full.min.js"></script>
+  <script src="..\..\..\..\..\prettify.js"></script>
+  <meta charset="UTF-8">
+  <title>Coverage</title>
+</head>
+
+<body>
+  <div id="app" class="common-layout">
+    <el-container>
+      <el-header>
+        <el-row :gutter="10">
+          <el-col :span="5">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <el-link type="primary" :href="relativeHome">
+                    <h2>&lt;</h2>
+                  </el-link>
+                </el-text></div>
+              <div><el-text class="mx-1 "><h2>{{title}}</h2></el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info"></el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.functions.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Functions</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.functions.covered}}/{{file.summary.functions.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.branches.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Branches</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.branches.covered}}/{{file.summary.branches.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.lines.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Lines</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.lines.covered}}/{{file.summary.lines.total}}</el-text></div>
+            </el-space>
+          </el-col>
+        </el-row>
+        <el-divider />
+      </el-header>
+      <el-main>
+        <el-row>
+        </el-row>
+        <pre>
+          <table class="coverage">
+            <tr>
+              <td class="line-count quiet">
+                <pre class="prettyprint lang-js">
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+                </pre>
+        </td>
+        <td class="text">
+          <pre class="prettyprint linenums lang-js">
+import { common, ConfigurationConstant } from &#39;@kit.AbilityKit&#39; 
+import { SettingsAccent } from &#39;./SettingsResources&#39; 
+import { 
+  SETTINGS_STORAGE_APPEARANCE_MODE, 
+  SETTINGS_STORAGE_SYSTEM_DARK, 
+  SettingsAccentName, 
+  SettingsAppearanceMode, 
+  SettingsStatusTone 
+} from &#39;./SettingsTypes&#39; 
+ 
+export class SettingsTheme { 
+  static readonly MOTION_MS: number = 180 
+  static readonly CARD_RADIUS: number = 12 
+  static readonly BUTTON_RADIUS: number = 12 
+  static readonly ICON_TILE_SIZE: number = 38 
+  static readonly ICON_SIZE: number = 20 
+ 
+  static normalizeAppearanceMode(mode: string | undefined): SettingsAppearanceMode { 
+    if (mode === &#39;dark&#39;) { 
+      return &#39;dark&#39; 
+    } 
+    if (mode === &#39;light&#39;) { 
+      return &#39;light&#39; 
+    } 
+    return &#39;system&#39; 
+  } 
+ 
+  static getStoredAppearanceMode(): SettingsAppearanceMode { 
+    return SettingsTheme.normalizeAppearanceMode(AppStorage.get&lt;string&gt;(SETTINGS_STORAGE_APPEARANCE_MODE)) 
+  } 
+ 
+  static detectSystemDark(context: common.UIAbilityContext): boolean | null { 
+    const colorMode = context.config?.colorMode 
+    if (colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK) { 
+      return true 
+    } 
+    if (colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT) { 
+      return false 
+    } 
+    return null 
+  } 
+ 
+  static initAppearance(context: common.UIAbilityContext): void { 
+    const detected = SettingsTheme.detectSystemDark(context) 
+    const systemDark = detected === null ? false : detected 
+    AppStorage.setOrCreate&lt;boolean&gt;(SETTINGS_STORAGE_SYSTEM_DARK, systemDark) 
+    AppStorage.setOrCreate&lt;SettingsAppearanceMode&gt;(SETTINGS_STORAGE_APPEARANCE_MODE, 
+      SettingsTheme.getStoredAppearanceMode()) 
+  } 
+ 
+  static updateSystemAppearance(colorMode: ConfigurationConstant.ColorMode | undefined): void { 
+    if (colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK) { 
+      AppStorage.setOrCreate&lt;boolean&gt;(SETTINGS_STORAGE_SYSTEM_DARK, true) 
+      return 
+    } 
+    if (colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT) { 
+      AppStorage.setOrCreate&lt;boolean&gt;(SETTINGS_STORAGE_SYSTEM_DARK, false) 
+    } 
+  } 
+ 
+  static colorModeForAppearance(mode: SettingsAppearanceMode): ConfigurationConstant.ColorMode { 
+    if (mode === &#39;dark&#39;) { 
+      return ConfigurationConstant.ColorMode.COLOR_MODE_DARK 
+    } 
+    if (mode === &#39;light&#39;) { 
+      return ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT 
+    } 
+    return ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET 
+  } 
+ 
+  static applyAppearanceModeToApplication(context: common.UIAbilityContext, mode: SettingsAppearanceMode): boolean { 
+    try { 
+      context.getApplicationContext().setColorMode(SettingsTheme.colorModeForAppearance(mode)) 
+      return true 
+    } catch (_error) { 
+      return false 
+    } 
+  } 
+ 
+  static applyAppearanceMode(uiContext: UIContext, mode: SettingsAppearanceMode): boolean { 
+    const hostContext = uiContext.getHostContext() 
+    if (!hostContext) { 
+      return false 
+    } 
+ 
+    const abilityContext = hostContext as common.UIAbilityContext 
+    AppStorage.setOrCreate&lt;SettingsAppearanceMode&gt;(SETTINGS_STORAGE_APPEARANCE_MODE, mode) 
+    return SettingsTheme.applyAppearanceModeToApplication(abilityContext, mode) 
+  } 
+ 
+  static isSystemDark(uiContext: UIContext): boolean { 
+    const hostContext = uiContext.getHostContext() 
+    if (!hostContext) { 
+      return AppStorage.get&lt;boolean&gt;(SETTINGS_STORAGE_SYSTEM_DARK) === true 
+    } 
+ 
+    const abilityContext = hostContext as common.UIAbilityContext 
+    const detected = SettingsTheme.detectSystemDark(abilityContext) 
+    if (detected !== null) { 
+      AppStorage.setOrCreate&lt;boolean&gt;(SETTINGS_STORAGE_SYSTEM_DARK, detected) 
+      return detected 
+    } 
+    return AppStorage.get&lt;boolean&gt;(SETTINGS_STORAGE_SYSTEM_DARK) === true 
+  } 
+ 
+  static isDark(uiContext: UIContext, mode: SettingsAppearanceMode): boolean { 
+    if (mode === &#39;dark&#39;) { 
+      return true 
+    } 
+    if (mode === &#39;light&#39;) { 
+      return false 
+    } 
+    return SettingsTheme.isSystemDark(uiContext) 
+  } 
+ 
+  static animate(uiContext: UIContext, update: () =&gt; void): void { 
+    uiContext.animateTo({ 
+      duration: SettingsTheme.MOTION_MS, 
+      curve: Curve.EaseOut 
+    }, update) 
+  } 
+ 
+  static pageBackground(isDark: boolean): string { 
+    return isDark ? &#39;#101114&#39; : &#39;#F6F7F9&#39; 
+  } 
+ 
+  static cardBackground(isDark: boolean): string { 
+    return isDark ? &#39;#181A1F&#39; : &#39;#FFFFFF&#39; 
+  } 
+ 
+  static cardHoverBackground(isDark: boolean): string { 
+    return isDark ? &#39;#20232A&#39; : &#39;#F8FAFC&#39; 
+  } 
+ 
+  static primaryText(isDark: boolean): string { 
+    return isDark ? &#39;#F8FAFC&#39; : &#39;#101828&#39; 
+  } 
+ 
+  static secondaryText(isDark: boolean): string { 
+    return isDark ? &#39;#D1D5DB&#39; : &#39;#374151&#39; 
+  } 
+ 
+  static mutedText(isDark: boolean): string { 
+    return isDark ? &#39;#9CA3AF&#39; : &#39;#6B7280&#39; 
+  } 
+ 
+  static disabledText(isDark: boolean): string { 
+    return isDark ? &#39;#6B7280&#39; : &#39;#A0A7B2&#39; 
+  } 
+ 
+  static accentColor(isDark: boolean, accentName: SettingsAccentName): string { 
+    if (accentName === SettingsAccent.PURPLE) { 
+      return isDark ? &#39;#C4B5FD&#39; : &#39;#7C3AED&#39; 
+    } 
+    if (accentName === SettingsAccent.GREEN) { 
+      return isDark ? &#39;#86EFAC&#39; : &#39;#16A34A&#39; 
+    } 
+    if (accentName === SettingsAccent.AMBER) { 
+      return isDark ? &#39;#FCD34D&#39; : &#39;#D97706&#39; 
+    } 
+    if (accentName === SettingsAccent.CYAN) { 
+      return isDark ? &#39;#67E8F9&#39; : &#39;#0891B2&#39; 
+    } 
+    if (accentName === SettingsAccent.ORANGE) { 
+      return isDark ? &#39;#FDBA74&#39; : &#39;#EA580C&#39; 
+    } 
+    if (accentName === SettingsAccent.INDIGO) { 
+      return isDark ? &#39;#A5B4FC&#39; : &#39;#4F46E5&#39; 
+    } 
+    return isDark ? &#39;#72B7FF&#39; : &#39;#0A84FF&#39; 
+  } 
+ 
+  static accentBackground(isDark: boolean, accentName: SettingsAccentName): string { 
+    if (accentName === SettingsAccent.PURPLE) { 
+      return isDark ? &#39;#35245F&#39; : &#39;#F3E8FF&#39; 
+    } 
+    if (accentName === SettingsAccent.GREEN) { 
+      return isDark ? &#39;#173F2A&#39; : &#39;#EAF8EF&#39; 
+    } 
+    if (accentName === SettingsAccent.AMBER) { 
+      return isDark ? &#39;#4A3718&#39; : &#39;#FFF4D6&#39; 
+    } 
+    if (accentName === SettingsAccent.CYAN) { 
+      return isDark ? &#39;#153F47&#39; : &#39;#E8FAFC&#39; 
+    } 
+    if (accentName === SettingsAccent.ORANGE) { 
+      return isDark ? &#39;#4A2C16&#39; : &#39;#FFF0E5&#39; 
+    } 
+    if (accentName === SettingsAccent.INDIGO) { 
+      return isDark ? &#39;#272D61&#39; : &#39;#EEF2FF&#39; 
+    } 
+    return isDark ? &#39;#173A5E&#39; : &#39;#EAF3FF&#39; 
+  } 
+ 
+  static accentHoverBackground(isDark: boolean, accentName: SettingsAccentName): string { 
+    if (accentName === SettingsAccent.PURPLE) { 
+      return isDark ? &#39;#402A73&#39; : &#39;#EDE2FF&#39; 
+    } 
+    if (accentName === SettingsAccent.GREEN) { 
+      return isDark ? &#39;#1C4B32&#39; : &#39;#DDF5E7&#39; 
+    } 
+    if (accentName === SettingsAccent.AMBER) { 
+      return isDark ? &#39;#5A421E&#39; : &#39;#FFEBC2&#39; 
+    } 
+    if (accentName === SettingsAccent.CYAN) { 
+      return isDark ? &#39;#1A4A53&#39; : &#39;#DCF7FA&#39; 
+    } 
+    if (accentName === SettingsAccent.ORANGE) { 
+      return isDark ? &#39;#5A341A&#39; : &#39;#FFE5D4&#39; 
+    } 
+    if (accentName === SettingsAccent.INDIGO) { 
+      return isDark ? &#39;#303574&#39; : &#39;#E4E9FF&#39; 
+    } 
+    return isDark ? &#39;#1C456E&#39; : &#39;#DDEEFF&#39; 
+  } 
+ 
+  static borderColor(isDark: boolean, active: boolean = false): string { 
+    if (active) { 
+      return &#39;#0A84FF&#39; 
+    } 
+    return isDark ? &#39;#2B3038&#39; : &#39;#E5E7EB&#39; 
+  } 
+ 
+  static transparentButton(hovered: boolean, pressed: boolean, isDark: boolean): string { 
+    if (!hovered &amp;&amp; !pressed) { 
+      return &#39;rgba(0,0,0,0)&#39; 
+    } 
+    if (pressed) { 
+      return isDark ? &#39;rgba(255,255,255,0.14)&#39; : &#39;rgba(0,0,0,0.08)&#39; 
+    } 
+    return isDark ? &#39;rgba(255,255,255,0.10)&#39; : &#39;rgba(0,0,0,0.05)&#39; 
+  } 
+ 
+  static subtleButton(isDark: boolean, hovered: boolean, pressed: boolean): string { 
+    if (pressed) { 
+      return isDark ? &#39;#2A3038&#39; : &#39;#E5EAF0&#39; 
+    } 
+    if (hovered) { 
+      return isDark ? &#39;#242932&#39; : &#39;#EEF2F7&#39; 
+    } 
+    return isDark ? &#39;#1D2128&#39; : &#39;#F2F4F7&#39; 
+  } 
+ 
+  static disabledButton(isDark: boolean): string { 
+    return isDark ? &#39;#1A1D23&#39; : &#39;#F6F7F9&#39; 
+  } 
+ 
+  static shadow(isDark: boolean, hovered: boolean): ShadowOptions { 
+    return { 
+      radius: hovered ? 16 : 6, 
+      color: isDark ? (hovered ? &#39;#44000000&#39; : &#39;#1A000000&#39;) : (hovered ? &#39;#12111827&#39; : &#39;#06111827&#39;), 
+      offsetX: 0, 
+      offsetY: hovered ? 8 : 2 
+    } 
+  } 
+ 
+  static statusText(isDark: boolean, tone: SettingsStatusTone): string { 
+    if (tone === &#39;ok&#39;) { 
+      return isDark ? &#39;#86EFAC&#39; : &#39;#15803D&#39; 
+    } 
+    if (tone === &#39;warning&#39;) { 
+      return isDark ? &#39;#FCD34D&#39; : &#39;#B45309&#39; 
+    } 
+    if (tone === &#39;danger&#39;) { 
+      return isDark ? &#39;#FCA5A5&#39; : &#39;#B91C1C&#39; 
+    } 
+    if (tone === &#39;info&#39;) { 
+      return isDark ? &#39;#93C5FD&#39; : &#39;#0A84FF&#39; 
+    } 
+    return isDark ? &#39;#D1D5DB&#39; : &#39;#475467&#39; 
+  } 
+ 
+  static statusBackground(isDark: boolean, tone: SettingsStatusTone): string { 
+    if (tone === &#39;ok&#39;) { 
+      return isDark ? &#39;#173F2A&#39; : &#39;#EAF8EF&#39; 
+    } 
+    if (tone === &#39;warning&#39;) { 
+      return isDark ? &#39;#4A3718&#39; : &#39;#FFF4D6&#39; 
+    } 
+    if (tone === &#39;danger&#39;) { 
+      return isDark ? &#39;#4A1F1F&#39; : &#39;#FEECEC&#39; 
+    } 
+    if (tone === &#39;info&#39;) { 
+      return isDark ? &#39;#173A5E&#39; : &#39;#EAF3FF&#39; 
+    } 
+    return isDark ? &#39;#242932&#39; : &#39;#F2F4F7&#39; 
+  } 
+ 
+  static statusBorder(isDark: boolean, tone: SettingsStatusTone): string { 
+    if (tone === &#39;ok&#39;) { 
+      return isDark ? &#39;#24563A&#39; : &#39;#C8EBD5&#39; 
+    } 
+    if (tone === &#39;warning&#39;) { 
+      return isDark ? &#39;#6B531E&#39; : &#39;#F6D98B&#39; 
+    } 
+    if (tone === &#39;danger&#39;) { 
+      return isDark ? &#39;#733232&#39; : &#39;#F5B8B8&#39; 
+    } 
+    if (tone === &#39;info&#39;) { 
+      return isDark ? &#39;#24517C&#39; : &#39;#B8DBFF&#39; 
+    } 
+    return SettingsTheme.borderColor(isDark) 
+  } 
+} 
+
+              </pre>
+        </td>
+        </tr>
+        </table>
+        </pre>
+      </el-main>
+      <el-footer align="middle" class="footer">
+        Code coverage generated by <el-link href="https://github.com/SMAT-Lab/bjc" type="primary"
+          target="_blank">bjc</el-link> at {{date}}
+      </el-footer>
+    </el-container>
+  </div>
+</body>
+
+<script>
+  const App = {
+    data() {
+      return {"date":"Thu Aug 06 2026 17:19:48 GMT+0800 (中国标准时间)","file":{"version":"bjc v1.0.0","versionCode":10000,"path":"C:/Users/mu/Desktop/code/demo/harmony/app/common/src/main/ets/components/settings/SettingsTheme.ets","hash":"35c48c7e0af90308ff1253b1edef2b113367028cdb90ed94de1eccbae031a0e5","lineCnt":305,"count":0,"projectPath":"C:/Users/mu/Desktop/code/demo/harmony/app","functions":[{"name":"SettingsTheme.normalizeAppearanceMode","count":0,"regions":[{"startLoc":{"line":18,"col":3},"endLoc":{"line":26,"col":4},"count":0,"ignored":0},{"startLoc":{"line":19,"col":26},"endLoc":{"line":21,"col":6},"count":0,"ignored":0},{"startLoc":{"line":22,"col":27},"endLoc":{"line":24,"col":6},"count":0,"ignored":0},{"startLoc":{"line":25,"col":5},"endLoc":{"line":26,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":19,"col":9},"endLoc":{"line":19,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":22,"col":9},"endLoc":{"line":22,"col":25},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":0},{"name":"SettingsTheme.getStoredAppearanceMode","count":0,"regions":[{"startLoc":{"line":28,"col":3},"endLoc":{"line":30,"col":4},"count":0,"ignored":0},{"startLoc":{"line":29,"col":5},"endLoc":{"line":30,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":1},{"name":"SettingsTheme.detectSystemDark","count":0,"regions":[{"startLoc":{"line":32,"col":3},"endLoc":{"line":41,"col":4},"count":0,"ignored":0},{"startLoc":{"line":34,"col":72},"endLoc":{"line":36,"col":6},"count":0,"ignored":0},{"startLoc":{"line":37,"col":73},"endLoc":{"line":39,"col":6},"count":0,"ignored":0},{"startLoc":{"line":40,"col":5},"endLoc":{"line":41,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":34,"col":9},"endLoc":{"line":34,"col":70},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":37,"col":9},"endLoc":{"line":37,"col":71},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":2},{"name":"SettingsTheme.initAppearance","count":0,"regions":[{"startLoc":{"line":43,"col":3},"endLoc":{"line":49,"col":4},"count":0,"ignored":0},{"startLoc":{"line":44,"col":5},"endLoc":{"line":49,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":45,"col":24},"endLoc":{"line":45,"col":60},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":3},{"name":"SettingsTheme.updateSystemAppearance","count":0,"regions":[{"startLoc":{"line":51,"col":3},"endLoc":{"line":59,"col":4},"count":0,"ignored":0},{"startLoc":{"line":52,"col":72},"endLoc":{"line":55,"col":6},"count":0,"ignored":0},{"startLoc":{"line":56,"col":73},"endLoc":{"line":58,"col":6},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":52,"col":9},"endLoc":{"line":52,"col":70},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":56,"col":9},"endLoc":{"line":56,"col":71},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":4},{"name":"SettingsTheme.colorModeForAppearance","count":0,"regions":[{"startLoc":{"line":61,"col":3},"endLoc":{"line":69,"col":4},"count":0,"ignored":0},{"startLoc":{"line":62,"col":26},"endLoc":{"line":64,"col":6},"count":0,"ignored":0},{"startLoc":{"line":65,"col":27},"endLoc":{"line":67,"col":6},"count":0,"ignored":0},{"startLoc":{"line":68,"col":5},"endLoc":{"line":69,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":62,"col":9},"endLoc":{"line":62,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":65,"col":9},"endLoc":{"line":65,"col":25},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":5},{"name":"SettingsTheme.applyAppearanceModeToApplication","count":0,"regions":[{"startLoc":{"line":71,"col":3},"endLoc":{"line":78,"col":4},"count":0,"ignored":0},{"startLoc":{"line":72,"col":9},"endLoc":{"line":75,"col":6},"count":0,"ignored":0},{"startLoc":{"line":75,"col":7},"endLoc":{"line":77,"col":6},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":6},{"name":"SettingsTheme.applyAppearanceMode","count":0,"regions":[{"startLoc":{"line":80,"col":3},"endLoc":{"line":89,"col":4},"count":0,"ignored":0},{"startLoc":{"line":86,"col":5},"endLoc":{"line":89,"col":4},"count":0,"ignored":0},{"startLoc":{"line":82,"col":23},"endLoc":{"line":84,"col":6},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":82,"col":9},"endLoc":{"line":82,"col":21},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":7},{"name":"SettingsTheme.isSystemDark","count":0,"regions":[{"startLoc":{"line":91,"col":3},"endLoc":{"line":104,"col":4},"count":0,"ignored":0},{"startLoc":{"line":99,"col":28},"endLoc":{"line":102,"col":6},"count":0,"ignored":0},{"startLoc":{"line":93,"col":23},"endLoc":{"line":95,"col":6},"count":0,"ignored":0},{"startLoc":{"line":103,"col":5},"endLoc":{"line":104,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":93,"col":9},"endLoc":{"line":93,"col":21},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":99,"col":9},"endLoc":{"line":99,"col":26},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":8},{"name":"SettingsTheme.isDark","count":0,"regions":[{"startLoc":{"line":106,"col":3},"endLoc":{"line":114,"col":4},"count":0,"ignored":0},{"startLoc":{"line":107,"col":26},"endLoc":{"line":109,"col":6},"count":0,"ignored":0},{"startLoc":{"line":110,"col":27},"endLoc":{"line":112,"col":6},"count":0,"ignored":0},{"startLoc":{"line":113,"col":5},"endLoc":{"line":114,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":107,"col":9},"endLoc":{"line":107,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":110,"col":9},"endLoc":{"line":110,"col":25},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":9},{"name":"SettingsTheme.animate","count":0,"regions":[{"startLoc":{"line":116,"col":3},"endLoc":{"line":121,"col":4},"count":0,"ignored":0},{"startLoc":{"line":117,"col":5},"endLoc":{"line":121,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":10},{"name":"anonymous_0","count":0,"regions":[{"startLoc":{"line":116,"col":48},"endLoc":{"line":116,"col":58},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":11},{"name":"SettingsTheme.pageBackground","count":0,"regions":[{"startLoc":{"line":123,"col":3},"endLoc":{"line":125,"col":4},"count":0,"ignored":0},{"startLoc":{"line":124,"col":5},"endLoc":{"line":125,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":124,"col":12},"endLoc":{"line":124,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":12},{"name":"SettingsTheme.cardBackground","count":0,"regions":[{"startLoc":{"line":127,"col":3},"endLoc":{"line":129,"col":4},"count":0,"ignored":0},{"startLoc":{"line":128,"col":5},"endLoc":{"line":129,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":128,"col":12},"endLoc":{"line":128,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":13},{"name":"SettingsTheme.cardHoverBackground","count":0,"regions":[{"startLoc":{"line":131,"col":3},"endLoc":{"line":133,"col":4},"count":0,"ignored":0},{"startLoc":{"line":132,"col":5},"endLoc":{"line":133,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":132,"col":12},"endLoc":{"line":132,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":14},{"name":"SettingsTheme.primaryText","count":0,"regions":[{"startLoc":{"line":135,"col":3},"endLoc":{"line":137,"col":4},"count":0,"ignored":0},{"startLoc":{"line":136,"col":5},"endLoc":{"line":137,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":136,"col":12},"endLoc":{"line":136,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":15},{"name":"SettingsTheme.secondaryText","count":0,"regions":[{"startLoc":{"line":139,"col":3},"endLoc":{"line":141,"col":4},"count":0,"ignored":0},{"startLoc":{"line":140,"col":5},"endLoc":{"line":141,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":140,"col":12},"endLoc":{"line":140,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":16},{"name":"SettingsTheme.mutedText","count":0,"regions":[{"startLoc":{"line":143,"col":3},"endLoc":{"line":145,"col":4},"count":0,"ignored":0},{"startLoc":{"line":144,"col":5},"endLoc":{"line":145,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":144,"col":12},"endLoc":{"line":144,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":17},{"name":"SettingsTheme.disabledText","count":0,"regions":[{"startLoc":{"line":147,"col":3},"endLoc":{"line":149,"col":4},"count":0,"ignored":0},{"startLoc":{"line":148,"col":5},"endLoc":{"line":149,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":148,"col":12},"endLoc":{"line":148,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":18},{"name":"SettingsTheme.accentColor","count":0,"regions":[{"startLoc":{"line":151,"col":3},"endLoc":{"line":171,"col":4},"count":0,"ignored":0},{"startLoc":{"line":152,"col":47},"endLoc":{"line":154,"col":6},"count":0,"ignored":0},{"startLoc":{"line":155,"col":46},"endLoc":{"line":157,"col":6},"count":0,"ignored":0},{"startLoc":{"line":158,"col":46},"endLoc":{"line":160,"col":6},"count":0,"ignored":0},{"startLoc":{"line":161,"col":45},"endLoc":{"line":163,"col":6},"count":0,"ignored":0},{"startLoc":{"line":164,"col":47},"endLoc":{"line":166,"col":6},"count":0,"ignored":0},{"startLoc":{"line":167,"col":47},"endLoc":{"line":169,"col":6},"count":0,"ignored":0},{"startLoc":{"line":170,"col":5},"endLoc":{"line":171,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":152,"col":9},"endLoc":{"line":152,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":153,"col":14},"endLoc":{"line":153,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":155,"col":9},"endLoc":{"line":155,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":156,"col":14},"endLoc":{"line":156,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":158,"col":9},"endLoc":{"line":158,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":159,"col":14},"endLoc":{"line":159,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":161,"col":9},"endLoc":{"line":161,"col":43},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":162,"col":14},"endLoc":{"line":162,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":164,"col":9},"endLoc":{"line":164,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":165,"col":14},"endLoc":{"line":165,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":167,"col":9},"endLoc":{"line":167,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":168,"col":14},"endLoc":{"line":168,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":170,"col":12},"endLoc":{"line":170,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":19},{"name":"SettingsTheme.accentBackground","count":0,"regions":[{"startLoc":{"line":173,"col":3},"endLoc":{"line":193,"col":4},"count":0,"ignored":0},{"startLoc":{"line":174,"col":47},"endLoc":{"line":176,"col":6},"count":0,"ignored":0},{"startLoc":{"line":177,"col":46},"endLoc":{"line":179,"col":6},"count":0,"ignored":0},{"startLoc":{"line":180,"col":46},"endLoc":{"line":182,"col":6},"count":0,"ignored":0},{"startLoc":{"line":183,"col":45},"endLoc":{"line":185,"col":6},"count":0,"ignored":0},{"startLoc":{"line":186,"col":47},"endLoc":{"line":188,"col":6},"count":0,"ignored":0},{"startLoc":{"line":189,"col":47},"endLoc":{"line":191,"col":6},"count":0,"ignored":0},{"startLoc":{"line":192,"col":5},"endLoc":{"line":193,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":174,"col":9},"endLoc":{"line":174,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":175,"col":14},"endLoc":{"line":175,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":177,"col":9},"endLoc":{"line":177,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":178,"col":14},"endLoc":{"line":178,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":180,"col":9},"endLoc":{"line":180,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":181,"col":14},"endLoc":{"line":181,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":183,"col":9},"endLoc":{"line":183,"col":43},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":184,"col":14},"endLoc":{"line":184,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":186,"col":9},"endLoc":{"line":186,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":187,"col":14},"endLoc":{"line":187,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":189,"col":9},"endLoc":{"line":189,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":190,"col":14},"endLoc":{"line":190,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":192,"col":12},"endLoc":{"line":192,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":20},{"name":"SettingsTheme.accentHoverBackground","count":0,"regions":[{"startLoc":{"line":195,"col":3},"endLoc":{"line":215,"col":4},"count":0,"ignored":0},{"startLoc":{"line":196,"col":47},"endLoc":{"line":198,"col":6},"count":0,"ignored":0},{"startLoc":{"line":199,"col":46},"endLoc":{"line":201,"col":6},"count":0,"ignored":0},{"startLoc":{"line":202,"col":46},"endLoc":{"line":204,"col":6},"count":0,"ignored":0},{"startLoc":{"line":205,"col":45},"endLoc":{"line":207,"col":6},"count":0,"ignored":0},{"startLoc":{"line":208,"col":47},"endLoc":{"line":210,"col":6},"count":0,"ignored":0},{"startLoc":{"line":211,"col":47},"endLoc":{"line":213,"col":6},"count":0,"ignored":0},{"startLoc":{"line":214,"col":5},"endLoc":{"line":215,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":196,"col":9},"endLoc":{"line":196,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":197,"col":14},"endLoc":{"line":197,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":199,"col":9},"endLoc":{"line":199,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":200,"col":14},"endLoc":{"line":200,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":202,"col":9},"endLoc":{"line":202,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":203,"col":14},"endLoc":{"line":203,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":205,"col":9},"endLoc":{"line":205,"col":43},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":206,"col":14},"endLoc":{"line":206,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":208,"col":9},"endLoc":{"line":208,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":209,"col":14},"endLoc":{"line":209,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":211,"col":9},"endLoc":{"line":211,"col":45},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":212,"col":14},"endLoc":{"line":212,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":214,"col":12},"endLoc":{"line":214,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":21},{"name":"SettingsTheme.borderColor","count":0,"regions":[{"startLoc":{"line":217,"col":3},"endLoc":{"line":222,"col":4},"count":0,"ignored":0},{"startLoc":{"line":218,"col":17},"endLoc":{"line":220,"col":6},"count":0,"ignored":0},{"startLoc":{"line":221,"col":5},"endLoc":{"line":222,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":218,"col":9},"endLoc":{"line":218,"col":15},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":221,"col":12},"endLoc":{"line":221,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":22},{"name":"SettingsTheme.transparentButton","count":0,"regions":[{"startLoc":{"line":224,"col":3},"endLoc":{"line":232,"col":4},"count":0,"ignored":0},{"startLoc":{"line":225,"col":31},"endLoc":{"line":227,"col":6},"count":0,"ignored":0},{"startLoc":{"line":228,"col":18},"endLoc":{"line":230,"col":6},"count":0,"ignored":0},{"startLoc":{"line":231,"col":5},"endLoc":{"line":232,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":225,"col":9},"endLoc":{"line":225,"col":29},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":228,"col":9},"endLoc":{"line":228,"col":16},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":229,"col":14},"endLoc":{"line":229,"col":68},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":231,"col":12},"endLoc":{"line":231,"col":66},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":23},{"name":"SettingsTheme.subtleButton","count":0,"regions":[{"startLoc":{"line":234,"col":3},"endLoc":{"line":242,"col":4},"count":0,"ignored":0},{"startLoc":{"line":235,"col":18},"endLoc":{"line":237,"col":6},"count":0,"ignored":0},{"startLoc":{"line":238,"col":18},"endLoc":{"line":240,"col":6},"count":0,"ignored":0},{"startLoc":{"line":241,"col":5},"endLoc":{"line":242,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":235,"col":9},"endLoc":{"line":235,"col":16},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":236,"col":14},"endLoc":{"line":236,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":238,"col":9},"endLoc":{"line":238,"col":16},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":239,"col":14},"endLoc":{"line":239,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":241,"col":12},"endLoc":{"line":241,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":24},{"name":"SettingsTheme.disabledButton","count":0,"regions":[{"startLoc":{"line":244,"col":3},"endLoc":{"line":246,"col":4},"count":0,"ignored":0},{"startLoc":{"line":245,"col":5},"endLoc":{"line":246,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":245,"col":12},"endLoc":{"line":245,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":25},{"name":"SettingsTheme.shadow","count":0,"regions":[{"startLoc":{"line":248,"col":3},"endLoc":{"line":255,"col":4},"count":0,"ignored":0},{"startLoc":{"line":249,"col":5},"endLoc":{"line":255,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":250,"col":15},"endLoc":{"line":250,"col":31},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":251,"col":14},"endLoc":{"line":251,"col":100},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":251,"col":24},"endLoc":{"line":251,"col":59},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":251,"col":64},"endLoc":{"line":251,"col":99},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":253,"col":16},"endLoc":{"line":253,"col":31},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":26},{"name":"SettingsTheme.statusText","count":0,"regions":[{"startLoc":{"line":257,"col":3},"endLoc":{"line":271,"col":4},"count":0,"ignored":0},{"startLoc":{"line":258,"col":24},"endLoc":{"line":260,"col":6},"count":0,"ignored":0},{"startLoc":{"line":261,"col":29},"endLoc":{"line":263,"col":6},"count":0,"ignored":0},{"startLoc":{"line":264,"col":28},"endLoc":{"line":266,"col":6},"count":0,"ignored":0},{"startLoc":{"line":267,"col":26},"endLoc":{"line":269,"col":6},"count":0,"ignored":0},{"startLoc":{"line":270,"col":5},"endLoc":{"line":271,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":258,"col":9},"endLoc":{"line":258,"col":22},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":259,"col":14},"endLoc":{"line":259,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":261,"col":9},"endLoc":{"line":261,"col":27},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":262,"col":14},"endLoc":{"line":262,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":264,"col":9},"endLoc":{"line":264,"col":26},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":265,"col":14},"endLoc":{"line":265,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":267,"col":9},"endLoc":{"line":267,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":268,"col":14},"endLoc":{"line":268,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":270,"col":12},"endLoc":{"line":270,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":27},{"name":"SettingsTheme.statusBackground","count":0,"regions":[{"startLoc":{"line":273,"col":3},"endLoc":{"line":287,"col":4},"count":0,"ignored":0},{"startLoc":{"line":274,"col":24},"endLoc":{"line":276,"col":6},"count":0,"ignored":0},{"startLoc":{"line":277,"col":29},"endLoc":{"line":279,"col":6},"count":0,"ignored":0},{"startLoc":{"line":280,"col":28},"endLoc":{"line":282,"col":6},"count":0,"ignored":0},{"startLoc":{"line":283,"col":26},"endLoc":{"line":285,"col":6},"count":0,"ignored":0},{"startLoc":{"line":286,"col":5},"endLoc":{"line":287,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":274,"col":9},"endLoc":{"line":274,"col":22},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":275,"col":14},"endLoc":{"line":275,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":277,"col":9},"endLoc":{"line":277,"col":27},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":278,"col":14},"endLoc":{"line":278,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":280,"col":9},"endLoc":{"line":280,"col":26},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":281,"col":14},"endLoc":{"line":281,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":283,"col":9},"endLoc":{"line":283,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":284,"col":14},"endLoc":{"line":284,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":286,"col":12},"endLoc":{"line":286,"col":42},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":28},{"name":"SettingsTheme.statusBorder","count":0,"regions":[{"startLoc":{"line":289,"col":3},"endLoc":{"line":303,"col":4},"count":0,"ignored":0},{"startLoc":{"line":290,"col":24},"endLoc":{"line":292,"col":6},"count":0,"ignored":0},{"startLoc":{"line":293,"col":29},"endLoc":{"line":295,"col":6},"count":0,"ignored":0},{"startLoc":{"line":296,"col":28},"endLoc":{"line":298,"col":6},"count":0,"ignored":0},{"startLoc":{"line":299,"col":26},"endLoc":{"line":301,"col":6},"count":0,"ignored":0},{"startLoc":{"line":302,"col":5},"endLoc":{"line":303,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":290,"col":9},"endLoc":{"line":290,"col":22},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":291,"col":14},"endLoc":{"line":291,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":293,"col":9},"endLoc":{"line":293,"col":27},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":294,"col":14},"endLoc":{"line":294,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":296,"col":9},"endLoc":{"line":296,"col":26},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":297,"col":14},"endLoc":{"line":297,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":299,"col":9},"endLoc":{"line":299,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":300,"col":14},"endLoc":{"line":300,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":29}],"exeLine":{"0":1,"1":2,"2":3,"3":4,"4":5,"5":6,"6":7,"7":8,"8":9,"9":11,"10":12,"11":13,"12":14,"13":15,"14":16,"15":18,"16":19,"17":20,"18":22,"19":23,"20":25,"21":28,"22":29,"23":32,"24":33,"25":34,"26":35,"27":37,"28":38,"29":40,"30":43,"31":44,"32":45,"33":46,"34":47,"35":48,"36":51,"37":52,"38":53,"39":54,"40":56,"41":57,"42":61,"43":62,"44":63,"45":65,"46":66,"47":68,"48":71,"49":72,"50":73,"51":74,"52":75,"53":76,"54":80,"55":81,"56":82,"57":83,"58":86,"59":87,"60":88,"61":91,"62":92,"63":93,"64":94,"65":97,"66":98,"67":99,"68":100,"69":101,"70":103,"71":106,"72":107,"73":108,"74":110,"75":111,"76":113,"77":116,"78":117,"79":118,"80":119,"81":120,"82":123,"83":124,"84":127,"85":128,"86":131,"87":132,"88":135,"89":136,"90":139,"91":140,"92":143,"93":144,"94":147,"95":148,"96":151,"97":152,"98":153,"99":155,"100":156,"101":158,"102":159,"103":161,"104":162,"105":164,"106":165,"107":167,"108":168,"109":170,"110":173,"111":174,"112":175,"113":177,"114":178,"115":180,"116":181,"117":183,"118":184,"119":186,"120":187,"121":189,"122":190,"123":192,"124":195,"125":196,"126":197,"127":199,"128":200,"129":202,"130":203,"131":205,"132":206,"133":208,"134":209,"135":211,"136":212,"137":214,"138":217,"139":218,"140":219,"141":221,"142":224,"143":225,"144":226,"145":228,"146":229,"147":231,"148":234,"149":235,"150":236,"151":238,"152":239,"153":241,"154":244,"155":245,"156":248,"157":249,"158":250,"159":251,"160":252,"161":253,"162":257,"163":258,"164":259,"165":261,"166":262,"167":264,"168":265,"169":267,"170":268,"171":270,"172":273,"173":274,"174":275,"175":277,"176":278,"177":280,"178":281,"179":283,"180":284,"181":286,"182":289,"183":290,"184":291,"185":293,"186":294,"187":296,"188":297,"189":299,"190":300,"191":302},"summary":{"lines":{"total":177,"covered":0,"pct":0,"executedLineCount":[-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,-1,-1,0,0,0,0,-1,0,0,-1,0,-1,-1,0,0,0,0,0,0,-1,-1,0,0,0,0,-1,0,0,-1,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,-1,-1,0,0,0,-1,-1,0,0,0,0,-1,-1,0,0,0,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,0,0,0,-1,-1,0,0,-1,-1,0,0,-1,-1,0,0,-1,-1,0,0,-1,-1,0,0,-1,-1,0,0,-1,-1,0,0,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,-1,-1,0,0,0,0,0,0,-1,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,-1]},"functions":{"total":30,"covered":0,"pct":0},"branches":{"total":206,"covered":0,"pct":0}}},"title":"SettingsTheme.ets.html","relativeHome":"..\\..\\..\\..\\..\\index.html"};
+    }
+  };
+
+  const app = Vue.createApp(App);
+  app.use(ElementPlus);
+  app.mount("#app");
+
+  window.onload = function () {
+    prettyPrint();
+  }
+</script>
+
+<style scoped>
+  table.coverage {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 0 0;
+    padding: 0;
+  }
+
+  table.coverage td {
+    margin: 0;
+    padding: 0;
+    vertical-align: top;
+  }
+
+  table.coverage td.line-count {
+    width: 12%;
+    text-align: right;
+    padding: 0 5px 0 20px;
+  }
+
+  table.coverage td.line-coverage {
+    text-align: right;
+    padding-right: 10px;
+    min-width: 20px;
+  }
+
+  table.coverage td span.cline-any {
+    display: inline-block;
+    padding: 0 5px;
+    width: 100%;
+    height: 18px;
+  }
+
+  .low,
+  .cline-no {
+    background: #FCE1E5
+  }
+
+  .high,
+  .cline-yes {
+    background: rgb(230, 245, 208)
+  }
+
+  span.cline-neutral {
+    background: #eaeaea;
+  }
+
+  pre.prettyprint {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .el-main {
+    box-sizing: border-box;
+    display: block;
+    flex: 1;
+    flex-basis: auto;
+    overflow: auto;
+    padding: var(--el-main-padding)
+  }
+
+  .el-container {
+    min-height: 100vh;
+    height: 100%;
+  }
+
+  .footer {
+    font-size: small;
+  }
+
+  .el-row {
+    margin-bottom: 20px;
+  }
+
+  .el-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .el-col {
+    border-radius: 4px;
+  }
+
+  .green {
+    color: var(--el-color-success);
+  }
+
+  .red {
+    color: var(--el-color-error);
+  }
+
+  .linenums li {
+    height: 18px;
+    line-height: 18px;
+  }
+
+  li.L0,
+  li.L1,
+  li.L2,
+  li.L3,
+  li.L5,
+  li.L6,
+  li.L7,
+  li.L8 {
+    list-style-type: decimal
+  }
+
+  .el-col-5 {
+    max-width: 100%;
+  }
+
+  .el-col-3 {
+    max-width: 100%;
+  }
+
+</style>
+
+</html>

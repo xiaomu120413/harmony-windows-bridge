@@ -507,17 +507,82 @@ release/
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_native_tests.ps1
 
-# 目标构建命令，需在 MDP-04 实现并回写实际参数
-.\harmony\app\build_hap.bat tablet debug
-.\harmony\app\build_hap.bat 2in1 debug
-.\harmony\app\build_hap.bat app release
+# MDP-00 已落地的 debug 多设备构建入口
+.\harmony\app\build_hap.bat
 
 # 目标包门禁，需在 MDP-04 实现
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_app.ps1 `
   -AppPath <release-app-path>
 ```
 
-真机安装应一次安装同设备需要的 HAP/HSP 集合，且显式指定目标设备。具体命令以当前 SDK `hdc` 对 HSP 的参数为准，在 MDP-00 实测后写入验证基线，不能现在凭空固定。
+本地真机验证按依赖顺序安装同设备需要的 HSP/HAP，并显式指定目标设备。当前 SDK
+对同一条命令中的多个包没有保证依赖安装顺序，因此先安装 `common.hsp`，再安装设备 Entry：
+
+```powershell
+# 2in1
+hdc -t <2in1-serial> install -r .\harmony\app\common\build\default\outputs\default\common-default-signed.hsp
+hdc -t <2in1-serial> install -r .\harmony\app\entry\build\default\outputs\default\entry-default-signed.hap
+hdc -t <2in1-serial> shell aa start -a EntryAbility -b com.muhub.desktop
+
+# tablet
+hdc -t <tablet-serial> install -r .\harmony\app\common\build\default\outputs\default\common-default-signed.hsp
+hdc -t <tablet-serial> install -r .\harmony\app\entry_tablet\build\default\outputs\default\entry_tablet-default-signed.hap
+hdc -t <tablet-serial> shell aa start -a TabletEntryAbility -b com.muhub.desktop
+```
+
+`.app` 是应用市场分发候选，不作为本地 HDC 模块安装替代品。2026-08-06 实测本地 debug
+签名的 Hvigor 原生 `.app` 和 HNP 重封 `.app` 均被设备以 `9568329/verify signature failed`
+拒绝；对应 HAP/HSP 使用相同签名材料可正常安装。这一结果不等同于应用市场 App Pack 校验失败，
+MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
+
+### 12.1 MDP-00 当前结果（2026-08-06）
+
+- 新增 `common` shared HSP、`entry_tablet` tablet-only Entry，原 `entry` 收窄为 2in1-only；
+- `entry` 和 `entry_tablet` 均从 `common` 导入同一探针，证明两个 Entry 可以依赖共享 HSP；
+- `build_hap.bat` 已串起 HNP 生成、debug `assembleApp`、2in1 HAP HNP 重封和最终 App Pack；
+- 最终 App Pack 静态检查通过：`common=[2in1,tablet]`、`entry=[2in1]+1 HNP`、
+  `entry_tablet=[tablet]+0 HNP`；tablet Entry 仅有 `INTERNET` 和 `GET_NETWORK_INFO`；
+- 2in1 `3QC0124C11000711` 已按 HSP→HAP 顺序安装并启动，日志出现
+  `EntryAbility PACKAGING_PROBE common.hsp role=2in1`，`bm dump` 可见 `common`、`entry` 和
+  `xrdp.hnp`；
+- tablet `5JB0223804000371`（PCE-W30）从旧单模块版本覆盖验证：`common.hsp` 安装成功，
+  随后安装 `entry_tablet.hap` 被 BMS 以 `9568267/install entry already exist` 拒绝；失败后
+  已安装集合仍为 `entry + common`，`hnpPackages` 为空，旧 `EntryAbility` 可正常启动且未清数据；
+- 上述结果证明“保留旧 `entry` 的同时用不同 moduleName 的 `entry_tablet` 替换 Entry”不是可接受
+  的覆盖升级路径，当前双 Entry 主方案不能进入发布。下一步必须验证第 13.3 节的“通用 `entry`
+  + 2in1-only Feature HAP”备选，或取得平台明确支持的同名设备变体封包方式；
+- 用户卸载旧版后，同一 tablet 按 `common.hsp`→`entry_tablet.hap` 全新安装成功，
+  `TabletEntryAbility` 启动成功；设备端模块仅为 `common,entry_tablet`，无 `xrdp.hnp`，权限仅为
+  `INTERNET`、`GET_NETWORK_INFO`，日志出现 `PACKAGING_PROBE common.hsp role=tablet`；截图证据为
+  `artifacts/multidevice-hnp/2026-08-06/muhub-tablet-packaging-probe.jpeg`；
+- 真实应用市场按设备拆分仍未执行；全新安装通过不消除旧 `entry`→`entry_tablet` 覆盖升级 P0；
+- 本工作包只证明包模型和 HNP 安装，不代表 HNP 独立 XRDP 子进程已实现；`fork/execve`、
+  独立 PID 和退出清理仍属于 MDP-03。
+
+### 12.2 MDP-01 当前结果（2026-08-06）
+
+- 正式首页、设置、RDP 客户端协调器、资源和 Native bridge 已迁入 `common` HSP；`entry` 与
+  `entry_tablet` 只保留各自 UIAbility、模块扩展和一个挂载 `MuHubApp` 的薄页面，不改原有 UI
+  结构及交互。
+- Native 运行库同步目标从 `entry/libs` 改为 `common/libs`，`libentry.so` 由共享 HSP 提供；2in1
+  `entry.hap` 仅封装 `xrdp.hnp`，tablet `entry_tablet.hap` 不含 HNP 和 Native 库。
+- `build_hap.bat` 完整构建、签名和包结构门禁通过；最终 App Pack 为 39,692,737 字节，避免了
+  迁移中间态将同一套 Native 运行库重复塞入 HSP/HAP 造成的约 77 MB 产物。
+- 2in1 `3QC0124C11000711` 按 `common.hsp`→`entry.hap` 覆盖安装并启动成功，正式首页布局与迁移前
+  一致；截图证据为
+  `artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-pc-thin-foreground.jpeg`。
+- `tools/run_tablet_arkts_tests.ps1` 已改为测试 `common`，ArkTS 单测与
+  `tools/run_tablet_native_tests.ps1` 全部通过。
+- tablet `5JB0223804000371` 已按 `common.hsp`→`entry_tablet.hap` 安装并启动正式 UI；设备端仅有
+  `common,entry_tablet`，`hnpPackages` 为空，权限仅为 `INTERNET`、`GET_NETWORK_INFO`。
+  分屏 Expanded 首页和浮窗 Compact 首页均正常，设置页仅显示基础设置、共享目录和项目帮助，
+  不显示 2in1 远控服务能力。截图证据为
+  `artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-tablet-real-ui.jpeg`、
+  `artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-tablet-real-ui-fullscreen.jpeg` 和
+  `artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-tablet-settings.jpeg`。
+- 当前共享 HSP 仍包含一体化 `libentry.so` 及 XRDP server 相关动态库；tablet 已做到“无 HNP、无
+  PC 权限”，尚未做到服务端 Native 字节物理隔离。`librdpclient.so`/`libxrdpcontrol.so` 拆分及
+  XRDP 独立进程仍由 MDP-03 完成，不能将 MDP-01 标记为发布完成。
 
 ## 13. 升级、回滚和发布策略
 
@@ -550,8 +615,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_a
 
 | Change ID | 状态 | 目标 | 允许修改范围 | 验收 |
 |---|---|---|---|---|
-| MDP-00 | DesignReady | 最小多 Entry/HSP/HNP App Pack 和升级验证 | 新测试模块、build-profile、临时封包脚本 | MDP-TAB-01/02、MDP-PC-01/02、MDP-DIST-01/02 |
-| MDP-01 | Planned | 共享 UI/HSP，体验不变 | ArkTS、资源、HSP 依赖 | MDP-TAB-03/08、MDP-PC-10 |
+| MDP-00 | Implemented / P0 failed | 最小多 Entry/HSP/HNP App Pack 和升级验证 | 新测试模块、build-profile、临时封包脚本 | 2in1 与 tablet 全新安装/启动通过，tablet 无 HNP/PC 权限；但旧 `entry`→`entry_tablet` 覆盖升级返回 9568267，双 Entry 主方案停止进入发布 |
+| MDP-01 | Implemented / device verified | 正式 UI、资源、RDP 客户端与 Native bridge 迁入共享 HSP，两个 Entry 薄壳挂载同一 `MuHubApp` | `common`、两个 Entry、运行库同步和测试脚本 | 构建/包门禁/ArkTS/Native 通过；2in1 与 tablet UI 真机通过，tablet 无 HNP/PC 权限，Native 物理拆分留 MDP-03 |
 | MDP-02 | Planned | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | MDP-TAB-06/07、MDP-PC-06 |
 | MDP-03 | Planned | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | MDP-PC-03 至 09 |
 | MDP-04 | Planned | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 第 10 节、MDP-DIST-01 至 04 |

@@ -1,7 +1,7 @@
 param(
   [string]$SourceRoot = "harmony/out/xrdp-ohos-arm64",
   [string]$DepsRoot = "harmony/out/ohos-arm64",
-  [string]$TargetLibRoot = "harmony/app/entry/libs/arm64-v8a",
+  [string]$TargetLibRoot = "harmony/app/common/libs/arm64-v8a",
   [string]$LegacyRawRoot = "harmony/app/entry/src/main/resources/rawfile/xrdp",
   [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe",
   [switch]$Force

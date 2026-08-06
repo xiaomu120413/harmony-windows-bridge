@@ -1,6 +1,6 @@
 import { PrintExtensionAbility, print } from '@kit.BasicServicesKit'
 import { Want } from '@kit.AbilityKit'
-import { RdpLogger } from '../rdp/RdpLogger'
+import { RdpLogger } from 'common'
 import {
   addMuHubVirtualPrinter,
   removeMuHubVirtualPrinter,

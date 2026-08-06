@@ -4,9 +4,9 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $projectDirectory = Join-Path $repositoryRoot 'harmony\app'
 $studioCandidates = @()
 
-$nativeTypesPath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\cpp\types\libentry\Index.d.ts'
-$indexPath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\ets\pages\Index.ets'
-$etsRoot = Join-Path $repositoryRoot 'harmony\app\entry\src\main\ets'
+$nativeTypesPath = Join-Path $repositoryRoot 'harmony\app\common\src\main\cpp\types\libentry\Index.d.ts'
+$indexPath = Join-Path $repositoryRoot 'harmony\app\common\src\main\ets\pages\Index.ets'
+$etsRoot = Join-Path $repositoryRoot 'harmony\app\common\src\main\ets'
 $gatewayPath = Join-Path $etsRoot 'rdp\NativeRdpGateway.ets'
 $controllerPath = Join-Path $etsRoot 'rdp\RdpClientController.ets'
 $connectionDetailsPath = Join-Path $etsRoot 'components\home\HomeConnectionDetails.ets'
@@ -145,7 +145,7 @@ if (Test-Path (Join-Path $studioJava 'java.exe')) {
 
 Push-Location $projectDirectory
 try {
-  & $hvigor --no-daemon test --mode module -p product=default -p module=entry@default
+  & $hvigor --no-daemon test --mode module -p product=default -p module=common@default
   $testExitCode = $LASTEXITCODE
 } finally {
   Pop-Location

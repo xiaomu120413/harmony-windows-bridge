@@ -1,5 +1,5 @@
 import { print } from '@kit.BasicServicesKit'
-import { RdpLogger } from '../rdp/RdpLogger'
+import { RdpLogger } from 'common'
 
 const TAG = 'MuHubVirtualPrinter'
 
