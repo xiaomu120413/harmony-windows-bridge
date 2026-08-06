@@ -8,10 +8,12 @@
 #include "input/xcomponent_input_bridge.h"
 #include "input/remote_ime_client.h"
 #include "session/rdp_display_layout_monitor.h"
+#include "session/rdp_display_request_coalescer.h"
 #include "session/rdp_display_resize_coordinator.h"
 #include "surface/latest_frame_renderer.h"
 #include "surface/render_output_owner.h"
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -25,8 +27,10 @@ SurfaceBridge g_surface;
 LatestFrameRenderer g_frameRenderer;
 RdpSession g_session;
 RdpDisplayResizeCoordinator g_resizeCoordinator;
+RdpDisplayRequestCoalescer g_resizeRequestCoalescer;
 RdpDisplayLayoutMonitor g_displayLayoutMonitor;
 RemoteImeClient g_remoteIme;
+std::atomic_bool g_multimonActive {false};
 
 void EmitNativeLog(const std::string& line)
 {
@@ -97,21 +101,25 @@ std::string BuildRenderStatsLog()
 }
 
 DisplayResizeResult RequestRemoteDesktopResize(uint32_t width, uint32_t height,
-    const std::string& reason)
+    uint32_t orientation, const std::string& reason)
 {
-    return g_session.RequestDynamicDesktopResizeEx(
-        width, height, g_session.DisplayOrientation(), reason);
+    return g_session.RequestDynamicDesktopResizeEx(width, height, orientation, reason);
 }
 
-void ApplyRemoteDesktopResize(uint32_t width, uint32_t height, const std::string& source)
+void ApplyRemoteDesktopResize(const DisplayResizeRequest& request)
 {
-    DropPendingRenderFrame(source);
-    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(width, height, source);
-    g_resizeCoordinator.ApplyResult(resizeResult, source);
+    const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(
+        request.width, request.height, request.orientation, request.reason);
+    if (resizeResult.status == DisplayResizeStatus::Sent) {
+        g_resizeCoordinator.ApplyResult(resizeResult, request.reason);
+        DropPendingRenderFrame(request.reason);
+    } else if (resizeResult.status != DisplayResizeStatus::Unchanged) {
+        g_resizeCoordinator.ApplyResult(resizeResult, request.reason);
+    }
     BridgeLogger::LogPublic(BridgeLogLevel::Info,
-        std::string("RDP_DISPLAY event=resize_request source=") + source + " requested=" +
-            std::to_string(width) + "x" + std::to_string(height) + " orientation=" +
-            std::to_string(g_session.DisplayOrientation()) + " normalized=" +
+        std::string("RDP_DISPLAY event=resize_request source=") + request.reason + " requested=" +
+            std::to_string(request.width) + "x" + std::to_string(request.height) + " orientation=" +
+            std::to_string(request.orientation) + " normalized=" +
             std::to_string(resizeResult.normalizedWidth) + "x" +
             std::to_string(resizeResult.normalizedHeight) + " sent=" +
             std::to_string(resizeResult.sentWidth) + "x" +
@@ -119,7 +127,32 @@ void ApplyRemoteDesktopResize(uint32_t width, uint32_t height, const std::string
             std::to_string(resizeResult.orientation) + " status=" +
             DisplayResizeStatusName(resizeResult.status));
     if (resizeResult.status != DisplayResizeStatus::Sent) {
-        RequestSurfaceRepaint(source + " immediate fallback");
+        RequestSurfaceRepaint(request.reason + " current-frame repaint");
+    }
+}
+
+DisplayResizeRequest CurrentSurfaceResizeRequest(const std::string& reason)
+{
+    const SurfaceSnapshot snapshot = g_surface.Snapshot();
+    return {snapshot.width, snapshot.height, g_session.DisplayOrientation(), reason};
+}
+
+void ScheduleCurrentSurfaceResize(const std::string& reason)
+{
+    if (g_multimonActive.load()) {
+        return;
+    }
+    const DisplayResizeRequest request = CurrentSurfaceResizeRequest(reason);
+    if (request.width > 0 && request.height > 0) {
+        g_resizeRequestCoalescer.Schedule(request);
+    }
+}
+
+void FlushCurrentSurfaceResize(const std::string& reason)
+{
+    const DisplayResizeRequest request = CurrentSurfaceResizeRequest(reason);
+    if (request.width > 0 && request.height > 0) {
+        g_resizeRequestCoalescer.Flush(request);
     }
 }
 
@@ -180,6 +213,7 @@ void OnXComponentSurfaceCreated(OH_NativeXComponent* component, void* window)
     UpdateRdpgfxSurfaceTargetIfReady("surface created");
     UpdateAvc420SurfaceOutputIfActive("surface created");
     RequestSurfaceRepaint("surface created");
+    ScheduleCurrentSurfaceResize("surface_created_stable");
 }
 
 void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
@@ -189,8 +223,7 @@ void OnXComponentSurfaceChanged(OH_NativeXComponent* component, void* window)
     RefreshXComponentInputDensity();
     UpdateRdpgfxSurfaceTargetIfReady("surface changed");
     UpdateAvc420SurfaceOutputIfActive("surface changed");
-    const SurfaceSnapshot snapshot = g_surface.Snapshot();
-    ApplyRemoteDesktopResize(snapshot.width, snapshot.height, "surface_changed");
+    ScheduleCurrentSurfaceResize("surface_changed_stable");
 }
 
 void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
@@ -199,6 +232,7 @@ void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
     std::string imeMessage;
     (void)g_remoteIme.Close(imeMessage);
     g_surface.OnSurfaceDestroyed(component, window);
+    g_resizeRequestCoalescer.Cancel();
     g_resizeCoordinator.Reset("surface destroyed");
     UpdateRdpgfxSurfaceTargetIfReady("surface destroyed");
     UpdateAvc420SurfaceOutputIfActive("surface destroyed");
@@ -251,9 +285,6 @@ bool UpdateDisplayOrientation(uint32_t orientation, std::string& message)
             std::to_string(previous) + " current=" + std::to_string(orientation) +
             " surface=" + std::to_string(snapshot.width) + "x" +
             std::to_string(snapshot.height) + " ready=" + (snapshot.ready ? "true" : "false"));
-    if (snapshot.ready && snapshot.width > 0 && snapshot.height > 0) {
-        ApplyRemoteDesktopResize(snapshot.width, snapshot.height, "orientation_changed");
-    }
     return true;
 }
 
@@ -270,6 +301,7 @@ bool BindImeHostWindow(uint32_t windowId, std::string& message)
 
 void InitializeNativeBridgeContext()
 {
+    g_resizeRequestCoalescer.SetCallback(ApplyRemoteDesktopResize);
     ConfigureRdpgfxPipelineCallbacks();
     ConfigureRdpSessionCallbacks();
     ConfigureXComponentInputBridge(&g_session, &g_remoteIme, EmitNativeLog);
@@ -277,13 +309,35 @@ void InitializeNativeBridgeContext()
     if (!g_displayLayoutMonitor.Start(
         [](uint32_t orientation, const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& layout,
             const std::string& source) {
+            const bool multimon = layout.size() > 1;
+            const bool wasMultimon = g_multimonActive.exchange(multimon);
+            const bool orientationChanged = g_session.DisplayOrientation() != orientation;
+            if (multimon) {
+                g_resizeRequestCoalescer.Cancel();
+            }
             std::string updateMessage;
             if (!UpdateDisplayOrientation(orientation, updateMessage)) {
                 EmitNativeLog("native display orientation rejected: source=" + source + " " +
                     updateMessage);
             }
-            g_session.SetMonitorLayout(layout.size() > 1
-                ? layout : std::vector<FREERDP_OHOS_MONITOR_LAYOUT>{});
+            std::string monitorMessage;
+            if (multimon) {
+                if (!g_session.SetMonitorLayout(layout, monitorMessage)) {
+                    EmitNativeLog("native multimon layout failed: source=" + source + " " +
+                        monitorMessage);
+                }
+                return;
+            }
+            if (wasMultimon) {
+                if (!g_session.SetMonitorLayout({}, monitorMessage)) {
+                    EmitNativeLog("native multimon clear failed: source=" + source + " " +
+                        monitorMessage);
+                    return;
+                }
+                FlushCurrentSurfaceResize("multimon_to_single");
+            } else if (orientationChanged) {
+                ScheduleCurrentSurfaceResize("orientation_changed_stable");
+            }
         }, EmitNativeLog, layoutMessage)) {
         EmitNativeLog(layoutMessage);
     }

@@ -371,9 +371,10 @@ struct RdpSession::Impl {
         return channels.DisplayOrientation();
     }
 
-    void SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors)
+    bool SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors,
+        std::string& message)
     {
-        channels.SetMonitorLayout(std::move(monitors));
+        return channels.SetMonitorLayout(std::move(monitors), message);
     }
 
     bool RequestDynamicDesktopResize(uint32_t width, uint32_t height, const std::string& reason,
@@ -734,9 +735,10 @@ uint32_t RdpSession::DisplayOrientation() const
     return impl_->DisplayOrientation();
 }
 
-void RdpSession::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors)
+bool RdpSession::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors,
+    std::string& message)
 {
-    impl_->SetMonitorLayout(std::move(monitors));
+    return impl_->SetMonitorLayout(std::move(monitors), message);
 }
 
 bool RdpSession::SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message)

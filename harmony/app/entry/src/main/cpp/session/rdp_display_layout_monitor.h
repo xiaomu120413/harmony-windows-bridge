@@ -31,6 +31,9 @@ private:
     uint32_t addListener_ = 0;
     uint32_t removeListener_ = 0;
     bool started_ = false;
+    bool hasSnapshot_ = false;
+    uint32_t lastOrientation_ = 0;
+    std::vector<FREERDP_OHOS_MONITOR_LAYOUT> lastLayout_;
     LayoutCallback layoutCallback_;
     LogCallback logCallback_;
 };

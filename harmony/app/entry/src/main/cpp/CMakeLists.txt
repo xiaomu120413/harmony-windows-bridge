@@ -125,6 +125,7 @@ add_library(entry SHARED
     napi/permission_request_bridge.cpp
     session/rdp_session_core.cpp
     session/rdp_session_channels.cpp
+    session/rdp_display_request_coalescer.cpp
     session/rdp_display_resize_coordinator.cpp
     session/rdp_display_layout_monitor.cpp
     session/rdp_session_input.cpp

@@ -46,6 +46,9 @@ void RdpDisplayResizeCoordinator::Reset(const std::string& reason)
 void RdpDisplayResizeCoordinator::ApplyResult(const DisplayResizeResult& result,
     const std::string& reason)
 {
+    if (result.status == DisplayResizeStatus::Unchanged) {
+        return;
+    }
     if (result.status == DisplayResizeStatus::Sent) {
         const uint32_t width = result.sentWidth > 0 ? result.sentWidth : result.normalizedWidth;
         const uint32_t height = result.sentHeight > 0 ? result.sentHeight : result.normalizedHeight;

@@ -49,6 +49,14 @@ int main()
     assert(coordinator.ShouldQueueFrame(1920, 1080, "target", message));
     assert(coordinator.Snapshot().state == DisplayResizeWaitState::Idle);
 
+    coordinator.ApplyResult(Sent(1536, 864), "sent-before-unchanged");
+    DisplayResizeResult unchanged;
+    unchanged.status = DisplayResizeStatus::Unchanged;
+    coordinator.ApplyResult(unchanged, "unchanged");
+    assert(coordinator.Snapshot().state == DisplayResizeWaitState::WaitingForTarget);
+    assert(!coordinator.ShouldQueueFrame(1280, 720, "old-after-unchanged", message));
+    assert(coordinator.ShouldQueueFrame(1536, 864, "target-after-unchanged", message));
+
     coordinator.ApplyResult(Sent(1600, 900), "sent-timeout");
     {
         std::unique_lock<std::mutex> lock(callbackMutex);
