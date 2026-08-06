@@ -10,10 +10,14 @@ validation notes live under `docs/archive/`.
   validation evidence.
 
 - [harmonyos-tablet-adaptation-architecture-and-acceptance.md](harmonyos-tablet-adaptation-architecture-and-acceptance.md):
-  proposed architecture and acceptance baseline (not yet implemented) for the
-  single-HAP tablet/2in1 UI and capability isolation, file-level change list
-  and XComponent adaptation. Current runtime capability remains defined by the
-  code and the FreeRDP feature matrix.
+  existing tablet/2in1 UI, session, input, XComponent and acceptance ledger.
+  Its former single-HAP packaging constraint is retained as history and is
+  superseded by the multi-device packaging plan below.
+
+- [harmonyos-multidevice-hnp-packaging-plan.md](harmonyos-multidevice-hnp-packaging-plan.md):
+  DesignReady target architecture and staged validation plan for one App Pack,
+  device-specific Entry HAPs, shared HSP, 2in1-only HNP/permissions, independent
+  XRDP process, upgrade safety and AppGallery distribution checks.
 
 - `freerdp-ohos-feature-matrix.md`: current OHOS FreeRDP feature status,
   default channel policy, permissions and fallback behavior.

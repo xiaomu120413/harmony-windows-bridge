@@ -1,0 +1,579 @@
+# MuHub HarmonyOS 多设备 HNP 分包架构、修改清单与验收方案
+
+> 状态：DesignReady，尚未实施
+> 文档版本：1.0
+> 审阅日期：2026-08-06
+> 适用工程：`harmony/app`
+> 本文范围：tablet/2in1 的 HAP/HSP/HNP、权限、独立进程、构建分发和升级验收
+> 非本文范围：重新设计首页、设置页或 RDP 会话交互
+
+## 1. 最终结论
+
+目标发布结构采用 **一个 bundle、一个 App Pack、两个按设备隔离的 Entry HAP、一个应用内 HSP**：
+
+```text
+com.muhub.desktop.app
+├─ common.hsp
+│  ├─ 现有首页、设置页、RDP 会话页和响应式布局
+│  ├─ RDP 客户端业务、ArkTS 公共代码和资源
+│  └─ FreeRDP 客户端 Native bridge 与运行库
+├─ entry.hap
+│  ├─ deviceTypes: ["2in1"]
+│  ├─ 薄 EntryAbility / PrintExtensionAbility 壳
+│  ├─ XRDP HNP 启停桥和 2in1 能力实现
+│  ├─ hnp/arm64-v8a/xrdp.hnp + hnpPackages
+│  └─ 2in1 公共权限 + CUSTOM_SCREEN_RECORDING + CONTROL_DEVICE
+└─ entry_tablet.hap
+   ├─ deviceTypes: ["tablet"]
+   ├─ 薄 EntryAbility / PrintExtensionAbility 壳
+   ├─ tablet 不可用的 RemoteControlPort 实现
+   ├─ 不含 HNP、hnpPackages 和 XRDP 服务端运行库
+   └─ 只声明 RDP 客户端实际需要的权限
+```
+
+设备实际安装集合：
+
+| 设备 | 应用市场应下发的模块 | 必须不存在 |
+|---|---|---|
+| tablet | `entry_tablet.hap + common.hsp` | `entry.hap`、HNP、`hnpPackages`、PC 专属权限 |
+| 2in1 | `entry.hap + common.hsp` | tablet 专属入口 |
+
+固定决策如下：
+
+1. 保持 `bundleName=com.muhub.desktop`、版本身份和用户数据身份不变。
+2. 保留现有 `entry` 模块名给 2in1，降低原 PC/2in1 安装的升级风险；新增 `entry_tablet`。
+3. 不新增第二套 UI，不把远控设置迁移到新的 Feature UIAbility，不改变现有页面、路由和交互顺序。
+4. `common.hsp` 是 UI 和 RDP 客户端的唯一实现；两个 Entry 只做系统入口、权限声明和设备能力注入。
+5. XRDP 独立进程只由 2in1 Entry 中的私有 HNP 提供，最终不再使用 `dlopen(libxrdpserver.so) + std::thread` 作为发布路径。
+6. tablet 的安装包从物理内容上不包含 HNP、PC 权限和 XRDP 服务端，而不仅是运行时隐藏按钮。
+
+## 2. 为什么必须改变当前单 HAP 方案
+
+当前单 HAP 同时声明 `2in1` 和 `tablet`，也同时声明 RDP 客户端权限和 XRDP 服务端权限。XRDP 当前由应用进程 `dlopen(libxrdpserver.so)` 后在线程中调用 `xrdp_ohos_server_main()`，不是独立进程。
+
+已验证的约束：
+
+- MatePad Pro tablet 产品未启用 `const.startup.hnp.install.enable`。
+- HAP 内含 HNP 时，安装返回 BMS `9568407`，底层 HNP 返回 `8201/HNP_INSTALL_DISABLED`。
+- 删除 HNP 文件但保留 `hnpPackages` 时，安装返回 `9568409`。
+- 同一 HAP 删除 HNP 文件和 `hnpPackages` 后，tablet 可以安装、启动。
+
+因此以下四个目标不能由一个通用 HAP 同时满足：
+
+1. tablet 可安装；
+2. 2in1 携带 HNP；
+3. XRDP 使用独立可执行进程；
+4. tablet 不携带 PC 专属权限。
+
+运行时 `deviceType` 判断只能阻止调用，不能改变 HAP 已经包含的 `hnp/`、`hnpPackages` 和 `requestPermissions`。必须把物理包边界改为按设备分发。
+
+官方模型依据：
+
+- 一个 App Pack 中，每种设备类型只能有一个 Entry HAP；不同设备类型可以各自具有 Entry HAP，应用市场按 HAP 拆分分发：<https://gitee.com/openharmony/docs/blob/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/hap-package.md?skip_mobile=true>
+- App Pack 是发布单元，云端和设备端按 HAP 安装：<https://gitee.com/openharmony/docs/blob/ecf01f0dd5c6fc9797d60a61b288f00bb68f24de/en/application-dev/quick-start/application-package-structure-stage.md?skip_mobile=true>
+- HSP 可以共享 ArkTS、资源和 C++ 库，多 HAP 引用时只保留一份：<https://gitee.com/openharmony/docs/blob/1ee51a8860968009e3d3e6f9261a8036d84b2d8e/en/application-dev/quick-start/shared-guide.md>
+- HAP 和进程不是一一对应；普通三方应用不能依靠 `process` 配置获得独立进程：<https://gitee.com/openharmony/docs/blob/e99082d84adcc46cde561d79b04fbf2fad68a723/en/application-dev/quick-start/multi-hap-principles.md>
+- HNP 由 HAP 分发，并通过 `fork/execv` 等方式执行 Native 二进制：<https://gitcode.com/openharmony/startup_appspawn/tree/master/service/hnp>
+
+## 3. 不改变的产品体验
+
+本次是安装包和运行时边界改造，不是 UI 改版。
+
+必须保持：
+
+- 现有首页、设置页、远控设置页、RDP 会话页和 Compact/Expanded 响应式规则；
+- 现有页面路由、返回行为、表单状态、主题、字体和窗口适配；
+- 2in1 上当前远控入口、状态展示、验证码和权限操作位置；
+- tablet 上现有 RDP 客户端、远程文件、剪贴板、音频、摄像头、定位和打印能力边界；
+- RDP 会话期间不因 Entry/HSP 拆分重建 XComponent、Controller 或 sessionId。
+
+禁止：
+
+- 为了分包增加第二个可见 UIAbility；
+- 从当前页面跳转到 Feature HAP 页面；
+- 复制 `TabletHomePage`、`DesktopHomePage` 等两套业务页面；
+- 用构建目标替代窗口断点，或用窗口宽度推断 XRDP 能力；
+- 只隐藏按钮但仍把 HNP/PC 权限打进 tablet HAP。
+
+UI 回归以拆分前同一设备、同一窗口尺寸的截图和自动化 layout dump 为基准。除 tablet 本来就不提供 XRDP 外，不接受新增步骤、页面跳转、重复任务卡或状态丢失。
+
+## 4. 模块职责和依赖方向
+
+### 4.1 `common.hsp`
+
+`common.hsp` 负责共享实现，但不声明 Ability、ExtensionAbility、HNP 或设备专属权限。
+
+应迁入：
+
+- `entry/src/main/ets/pages`、`components`、`adaptive`；
+- RDP 客户端 Controller、配置、持久化、权限请求协调和 XComponent host；
+- 与 UI 无关的公共能力接口和设备能力模型；
+- 共享资源、主题、字符串、图标、页面 profile；
+- FreeRDP 客户端 Native C++：`channels`、`freerdp`、`input`、`session`、`surface` 和客户端 N-API；
+- FreeRDP/WinPR 客户端运行库。
+
+不应迁入：
+
+- `EntryAbility`、`PrintExtensionAbility` 的系统声明；
+- `CUSTOM_SCREEN_RECORDING`、`CONTROL_DEVICE`；
+- `xrdp.hnp`、`hnpPackages`；
+- XRDP 进程启动、PID 管理和服务端运行库。
+
+### 4.2 2in1 `entry.hap`
+
+保留当前模块名 `entry`，最终只支持 `deviceTypes: ["2in1"]`。
+
+负责：
+
+- 薄 `EntryAbility`，安装 2in1 `RemoteControlPort` 后加载 `common.hsp` 的同一 UI 根组件；
+- 必要的 `PrintExtensionAbility` 薄壳；
+- 2in1 完整权限清单和受限权限 ACL 对应的签名材料；
+- `xrdp.hnp` 和 `hnpPackages`；
+- `libxrdpcontrol.so`：解析 HNP 私有安装路径、`fork/execv`、PID/退出码、停止和健康检查；
+- 应用显式启动/停止 XRDP 时的生命周期所有权。
+
+### 4.3 tablet `entry_tablet.hap`
+
+只支持 `deviceTypes: ["tablet"]`。
+
+负责：
+
+- 薄 `EntryAbility`，安装不可用的 `RemoteControlPort` 后加载相同 UI 根组件；
+- tablet 需要的 `PrintExtensionAbility` 薄壳；
+- tablet 权限清单；
+- 对旧路由、旧持久化状态和非法远控调用 fail-closed。
+
+tablet 模块不能引用 `libxrdpcontrol.so`，也不能包含 XRDP 头文件、服务端 `.so`、配置、share 或 HNP。
+
+### 4.4 共享接口
+
+`common.hsp` 不能反向依赖任一 Entry。通过小接口注入设备能力：
+
+```text
+RemoteControlPort
+├─ capability(): available | unavailable
+├─ start(config): result
+├─ stop(): result
+├─ snapshot(): state/pid/lastExit
+└─ refreshPermissionState(): permission state
+
+2in1 Entry  -> HnpXrdpRemoteControlPort -> libxrdpcontrol.so -> fork/execv
+tablet Entry -> UnavailableRemoteControlPort -> fail-closed result
+```
+
+建议在 `common.hsp` 提供一次性 `AppFeatureRegistry.install()`。两个 Entry 在加载页面前注入实现；共享 UI 只读取语义能力和回调，不读取模块名，也不直接 import 设备 Entry 代码。
+
+现有 `DeviceCapabilityPolicy` 保留为运行时防御，但最终可用条件必须同时满足：
+
+```text
+packagedRole == 2in1
+AND systemDeviceType == 2in1
+AND HNP executable health check passed
+```
+
+任何未知设备类型、HNP 缺失或健康检查失败都返回 unavailable。
+
+## 5. Native 和 XRDP 进程模型
+
+### 5.1 最终调用链
+
+```text
+现有远控设置 UI
+  -> RemoteControlCoordinator / XrdpServerController
+  -> RemoteControlPort
+  -> 2in1 Entry 的 libxrdpcontrol.so
+  -> 校验私有 HNP 路径、配置和权限
+  -> fork()
+  -> child: execve(<HNP>/bin/xrdp, argv, env)
+  -> parent: 保存 pid，异步 waitpid，发布状态
+```
+
+最终发布路径禁止继续调用：
+
+```text
+dlopen(libxrdpserver.so)
+  -> dlsym(xrdp_ohos_server_main)
+  -> std::thread(mainFn)
+```
+
+在新路径真机验证完成前，旧进程内实现可以保留在分支中作对照，但不能和新路径自动 fallback。独立进程启动失败时应向 UI 返回明确错误，不能静默退回线程模式。
+
+### 5.2 进程生命周期
+
+必须定义并验证：
+
+- 重复点击启动是幂等操作，不产生第二个 xrdp 进程；
+- 父进程保存明确 PID，不通过模糊进程名批量杀进程；
+- 显式停止先发送约定信号，超时后再有限升级，最终 `waitpid` 回收；
+- 应用强停、卸载、HAP 升级后不留下孤儿 xrdp；
+- xrdp 异常退出时 UI 收到退出码和可诊断原因；
+- 配置、证书、PID 文件只写应用/HNP允许的沙箱路径；
+- 不用 `sh -c` 拼接命令，不把密码或验证码放入命令行和日志；
+- HNP 使用 `private`，首版 `independentSign=false`，避免公共包名冲突和额外签名链。
+
+### 5.3 独立进程不等于后台常驻
+
+HNP 解决的是可执行文件交付和独立 OS 进程启动，不自动授予无限后台运行能力。
+
+本方案首版承诺：应用拥有 XRDP 进程，用户显式启动后在允许的前后台生命周期内运行，用户停止、应用强停或卸载时应退出。
+
+如果产品要求“UI 完全退出后仍长期被控、系统重启后自启动”，必须单独评估后台任务、企业设备策略、系统权限和商店审核；该需求不能由 HNP 打包本身推导出来，也不在本轮默认范围内。
+
+## 6. 权限拆分
+
+### 6.1 目标权限矩阵
+
+| 权限 | tablet Entry | 2in1 Entry | 归属理由 |
+|---|---:|---:|---|
+| `INTERNET` | 是 | 是 | RDP 客户端和网络服务 |
+| `GET_NETWORK_INFO` | 是 | 是 | 连接与网络诊断 |
+| `PRINT` | 按当前打印能力保留 | 保留 | RDP 客户端打印重定向 |
+| `READ_PASTEBOARD` | 按需声明/请求 | 按需声明/请求 | RDP 客户端剪贴板通道 |
+| `MICROPHONE` | 按需声明/请求 | 按需声明/请求 | RDP 客户端 `audin` |
+| `CAMERA` | 按需声明/请求 | 按需声明/请求 | RDP 客户端 `rdpecam` |
+| `APPROXIMATELY_LOCATION` | 按功能开关 | 按功能开关 | RDP 客户端 location 通道 |
+| `LOCATION` | 按功能开关 | 按功能开关 | RDP 客户端 location 通道 |
+| `CUSTOM_SCREEN_RECORDING` | 否 | 是 | XRDP 被控画面采集 |
+| `CONTROL_DEVICE` | 否 | 是 | XRDP 长期键鼠注入 |
+
+不能把剪贴板、麦克风、摄像头、定位和打印简单视为“PC 权限”；它们当前属于 RDP 客户端通道，tablet 保留对应功能时仍需要声明。权限是否保留应由功能矩阵决定，而不是设备名称决定。
+
+### 6.2 权限行为门禁
+
+- tablet HAP 解包后的 `requestPermissions` 不得出现 `CUSTOM_SCREEN_RECORDING`、`CONTROL_DEVICE`。
+- tablet 安装后的系统权限页不得出现这两项。
+- tablet 冷启动、连接 RDP、进入设置和恢复旧状态时，这两项请求次数必须为 0。
+- 2in1 只在用户启动被控服务或进入明确授权流程时处理录屏/控制权限。
+- `CONTROL_DEVICE` 的 profile ACL、应用 APL、签名证书和商店审核材料必须与 2in1 发布流程一起验证。
+- 所有 HAP/HSP 使用同一证书；即使统一 profile 中有 ACL 允许项，tablet HAP 仍不得在 module profile 声明对应权限。
+
+## 7. HNP 内容和包边界
+
+2in1 Entry 的最终 HNP 至少包含：
+
+```text
+xrdp.hnp
+├─ hnp.json
+├─ bin/xrdp
+├─ config/xrdp.ini
+├─ config/rsakeys.ini
+├─ config/xrdp_keyboard.toml
+├─ config/km-*.toml
+├─ share/sans-10.fv1
+└─ lib/<xrdp 实际 DT_NEEDED 依赖>
+```
+
+修改 `package-xrdp-hnp.ps1` 前先用 `llvm-readelf -d` 对 `bin/xrdp` 和插件逐一审计 `DT_NEEDED`。只有证明不是独立进程运行所需的 `libxrdpserver.so` 或重复运行库才可以删除，不能按文件名猜测。
+
+2026-08-06 对当前本地 `sysroot/sbin/xrdp` 的初步审计结果：直接 `DT_NEEDED` 包含
+`libcommon.so.0`、`libipm.so.0`、`libxrdp.so.0`、`libtoml.so.1`、OHOS AVCodec 库、
+`libopenh264.so.7` 和 `libc.so`，不直接依赖 `libxrdpserver.so`；仍需继续审计插件和传递依赖后
+才能从 HNP 删除该库。当前二进制的 `RUNPATH` 还混入了构建机
+`/mnt/c/Users/.../sysroot/lib/xrdp` 绝对路径，发布前必须在
+`harmony/scripts/wsl/build-xrdp-ohos.sh`/libtool 链接参数中清除，只允许基于 `$ORIGIN` 的相对
+路径。包门禁应拒绝包含 `/mnt/`、Windows 盘符、仓库绝对路径或其他构建机路径的 ELF。
+
+2in1 `module.json5` 目标声明：
+
+```json5
+"hnpPackages": [
+  {
+    "package": "xrdp.hnp",
+    "type": "private",
+    "independentSign": false
+  }
+]
+```
+
+tablet `module.json5` 中不得存在 `hnpPackages` 字段，tablet HAP 压缩条目中不得存在 `hnp/` 目录。
+
+## 8. 文件级修改方案
+
+### 8.1 工程和模块
+
+| 文件/目录 | 修改内容 | 完成标准 |
+|---|---|---|
+| `harmony/app/build-profile.json5` | 注册 `common`、`entry`、`entry_tablet` 模块；统一 product、SDK、版本和签名配置 | `assembleApp` 能识别三个模块，同设备仅一个 Entry |
+| `harmony/app/common/` | 新建 Shared Library/HSP 模块 | 构建生成 `common.hsp` |
+| `harmony/app/entry/` | 保留模块名，设备收窄到 `2in1`，只保留薄系统壳和 2in1 实现 | 2in1 HAP 含 HNP/PC 权限，UI 与现状一致 |
+| `harmony/app/entry_tablet/` | 新建 tablet Entry 和不可用远控实现 | tablet HAP 无 HNP/PC 权限，RDP 客户端可用 |
+| 两个 Entry 的 `oh-package.json5` | 依赖同一个应用内 `common` HSP | 无复制业务 UI |
+| `common/oh-package.json5` | 声明共享模块和 Native 类型依赖 | 两个 Entry 加载同一共享实现 |
+
+### 8.2 ArkTS 和资源迁移
+
+| 当前范围 | 目标范围 | 说明 |
+|---|---|---|
+| `entry/src/main/ets/pages` | `common/src/main/ets/pages` | 保持同一页面实现 |
+| `entry/src/main/ets/components` | `common/src/main/ets/components` | 不复制 tablet/2in1 UI |
+| `entry/src/main/ets/adaptive` | `common/src/main/ets/adaptive` | 继续只按窗口断点布局 |
+| `entry/src/main/ets/rdp` 客户端部分 | `common/src/main/ets/rdp` | Controller、会话、配置、权限协调共享 |
+| `RemoteControlCoordinator`/`XrdpServerController` | `common` 中依赖 `RemoteControlPort` | 不直接 import 2in1 Native 模块 |
+| `entry/src/main/resources` 业务资源 | `common/src/main/resources` | 图标、主题、字符串和页面资源共享 |
+| `EntryAbility.ets` | 两个 Entry 各保留薄壳 | 注入能力后加载相同 UI 根组件 |
+| `MuHubPrintExtension.ets` | 两个 Entry 薄壳 + common 实现 | HSP 不声明 ExtensionAbility |
+
+每迁移一组文件都先保持 import 和路由可编译，再删除原文件。禁止一次性复制后长期维护两份。
+
+### 8.3 Native 拆分
+
+| 当前内容 | 目标 |
+|---|---|
+| `libentry.so` 中 FreeRDP 客户端、Surface、输入、通道 | `common.hsp` 中 `librdpclient.so` |
+| `libentry.so` 中 XRDP runtime loader/server bridge | 2in1 Entry 中 `libxrdpcontrol.so` |
+| `dlopen + xrdp_ohos_server_main + std::thread` | `fork + execve(HNP/bin/xrdp)` |
+| XRDP `.so/config/share` 同时存在于普通 HAP libs | 仅保留 HNP 真实运行所需内容；普通 tablet HAP 为 0 |
+| 当前 `libentry.so` 类型声明 | 分成 `librdpclient.so` 和 `libxrdpcontrol.so` 类型声明 |
+
+为降低迁移风险，Native 分两步：
+
+1. 先把客户端和服务端 CMake source list 分组，保持当前行为并通过现有测试；
+2. 再生成两个 Native 模块，切换 XRDP 为 HNP 子进程，删除旧线程发布路径。
+
+### 8.4 构建和封包脚本
+
+| 文件 | 修改内容 |
+|---|---|
+| `harmony/app/build_hap.bat` | 改为兼容入口或拆成明确的 `build_tablet`、`build_2in1`、`build_app` 模式；不再默认只构建一个通用 HAP |
+| `harmony/scripts/windows/package-xrdp-hnp.ps1` | 默认输出改到 2in1 Entry；审计独立进程依赖；保留缓存和路径安全检查 |
+| `harmony/scripts/windows/repack-hap-with-hnp.ps1` | 参数化模块名和产物名，只允许重封 2in1 HAP；签名后检查 HNP、module profile 和关键依赖 |
+| `harmony/scripts/wsl/build-xrdp-ohos.sh` | 收口 xrdp/HNP ELF 的 RUNPATH，只保留 `$ORIGIN` 相对路径并增加构建机绝对路径门禁 |
+| 新增 `harmony/scripts/windows/package-multidevice-app.ps1` | 组合最终 HAP/HSP 为 App Pack；校验版本、bundleName、证书和 pack.info 一致性 |
+| 新增 `tools/verify_multidevice_app.ps1` | 自动解包 APP/HAP/HSP，执行本方案第 10 节静态断言 |
+
+脚本最终应提供三个明确产物集合：
+
+```text
+tablet-debug/
+├─ entry_tablet-signed.hap
+└─ common-signed.hsp
+
+2in1-debug/
+├─ entry-signed-hnp.hap
+└─ common-signed.hsp
+
+release/
+└─ com.muhub.desktop-<version>-signed.app
+```
+
+`build_hap.bat` 当前命令在新脚本真正实现并执行成功前仍是当前单 HAP 构建入口；README 不得提前把计划命令写成已可用命令。
+
+## 9. 实施顺序和提交边界
+
+### MDP-00：包模型最小验证，阻断性 P0
+
+不迁移业务 UI，先创建最小三个模块验证工具链和真机边界：
+
+1. 空壳 `common.hsp`；
+2. 只支持 2in1 的测试 Entry，携带最小 HNP；
+3. 只支持 tablet 的测试 Entry，不含 HNP；
+4. 生成同一 bundle 的 `.app`；
+5. 解包检查模块、deviceTypes、权限、HNP 和签名；
+6. 通过应用市场内部测试轨或等价分发验证两类设备实际收到的模块集合；
+7. 验证现有版本覆盖升级，尤其是 tablet 从旧 `entry` 切换到 `entry_tablet`。
+
+以下任一失败，停止后续迁移：
+
+- App Pack 不接受两个互斥 deviceTypes 的 Entry；
+- tablet 分发仍收到含 HNP 的 2in1 HAP；
+- HNP HAP 使整个 App Pack 在 tablet 侧被拒；
+- tablet 或 2in1 覆盖升级丢失数据、入口或签名身份；
+- HSP 与两个 Entry 不能以同一签名集合安装。
+
+### MDP-01：提取共享 UI/HSP
+
+- 新建 `common.hsp`；
+- 迁移 UI、资源、客户端 ArkTS 和公共状态；
+- 两个 Entry 加载同一根组件；
+- 保持 Native 暂时不变；
+- 完成 UI 截图、路由、表单状态、窗口断点和会话连续性回归。
+
+### MDP-02：权限和能力物理隔离
+
+- 拆分两个 `module.json5`；
+- tablet 删除录屏/控制权限和 XRDP 组件引用；
+- 2in1 保留受限权限及 ACL；
+- `RemoteControlPort` 注入替代共享层直接判断或直接调用 XRDP；
+- 完成权限清单和实际授权行为验证。
+
+### MDP-03：Native 拆分与 HNP 独立进程
+
+- 拆出 `librdpclient.so` 和 `libxrdpcontrol.so`；
+- 接入私有 HNP 可执行文件；
+- 实现 PID、waitpid、停止、异常退出和日志；
+- 删除发布路径的 `dlopen + std::thread`；
+- 完成独立 PID 和 MSTSC 动作级验收。
+
+### MDP-04：构建、分发和发布门禁
+
+- 完成三个构建模式和自动解包门禁；
+- 完成 clean install、upgrade、rollback 和应用市场内部测试；
+- 更新 README、feature matrix、验证基线和旧专项文档；
+- 只有全部 P0/P1 证据齐全后才替换当前 canonical 单 HAP 发布路径。
+
+每个 MDP 工作包独立形成可审阅提交，禁止把模块创建、全部 UI 迁移、Native 进程改造和发布脚本塞进同一个提交。
+
+## 10. 自动化包检查
+
+新门禁脚本必须解析最终 `.app` 及其 HAP/HSP，不能只检查源码 `module.json5`。
+
+### 10.1 App Pack 断言
+
+- bundleName、versionCode、versionName、SDK 版本一致；
+- 所有 HAP/HSP 签名证书一致；
+- 存在且只有 `common.hsp`、2in1 Entry、tablet Entry 三个目标模块；
+- 同一 deviceType 恰好一个 Entry；
+- pack.info 的 `deviceType`、`moduleType`、`deliveryWithInstall` 正确；
+- release App Pack 可由官方拆包工具完整解析。
+
+### 10.2 tablet HAP 断言
+
+- `deviceTypes == ["tablet"]`；
+- 无 `hnpPackages`；
+- 压缩条目 `hnp/` 数量为 0；
+- 不包含 `CUSTOM_SCREEN_RECORDING`、`CONTROL_DEVICE`；
+- 不包含 `libxrdpcontrol.so`、`libxrdpserver.so`、`libxrdpohos.so`、`bin/xrdp` 或 XRDP config/share；
+- 包中只有薄 Entry/Extension 壳，业务 UI 和客户端实现来自 `common.hsp`。
+
+### 10.3 2in1 HAP 断言
+
+- `deviceTypes == ["2in1"]`；
+- 只声明一个私有 `xrdp.hnp`，`independentSign=false`；
+- 压缩条目存在 `hnp/arm64-v8a/xrdp.hnp`；
+- 存在 `CUSTOM_SCREEN_RECORDING`、`CONTROL_DEVICE`；
+- 存在 `libxrdpcontrol.so`；
+- HNP 解包后存在可执行 `bin/xrdp` 和经 `DT_NEEDED` 审计的依赖；
+- HNP 内全部 ELF 的 RUNPATH/RPATH 不含构建机绝对路径，只允许审核通过的 `$ORIGIN` 相对路径；
+- 普通 HAP libs 不保留无用途的第二份 XRDP runtime。
+
+### 10.4 common HSP 断言
+
+- `type == shared`，deviceTypes 覆盖 tablet/2in1；
+- 不声明 Ability/ExtensionAbility、HNP 和 PC 专属权限；
+- 包含共享 UI、资源和 `librdpclient.so`；
+- 不包含 XRDP 服务端启动代码和运行库。
+
+自动化输出必须为机器可读结果，并在任一断言失败时返回非零退出码。
+
+## 11. 真机验证矩阵
+
+### 11.1 tablet
+
+目标设备：已验证会拒绝 HNP 的 tablet 产品，至少包含现有 MatePad Pro 样机。
+
+| ID | 操作 | 通过标准 |
+|---|---|---|
+| MDP-TAB-01 | 卸载后安装 tablet 模块集合 | 安装成功，无 HNP 8201/9568407/9568409 |
+| MDP-TAB-02 | 从当前单 HAP 版本覆盖升级 | bundle 数据、连接配置和入口保留；若系统不支持换 Entry module，禁止发布并重新决策模块名 |
+| MDP-TAB-03 | 冷启动、前后台、旋转、分屏、浮窗 | 无崩溃、白屏或 HSP 加载失败 |
+| MDP-TAB-04 | RDP 客户端连接和断开 | 连接、显示、输入、resize 与当前基线一致 |
+| MDP-TAB-05 | 剪贴板/音频/摄像头/定位/打印/远程文件 | 启用的客户端通道按需授权并可用 |
+| MDP-TAB-06 | 权限页和请求日志 | 无录屏、控制设备权限项；请求次数均为 0 |
+| MDP-TAB-07 | 旧远控路由/旧持久化状态/非法调用 | fail-closed，不进入 XRDP UI，不调用 Native XRDP |
+| MDP-TAB-08 | UI 截图和 layout dump 对比 | 除既定 XRDP 隐藏外，无布局、文案、导航和状态回退 |
+
+### 11.2 2in1
+
+| ID | 操作 | 通过标准 |
+|---|---|---|
+| MDP-PC-01 | 卸载后安装 2in1 模块集合 | HNP 安装成功，应用启动成功 |
+| MDP-PC-02 | 从当前版本覆盖升级 | bundle、module `entry`、数据和签名身份连续 |
+| MDP-PC-03 | 启动 XRDP | 产生独立 xrdp PID；PID 不等于应用 PID，进程映射来自 HNP 路径 |
+| MDP-PC-04 | 重复启动 | 不产生第二进程，UI 返回已运行状态 |
+| MDP-PC-05 | MSTSC 连接 | 3390/转发路径可连接，画面、键鼠、剪贴板和已支持通道通过动作级回归 |
+| MDP-PC-06 | 录屏和输入权限 | 未授权时明确阻断；授权后可工作；不静默退回旧线程实现 |
+| MDP-PC-07 | 显式停止 | 子进程在阈值内退出并被回收，无残留监听端口 |
+| MDP-PC-08 | 子进程异常退出 | UI 状态、退出码和诊断日志更新，可再次启动 |
+| MDP-PC-09 | 应用强停、升级、卸载 | 无孤儿进程、无残留监听、HNP 按系统规则卸载 |
+| MDP-PC-10 | UI 对比 | 远控入口、设置布局、验证码和权限流程与拆分前一致 |
+
+### 11.3 分发
+
+本地 `hdc install` 只能验证指定 HAP/HSP 集合，不能证明应用市场选择逻辑。发布前必须使用应用市场内部测试或等价真实分发链路：
+
+| ID | 设备 | 通过标准 |
+|---|---|---|
+| MDP-DIST-01 | tablet | 实际下载模块只有 tablet Entry + common HSP；安装日志不解析/安装 HNP |
+| MDP-DIST-02 | 2in1 | 实际下载模块只有 2in1 Entry + common HSP；HNP 正常安装 |
+| MDP-DIST-03 | 商店包审查 | App Pack 设备声明、权限、HNP 和签名通过校验 |
+| MDP-DIST-04 | 版本升级 | 两类设备都从上一正式版本成功升级，无数据清除和入口丢失 |
+
+## 12. 测试命令规划
+
+以下是实施后的目标命令名，当前尚不存在的脚本不得当作已验证能力：
+
+```powershell
+# 现有窄测试，迁移期间持续执行
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_native_tests.ps1
+
+# 目标构建命令，需在 MDP-04 实现并回写实际参数
+.\harmony\app\build_hap.bat tablet debug
+.\harmony\app\build_hap.bat 2in1 debug
+.\harmony\app\build_hap.bat app release
+
+# 目标包门禁，需在 MDP-04 实现
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_app.ps1 `
+  -AppPath <release-app-path>
+```
+
+真机安装应一次安装同设备需要的 HAP/HSP 集合，且显式指定目标设备。具体命令以当前 SDK `hdc` 对 HSP 的参数为准，在 MDP-00 实测后写入验证基线，不能现在凭空固定。
+
+## 13. 升级、回滚和发布策略
+
+### 13.1 升级
+
+- 2in1 保留 `entry` moduleName，必须验证从当前正式 HAP 覆盖升级。
+- tablet 将从当前 `entry` 迁移到 `entry_tablet`，这是本方案最高升级风险，MDP-TAB-02 和 MDP-DIST-04 是阻断项。
+- 如果平台不允许该 Entry module 迁移，不能要求用户静默清数据解决。必须在 MDP-00 重新选择 moduleName/target 组合或制定明确版本迁移策略后再继续。
+- 公共数据库、首选项和文件继续使用 bundle 沙箱，不按 moduleName 创建第二份业务数据。
+
+### 13.2 回滚
+
+- MDP-00 至 MDP-03 期间，当前无 HNP 的单 HAP 仍是 tablet 可安装基线，不替换 canonical 产物。
+- 新 App Pack 未完成应用市场分发验证前，不删除现有构建脚本和安装说明。
+- 新版本一旦改变 Entry module 集合，回滚到旧单 HAP 也要真机验证，不能只验证向前升级。
+- HNP 启动失败不允许运行时回退到进程内 XRDP；发布回滚应回到上一完整版本。
+
+### 13.3 备选方案
+
+如果 MDP-00 证明两个设备 Entry 的升级或 App Pack 分发不可接受，备选方案才是：
+
+```text
+通用 Entry HAP（tablet + 2in1，保留全部 UI）
++ 2in1-only Feature HAP（只承载 HNP/PC 权限）
+```
+
+启用备选方案前必须单独证明：Feature 中声明的 `usedScene` 权限可由通用 EntryAbility 正确申请、HNP 子进程获得预期 AccessToken、零 UI Feature HAP 通过工具链和商店校验。未证明前不作为主方案。
+
+## 14. 实施台账
+
+| Change ID | 状态 | 目标 | 允许修改范围 | 验收 |
+|---|---|---|---|---|
+| MDP-00 | DesignReady | 最小多 Entry/HSP/HNP App Pack 和升级验证 | 新测试模块、build-profile、临时封包脚本 | MDP-TAB-01/02、MDP-PC-01/02、MDP-DIST-01/02 |
+| MDP-01 | Planned | 共享 UI/HSP，体验不变 | ArkTS、资源、HSP 依赖 | MDP-TAB-03/08、MDP-PC-10 |
+| MDP-02 | Planned | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | MDP-TAB-06/07、MDP-PC-06 |
+| MDP-03 | Planned | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | MDP-PC-03 至 09 |
+| MDP-04 | Planned | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 第 10 节、MDP-DIST-01 至 04 |
+
+状态定义：
+
+- `Planned`：有方向，尚未完成文件/API/验收审阅；
+- `DesignReady`：设计、范围、阻断项和验收已明确，可以开始该工作包；
+- `Implemented`：代码完成，但真机/分发证据未齐；
+- `Verified`：对应自动化、真机、升级和分发证据全部通过。
+
+## 15. 完成定义
+
+只有同时满足以下条件，才能把多设备 HNP 架构标记为 Verified 并替换当前发布基线：
+
+1. 最终 `.app` 包含两个互斥设备 Entry 和一个 common HSP，官方工具解析无错误。
+2. tablet 实际分发和安装集合中完全没有 HNP、`hnpPackages`、PC 权限和 XRDP 服务端运行库。
+3. 2in1 实际分发和安装集合包含私有 HNP，XRDP 以独立 PID 运行，不使用旧线程发布路径。
+4. 两类设备使用同一 UI 实现，截图、布局、路由、状态和 RDP 会话回归通过。
+5. tablet/2in1 从上一正式版本覆盖升级以及必要的回滚测试通过。
+6. 权限清单、实际授权、ACL、签名证书和商店审核材料一致。
+7. 显式启停、异常退出、应用强停和卸载均无孤儿进程和残留端口。
+8. App Pack 经真实应用市场内部测试证明按设备选择正确模块，而不只是本地手工安装成功。
+9. README、feature matrix、验证基线和旧单 HAP 专项文档已同步当前事实。
+10. 所有验证记录使用实际命令、退出码、包哈希、设备信息和日志证据；未执行项明确标记未执行。
