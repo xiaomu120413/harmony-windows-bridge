@@ -1,11 +1,26 @@
 import { RdpLogger } from './RdpLogger'
 import { RdpPermissionManager } from './RdpPermissions'
 import {
-  XrdpServerController,
-  XrdpServerDisplayMessages,
-  XrdpServerStartOptions,
-  XrdpServerStatus
-} from './XrdpServerController'
+  RemoteControlPort,
+  RemoteControlProcessParams,
+  RemoteControlProcessResult
+} from './RemoteControlPort'
+
+export interface XrdpServerStatus {
+  running: boolean
+  state: string
+  port: number
+  message: string
+}
+
+export interface XrdpServerDisplayMessages {
+  active: string
+  listening: string
+  stopped: string
+  exited: string
+  failed: string
+  unavailable: string
+}
 
 export interface RemoteControlSnapshot {
   accessCode: string
@@ -26,7 +41,8 @@ export class RemoteControlCoordinator {
   private readonly permissionManager: () => RdpPermissionManager
   private readonly appFilesDir: () => string
   private readonly onChange: (snapshot: RemoteControlSnapshot) => void
-  private readonly serverController: XrdpServerController
+  private readonly remoteControlPort: RemoteControlPort
+  private readonly messages: XrdpServerDisplayMessages
   private startRequest: Promise<XrdpServerStatus> | null = null
   private accessCode: string = '000000'
   private accessCodeGateEnabled: boolean = false
@@ -41,14 +57,15 @@ export class RemoteControlCoordinator {
   private serverMessage: string = ''
   private serverBusy: boolean = false
 
-  constructor(available: boolean, messages: XrdpServerDisplayMessages,
+  constructor(remoteControlPort: RemoteControlPort, messages: XrdpServerDisplayMessages,
     permissionManager: () => RdpPermissionManager, appFilesDir: () => string,
     onChange: (snapshot: RemoteControlSnapshot) => void) {
-    this.available = available
+    this.available = remoteControlPort.available
+    this.remoteControlPort = remoteControlPort
+    this.messages = messages
     this.permissionManager = permissionManager
     this.appFilesDir = appFilesDir
     this.onChange = onChange
-    this.serverController = new XrdpServerController(messages, available)
   }
 
   snapshot(): RemoteControlSnapshot {
@@ -121,7 +138,7 @@ export class RemoteControlCoordinator {
   }
 
   refreshDiagnostics(): XrdpServerStatus {
-    return this.applyStatus(this.serverController.diagnostics())
+    return this.applyStatus(this.toStatus(this.remoteControlPort.diagnostics()))
   }
 
   refreshReadiness(clearBusy: boolean = false): XrdpServerStatus {
@@ -247,10 +264,11 @@ export class RemoteControlCoordinator {
   }
 
   private startAfterPermissions(trigger: string, restartIfRunning: boolean): XrdpServerStatus {
-    return this.applyStatus(this.serverController.start(this.startOptions(restartIfRunning), trigger))
+    RdpLogger.info(`xrdp process start requested: ${trigger}`)
+    return this.applyStatus(this.toStatus(this.remoteControlPort.start(this.startOptions(restartIfRunning))))
   }
 
-  private startOptions(restartIfRunning: boolean): XrdpServerStartOptions {
+  private startOptions(restartIfRunning: boolean): RemoteControlProcessParams {
     return {
       appFilesDir: this.appFilesDir(),
       accessCode: this.accessCodeGateEnabled ? this.ensureAccessCode() : '',
@@ -275,6 +293,37 @@ export class RemoteControlCoordinator {
     this.serverMessage = status.message
     this.publish()
     return status
+  }
+
+  private toStatus(result: RemoteControlProcessResult): XrdpServerStatus {
+    return {
+      running: result.ok && result.state !== 'Stopped' && result.state !== 'Exited',
+      state: result.state,
+      port: result.port > 0 ? result.port : 3390,
+      message: this.displayMessage(result)
+    }
+  }
+
+  private displayMessage(result: RemoteControlProcessResult): string {
+    if (result.state === 'ActiveSession') {
+      return this.messages.active
+    }
+    if (result.state === 'Listening') {
+      return this.messages.listening
+    }
+    if (result.state === 'Stopped') {
+      return this.messages.stopped
+    }
+    if (result.state === 'Exited') {
+      return this.messages.exited
+    }
+    if (result.state === 'Unavailable') {
+      return this.messages.unavailable
+    }
+    if (result.state === 'Failed') {
+      return this.messages.failed
+    }
+    return result.message
   }
 
   private setPermissionBusy(busy: boolean): void {

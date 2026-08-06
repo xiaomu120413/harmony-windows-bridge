@@ -20,13 +20,18 @@ import {
 import { RdpLogger } from '../rdp/RdpLogger'
 import { RdpPermissionRequestCoordinator } from '../rdp/RdpPermissionRequestCoordinator'
 import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
-import { RemoteControlCoordinator, RemoteControlSnapshot } from '../rdp/RemoteControlCoordinator'
-import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
-import { RdpSurfaceContentHost } from '../rdp/RdpSurfaceContentHost'
 import {
+  RemoteControlCoordinator,
+  RemoteControlSnapshot,
   XrdpServerDisplayMessages,
   XrdpServerStatus
-} from '../rdp/XrdpServerController'
+} from '../rdp/RemoteControlCoordinator'
+import {
+  RemoteControlPort,
+  UnavailableRemoteControlPort
+} from '../rdp/RemoteControlPort'
+import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
+import { RdpSurfaceContentHost } from '../rdp/RdpSurfaceContentHost'
 import {
   WindowsConnectionProfile,
   WindowsConnectionSaveInput,
@@ -42,6 +47,7 @@ import { SettingsRoute, SettingsText } from '../components/settings/SettingsCons
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
 @Component
 export struct MuHubApp {
+  remoteControlPort: RemoteControlPort = new UnavailableRemoteControlPort()
   @State private host: string = ''
   @State private port: string = '3389'
   @State private username: string = ''
@@ -169,7 +175,7 @@ export struct MuHubApp {
   }
 
   private remoteControlServerAvailable(): boolean {
-    return hasRemoteControlServer(this.deviceCapabilities)
+    return hasRemoteControlServer(this.deviceCapabilities) && this.remoteControlPort.available
   }
 
   private getPermissionManager(): RdpPermissionManager {
@@ -197,7 +203,7 @@ export struct MuHubApp {
   private getRemoteControlCoordinator(): RemoteControlCoordinator {
     if (this.remoteControlCoordinator === null) {
       this.remoteControlCoordinator = new RemoteControlCoordinator(
-        this.remoteControlServerAvailable(),
+        this.remoteControlPort,
         this.xrdpServerDisplayMessages(),
         (): RdpPermissionManager => this.getPermissionManager(),
         (): string => this.getAppFilesDir(),

@@ -12,7 +12,6 @@
 #include "napi/microphone_permission_bridge.h"
 #include "napi/napi_event_sink.h"
 #include "napi/napi_utils.h"
-#include "xrdp/xrdp_server_bridge.h"
 
 #include <cstdint>
 #include <string>
@@ -56,60 +55,6 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     return params;
 }
 
-XrdpServerParams ReadXrdpServerParams(napi_env env, napi_callback_info info)
-{
-    napi_value arg = GetFirstArgument(env, info);
-    napi_valuetype type = napi_undefined;
-    if (arg != nullptr) {
-        napi_typeof(env, arg, &type);
-    }
-
-    XrdpServerParams params;
-    if (arg == nullptr || type != napi_object) {
-        return params;
-    }
-
-    params.appFilesDir = GetStringProperty(env, arg, "appFilesDir");
-    params.accessCode = GetStringProperty(env, arg, "accessCode");
-    params.accessCodeGateEnabled = GetBoolProperty(env, arg, "accessCodeGateEnabled");
-    params.restartIfRunning = GetBoolProperty(env, arg, "restartIfRunning");
-    return params;
-}
-
-void SetXrdpCommonResult(napi_env env, napi_value result, const XrdpServerCommandResult& command)
-{
-    SetBool(env, result, "ok", command.ok);
-    SetString(env, result, "state", command.state);
-    SetString(env, result, "message", command.message);
-    SetString(env, result, "libraryPath", command.libraryPath);
-    SetString(env, result, "runtimeRoot", command.runtimeRoot);
-    SetString(env, result, "configPath", command.configPath);
-    SetString(env, result, "modulePath", command.modulePath);
-    SetString(env, result, "logPath", command.logPath);
-    SetBool(env, result, "activeMstscSession", command.activeMstscSession);
-    SetUint32(env, result, "port", command.port);
-    SetString(env, result, "rdpecamDeviceName", command.rdpecamDeviceName);
-    SetUint32(env, result, "rdpecamFormat", command.rdpecamFormat);
-    SetUint32(env, result, "rdpecamWidth", command.rdpecamWidth);
-    SetUint32(env, result, "rdpecamHeight", command.rdpecamHeight);
-    SetUint64(env, result, "rdpecamSampleCount", command.rdpecamSampleCount);
-    SetUint64(env, result, "rdpecamBytes", command.rdpecamBytes);
-    SetUint32(env, result, "rdpecamErrors", command.rdpecamErrors);
-}
-
-napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& command)
-{
-    napi_value result = MakeObject(env);
-    SetXrdpCommonResult(env, result, command);
-    return result;
-}
-
-void EmitDebugLogs(const std::vector<std::string>& logs)
-{
-    for (const std::string& line : logs) {
-        BridgeLogger::Debug(line);
-    }
-}
 
 napi_value Connect(napi_env env, napi_callback_info info)
 {
@@ -138,22 +83,6 @@ napi_value Connect(napi_env env, napi_callback_info info)
     SetString(env, result, "state", "Resolving");
     SetString(env, result, "message", message);
     return result;
-}
-
-napi_value EnsureXrdpServerStarted(napi_env env, napi_callback_info info)
-{
-    const XrdpServerParams params = ReadXrdpServerParams(env, info);
-    XrdpServerCommandResult result = rdp_bridge::StartXrdpServer(params);
-    if (!result.ok) {
-        EmitDebugLogs(result.logs);
-    }
-    return MakeXrdpServerResult(env, result);
-}
-
-napi_value GetXrdpServerDiagnostics(napi_env env, napi_callback_info info)
-{
-    (void)info;
-    return MakeXrdpServerResult(env, rdp_bridge::GetXrdpServerDiagnostics());
 }
 
 napi_value ReleaseAllInput(napi_env env, napi_callback_info info)
@@ -343,8 +272,6 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"ensureXrdpServerStarted", nullptr, EnsureXrdpServerStarted, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"getXrdpServerDiagnostics", nullptr, GetXrdpServerDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"bindImeHostWindow", nullptr, BindImeHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"attachXComponentContent", nullptr, AttachXComponentContent, nullptr, nullptr, nullptr,
             napi_default, nullptr},

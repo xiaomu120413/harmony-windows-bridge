@@ -4,7 +4,7 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $projectDirectory = Join-Path $repositoryRoot 'harmony\app'
 $studioCandidates = @()
 
-$nativeTypesPath = Join-Path $repositoryRoot 'harmony\app\common\src\main\cpp\types\libentry\Index.d.ts'
+$nativeTypesPath = Join-Path $repositoryRoot 'harmony\app\common\src\main\cpp\types\librdpclient\Index.d.ts'
 $indexPath = Join-Path $repositoryRoot 'harmony\app\common\src\main\ets\pages\Index.ets'
 $etsRoot = Join-Path $repositoryRoot 'harmony\app\common\src\main\ets'
 $gatewayPath = Join-Path $etsRoot 'rdp\NativeRdpGateway.ets'
@@ -29,7 +29,8 @@ foreach ($required in @(
   'completePermissionRequest(result: NativePermissionResult)',
   'attachXComponentContent(nodeContent: NodeContent)',
   'NativeRdpGateway.onPermissionRequest',
-  'NativeRdpGateway.completePermissionRequest'
+  'NativeRdpGateway.completePermissionRequest',
+  'RemoteControlPort'
 )) {
   if (-not ($nativeTypesText.Contains($required) -or $allEtsText.Contains($required))) {
     throw "Unified native permission contract is incomplete: missing $required"
@@ -37,10 +38,15 @@ foreach ($required in @(
 }
 
 $nativeImports = @(Get-ChildItem -Path $etsRoot -Recurse -Filter '*.ets' |
-  Select-String -SimpleMatch "from 'libentry.so'")
+  Select-String -SimpleMatch "from 'librdpclient.so'")
 if ($nativeImports.Count -ne 1 -or $nativeImports[0].Path -ne $gatewayPath) {
   $locations = ($nativeImports | ForEach-Object { "$($_.Path):$($_.LineNumber)" }) -join ', '
-  throw "NativeRdpGateway must be the only ArkTS libentry.so import. Found: $locations"
+  throw "NativeRdpGateway must be the only ArkTS librdpclient.so import. Found: $locations"
+}
+if ($nativeTypesText.Contains('ensureXrdpServerStarted') -or
+  $nativeTypesText.Contains('getXrdpServerDiagnostics') -or
+  $gatewayText.Contains('NativeXrdpServer')) {
+  throw 'Shared RDP client bridge must not expose XRDP server control.'
 }
 if ($indexText.Contains('rdpNative.') -or $indexText.Contains('NativeRdpGateway') -or
   -not $indexText.Contains('RdpClientController')) {

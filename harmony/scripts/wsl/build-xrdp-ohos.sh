@@ -224,6 +224,14 @@ configure_xrdp() {
       --with-imlib2=no \
       --with-freetype2=no
   ) 2>&1 | tee "$LOG_DIR/xrdp-configure.log"
+
+  # Libtool otherwise hard-codes the staging prefix into DT_RUNPATH. HNP
+  # executables must be relocatable and may only use the explicit $ORIGIN
+  # entries supplied through LDFLAGS above.
+  sed -i \
+    -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|' \
+    -e 's|^hardcode_into_libs=.*|hardcode_into_libs=no|' \
+    "$BUILD_DIR/libtool"
 }
 
 build_xrdp() {
@@ -238,12 +246,11 @@ install_xrdp() {
 
 verify_outputs() {
   local server="$PREFIX/sbin/xrdp"
-  local embedded_server="$PREFIX/lib/libxrdpserver.so"
   local backend="$PREFIX/lib/xrdp/libxrdpohos.so"
   local config="$CONFIG_DIR/xrdp/xrdp.ini"
   local nm_tool="$OHOS_LLVM_HOME/bin/llvm-nm"
   local backend_symbols="$LOG_DIR/xrdp-ohos-backend-nm.txt"
-  local embedded_symbols="$LOG_DIR/xrdp-embedded-server-nm.txt"
+  local readelf_tool="$OHOS_LLVM_HOME/bin/llvm-readelf"
 
   [[ -f "$server" ]] || {
     printf 'Missing xrdp server output: %s\n' "$server" >&2
@@ -253,17 +260,12 @@ verify_outputs() {
     printf 'Missing OHOS backend output: %s\n' "$backend" >&2
     exit 1
   }
-  [[ -f "$embedded_server" ]] || {
-    printf 'Missing embedded xrdp server library: %s\n' "$embedded_server" >&2
-    exit 1
-  }
   [[ -f "$config" ]] || {
     printf 'Missing OHOS xrdp config output: %s\n' "$config" >&2
     exit 1
   }
 
   "$nm_tool" -D "$backend" > "$backend_symbols"
-  "$nm_tool" -D "$embedded_server" > "$embedded_symbols"
 
   grep -q ' T mod_init' "$backend_symbols" || {
     printf 'OHOS backend does not export mod_init: %s\n' "$backend" >&2
@@ -277,14 +279,6 @@ verify_outputs() {
     printf 'OHOS backend does not export rdpecam callback ABI: %s\n' "$backend" >&2
     exit 1
   }
-  grep -q ' T xrdp_ohos_server_main' "$embedded_symbols" || {
-    printf 'Embedded xrdp server does not export xrdp_ohos_server_main: %s\n' "$embedded_server" >&2
-    exit 1
-  }
-  grep -q ' T xrdp_ohos_server_stop' "$embedded_symbols" || {
-    printf 'Embedded xrdp server does not export xrdp_ohos_server_stop: %s\n' "$embedded_server" >&2
-    exit 1
-  }
   grep -q 'lib=libxrdpohos.so' "$config" || {
     printf 'Installed xrdp.ini does not point to libxrdpohos.so: %s\n' "$config" >&2
     exit 1
@@ -293,6 +287,16 @@ verify_outputs() {
     printf 'Installed xrdp.ini does not enable rdpecam: %s\n' "$config" >&2
     exit 1
   }
+
+  while IFS= read -r elf; do
+    local dynamic
+    dynamic="$($readelf_tool -d "$elf")"
+    if grep -Eq '/mnt/|[A-Za-z]:\\|/Users/|/home/' <<<"$dynamic"; then
+      printf 'Build-machine path leaked into ELF RUNPATH: %s\n' "$elf" >&2
+      grep -E 'RPATH|RUNPATH' <<<"$dynamic" >&2 || true
+      exit 1
+    fi
+  done < <(printf '%s\n' "$server"; find "$PREFIX/lib/xrdp" -type f -name '*.so*' -print)
   if is_enabled "$ENABLE_OPENH264"; then
     grep -Eq 'openh264[[:space:]]+yes' "$LOG_DIR/xrdp-configure.log" || {
       printf 'xrdp configure did not enable OpenH264; see %s\n' "$LOG_DIR/xrdp-configure.log" >&2
@@ -306,7 +310,6 @@ verify_outputs() {
 
   log "xrdp OHOS outputs"
   file "$server" || true
-  file "$embedded_server" || true
   file "$backend" || true
   printf 'config: %s\n' "$config"
 }

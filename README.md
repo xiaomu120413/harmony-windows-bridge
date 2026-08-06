@@ -8,7 +8,7 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 
 - HarmonyOS HAP 客户端：填写 Windows host、端口、用户名、密码后发起 RDP 连接。
 - FreeRDP native bridge：ArkTS 通过 NAPI 调用 native 层，远程画面通过 `XComponent` surface 显示。
-- xrdp/MSTSC 路径：HAP 可随包携带 xrdp HNP，启动后监听本机 `3390`，配合 `hdc fport` 让 Windows MSTSC 反向控制 HarmonyOS 桌面。
+- xrdp/MSTSC 路径：仅 2in1 HAP 携带 xrdp HNP，并通过独立子进程监听本机 `3390`；tablet HAP 不含 HNP、PC 权限或 XRDP 服务端库。
 - 证书策略：支持 `TOFU` 和 `Strict`，用于测试和更严格的证书校验。
 - 权限回调：远程会话请求剪贴板、麦克风、摄像头或地理位置时，由应用侧通用权限桥触发系统权限处理。
 - 打印重定向：默认向 Windows 暴露虚拟打印机，Windows 实际提交打印作业时才启动 HarmonyOS PrintKit。
@@ -39,30 +39,38 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 - 目标 Windows 机器已开启远程桌面，并且当前设备能访问目标机 TCP `3389` 端口。
 - 目标账号允许远程登录，且不能使用空密码。
 
-构建 HAP：
+构建完整 App Pack，或显式构建 tablet/2in1 设备包：
 
 ```powershell
 cd harmony\app
-.\build_hap.bat
+.\build_hap.bat app
+.\build_hap.bat tablet
+.\build_hap.bat 2in1
 ```
 
 工程启用 Hvigor 自动签名时，`tools/hapsigner/material` 是加密签名密码的解密材料，必须与 `harmony/app/build-profile.json5` 中的加密密码配置配套保留。若 `SignHap` 报 `ENOENT ... tools/hapsigner/material`，应先恢复该目录中的受版本管理文件；这类错误不是证书、P12 或包名不一致。
 
 FreeRDP runtime 变更后应先按 `docs/freerdp-ohos-validation-baseline.md` 重建并同步 `harmony/out/ohos-arm64/runtime-libs`。
 
-xrdp runtime 变更后，先构建 `harmony/out/xrdp-ohos-arm64`，再运行同一个 HAP 构建脚本；脚本会同步 xrdp runtime、打包 `xrdp.hnp`，并在 HAP 构建后重新注入 HNP。
+xrdp runtime 变更后，先构建 `harmony/out/xrdp-ohos-arm64`，再运行 `app` 或 `2in1` 模式；脚本会打包 `xrdp.hnp` 并只注入 2in1 HAP。`tablet` 模式不会生成或封装 HNP。
 
 构建产物默认位于：
 
 ```text
+harmony\app\build\outputs\default\app-default-signed.app
+harmony\app\common\build\default\outputs\default\common-default-signed.hsp
 harmony\app\entry\build\default\outputs\default\entry-default-signed.hap
+harmony\app\entry_tablet\build\default\outputs\default\entry_tablet-default-signed.hap
 ```
 
 安装到设备：
 
 ```powershell
 hdc list targets
+hdc install -r harmony\app\common\build\default\outputs\default\common-default-signed.hsp
+# 按设备二选一安装对应 Entry
 hdc install -r harmony\app\entry\build\default\outputs\default\entry-default-signed.hap
+hdc install -r harmony\app\entry_tablet\build\default\outputs\default\entry_tablet-default-signed.hap
 ```
 
 ## HarmonyOS 使用说明

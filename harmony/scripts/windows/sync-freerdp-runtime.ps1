@@ -77,10 +77,31 @@ if (Test-Path -LiteralPath $osslModuleSource) {
   $requiredOutputs.Add((Join-Path $target "ossl-modules/legacy.so"))
 }
 
+# XRDP server runtime belongs exclusively to the 2in1 HNP. Remove legacy copies
+# before evaluating the FreeRDP cache so they cannot leak into common.hsp.
+$obsoleteServerRuntime = @(
+  "libcommon.so.0",
+  "libipm.so.0",
+  "libtoml.so.1",
+  "libxrdp.so.0",
+  "libxrdpohos.so",
+  "libxrdpserver.so"
+)
+foreach ($name in $obsoleteServerRuntime) {
+  $obsoletePath = Join-Path $target $name
+  if (Test-Path -LiteralPath $obsoletePath) {
+    Remove-Item -LiteralPath $obsoletePath -Force
+  }
+}
+$obsoleteRuntimeTree = Join-Path $target "xrdp"
+if (Test-Path -LiteralPath $obsoleteRuntimeTree) {
+  Remove-Item -LiteralPath $obsoleteRuntimeTree -Recurse -Force
+}
+
 $fingerprint = Get-BuildCacheFingerprint `
   -Root $repoRoot `
   -Paths $sourceInputs.ToArray() `
-  -Extra @("sync-freerdp-runtime:v1", "target=$TargetRoot")
+  -Extra @("sync-freerdp-runtime:v2-client-only", "target=$TargetRoot")
 
 if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs $requiredOutputs.ToArray())) {
   $stats = Get-BuildCacheFileStats -Path $target

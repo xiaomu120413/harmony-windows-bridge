@@ -2,7 +2,7 @@ import { BasicSettingsPage } from './settings/BasicSettingsPage'
 import { LayoutMode } from '../adaptive/WindowLayoutPolicy'
 import { ProjectHelpPage } from './settings/ProjectHelpPage'
 import { RemoteControlSettingsPage } from './settings/RemoteControlSettingsPage'
-import { XrdpServerStatus } from '../rdp/XrdpServerController'
+import { XrdpServerStatus } from '../rdp/RemoteControlCoordinator'
 import { SettingsRoute, SettingsText } from './settings/SettingsConstants'
 import {
   SettingsAccent,

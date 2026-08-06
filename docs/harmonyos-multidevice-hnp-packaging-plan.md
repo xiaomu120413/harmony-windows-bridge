@@ -507,10 +507,12 @@ release/
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_arkts_tests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_tablet_native_tests.ps1
 
-# MDP-00 已落地的 debug 多设备构建入口
-.\harmony\app\build_hap.bat
+# MDP-04 已落地的三个 debug 构建入口
+.\harmony\app\build_hap.bat app
+.\harmony\app\build_hap.bat tablet
+.\harmony\app\build_hap.bat 2in1
 
-# 目标包门禁，需在 MDP-04 实现
+# 最终 App Pack 独立门禁
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_app.ps1 `
   -AppPath <release-app-path>
 ```
@@ -584,6 +586,35 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
   PC 权限”，尚未做到服务端 Native 字节物理隔离。`librdpclient.so`/`libxrdpcontrol.so` 拆分及
   XRDP 独立进程仍由 MDP-03 完成，不能将 MDP-01 标记为发布完成。
 
+### 12.3 MDP-02/03 当前结果（2026-08-06）
+
+- `common` 只构建并导出 `librdpclient.so`，不再暴露 XRDP 启停接口；2in1 `entry` 单独构建
+  `libxrdpcontrol.so`，通过注入的 `RemoteControlPort` 向共享 UI 提供能力，tablet 使用不可用实现，
+  因而不会加载或调用服务端控制代码。
+- tablet manifest 保留 RDP 客户端实际需要的网络、打印、剪贴板、麦克风、摄像头和定位权限，共
+  8 项；`CUSTOM_SCREEN_RECORDING`、`CONTROL_DEVICE` 仍只属于 2in1 Entry。
+- XRDP 改为 `fork/execve` 启动私有 HNP 中的 `bin/xrdp`，使用独立 PID；停止路径执行
+  `SIGTERM`、限时等待和 `SIGKILL` 兜底，并用 `PR_SET_PDEATHSIG` 处理父进程异常退出。旧
+  `dlopen`/进程内 server 线程路径和 `libxrdpserver.so` 打包均已删除。
+- HNP ELF 门禁拒绝构建机 RUNPATH 和 `libxrdpserver.so` 依赖；当前 HNP 为 3,696,721 字节。
+- tablet `5JB0223804000371` 重新安装启动通过，设备端仅有 `common,entry_tablet`，
+  `hnpPackages` 为空、没有 xrdp 进程；正式 UI 截图为
+  `artifacts/multidevice-hnp/2026-08-06/muhub-mdp03-tablet.jpeg`。
+- 当前没有在线 2in1，独立 PID、3389/3390 连接、显式/异常/强停/卸载清理仍需该设备补验，不能将
+  MDP-03 标记为 device verified。
+
+### 12.4 MDP-04 当前结果（2026-08-06）
+
+- `build_hap.bat` 支持 `app`、`tablet`、`2in1` 三种显式模式；三种模式均已实际构建通过。
+- `tools/verify_multidevice_app.ps1` 校验 App 签名、精确模块/设备类型、权限边界、HNP 唯一归属、
+  Native 库边界、HNP 文件结构及 xrdp ELF 依赖/RUNPATH；`tools/verify_xrdp_process_control.ps1`
+  阻止旧进程内 server 路径回归。
+- 最终 App Pack 为 39,794,635 字节，SHA-256 为
+  `2f7e42928cf771390a27004a394e75acbd9dc15ed94b12909ba4435424356690`，本地门禁通过。
+- MDP-00 已确认旧 `entry` 到 `entry_tablet` 的覆盖升级失败；真实应用市场按设备选包也未执行。
+  因此该 App Pack 仍是工程验证产物，不能替换发布基线。发布前必须验证第 13.3 节的通用 Entry +
+  2in1-only Feature 方案，或取得平台支持的同名设备变体方案。
+
 ## 13. 升级、回滚和发布策略
 
 ### 13.1 升级
@@ -617,9 +648,9 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 |---|---|---|---|---|
 | MDP-00 | Implemented / P0 failed | 最小多 Entry/HSP/HNP App Pack 和升级验证 | 新测试模块、build-profile、临时封包脚本 | 2in1 与 tablet 全新安装/启动通过，tablet 无 HNP/PC 权限；但旧 `entry`→`entry_tablet` 覆盖升级返回 9568267，双 Entry 主方案停止进入发布 |
 | MDP-01 | Implemented / device verified | 正式 UI、资源、RDP 客户端与 Native bridge 迁入共享 HSP，两个 Entry 薄壳挂载同一 `MuHubApp` | `common`、两个 Entry、运行库同步和测试脚本 | 构建/包门禁/ArkTS/Native 通过；2in1 与 tablet UI 真机通过，tablet 无 HNP/PC 权限，Native 物理拆分留 MDP-03 |
-| MDP-02 | Planned | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | MDP-TAB-06/07、MDP-PC-06 |
-| MDP-03 | Planned | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | MDP-PC-03 至 09 |
-| MDP-04 | Planned | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 第 10 节、MDP-DIST-01 至 04 |
+| MDP-02 | Implemented / tablet verified | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | tablet 包与设备权限通过；2in1 权限回归待设备在线补验 |
+| MDP-03 | Implemented / package verified | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | 编译、进程策略和包门禁通过；2in1 独立 PID/连接/清理待补验 |
+| MDP-04 | Implemented / release blocked | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 三模式与本地门禁通过；覆盖升级 P0 和应用市场真实分发未通过 |
 
 状态定义：
 

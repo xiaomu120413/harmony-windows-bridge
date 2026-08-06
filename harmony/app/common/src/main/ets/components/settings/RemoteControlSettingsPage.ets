@@ -3,7 +3,7 @@ import {
   SettingsSectionTitle,
   SettingsTheme
 } from './SettingsUi'
-import { XrdpServerStatus } from '../../rdp/XrdpServerController'
+import { XrdpServerStatus } from '../../rdp/RemoteControlCoordinator'
 import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
 import { SettingsAccent, SettingsResources } from './SettingsUi'
 import {

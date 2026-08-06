@@ -14,14 +14,14 @@ static napi_module rdpNativeModule = {
     .nm_flags = 0,
     .nm_filename = nullptr,
     .nm_register_func = Init,
-    .nm_modname = "entry",
+    .nm_modname = "rdpclient",
     .nm_priv = ((void*)0),
     .reserved = {0},
 };
 
 } // namespace
 
-extern "C" __attribute__((constructor)) void RegisterEntryModule(void)
+extern "C" __attribute__((constructor)) void RegisterRdpClientModule(void)
 {
     napi_module_register(&rdpNativeModule);
 }

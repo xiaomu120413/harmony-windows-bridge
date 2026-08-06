@@ -6,6 +6,6 @@
   "author": "MuHub",
   "license": "Apache-2.0",
   "dependencies": {
-    "libentry.so": "file:./src/main/cpp/types/libentry"
+    "librdpclient.so": "file:./src/main/cpp/types/librdpclient"
   }
 }
