@@ -9,11 +9,17 @@ $indexPath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\ets\pages\Ind
 $etsRoot = Join-Path $repositoryRoot 'harmony\app\entry\src\main\ets'
 $gatewayPath = Join-Path $etsRoot 'rdp\NativeRdpGateway.ets'
 $controllerPath = Join-Path $etsRoot 'rdp\RdpClientController.ets'
+$connectionDetailsPath = Join-Path $etsRoot 'components\home\HomeConnectionDetails.ets'
+$deviceListPath = Join-Path $etsRoot 'components\home\HomeDeviceList.ets'
+$homeTextPath = Join-Path $etsRoot 'components\home\HomeText.ets'
 $modulePath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\module.json5'
 $nativeTypesText = Get-Content -Raw -Encoding utf8 $nativeTypesPath
 $indexText = Get-Content -Raw -Encoding utf8 $indexPath
 $gatewayText = Get-Content -Raw -Encoding utf8 $gatewayPath
 $controllerText = Get-Content -Raw -Encoding utf8 $controllerPath
+$connectionDetailsText = Get-Content -Raw -Encoding utf8 $connectionDetailsPath
+$deviceListText = Get-Content -Raw -Encoding utf8 $deviceListPath
+$homeTextText = Get-Content -Raw -Encoding utf8 $homeTextPath
 $moduleText = Get-Content -Raw -Encoding utf8 $modulePath
 $allEtsText = (Get-ChildItem -Path $etsRoot -Recurse -Filter '*.ets' |
   ForEach-Object { Get-Content -Raw -Encoding utf8 $_.FullName }) -join "`n"
@@ -67,6 +73,24 @@ foreach ($requiredCoordinator in @(
   if (-not $indexText.Contains($requiredCoordinator)) {
     throw "Index is missing required coordinator boundary: $requiredCoordinator"
   }
+}
+foreach ($requiredCredentialSwitchRule in @(
+  'connectionProfilePasswordLoading',
+  'connectionProfileSelectionGeneration',
+  'this.applyConnectionProfile(profile, savedPassword)',
+  'passwordLoading: this.connectionProfilePasswordLoading'
+)) {
+  if (-not $indexText.Contains($requiredCredentialSwitchRule)) {
+    throw "Connection profile switching is missing atomic credential loading: $requiredCredentialSwitchRule"
+  }
+}
+if (-not $connectionDetailsText.Contains('placeholder: HomeText.WINDOWS_USERNAME_PLACEHOLDER') -or
+  ([regex]::Matches($connectionDetailsText, '\.enabled\(!this\.passwordLoading\)').Count -lt 2)) {
+  throw 'Connection details must use the Windows account hint and disable password/connect while credentials load.'
+}
+if (-not $homeTextText.Contains('DESKTOP-ABC\\zhangsan') -or
+  $deviceListText.Contains("profile.username.substring(0, slashIndex)")) {
+  throw 'Windows account guidance or full saved username rendering regressed.'
 }
 $componentNativeDependencies = @(Get-ChildItem -Path (Join-Path $etsRoot 'components') -Recurse -Filter '*.ets' |
   Select-String -Pattern "libentry\.so|NativeRdpGateway")

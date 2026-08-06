@@ -30,8 +30,7 @@ export struct HomeDeviceList {
   }
 
   private profileName(profile: WindowsConnectionProfile): string {
-    const slashIndex = profile.username.indexOf('\\')
-    const name = slashIndex > 0 ? profile.username.substring(0, slashIndex) :
+    const name = profile.username.length > 0 ? profile.username :
       (profile.name.length > 0 ? profile.name : profile.host)
     return name.length > 20 ? `${name.substring(0, 20)}...` : name
   }

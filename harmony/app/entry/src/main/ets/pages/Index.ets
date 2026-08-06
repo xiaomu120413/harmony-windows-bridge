@@ -50,6 +50,7 @@ struct Index {
   @State private connectionProfiles: WindowsConnectionProfile[] = []
   @State private selectedConnectionProfileId: string = ''
   @State private rememberConnectionPassword: boolean = false
+  @State private connectionProfilePasswordLoading: boolean = false
   // Temporarily pin TOFU certificate policy; restore policy selector when strict validation is needed.
   private certPolicy: string = 'tofu'
   @State private remoteAccessCode: string = '000000'
@@ -84,6 +85,7 @@ struct Index {
   private remoteControlCoordinator: RemoteControlCoordinator | null = null
   private connectionProfileCoordinator: WindowsConnectionProfileCoordinator | null = null
   private connectionProfilesLoaded: boolean = false
+  private connectionProfileSelectionGeneration: number = 0
   private pendingConnectionProfileSave: WindowsConnectionSaveInput | null = null
   private lastConnectionErrorMessage: string = ''
   private windowLayoutObserverRegistered: boolean = false
@@ -298,29 +300,43 @@ struct Index {
       return
     }
 
-    this.applyConnectionProfile(profile, '')
+    const selectionGeneration = ++this.connectionProfileSelectionGeneration
     if (!profile.rememberPassword) {
+      this.connectionProfilePasswordLoading = false
+      this.applyConnectionProfile(profile, '')
       return
     }
 
     const coordinator = this.getConnectionProfileCoordinator()
     if (coordinator === null) {
+      this.connectionProfilePasswordLoading = false
+      this.applyConnectionProfile(profile, '')
       return
     }
+    this.connectionProfilePasswordLoading = true
     coordinator.loadPassword(profile)
       .then((savedPassword: string | null) => {
         if (savedPassword === null) {
+          this.deferUiUpdate(() => {
+            if (this.connectionProfileSelectionGeneration === selectionGeneration) {
+              this.connectionProfilePasswordLoading = false
+              this.applyConnectionProfile(profile, '')
+            }
+          })
           return
         }
         this.deferUiUpdate(() => {
-          if (this.selectedConnectionProfileId === profile.id) {
-            this.password = savedPassword
+          if (this.connectionProfileSelectionGeneration === selectionGeneration) {
+            this.applyConnectionProfile(profile, savedPassword)
+            this.connectionProfilePasswordLoading = false
           }
         })
       })
   }
 
   private startNewConnectionProfile(): void {
+    this.connectionProfileSelectionGeneration++
+    this.connectionProfilePasswordLoading = false
     this.selectedConnectionProfileId = ''
     this.host = ''
     this.port = '3389'
@@ -860,6 +876,7 @@ struct Index {
           connectionProfiles: this.connectionProfiles,
           selectedConnectionProfileId: this.selectedConnectionProfileId,
           rememberPassword: $rememberConnectionPassword,
+          passwordLoading: this.connectionProfilePasswordLoading,
           connectionFeedbackText: this.connectionFeedbackText,
           connectionFeedbackTone: this.connectionFeedbackTone,
           isDark: this.isAppDark(),

@@ -130,6 +130,18 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 
 连接详情中的用户名字段使用“Windows 用户名”作为标签，占位符提供“设备名\\用户名”示例；完整的本地账号、域账号和微软账号填写规则放在项目帮助页，避免表单正文过重。
 
+### 2.1 连接配置切换与账户提示
+
+- Change ID：`HOME-CONNECTION-CREDENTIAL-001`
+- 状态：`Implemented / BuildVerified / DevicePending`
+- 目标：切换已保存连接时消除密码框先清空再回填的闪烁，并防止凭据尚未读取时用空密码发起连接；同时让 Windows 账户填写格式和设备列表中的账户身份可直接辨认。
+- 状态规则：未保存密码的配置立即切换；保存了密码的配置先异步读取 Asset 凭据，读取成功后一次性应用 host、port、username、password、rememberPassword 和 certPolicy。读取期间保留当前表单、禁止 Password 编辑和 Connect；快速连续切换时只允许最后一次请求提交结果。
+- 展示规则：用户名标签继续为“Windows 用户名”，占位符明确写成“远程主机名\\用户名，例如：DESKTOP-ABC\\zhangsan”；设备卡首行显示完整 `profile.username`，不得把 `DESKTOP-ABC\\zhangsan` 截成 `DESKTOP-ABC`。Host 可能是 IP 或 DNS 地址，因此不得自动把 Host 输入值拼成 Windows 凭据。
+- 不变项：不修改“记住密码”Toggle 的系统动效，不修改 Connect 的按压缩放，不改变 Asset 存储格式、FreeRDP settings、Native ABI 或连接成功后保存配置的时序。
+- 代码范围：`pages/Index.ets`、`components/home/HomePage.ets`、`HomeConnectionDetails.ets`、`HomeDeviceList.ets`、`HomeText.ets`、`tools/run_tablet_arkts_tests.ps1`；测试只扩展既有 ArkTS 策略检查。
+- 验收：`AC-CRED-01` 在两个保存密码的配置间切换时不出现空密码中间态；`AC-CRED-02` 凭据读取期间 Password 和 Connect 不可操作，旧异步结果不能覆盖最后选中的配置；`AC-USER-01` 输入提示出现远程主机名和用户名示例，设备卡保留完整反斜杠账户名；`AC-REG-01` 记住密码与 Connect 动效代码无行为变化，ArkTS 测试和 HAP 构建通过。
+- 实施证据：2026-08-06 已按 generation 门禁实现保存凭据的原子切换，Password/Connect 只在读取期间禁用；用户名输入使用统一提示常量，设备卡不再截断反斜杠后的账户名。`tools/run_tablet_arkts_tests.ps1` 通过，模块单测和 ArkTS 编译成功；`harmony/app/build_hap.bat debug` 完整构建、打包和签名通过，signed HAP 为 35,843,146 bytes。尚未在设备上执行两个保存密码配置的连续切换，因此保持 `DevicePending`。
+
 ## 3. 设置概览页
 
 概览页负责让用户先看到当前关键状态，再决定进入哪个子页。

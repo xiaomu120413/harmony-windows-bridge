@@ -20,6 +20,7 @@ export struct HomePage {
   @Prop connectionProfiles: WindowsConnectionProfile[] = []
   @Prop selectedConnectionProfileId: string = ''
   @Link rememberPassword: boolean
+  @Prop passwordLoading: boolean = false
   @Prop connectionFeedbackText: string = ''
   @Prop connectionFeedbackTone: SettingsStatusTone = 'neutral'
   @Prop isDark: boolean = false
@@ -90,6 +91,7 @@ export struct HomePage {
       username: $username,
       password: $password,
       rememberPassword: $rememberPassword,
+      passwordLoading: this.passwordLoading,
       selectedConnectionProfileId: this.selectedConnectionProfileId,
       connectionFeedbackText: this.connectionFeedbackText,
       connectionFeedbackTone: this.connectionFeedbackTone,
