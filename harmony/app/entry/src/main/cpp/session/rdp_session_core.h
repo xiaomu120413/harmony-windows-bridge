@@ -41,7 +41,8 @@ public:
     bool IsConnected() const;
     void SetDisplayOrientation(uint32_t orientation);
     uint32_t DisplayOrientation() const;
-    void SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors);
+    bool SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors,
+        std::string& message);
 
     bool SendPointer(uint16_t flags, uint16_t x, uint16_t y, std::string& message);
     bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message);

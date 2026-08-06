@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#include <tuple>
 
 #include <freerdp/settings_types.h>
 #include <window_manager/oh_display_manager.h>
@@ -37,6 +38,24 @@ uint32_t PhysicalMillimeters(int32_t pixels, float dpi)
     return static_cast<uint32_t>(std::clamp(value, 10L, 10000L));
 }
 
+bool SameMonitor(const FREERDP_OHOS_MONITOR_LAYOUT& left,
+    const FREERDP_OHOS_MONITOR_LAYOUT& right)
+{
+    return left.structSize == right.structSize && left.version == right.version &&
+        left.left == right.left && left.top == right.top && left.width == right.width &&
+        left.height == right.height && left.physicalWidth == right.physicalWidth &&
+        left.physicalHeight == right.physicalHeight && left.orientation == right.orientation &&
+        left.desktopScaleFactor == right.desktopScaleFactor &&
+        left.deviceScaleFactor == right.deviceScaleFactor && left.primary == right.primary;
+}
+
+bool SameLayout(const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& left,
+    const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& right)
+{
+    return left.size() == right.size() &&
+        std::equal(left.begin(), left.end(), right.begin(), SameMonitor);
+}
+
 } // namespace
 
 RdpDisplayLayoutMonitor::~RdpDisplayLayoutMonitor()
@@ -55,6 +74,8 @@ bool RdpDisplayLayoutMonitor::Start(LayoutCallback layoutCallback, LogCallback l
             message = "native display layout monitor already started";
             return true;
         }
+        hasSnapshot_ = false;
+        lastLayout_.clear();
         g_activeLayoutMonitor.store(this);
         const bool changeRegistered = OH_NativeDisplayManager_RegisterDisplayChangeListener(
             OnDisplayChanged, &changeListener_) == DISPLAY_MANAGER_OK;
@@ -99,6 +120,8 @@ void RdpDisplayLayoutMonitor::Stop()
         g_activeLayoutMonitor.store(nullptr);
     }
     started_ = false;
+    hasSnapshot_ = false;
+    lastLayout_.clear();
 }
 
 void RdpDisplayLayoutMonitor::OnDisplayChanged(uint64_t displayId)
@@ -184,13 +207,23 @@ bool RdpDisplayLayoutMonitor::Refresh(const std::string& source, std::string& me
         message = "native display layout has no alive display";
         return false;
     }
-    std::stable_sort(layout.begin(), layout.end(), [](const auto& left, const auto& right) {
-        return left.primary > right.primary;
+    std::sort(layout.begin(), layout.end(), [](const auto& left, const auto& right) {
+        return std::tie(left.primary, left.left, left.top, left.width, left.height) >
+            std::tie(right.primary, right.left, right.top, right.width, right.height);
     });
 
     LayoutCallback callback;
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (hasSnapshot_ && lastOrientation_ == primaryOrientation &&
+            SameLayout(lastLayout_, layout)) {
+            message = "native display layout unchanged: count=" +
+                std::to_string(layout.size()) + " source=" + source;
+            return true;
+        }
+        hasSnapshot_ = true;
+        lastOrientation_ = primaryOrientation;
+        lastLayout_ = layout;
         callback = layoutCallback_;
     }
     if (callback != nullptr) {

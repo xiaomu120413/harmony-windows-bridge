@@ -4,6 +4,7 @@
 #include "channels/rdpgfx_pipeline.h"
 #include "freerdp/freerdp_gdi_bridge.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <unordered_map>
@@ -15,6 +16,27 @@
 #include <freerdp/channels/rdpgfx.h>
 
 namespace rdp_bridge {
+namespace {
+
+bool SameMonitor(const FREERDP_OHOS_MONITOR_LAYOUT& left,
+    const FREERDP_OHOS_MONITOR_LAYOUT& right)
+{
+    return left.structSize == right.structSize && left.version == right.version &&
+        left.left == right.left && left.top == right.top && left.width == right.width &&
+        left.height == right.height && left.physicalWidth == right.physicalWidth &&
+        left.physicalHeight == right.physicalHeight && left.orientation == right.orientation &&
+        left.desktopScaleFactor == right.desktopScaleFactor &&
+        left.deviceScaleFactor == right.deviceScaleFactor && left.primary == right.primary;
+}
+
+bool SameLayout(const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& left,
+    const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& right)
+{
+    return left.size() == right.size() &&
+        std::equal(left.begin(), left.end(), right.begin(), SameMonitor);
+}
+
+} // namespace
 
 void RdpSessionChannels::SetCallbacks(Callbacks callbacks)
 {
@@ -312,14 +334,21 @@ void RdpSessionChannels::OnChannelDisconnected(void* context, const ChannelDisco
     }
 }
 
-void RdpSessionChannels::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors)
+bool RdpSessionChannels::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors,
+    std::string& message)
 {
     std::array<char, 256> detail {};
     std::lock_guard<std::mutex> lock(activeMutex_);
+    if (SameLayout(monitorLayout_, monitors)) {
+        message = "monitor layout unchanged: count=" + std::to_string(monitors.size());
+        return true;
+    }
     monitorLayout_ = std::move(monitors);
     if (activeApi_ == nullptr || activeOhosSession_ == nullptr ||
         activeApi_->ohosSessionSetMonitorLayout == nullptr) {
-        return;
+        message = "monitor layout cached until session is active: count=" +
+            std::to_string(monitorLayout_.size());
+        return true;
     }
     const FREERDP_OHOS_MONITOR_LAYOUT_REQUEST request {
         sizeof(FREERDP_OHOS_MONITOR_LAYOUT_REQUEST),
@@ -329,10 +358,13 @@ void RdpSessionChannels::SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOU
     };
     if (!activeApi_->ohosSessionSetMonitorLayout(activeOhosSession_, &request,
         detail.data(), detail.size())) {
-        EmitLog(detail[0] != '\0' ? detail.data() : "monitor layout update failed");
-    } else {
-        EmitLog(detail.data());
+        message = detail[0] != '\0' ? detail.data() : "monitor layout update failed";
+        EmitLog(message);
+        return false;
     }
+    message = detail.data();
+    EmitLog(message);
+    return true;
 }
 
 std::vector<FREERDP_OHOS_MONITOR_LAYOUT> RdpSessionChannels::MonitorLayout() const

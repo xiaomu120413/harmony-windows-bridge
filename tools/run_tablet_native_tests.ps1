@@ -14,6 +14,9 @@ $freeRdpInclude = "$wslRoot/harmony/out/ohos-arm64/sysroot/include/freerdp3"
 $resizeTestSource = "$cppRoot/tests/rdp_display_resize_coordinator_test.cpp"
 $coordinatorSource = "$cppRoot/session/rdp_display_resize_coordinator.cpp"
 $resizeTestBinary = '/tmp/muhub-rdp-display-resize-test'
+$coalescerTestSource = "$cppRoot/tests/rdp_display_request_coalescer_test.cpp"
+$coalescerSource = "$cppRoot/session/rdp_display_request_coalescer.cpp"
+$coalescerTestBinary = '/tmp/muhub-rdp-display-request-coalescer-test'
 $pointerTestSource = "$cppRoot/tests/remote_pointer_text_policy_test.cpp"
 $pointerPolicySource = "$cppRoot/input/remote_pointer_text_policy.cpp"
 $pointerTestBinary = '/tmp/muhub-remote-pointer-text-test'
@@ -115,10 +118,12 @@ foreach ($forbidden in @('XComponent({', 'XComponentController', 'TapGesture', '
   }
 }
 
-$command = "set -e; trap 'rm -f $resizeTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary' EXIT; " +
+$command = "set -e; trap 'rm -f $resizeTestBinary $coalescerTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary' EXIT; " +
   "g++ -std=c++17 -pthread " +
   "-I'$cppRoot' -I'$freeRdpRoot' -I'$freeRdpInclude' " +
   "'$resizeTestSource' '$coordinatorSource' -o '$resizeTestBinary'; '$resizeTestBinary'; " +
+  "g++ -std=c++17 -pthread -I'$cppRoot' '$coalescerTestSource' '$coalescerSource' " +
+  "-o '$coalescerTestBinary'; '$coalescerTestBinary'; " +
   "g++ -std=c++17 -I'$cppRoot' '$pointerTestSource' '$pointerPolicySource' " +
   "-o '$pointerTestBinary'; '$pointerTestBinary'; " +
   "g++ -std=c++17 -I'$cppRoot' '$touchTestSource' '$touchPolicySource' " +
