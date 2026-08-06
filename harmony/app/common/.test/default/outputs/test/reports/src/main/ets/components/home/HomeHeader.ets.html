@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Import style -->
+  <link rel="stylesheet" href="..\..\..\..\..\index.css" />
+  <link rel="stylesheet" href="..\..\..\..\..\prettify.css" />
+  <!-- Import Vue 3 -->
+  <script src="..\..\..\..\..\vue.global.prod.js"></script>
+  <!-- Import component library -->
+  <script src="..\..\..\..\..\index.full.min.js"></script>
+  <script src="..\..\..\..\..\prettify.js"></script>
+  <meta charset="UTF-8">
+  <title>Coverage</title>
+</head>
+
+<body>
+  <div id="app" class="common-layout">
+    <el-container>
+      <el-header>
+        <el-row :gutter="10">
+          <el-col :span="5">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <el-link type="primary" :href="relativeHome">
+                    <h2>&lt;</h2>
+                  </el-link>
+                </el-text></div>
+              <div><el-text class="mx-1 "><h2>{{title}}</h2></el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info"></el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.functions.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Functions</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.functions.covered}}/{{file.summary.functions.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.branches.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Branches</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.branches.covered}}/{{file.summary.branches.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.lines.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Lines</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.lines.covered}}/{{file.summary.lines.total}}</el-text></div>
+            </el-space>
+          </el-col>
+        </el-row>
+        <el-divider />
+      </el-header>
+      <el-main>
+        <el-row>
+        </el-row>
+        <pre>
+          <table class="coverage">
+            <tr>
+              <td class="line-count quiet">
+                <pre class="prettyprint lang-js">
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+                </pre>
+        </td>
+        <td class="text">
+          <pre class="prettyprint linenums lang-js">
+import { LayoutMode } from &#39;../../adaptive/WindowLayoutPolicy&#39; 
+import { SettingsText } from &#39;../settings/SettingsConstants&#39; 
+import { SettingsAccent, SettingsResources, SettingsStatusTone, SettingsTheme } from &#39;../settings/SettingsUi&#39; 
+import { HomeText } from &#39;./HomeText&#39; 
+import { HomeTheme } from &#39;./HomeTheme&#39; 
+ 
+@Component 
+export struct HomeHeader { 
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT 
+  @Prop isDark: boolean = false 
+  @Prop xrdpServerBusy: boolean = false 
+  @Prop xrdpServerState: string = &#39;Stopped&#39; 
+  @Prop xrdpServerRunning: boolean = false 
+  @Prop remoteControlServerAvailable: boolean = true 
+  onOpenSettings: (remoteControlSection: string) =&gt; void = (_remoteControlSection: string) =&gt; { 
+  } 
+  @State private settingsHovered: boolean = false 
+  @State private settingsPressed: boolean = false 
+  private readonly headerSideWidth: number = 260 
+ 
+  private headerStatusTone(): SettingsStatusTone { 
+    return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState) 
+  } 
+ 
+  private headerStatusText(): string { 
+    if (this.xrdpServerBusy) { 
+      return SettingsText.REMOTE_SERVER_BUSY 
+    } 
+    return SettingsText.remoteServerStateLabel(this.xrdpServerRunning, this.xrdpServerState) 
+  } 
+ 
+  @Builder 
+  private buildHeaderStatus() { 
+    Row({ space: 10 }) { 
+      Column() 
+        .width(9) 
+        .height(9) 
+        .borderRadius(4.5) 
+        .backgroundColor(SettingsTheme.statusText(this.isDark, this.headerStatusTone())) 
+      Text(this.headerStatusText()) 
+        .fontSize(15) 
+        .fontWeight(FontWeight.Medium) 
+        .fontColor(SettingsTheme.primaryText(this.isDark)) 
+        .maxLines(1) 
+    } 
+    .alignItems(VerticalAlign.Center) 
+  } 
+ 
+  @Builder 
+  private buildSettingsButton() { 
+    Row({ space: 8 }) { 
+      Image(SettingsResources.SETTINGS_ICON) 
+        .width(19) 
+        .height(19) 
+        .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE)) 
+        .draggable(false) 
+      Text(SettingsText.SETTINGS_TITLE) 
+        .fontSize(14) 
+        .fontWeight(FontWeight.Medium) 
+        .fontColor(SettingsTheme.primaryText(this.isDark)) 
+        .maxLines(1) 
+    } 
+    .height(48) 
+    .padding({ left: 12, right: 12 }) 
+    .alignItems(VerticalAlign.Center) 
+    .borderRadius(8) 
+    .backgroundColor(HomeTheme.neutralButtonBackground(this.isDark, this.settingsHovered, this.settingsPressed)) 
+    .scale({ x: this.settingsPressed ? 0.98 : 1, y: this.settingsPressed ? 0.98 : 1 }) 
+    .onHover((hovered: boolean) =&gt; { 
+      this.settingsHovered = hovered 
+    }) 
+    .onTouch((event: TouchEvent) =&gt; { 
+      if (event.type === TouchType.Down) { 
+        this.settingsPressed = true 
+        return 
+      } 
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) { 
+        this.settingsPressed = false 
+      } 
+    }) 
+    .onClick(() =&gt; { 
+      this.settingsPressed = false 
+      this.onOpenSettings(&#39;&#39;) 
+    }) 
+  } 
+ 
+  @Builder 
+  private buildExpandedHeader() { 
+    Row() { 
+      Row() 
+        .width(this.headerSideWidth) 
+ 
+      Text(HomeText.APP_TAGLINE) 
+        .fontSize(20) 
+        .fontWeight(FontWeight.Bold) 
+        .fontColor(SettingsTheme.primaryText(this.isDark)) 
+        .maxLines(1) 
+        .textOverflow({ overflow: TextOverflow.Ellipsis }) 
+        .textAlign(TextAlign.Center) 
+        .layoutWeight(1) 
+ 
+      Row({ space: 18 }) { 
+        if (this.remoteControlServerAvailable) { 
+          this.buildHeaderStatus() 
+          Divider() 
+            .vertical(true) 
+            .height(26) 
+            .color(HomeTheme.borderColor(this.isDark)) 
+        } 
+        this.buildSettingsButton() 
+      } 
+      .width(this.headerSideWidth) 
+      .justifyContent(FlexAlign.End) 
+      .alignItems(VerticalAlign.Center) 
+    } 
+    .width(&#39;100%&#39;) 
+    .height(84) 
+    .padding({ left: 32, right: 30 }) 
+    .alignItems(VerticalAlign.Center) 
+    .backgroundColor(HomeTheme.panelBackground(this.isDark)) 
+    .border({ 
+      width: { bottom: 1 }, 
+      color: HomeTheme.borderColor(this.isDark) 
+    }) 
+  } 
+ 
+  @Builder 
+  private buildCompactHeader() { 
+    Column({ space: 8 }) { 
+      Row({ space: 12 }) { 
+        Text(HomeText.APP_TAGLINE) 
+          .fontSize(20) 
+          .fontWeight(FontWeight.Bold) 
+          .fontColor(SettingsTheme.primaryText(this.isDark)) 
+          .layoutWeight(1) 
+          .maxLines(2) 
+          .textOverflow({ overflow: TextOverflow.Ellipsis }) 
+ 
+        this.buildSettingsButton() 
+      } 
+      .width(&#39;100%&#39;) 
+      .alignItems(VerticalAlign.Center) 
+ 
+      if (this.remoteControlServerAvailable) { 
+        this.buildHeaderStatus() 
+      } 
+    } 
+    .width(&#39;100%&#39;) 
+    .padding({ left: 16, right: 16, top: 10, bottom: 10 }) 
+    .alignItems(HorizontalAlign.Start) 
+    .backgroundColor(HomeTheme.panelBackground(this.isDark)) 
+    .border({ 
+      width: { bottom: 1 }, 
+      color: HomeTheme.borderColor(this.isDark) 
+    }) 
+  } 
+ 
+  build() { 
+    Stack() { 
+      if (this.layoutMode === LayoutMode.COMPACT) { 
+        this.buildCompactHeader() 
+      } else { 
+        this.buildExpandedHeader() 
+      } 
+    } 
+    .width(&#39;100%&#39;) 
+  } 
+} 
+
+              </pre>
+        </td>
+        </tr>
+        </table>
+        </pre>
+      </el-main>
+      <el-footer align="middle" class="footer">
+        Code coverage generated by <el-link href="https://github.com/SMAT-Lab/bjc" type="primary"
+          target="_blank">bjc</el-link> at {{date}}
+      </el-footer>
+    </el-container>
+  </div>
+</body>
+
+<script>
+  const App = {
+    data() {
+      return {"date":"Thu Aug 06 2026 17:19:48 GMT+0800 (中国标准时间)","file":{"version":"bjc v1.0.0","versionCode":10000,"path":"C:/Users/mu/Desktop/code/demo/harmony/app/common/src/main/ets/components/home/HomeHeader.ets","hash":"9c5669d875b7a46bd943103b529b82a404cd62219f3759f1412d312b0f78163c","lineCnt":169,"count":0,"projectPath":"C:/Users/mu/Desktop/code/demo/harmony/app","functions":[{"name":"anonymous_1","count":0,"regions":[{"startLoc":{"line":15,"col":19},"endLoc":{"line":15,"col":57},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":0},{"name":"anonymous_2","count":0,"regions":[{"startLoc":{"line":15,"col":60},"endLoc":{"line":16,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":1},{"name":"setInitiallyProvidedValue","count":0,"regions":[{"startLoc":{"line":9,"col":34},"endLoc":{"line":14,"col":53},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":2},{"name":"updateStateVars","count":0,"regions":[{"startLoc":{"line":9,"col":9},"endLoc":{"line":14,"col":37},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":3},{"name":"layoutMode","count":0,"regions":[{"startLoc":{"line":9,"col":9},"endLoc":{"line":9,"col":19},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":4},{"name":"layoutMode","count":0,"regions":[{"startLoc":{"line":9,"col":9},"endLoc":{"line":9,"col":31},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":5},{"name":"isDark","count":0,"regions":[{"startLoc":{"line":10,"col":9},"endLoc":{"line":10,"col":15},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":6},{"name":"isDark","count":0,"regions":[{"startLoc":{"line":10,"col":9},"endLoc":{"line":10,"col":24},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":7},{"name":"xrdpServerBusy","count":0,"regions":[{"startLoc":{"line":11,"col":9},"endLoc":{"line":11,"col":23},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":8},{"name":"xrdpServerBusy","count":0,"regions":[{"startLoc":{"line":11,"col":9},"endLoc":{"line":11,"col":32},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":9},{"name":"xrdpServerState","count":0,"regions":[{"startLoc":{"line":12,"col":9},"endLoc":{"line":12,"col":24},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":10},{"name":"xrdpServerState","count":0,"regions":[{"startLoc":{"line":12,"col":9},"endLoc":{"line":12,"col":32},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":11},{"name":"xrdpServerRunning","count":0,"regions":[{"startLoc":{"line":13,"col":9},"endLoc":{"line":13,"col":26},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":12},{"name":"xrdpServerRunning","count":0,"regions":[{"startLoc":{"line":13,"col":9},"endLoc":{"line":13,"col":35},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":13},{"name":"remoteControlServerAvailable","count":0,"regions":[{"startLoc":{"line":14,"col":9},"endLoc":{"line":14,"col":37},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":14},{"name":"remoteControlServerAvailable","count":0,"regions":[{"startLoc":{"line":14,"col":9},"endLoc":{"line":14,"col":46},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":15},{"name":"anonymous_3","count":0,"regions":[{"startLoc":{"line":15,"col":19},"endLoc":{"line":15,"col":57},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":16},{"name":"settingsHovered","count":0,"regions":[{"startLoc":{"line":17,"col":18},"endLoc":{"line":17,"col":33},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":17},{"name":"settingsHovered","count":0,"regions":[{"startLoc":{"line":17,"col":18},"endLoc":{"line":17,"col":42},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":18},{"name":"settingsPressed","count":0,"regions":[{"startLoc":{"line":18,"col":18},"endLoc":{"line":18,"col":33},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":19},{"name":"settingsPressed","count":0,"regions":[{"startLoc":{"line":18,"col":18},"endLoc":{"line":18,"col":42},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":20},{"name":"headerStatusTone","count":0,"regions":[{"startLoc":{"line":21,"col":3},"endLoc":{"line":23,"col":4},"count":0,"ignored":0},{"startLoc":{"line":22,"col":5},"endLoc":{"line":23,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":21},{"name":"headerStatusText","count":0,"regions":[{"startLoc":{"line":25,"col":3},"endLoc":{"line":30,"col":4},"count":0,"ignored":0},{"startLoc":{"line":26,"col":30},"endLoc":{"line":28,"col":6},"count":0,"ignored":0},{"startLoc":{"line":29,"col":5},"endLoc":{"line":30,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":26,"col":9},"endLoc":{"line":26,"col":28},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":22},{"name":"buildHeaderStatus","count":0,"regions":[{"startLoc":{"line":32,"col":3},"endLoc":{"line":47,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":23},{"name":"anonymous_4","count":0,"regions":[{"startLoc":{"line":34,"col":5},"endLoc":{"line":46,"col":37},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":24},{"name":"anonymous_5","count":0,"regions":[{"startLoc":{"line":35,"col":7},"endLoc":{"line":39,"col":88},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":25},{"name":"anonymous_6","count":0,"regions":[{"startLoc":{"line":40,"col":7},"endLoc":{"line":44,"col":20},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":26},{"name":"buildSettingsButton","count":0,"regions":[{"startLoc":{"line":49,"col":3},"endLoc":{"line":85,"col":4},"count":0,"ignored":0},{"startLoc":{"line":75,"col":9},"endLoc":{"line":76,"col":8},"count":0,"ignored":0},{"startLoc":{"line":83,"col":7},"endLoc":{"line":84,"col":6},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":27},{"name":"anonymous_7","count":0,"regions":[{"startLoc":{"line":51,"col":5},"endLoc":{"line":84,"col":6},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":68,"col":17},"endLoc":{"line":68,"col":48},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":68,"col":53},"endLoc":{"line":68,"col":84},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":28},{"name":"anonymous_8","count":0,"regions":[{"startLoc":{"line":69,"col":14},"endLoc":{"line":71,"col":6},"count":0,"ignored":0},{"startLoc":{"line":70,"col":7},"endLoc":{"line":71,"col":6},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":29},{"name":"anonymous_9","count":0,"regions":[{"startLoc":{"line":72,"col":14},"endLoc":{"line":80,"col":6},"count":0,"ignored":0},{"startLoc":{"line":73,"col":42},"endLoc":{"line":76,"col":8},"count":0,"ignored":0},{"startLoc":{"line":77,"col":75},"endLoc":{"line":79,"col":8},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":73,"col":11},"endLoc":{"line":73,"col":40},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":77,"col":11},"endLoc":{"line":77,"col":73},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":30},{"name":"anonymous_10","count":0,"regions":[{"startLoc":{"line":81,"col":14},"endLoc":{"line":84,"col":6},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":31},{"name":"anonymous_11","count":0,"regions":[{"startLoc":{"line":52,"col":7},"endLoc":{"line":56,"col":25},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":32},{"name":"anonymous_12","count":0,"regions":[{"startLoc":{"line":57,"col":7},"endLoc":{"line":61,"col":20},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":33},{"name":"buildExpandedHeader","count":0,"regions":[{"startLoc":{"line":87,"col":3},"endLoc":{"line":125,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":34},{"name":"anonymous_13","count":0,"regions":[{"startLoc":{"line":89,"col":5},"endLoc":{"line":124,"col":6},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":35},{"name":"anonymous_14","count":0,"regions":[{"startLoc":{"line":90,"col":7},"endLoc":{"line":91,"col":36},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":36},{"name":"anonymous_15","count":0,"regions":[{"startLoc":{"line":93,"col":7},"endLoc":{"line":100,"col":24},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":37},{"name":"anonymous_16","count":0,"regions":[{"startLoc":{"line":102,"col":7},"endLoc":{"line":114,"col":39},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":38},{"name":"anonymous_17","count":0,"regions":[{"startLoc":{"line":103,"col":9},"endLoc":{"line":109,"col":10},"count":0,"ignored":0},{"startLoc":{"line":103,"col":48},"endLoc":{"line":109,"col":10},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":103,"col":13},"endLoc":{"line":103,"col":46},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":39},{"name":"anonymous_18","count":0,"regions":[{"startLoc":{"line":104,"col":11},"endLoc":{"line":108,"col":54},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":40},{"name":"anonymous_19","count":0,"regions":[{"startLoc":{"line":105,"col":11},"endLoc":{"line":108,"col":54},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":41},{"name":"buildCompactHeader","count":0,"regions":[{"startLoc":{"line":127,"col":3},"endLoc":{"line":156,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":42},{"name":"anonymous_21","count":0,"regions":[{"startLoc":{"line":129,"col":5},"endLoc":{"line":155,"col":6},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":43},{"name":"anonymous_22","count":0,"regions":[{"startLoc":{"line":130,"col":7},"endLoc":{"line":142,"col":39},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":44},{"name":"anonymous_23","count":0,"regions":[{"startLoc":{"line":131,"col":9},"endLoc":{"line":137,"col":60},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":45},{"name":"anonymous_24","count":0,"regions":[{"startLoc":{"line":144,"col":7},"endLoc":{"line":146,"col":8},"count":0,"ignored":0},{"startLoc":{"line":144,"col":46},"endLoc":{"line":146,"col":8},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":144,"col":11},"endLoc":{"line":144,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":46},{"name":"anonymous_25","count":0,"regions":[{"startLoc":{"line":145,"col":9},"endLoc":{"line":145,"col":33},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":47},{"name":"initialRender","count":0,"regions":[{"startLoc":{"line":158,"col":3},"endLoc":{"line":167,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":48},{"name":"anonymous_27","count":0,"regions":[{"startLoc":{"line":159,"col":5},"endLoc":{"line":166,"col":18},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":49},{"name":"anonymous_28","count":0,"regions":[{"startLoc":{"line":160,"col":7},"endLoc":{"line":164,"col":8},"count":0,"ignored":0},{"startLoc":{"line":160,"col":51},"endLoc":{"line":162,"col":8},"count":0,"ignored":0},{"startLoc":{"line":162,"col":14},"endLoc":{"line":164,"col":8},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":160,"col":11},"endLoc":{"line":160,"col":49},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":50},{"name":"anonymous_29","count":0,"regions":[{"startLoc":{"line":161,"col":9},"endLoc":{"line":161,"col":34},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":51},{"name":"anonymous_30","count":0,"regions":[{"startLoc":{"line":163,"col":9},"endLoc":{"line":163,"col":35},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":52}],"exeLine":{"0":1,"1":2,"2":3,"3":4,"4":5,"5":8,"6":9,"7":10,"8":11,"9":12,"10":13,"11":14,"12":15,"13":17,"14":18,"15":19,"16":21,"17":22,"18":25,"19":26,"20":27,"21":29,"22":33,"23":34,"24":35,"25":36,"26":37,"27":38,"28":39,"29":40,"30":41,"31":42,"32":43,"33":44,"34":46,"35":50,"36":51,"37":52,"38":53,"39":54,"40":55,"41":56,"42":57,"43":58,"44":59,"45":60,"46":61,"47":63,"48":64,"49":65,"50":66,"51":67,"52":68,"53":69,"54":70,"55":72,"56":73,"57":74,"58":75,"59":77,"60":78,"61":81,"62":82,"63":83,"64":88,"65":89,"66":90,"67":91,"68":93,"69":94,"70":95,"71":96,"72":97,"73":98,"74":99,"75":100,"76":102,"77":103,"78":104,"79":105,"80":106,"81":107,"82":108,"83":110,"84":112,"85":113,"86":114,"87":116,"88":117,"89":118,"90":119,"91":120,"92":121,"93":122,"94":123,"95":128,"96":129,"97":130,"98":131,"99":132,"100":133,"101":134,"102":135,"103":136,"104":137,"105":139,"106":141,"107":142,"108":144,"109":145,"110":148,"111":149,"112":150,"113":151,"114":152,"115":153,"116":154,"117":158,"118":159,"119":160,"120":161,"121":162,"122":163,"123":166},"summary":{"lines":{"total":117,"covered":0,"pct":0,"executedLineCount":[-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,-1,0,0,-1,-1,0,0,-1,-1,0,0,0,-1,0,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,-1,0,0,0,0,0,0,0,0,-1,0,0,0,0,-1,0,0,-1,-1,0,0,0,-1,-1,-1,-1,0,0,0,0,-1,0,0,0,0,0,0,0,0,-1,0,0,0,0,0,0,0,-1,0,-1,0,0,0,-1,0,0,0,0,0,0,0,0,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,-1,0,-1,0,0,-1,0,0,-1,-1,0,0,0,0,0,0,0,-1,-1,-1,0,0,0,0,0,0,-1,-1,0,-1,-1,-1]},"functions":{"total":53,"covered":0,"pct":0},"branches":{"total":16,"covered":0,"pct":0}}},"title":"HomeHeader.ets.html","relativeHome":"..\\..\\..\\..\\..\\index.html"};
+    }
+  };
+
+  const app = Vue.createApp(App);
+  app.use(ElementPlus);
+  app.mount("#app");
+
+  window.onload = function () {
+    prettyPrint();
+  }
+</script>
+
+<style scoped>
+  table.coverage {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 0 0;
+    padding: 0;
+  }
+
+  table.coverage td {
+    margin: 0;
+    padding: 0;
+    vertical-align: top;
+  }
+
+  table.coverage td.line-count {
+    width: 12%;
+    text-align: right;
+    padding: 0 5px 0 20px;
+  }
+
+  table.coverage td.line-coverage {
+    text-align: right;
+    padding-right: 10px;
+    min-width: 20px;
+  }
+
+  table.coverage td span.cline-any {
+    display: inline-block;
+    padding: 0 5px;
+    width: 100%;
+    height: 18px;
+  }
+
+  .low,
+  .cline-no {
+    background: #FCE1E5
+  }
+
+  .high,
+  .cline-yes {
+    background: rgb(230, 245, 208)
+  }
+
+  span.cline-neutral {
+    background: #eaeaea;
+  }
+
+  pre.prettyprint {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .el-main {
+    box-sizing: border-box;
+    display: block;
+    flex: 1;
+    flex-basis: auto;
+    overflow: auto;
+    padding: var(--el-main-padding)
+  }
+
+  .el-container {
+    min-height: 100vh;
+    height: 100%;
+  }
+
+  .footer {
+    font-size: small;
+  }
+
+  .el-row {
+    margin-bottom: 20px;
+  }
+
+  .el-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .el-col {
+    border-radius: 4px;
+  }
+
+  .green {
+    color: var(--el-color-success);
+  }
+
+  .red {
+    color: var(--el-color-error);
+  }
+
+  .linenums li {
+    height: 18px;
+    line-height: 18px;
+  }
+
+  li.L0,
+  li.L1,
+  li.L2,
+  li.L3,
+  li.L5,
+  li.L6,
+  li.L7,
+  li.L8 {
+    list-style-type: decimal
+  }
+
+  .el-col-5 {
+    max-width: 100%;
+  }
+
+  .el-col-3 {
+    max-width: 100%;
+  }
+
+</style>
+
+</html>

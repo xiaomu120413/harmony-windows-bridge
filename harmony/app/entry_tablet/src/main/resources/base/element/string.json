@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "MuHub tablet packaging probe"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "MuHub tablet entry"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "木枢"
+    }
+  ]
+}

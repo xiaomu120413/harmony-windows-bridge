@@ -8,7 +8,7 @@ $drive = $repoRoot.Substring(0, 1).ToLowerInvariant()
 $pathTail = $repoRoot.Substring(2).Replace('\', '/')
 $wslRoot = "/mnt/$drive$pathTail"
 
-$cppRoot = "$wslRoot/harmony/app/entry/src/main/cpp"
+$cppRoot = "$wslRoot/harmony/app/common/src/main/cpp"
 $freeRdpRoot = "$wslRoot/harmony/third_party/FreeRDP"
 $freeRdpInclude = "$wslRoot/harmony/out/ohos-arm64/sysroot/include/freerdp3"
 $resizeTestSource = "$cppRoot/tests/rdp_display_resize_coordinator_test.cpp"
@@ -27,9 +27,9 @@ $geometryTestSource = "$cppRoot/tests/remote_content_geometry_test.cpp"
 $geometryPolicySource = "$cppRoot/surface/remote_content_geometry.cpp"
 $geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
 
-$napiExportsSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/napi/napi_exports.cpp'
+$napiExportsSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/napi/napi_exports.cpp'
 $napiExportsText = Get-Content -Raw -Encoding utf8 $napiExportsSource
-$displayMonitorSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/session/rdp_display_layout_monitor.cpp'
+$displayMonitorSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/session/rdp_display_layout_monitor.cpp'
 $displayMonitorText = Get-Content -Raw -Encoding utf8 $displayMonitorSource
 foreach ($required in @(
   'CreatePrimaryDisplay',
@@ -71,9 +71,9 @@ foreach ($forbidden in @(
   }
 }
 
-$gestureSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_native_gesture.cpp'
-$rawTouchSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_touch_gesture.cpp'
-$sessionPageSource = Join-Path $repoRoot 'harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets'
+$gestureSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/input/xcomponent_native_gesture.cpp'
+$rawTouchSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/input/xcomponent_touch_gesture.cpp'
+$sessionPageSource = Join-Path $repoRoot 'harmony/app/common/src/main/ets/components/session/RdpSessionPage.ets'
 $gestureText = Get-Content -Raw -Encoding utf8 $gestureSource
 foreach ($required in @(
   'createGroupGesture(PARALLEL_GROUP)',
@@ -94,7 +94,7 @@ foreach ($forbidden in @('NativeTouchGesturePolicy', 'HandleLongPressTimeout')) 
     throw "Raw XComponent Touch still owns gesture semantics: found $forbidden"
   }
 }
-$penSource = Join-Path $repoRoot 'harmony/app/entry/src/main/cpp/input/xcomponent_pen.cpp'
+$penSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/input/xcomponent_pen.cpp'
 $penText = Get-Content -Raw -Encoding utf8 $penSource
 foreach ($required in @(
   'GetTouchPointToolType',

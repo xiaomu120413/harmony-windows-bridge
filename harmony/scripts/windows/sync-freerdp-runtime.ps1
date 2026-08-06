@@ -1,6 +1,6 @@
 param(
   [string]$SourceRoot = "harmony/out/ohos-arm64",
-  [string]$TargetRoot = "harmony/app/entry/libs/arm64-v8a",
+  [string]$TargetRoot = "harmony/app/common/libs/arm64-v8a",
   [switch]$Force
 )
 

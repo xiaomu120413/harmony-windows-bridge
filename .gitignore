@@ -19,7 +19,9 @@ tools/hapsigner/*.bat
 .hvigor/
 harmony/app/.hvigor/
 harmony/app/oh_modules/
+harmony/app/**/oh_modules/
 harmony/app/entry/libs/
+harmony/app/common/libs/
 harmony/app/entry/hnp/
 harmony/app/entry/src/main/resources/rawfile/xrdp/
 harmony/app/entry/src/main/libs/

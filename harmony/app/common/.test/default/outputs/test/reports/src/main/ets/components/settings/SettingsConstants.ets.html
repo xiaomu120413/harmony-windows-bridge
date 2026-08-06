@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Import style -->
+  <link rel="stylesheet" href="..\..\..\..\..\index.css" />
+  <link rel="stylesheet" href="..\..\..\..\..\prettify.css" />
+  <!-- Import Vue 3 -->
+  <script src="..\..\..\..\..\vue.global.prod.js"></script>
+  <!-- Import component library -->
+  <script src="..\..\..\..\..\index.full.min.js"></script>
+  <script src="..\..\..\..\..\prettify.js"></script>
+  <meta charset="UTF-8">
+  <title>Coverage</title>
+</head>
+
+<body>
+  <div id="app" class="common-layout">
+    <el-container>
+      <el-header>
+        <el-row :gutter="10">
+          <el-col :span="5">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <el-link type="primary" :href="relativeHome">
+                    <h2>&lt;</h2>
+                  </el-link>
+                </el-text></div>
+              <div><el-text class="mx-1 "><h2>{{title}}</h2></el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info"></el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.functions.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Functions</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.functions.covered}}/{{file.summary.functions.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.branches.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Branches</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.branches.covered}}/{{file.summary.branches.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.lines.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Lines</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.lines.covered}}/{{file.summary.lines.total}}</el-text></div>
+            </el-space>
+          </el-col>
+        </el-row>
+        <el-divider />
+      </el-header>
+      <el-main>
+        <el-row>
+        </el-row>
+        <pre>
+          <table class="coverage">
+            <tr>
+              <td class="line-count quiet">
+                <pre class="prettyprint lang-js">
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+                </pre>
+        </td>
+        <td class="text">
+          <pre class="prettyprint linenums lang-js">
+import { SettingsAppearanceMode, SettingsStatusTone } from &#39;./SettingsTypes&#39; 
+ 
+export const REMOTE_FILES_SHARED_DIR_STORAGE_KEY: string = &#39;remoteFilesSharedDirPath&#39; 
+export const REMOTE_FILES_SHARED_DIR_NAME: string = &#39;com.muhub.desktop&#39; 
+ 
+export class SettingsRoute { 
+  static readonly SETTINGS: string = &#39;settings&#39; 
+  static readonly BASIC: string = &#39;basic&#39; 
+  static readonly REMOTE_CONTROL: string = &#39;remoteControl&#39; 
+  static readonly PROJECT_HELP: string = &#39;projectHelp&#39; 
+} 
+ 
+export class SettingsRemoteControlSection { 
+  static readonly SERVER: string = &#39;server&#39; 
+  static readonly SCREEN: string = &#39;screen&#39; 
+  static readonly INPUT: string = &#39;input&#39; 
+  static readonly ACCESS: string = &#39;access&#39; 
+  static readonly FILES: string = &#39;files&#39; 
+} 
+ 
+export class SettingsText { 
+  static readonly SETTINGS_TITLE: string = &#39;设置&#39; 
+  static readonly SETTINGS_OVERVIEW_TITLE: string = &#39;设置概览&#39; 
+  static readonly SETTINGS_OVERVIEW_SUBTITLE: string = &#39;查看当前外观、被控服务、权限和共享目录状态&#39; 
+  static readonly SETTINGS_OVERVIEW_CLIENT_SUBTITLE: string = &#39;查看当前外观、连接辅助信息和共享目录&#39; 
+  static readonly SETTINGS_CURRENT_STATE: string = &#39;当前状态&#39; 
+  static readonly SETTINGS_NAV_OVERVIEW: string = &#39;概览&#39; 
+  static readonly BASIC_SETTINGS_ENTRY_TITLE: string = &#39;基础设置&#39; 
+  static readonly BASIC_SETTINGS_ENTRY_DESC: string = &#39;外观模式、本机 IP 和连接前辅助信息&#39; 
+  static readonly REMOTE_CONTROL_ENTRY_TITLE: string = &#39;远控设置&#39; 
+  static readonly REMOTE_CONTROL_ENTRY_DESC: string = &#39;管理主控访问门禁、视频流授权和被控端状态&#39; 
+  static readonly PROJECT_HELP_ENTRY_TITLE: string = &#39;项目帮助&#39; 
+  static readonly PROJECT_HELP_ENTRY_DESC: string = &#39;产品信息、许可说明、使用说明和常见排查&#39; 
+ 
+  static readonly APPEARANCE_SECTION_MODE_DESC: string = &#39;选择后立即应用，跟随系统会监听系统深浅色变化。&#39; 
+  static readonly FOLLOW_SYSTEM_TITLE: string = &#39;跟随系统&#39; 
+  static readonly FOLLOW_SYSTEM_DESC: string = &#39;读取系统深浅色设置，系统切换后应用外观随之变化。&#39; 
+  static readonly LIGHT_MODE_TITLE: string = &#39;浅色模式&#39; 
+  static readonly LIGHT_MODE_DESC: string = &#39;使用浅色界面。&#39; 
+  static readonly DARK_MODE_TITLE: string = &#39;深色模式&#39; 
+  static readonly DARK_MODE_DESC: string = &#39;使用深色界面。&#39; 
+ 
+  static readonly BASIC_SETTINGS_TITLE: string = &#39;基础设置&#39; 
+  static readonly BASIC_SETTINGS_SUBTITLE: string = &#39;调整界面外观，查看当前设备网络信息&#39; 
+  static readonly BASIC_APPEARANCE_SECTION: string = &#39;外观&#39; 
+  static readonly BASIC_NETWORK_SECTION: string = &#39;本机网络&#39; 
+ 
+  static readonly REMOTE_CONTROL_TITLE: string = &#39;远控设置&#39; 
+  static readonly REMOTE_CONTROL_SUBTITLE: string = &#39;管理当前设备作为被控端时的授权、门禁和端口状态&#39; 
+  static readonly REMOTE_SERVER_TITLE: string = &#39;被控端连接端口&#39; 
+  static readonly REMOTE_SERVER_DESC: string = &#39;主控端远程连接当前设备时使用该监听端口。&#39; 
+  static readonly REMOTE_SERVER_STATUS_LABEL: string = &#39;服务状态&#39; 
+  static readonly REMOTE_SERVER_RUNNING: string = &#39;已启动&#39; 
+  static readonly REMOTE_SERVER_STOPPED: string = &#39;未启动&#39; 
+  static readonly REMOTE_SERVER_EXITED: string = &#39;已退出&#39; 
+  static readonly REMOTE_SERVER_FAILED: string = &#39;启动失败&#39; 
+  static readonly REMOTE_SERVER_BUSY: string = &#39;启动中&#39; 
+  static readonly REMOTE_SERVER_START_ACTION: string = &#39;启动服务&#39; 
+  static readonly REMOTE_SERVER_REFRESH_ACTION: string = &#39;刷新&#39; 
+  static readonly REMOTE_SERVER_MESSAGE_LISTENING: string = &#39;被控服务正在监听主控端连接。&#39; 
+  static readonly REMOTE_SERVER_MESSAGE_ACTIVE: string = &#39;已有主控端远程会话连接。&#39; 
+  static readonly REMOTE_SERVER_MESSAGE_STOPPED: string = &#39;服务未启动，可点击启动服务。&#39; 
+  static readonly REMOTE_SERVER_MESSAGE_EXITED: string = &#39;服务已退出，可尝试重新启动。&#39; 
+  static readonly REMOTE_SERVER_MESSAGE_FAILED: string = &#39;服务状态读取失败。&#39; 
+  static readonly REMOTE_SERVER_MESSAGE_UNAVAILABLE: string = &#39;当前设备仅支持作为主控端。&#39; 
+  static readonly REMOTE_ACCESS_SECTION: string = &#39;验证码登录&#39; 
+  static readonly REMOTE_ACCESS_GATE_TITLE: string = &#39;主控连接验证码&#39; 
+  static readonly REMOTE_ACCESS_GATE_DESC: string = &#39;开启后，主控端连接当前设备需要输入当前验证码；切换后会重启被控服务生效。&#39; 
+  static readonly REMOTE_ACCESS_CODE_LABEL: string = &#39;当前验证码&#39; 
+  static readonly REMOTE_ACCESS_CODE_DISABLED: string = &#39;默认关闭&#39; 
+  static readonly REMOTE_ACCESS_CODE_ACTION: string = &#39;重新生成验证码&#39; 
+  static readonly REMOTE_ACCESS_GATE_ON: string = &#39;已开启&#39; 
+  static readonly REMOTE_ACCESS_GATE_OFF: string = &#39;默认关闭&#39; 
+  static readonly REMOTE_SCREEN_SECTION: string = &#39;录屏权限&#39; 
+  static readonly REMOTE_SCREEN_PERMISSION_TITLE: string = &#39;视频流录屏授权&#39; 
+  static readonly REMOTE_SCREEN_PERMISSION_DESC: string = &#39;授权后，主控端远程访问才能接收被控端桌面视频流。&#39; 
+  static readonly REMOTE_INPUT_PERMISSION_TITLE: string = &#39;键鼠输入注入授权&#39; 
+  static readonly REMOTE_INPUT_PERMISSION_DESC: string = &#39;授权后，主控端可长期向当前设备注入键盘和鼠标操作。&#39; 
+  static readonly REMOTE_PERMISSION_GRANTED: string = &#39;已授权&#39; 
+  static readonly REMOTE_PERMISSION_MISSING: string = &#39;未授权&#39; 
+  static readonly REMOTE_PERMISSION_ACTION: string = &#39;去授权&#39; 
+  static readonly REMOTE_PERMISSION_BUSY: string = &#39;授权中&#39; 
+  static readonly REMOTE_FILES_FEATURE_TITLE: string = &#39;鸿蒙共享目录&#39; 
+  static readonly REMOTE_FILES_FEATURE_DESC: string = &#39;主控端连接后，可在远程桌面中通过 \\\\tsclient\\Downloads 访问当前设备共享目录。&#39; 
+  static readonly REMOTE_FILES_FEATURE_ACTION: string = &#39;共享的鸿蒙目录&#39; 
+ 
+  static readonly PROJECT_HELP_TITLE: string = &#39;项目帮助&#39; 
+  static readonly PROJECT_HELP_SUBTITLE: string = &#39;产品信息、许可说明和使用帮助&#39; 
+  static readonly PROJECT_HELP_ABOUT_SECTION: string = &#39;关于项目&#39; 
+ 
+  static readonly USAGE_SECTION_PREP: string = &#39;连接流程&#39; 
+  static readonly USAGE_SECTION_PREP_DESC: string = &#39;按顺序完成 Windows 设置、账号确认和连接信息填写。&#39; 
+  static readonly USAGE_SECTION_SECURITY: string = &#39;安全与排查&#39; 
+  static readonly USAGE_SECTION_SECURITY_DESC: string = &#39;证书策略和常见连接失败原因。&#39; 
+  static readonly USAGE_PREP_TITLE: string = &#39;连接前准备&#39; 
+  static readonly USAGE_PREP_BODY: string = 
+    &#39;确认当前设备和 Windows 电脑网络互通，并能访问 Windows 的远程桌面端口（默认 3389）。远程登录账号需要设置非空密码。&#39; 
+  static readonly USAGE_FORM_TITLE: string = &#39;4. 填写连接信息&#39; 
+  static readonly USAGE_FORM_BODY: string = 
+    &#39;Host 填 Windows 电脑的 IP 或设备名，Port 通常为 3389，Username 按上一步的账号格式填写，Password 填该 Windows 账号密码（不要填 Windows Hello PIN）。&#39; 
+  static readonly USAGE_CERT_TITLE: string = &#39;证书策略&#39; 
+  static readonly USAGE_CERT_BODY: string = 
+    &#39;当前版本暂时固定使用 TOFU 证书策略，适合测试和内网首次连接，会在首次连接时信任目标证书。后续需要更严格校验时再开放策略选择入口。&#39; 
+  static readonly USAGE_WINDOWS_RDP_TITLE: string = &#39;1. 开启 Windows 远程桌面&#39; 
+  static readonly USAGE_WINDOWS_RDP_BODY: string = 
+    &#39;在被连接的 Windows 电脑打开“设置 &gt; 系统 &gt; 远程桌面”，开启“远程桌面”，并确认防火墙允许远程桌面、当前账号允许远程登录。首次开启后建议重启 Windows。&#39; 
+  static readonly USAGE_USERNAME_TITLE: string = &#39;2. 确认 Windows 用户名&#39; 
+  static readonly USAGE_USERNAME_BODY: string = 
+    &#39;不要填写显示昵称。本地账号填“设备名\\用户名”，域账号填“域名\\用户名”，微软账号填“MicrosoftAccount\\登录邮箱”。设备名可在“设置 &gt; 系统 &gt; 系统信息”查看；本地或域账号可在命令提示符运行 whoami 核对。&#39; 
+  static readonly USAGE_HARDWARE_ACCEL_TITLE: string = &#39;3. 开启 Windows 视频硬件加速（可选）&#39; 
+  static readonly USAGE_HARDWARE_ACCEL_BODY: string = 
+    &#39;Windows 专业版/企业版/教育版：按 Win+R，输入 gpedit.msc，进入“计算机配置 &gt; 管理模板 &gt; Windows 组件 &gt; 远程桌面服务 &gt; 远程桌面会话主机 &gt; 远程会话环境”，启用“为所有远程桌面服务会话使用硬件图形适配器”“配置远程桌面连接的 H.264/AVC 硬件编码”和“为远程桌面连接优先使用 H.264/AVC 444 图形模式”，然后重启 Windows。家庭版通常没有本地组策略编辑器；显卡或驱动不支持时会回退软件编码。&#39; 
+  static readonly USAGE_TROUBLESHOOT_TITLE: string = &#39;常见排查&#39; 
+  static readonly USAGE_TROUBLESHOOT_BODY: string = 
+    &#39;连不上时优先确认本机 IP、目标 IP、同一网络、Windows 防火墙、远程桌面开关、账号权限和端口 3389 是否可达。&#39; 
+ 
+  static readonly NETWORK_SECTION_DETAIL_DESC: string = &#39;默认网络接口和当前可用 IP 地址。&#39; 
+  static readonly NETWORK_NAME_LABEL: string = &#39;当前网络&#39; 
+  static readonly NETWORK_IP_LABEL: string = &#39;IP 地址&#39; 
+  static readonly NETWORK_REFRESH_ACTION: string = &#39;刷新&#39; 
+  static readonly NETWORK_LOADING: string = &#39;查询中&#39; 
+  static readonly NETWORK_EMPTY: string = &#39;未连接网络&#39; 
+  static readonly NETWORK_NO_IP: string = &#39;未获取到可用 IP&#39; 
+  static readonly NETWORK_READ_FAILED: string = &#39;无法读取本机 IP&#39; 
+  static readonly EMPTY_VALUE: string = &#39;-&#39; 
+ 
+  static readonly ABOUT_SECTION_PROJECT_DESC: string = &#39;查看产品信息、组件适配和随项目提供的许可说明。&#39; 
+  static readonly ABOUT_GITHUB_LABEL: string = &#39;项目主页&#39; 
+  static readonly ABOUT_GITHUB_VALUE: string = &#39;https://github.com/xiaomu120413/freerdp-control-demo&#39; 
+  static readonly ABOUT_FREERDP_ADAPTATION_LABEL: string = &#39;FreeRDP 鸿蒙化地址&#39; 
+  static readonly ABOUT_FREERDP_ADAPTATION_VALUE: string = &#39;https://github.com/xiaomu120413/FreeRDP/tree/ohos-port&#39; 
+  static readonly ABOUT_XRDP_ADAPTATION_LABEL: string = &#39;xrdp 鸿蒙化地址&#39; 
+  static readonly ABOUT_XRDP_ADAPTATION_VALUE: string = &#39;https://github.com/xiaomu120413/xrdp/tree/ohos-port&#39; 
+  static readonly ABOUT_LICENSE_LABEL: string = &#39;许可信息&#39; 
+  static readonly ABOUT_LICENSE_VALUE: string = &#39;MIT license&#39; 
+ 
+  static appearanceValue(mode: SettingsAppearanceMode): string { 
+    if (mode === &#39;dark&#39;) { 
+      return &#39;深色模式&#39; 
+    } 
+    if (mode === &#39;light&#39;) { 
+      return &#39;浅色模式&#39; 
+    } 
+    return &#39;跟随系统&#39; 
+  } 
+ 
+  static remoteServerStatusTone(running: boolean, busy: boolean, state: string): SettingsStatusTone { 
+    if (busy) { 
+      return &#39;info&#39; 
+    } 
+    if (state === &#39;Failed&#39; || state === &#39;Exited&#39;) { 
+      return &#39;danger&#39; 
+    } 
+    if (running) { 
+      return &#39;ok&#39; 
+    } 
+    return &#39;neutral&#39; 
+  } 
+ 
+  static remoteServerStateLabel(running: boolean, state: string): string { 
+    if (state === &#39;Failed&#39;) { 
+      return SettingsText.REMOTE_SERVER_FAILED 
+    } 
+    if (state === &#39;Exited&#39;) { 
+      return SettingsText.REMOTE_SERVER_EXITED 
+    } 
+    return running ? SettingsText.REMOTE_SERVER_RUNNING : SettingsText.REMOTE_SERVER_STOPPED 
+  } 
+ 
+  static remoteServerStatusText(running: boolean, busy: boolean, state: string, port: number): string { 
+    if (busy) { 
+      return SettingsText.REMOTE_SERVER_BUSY 
+    } 
+    const safePort = port &gt; 0 ? port : 3390 
+    return `${SettingsText.remoteServerStateLabel(running, state)} / ${safePort}` 
+  } 
+ 
+} 
+
+              </pre>
+        </td>
+        </tr>
+        </table>
+        </pre>
+      </el-main>
+      <el-footer align="middle" class="footer">
+        Code coverage generated by <el-link href="https://github.com/SMAT-Lab/bjc" type="primary"
+          target="_blank">bjc</el-link> at {{date}}
+      </el-footer>
+    </el-container>
+  </div>
+</body>
+
+<script>
+  const App = {
+    data() {
+      return {"date":"Thu Aug 06 2026 17:19:48 GMT+0800 (中国标准时间)","file":{"version":"bjc v1.0.0","versionCode":10000,"path":"C:/Users/mu/Desktop/code/demo/harmony/app/common/src/main/ets/components/settings/SettingsConstants.ets","hash":"42b4a6e34a81f110bfee0e59024b65fe30df767bfdf31306dd2072b8e70ec2c3","lineCnt":179,"count":0,"projectPath":"C:/Users/mu/Desktop/code/demo/harmony/app","functions":[{"name":"SettingsText.appearanceValue","count":0,"regions":[{"startLoc":{"line":137,"col":3},"endLoc":{"line":145,"col":4},"count":0,"ignored":0},{"startLoc":{"line":138,"col":26},"endLoc":{"line":140,"col":6},"count":0,"ignored":0},{"startLoc":{"line":141,"col":27},"endLoc":{"line":143,"col":6},"count":0,"ignored":0},{"startLoc":{"line":144,"col":5},"endLoc":{"line":145,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":138,"col":9},"endLoc":{"line":138,"col":24},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":141,"col":9},"endLoc":{"line":141,"col":25},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":0},{"name":"SettingsText.remoteServerStatusTone","count":0,"regions":[{"startLoc":{"line":147,"col":3},"endLoc":{"line":158,"col":4},"count":0,"ignored":0},{"startLoc":{"line":148,"col":15},"endLoc":{"line":150,"col":6},"count":0,"ignored":0},{"startLoc":{"line":151,"col":51},"endLoc":{"line":153,"col":6},"count":0,"ignored":0},{"startLoc":{"line":154,"col":18},"endLoc":{"line":156,"col":6},"count":0,"ignored":0},{"startLoc":{"line":157,"col":5},"endLoc":{"line":158,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":148,"col":9},"endLoc":{"line":148,"col":13},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":151,"col":9},"endLoc":{"line":151,"col":49},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":154,"col":9},"endLoc":{"line":154,"col":16},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":1},{"name":"SettingsText.remoteServerStateLabel","count":0,"regions":[{"startLoc":{"line":160,"col":3},"endLoc":{"line":168,"col":4},"count":0,"ignored":0},{"startLoc":{"line":161,"col":29},"endLoc":{"line":163,"col":6},"count":0,"ignored":0},{"startLoc":{"line":164,"col":29},"endLoc":{"line":166,"col":6},"count":0,"ignored":0},{"startLoc":{"line":167,"col":5},"endLoc":{"line":168,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":161,"col":9},"endLoc":{"line":161,"col":27},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":164,"col":9},"endLoc":{"line":164,"col":27},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":167,"col":12},"endLoc":{"line":167,"col":93},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":2},{"name":"SettingsText.remoteServerStatusText","count":0,"regions":[{"startLoc":{"line":170,"col":3},"endLoc":{"line":176,"col":4},"count":0,"ignored":0},{"startLoc":{"line":171,"col":15},"endLoc":{"line":173,"col":6},"count":0,"ignored":0},{"startLoc":{"line":174,"col":5},"endLoc":{"line":176,"col":4},"count":0,"ignored":0}],"branches":[{"startLoc":{"line":171,"col":9},"endLoc":{"line":171,"col":13},"trueCount":0,"falseCount":0,"group":[],"ignored":0},{"startLoc":{"line":174,"col":22},"endLoc":{"line":174,"col":44},"trueCount":0,"falseCount":0,"group":[],"ignored":0}],"ignored":0,"index":3}],"exeLine":{"0":1,"1":3,"2":4,"3":6,"4":7,"5":8,"6":9,"7":10,"8":13,"9":14,"10":15,"11":16,"12":17,"13":18,"14":21,"15":22,"16":23,"17":24,"18":25,"19":26,"20":27,"21":28,"22":29,"23":30,"24":31,"25":32,"26":33,"27":35,"28":36,"29":37,"30":38,"31":39,"32":40,"33":41,"34":43,"35":44,"36":45,"37":46,"38":48,"39":49,"40":50,"41":51,"42":52,"43":53,"44":54,"45":55,"46":56,"47":57,"48":58,"49":59,"50":60,"51":61,"52":62,"53":63,"54":64,"55":65,"56":66,"57":67,"58":68,"59":69,"60":70,"61":71,"62":72,"63":73,"64":74,"65":75,"66":76,"67":77,"68":78,"69":79,"70":80,"71":81,"72":82,"73":83,"74":84,"75":85,"76":87,"77":88,"78":89,"79":91,"80":92,"81":93,"82":94,"83":95,"84":96,"85":97,"86":98,"87":99,"88":100,"89":101,"90":102,"91":103,"92":104,"93":105,"94":106,"95":107,"96":108,"97":109,"98":110,"99":111,"100":112,"101":113,"102":114,"103":115,"104":117,"105":118,"106":119,"107":120,"108":121,"109":122,"110":123,"111":124,"112":125,"113":127,"114":128,"115":129,"116":130,"117":131,"118":132,"119":133,"120":134,"121":135,"122":137,"123":138,"124":139,"125":141,"126":142,"127":144,"128":147,"129":148,"130":149,"131":151,"132":152,"133":154,"134":155,"135":157,"136":160,"137":161,"138":162,"139":164,"140":165,"141":167,"142":170,"143":171,"144":172,"145":174,"146":175},"summary":{"lines":{"total":25,"covered":0,"pct":0,"executedLineCount":[-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,0,-1,-1,0,0,0,-1,0,0,-1,-1,-1,-1]},"functions":{"total":4,"covered":0,"pct":0},"branches":{"total":20,"covered":0,"pct":0}}},"title":"SettingsConstants.ets.html","relativeHome":"..\\..\\..\\..\\..\\index.html"};
+    }
+  };
+
+  const app = Vue.createApp(App);
+  app.use(ElementPlus);
+  app.mount("#app");
+
+  window.onload = function () {
+    prettyPrint();
+  }
+</script>
+
+<style scoped>
+  table.coverage {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 0 0;
+    padding: 0;
+  }
+
+  table.coverage td {
+    margin: 0;
+    padding: 0;
+    vertical-align: top;
+  }
+
+  table.coverage td.line-count {
+    width: 12%;
+    text-align: right;
+    padding: 0 5px 0 20px;
+  }
+
+  table.coverage td.line-coverage {
+    text-align: right;
+    padding-right: 10px;
+    min-width: 20px;
+  }
+
+  table.coverage td span.cline-any {
+    display: inline-block;
+    padding: 0 5px;
+    width: 100%;
+    height: 18px;
+  }
+
+  .low,
+  .cline-no {
+    background: #FCE1E5
+  }
+
+  .high,
+  .cline-yes {
+    background: rgb(230, 245, 208)
+  }
+
+  span.cline-neutral {
+    background: #eaeaea;
+  }
+
+  pre.prettyprint {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .el-main {
+    box-sizing: border-box;
+    display: block;
+    flex: 1;
+    flex-basis: auto;
+    overflow: auto;
+    padding: var(--el-main-padding)
+  }
+
+  .el-container {
+    min-height: 100vh;
+    height: 100%;
+  }
+
+  .footer {
+    font-size: small;
+  }
+
+  .el-row {
+    margin-bottom: 20px;
+  }
+
+  .el-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .el-col {
+    border-radius: 4px;
+  }
+
+  .green {
+    color: var(--el-color-success);
+  }
+
+  .red {
+    color: var(--el-color-error);
+  }
+
+  .linenums li {
+    height: 18px;
+    line-height: 18px;
+  }
+
+  li.L0,
+  li.L1,
+  li.L2,
+  li.L3,
+  li.L5,
+  li.L6,
+  li.L7,
+  li.L8 {
+    list-style-type: decimal
+  }
+
+  .el-col-5 {
+    max-width: 100%;
+  }
+
+  .el-col-3 {
+    max-width: 100%;
+  }
+
+</style>
+
+</html>

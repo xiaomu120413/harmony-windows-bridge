@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Import style -->
+  <link rel="stylesheet" href="..\..\..\..\..\index.css" />
+  <link rel="stylesheet" href="..\..\..\..\..\prettify.css" />
+  <!-- Import Vue 3 -->
+  <script src="..\..\..\..\..\vue.global.prod.js"></script>
+  <!-- Import component library -->
+  <script src="..\..\..\..\..\index.full.min.js"></script>
+  <script src="..\..\..\..\..\prettify.js"></script>
+  <meta charset="UTF-8">
+  <title>Coverage</title>
+</head>
+
+<body>
+  <div id="app" class="common-layout">
+    <el-container>
+      <el-header>
+        <el-row :gutter="10">
+          <el-col :span="5">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <el-link type="primary" :href="relativeHome">
+                    <h2>&lt;</h2>
+                  </el-link>
+                </el-text></div>
+              <div><el-text class="mx-1 "><h2>{{title}}</h2></el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info"></el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.functions.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Functions</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.functions.covered}}/{{file.summary.functions.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.branches.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Branches</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.branches.covered}}/{{file.summary.branches.total}}</el-text></div>
+            </el-space>
+          </el-col>
+          <el-col :span="3">
+            <el-space :size="size" spacer="">
+              <div><el-text class="mx-1 ">
+                  <h2>{{file.summary.lines.pct}}%</h2>
+                </el-text></div>
+              <div><el-text class="mx-1 ">Lines</el-text></div>
+              <div><el-text class="mx-1 "
+                  type="info">{{file.summary.lines.covered}}/{{file.summary.lines.total}}</el-text></div>
+            </el-space>
+          </el-col>
+        </el-row>
+        <el-divider />
+      </el-header>
+      <el-main>
+        <el-row>
+        </el-row>
+        <pre>
+          <table class="coverage">
+            <tr>
+              <td class="line-count quiet">
+                <pre class="prettyprint lang-js">
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+                </pre>
+        </td>
+        <td class="text">
+          <pre class="prettyprint linenums lang-js">
+export class HomeText { 
+  static readonly APP_TAGLINE: string = &#39;HarmonyOS 与 Windows 互联的局域网远程桌面工具&#39; 
+ 
+  static readonly CONNECTION_DETAILS_TITLE: string = &#39;连接详情&#39; 
+  static readonly WINDOWS_USERNAME_LABEL: string = &#39;Windows 用户名&#39; 
+  static readonly WINDOWS_USERNAME_PLACEHOLDER: string = &#39;远程主机名\\用户名，例如：DESKTOP-ABC\\zhangsan&#39; 
+  static readonly REMEMBER_PASSWORD: string = &#39;记住密码&#39; 
+  static readonly DEVICE_ACTIONS: string = &#39;设备操作&#39; 
+  static readonly DELETE_ACTION: string = &#39;删除&#39; 
+  static readonly CLEAR_PASSWORD_ACTION: string = &#39;清除密码&#39; 
+ 
+  static readonly DEVICE_LIST_TITLE: string = &#39;设备列表&#39; 
+  static readonly NEW_DEVICE_ACTION: string = &#39;新建设备&#39; 
+  static readonly DEVICE_SEARCH_PLACEHOLDER: string = &#39;搜索设备名称或地址&#39; 
+  static readonly DEVICE_TAG_RECENT: string = &#39;最近连接&#39; 
+  static readonly DEVICE_TAG_PASSWORD_SAVED: string = &#39;已保存密码&#39; 
+  static readonly DEVICE_EMPTY_TITLE: string = &#39;还没有保存的设备&#39; 
+  static readonly DEVICE_EMPTY_BODY: string = &#39;连接成功后会自动出现在这里&#39; 
+  static readonly DEVICE_SEARCH_EMPTY_TITLE: string = &#39;没有匹配设备&#39; 
+  static readonly DEVICE_SEARCH_EMPTY_BODY: string = &#39;换个设备名称或地址再试&#39; 
+ 
+  static readonly STATUS_SERVICE_LABEL: string = &#39;被控服务&#39; 
+  static readonly STATUS_SCREEN_LABEL: string = &#39;录屏权限&#39; 
+  static readonly STATUS_INPUT_LABEL: string = &#39;注入权限&#39; 
+  static readonly STATUS_FILES_LABEL: string = &#39;共享目录&#39; 
+  static readonly STATUS_FILES_CONFIGURED: string = &#39;已配置&#39; 
+ 
+  static readonly PASSWORD_CLEARED_CURRENT: string = &#39;已清空当前密码&#39; 
+  static readonly PASSWORD_CLEAR_STORAGE_UNAVAILABLE: string = &#39;清除密码失败：存储不可用&#39; 
+  static readonly PASSWORD_CLEARED_SAVED: string = &#39;已清除保存的密码&#39; 
+  static readonly PASSWORD_CLEAR_FAILED: string = &#39;清除密码失败&#39; 
+ 
+  static readonly CONNECTION_FAILURE: string = &#39;连接失败&#39; 
+  static readonly CONNECTION_FAILURE_CREDENTIALS: string = &#39;连接失败，请检查 Host、账号或密码&#39; 
+  static readonly CONNECTION_FAILURE_NO_SESSION: string = &#39;连接失败，未建立远程桌面会话&#39; 
+  static readonly CONNECTION_SUCCESS: string = &#39;连接成功&#39; 
+  static readonly CONNECTION_CONNECTING: string = &#39;正在连接...&#39; 
+ 
+  static readonly USERNAME_REQUIRED: string = &#39;Username 必填&#39; 
+  static readonly PASSWORD_REQUIRED: string = &#39;Password 必填&#39; 
+  static readonly HOST_REQUIRED: string = &#39;Host 必填&#39; 
+  static readonly HOST_TOO_LONG: string = &#39;Host 过长&#39; 
+  static readonly HOST_NO_SPACES: string = &#39;Host 不能含空格&#39; 
+  static readonly HOST_NO_PROTOCOL_OR_PATH: string = &#39;Host 不要包含协议或路径&#39; 
+  static readonly HOST_FORMAT_INVALID: string = &#39;Host 格式错误&#39; 
+  static readonly HOST_IP_FORMAT_INVALID: string = &#39;Host IP 格式错误&#39; 
+  static readonly PORT_REQUIRED: string = &#39;Port 必填&#39; 
+  static readonly PORT_DIGITS_ONLY: string = &#39;Port 只能是数字&#39; 
+  static readonly PORT_RANGE_INVALID: string = &#39;Port 范围应为 1-65535&#39; 
+  static readonly VALIDATION_SEPARATOR: string = &#39;；&#39; 
+ 
+  static readonly SESSION_REMOTE_LOGIN_WAITING_TITLE: string = &#39;已连接，等待远端桌面&#39; 
+  static readonly SESSION_REMOTE_LOGIN_WAITING_SUBTITLE: string = &#39;远端桌面登录阶段暂未收到新画面&#39; 
+  static readonly SESSION_CONNECTED_TITLE: string = &#39;已连接，正在打开远端桌面&#39; 
+  static readonly SESSION_CONNECTED_SUBTITLE: string = &#39;等待远端桌面首帧&#39; 
+  static readonly SESSION_RESOLVING_TITLE: string = &#39;正在解析主机&#39; 
+  static readonly SESSION_RESOLVING_SUBTITLE: string = &#39;准备建立 RDP 连接&#39; 
+  static readonly SESSION_TCP_CONNECTED_TITLE: string = &#39;已连通主机&#39; 
+  static readonly SESSION_TCP_CONNECTED_SUBTITLE: string = &#39;正在协商远程桌面会话&#39; 
+  static readonly SESSION_NEGOTIATING_TITLE: string = &#39;正在协商远程桌面&#39; 
+  static readonly SESSION_NEGOTIATING_SUBTITLE: string = &#39;等待服务端返回图形能力&#39; 
+  static readonly SESSION_AUTHENTICATING_TITLE: string = &#39;正在验证登录信息&#39; 
+  static readonly SESSION_AUTHENTICATING_SUBTITLE: string = &#39;即将进入远端桌面&#39; 
+  static readonly SESSION_CONNECTING_TITLE: string = &#39;正在连接远程桌面&#39; 
+  static readonly SESSION_CONNECTING_SUBTITLE: string = &#39;正在建立 RDP 会话&#39; 
+ 
+  static connectionFailureWithDetail(detail: string): string { 
+    return `${HomeText.CONNECTION_FAILURE}：${detail}` 
+  } 
+} 
+
+              </pre>
+        </td>
+        </tr>
+        </table>
+        </pre>
+      </el-main>
+      <el-footer align="middle" class="footer">
+        Code coverage generated by <el-link href="https://github.com/SMAT-Lab/bjc" type="primary"
+          target="_blank">bjc</el-link> at {{date}}
+      </el-footer>
+    </el-container>
+  </div>
+</body>
+
+<script>
+  const App = {
+    data() {
+      return {"date":"Thu Aug 06 2026 17:19:48 GMT+0800 (中国标准时间)","file":{"version":"bjc v1.0.0","versionCode":10000,"path":"C:/Users/mu/Desktop/code/demo/harmony/app/common/src/main/ets/components/home/HomeText.ets","hash":"7275b2d367327fca273c80ec9fc92d7631c94b9f1ba14bdaf95823b2d60b8121","lineCnt":71,"count":0,"projectPath":"C:/Users/mu/Desktop/code/demo/harmony/app","functions":[{"name":"HomeText.connectionFailureWithDetail","count":0,"regions":[{"startLoc":{"line":67,"col":3},"endLoc":{"line":69,"col":4},"count":0,"ignored":0},{"startLoc":{"line":68,"col":5},"endLoc":{"line":69,"col":4},"count":0,"ignored":0}],"branches":[],"ignored":0,"index":0}],"exeLine":{"0":1,"1":2,"2":4,"3":5,"4":6,"5":7,"6":8,"7":9,"8":10,"9":12,"10":13,"11":14,"12":15,"13":16,"14":17,"15":18,"16":19,"17":20,"18":22,"19":23,"20":24,"21":25,"22":26,"23":28,"24":29,"25":30,"26":31,"27":33,"28":34,"29":35,"30":36,"31":37,"32":39,"33":40,"34":41,"35":42,"36":43,"37":44,"38":45,"39":46,"40":47,"41":48,"42":49,"43":50,"44":52,"45":53,"46":54,"47":55,"48":56,"49":57,"50":58,"51":59,"52":60,"53":61,"54":62,"55":63,"56":64,"57":65,"58":67,"59":68},"summary":{"lines":{"total":2,"covered":0,"pct":0,"executedLineCount":[-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,0,-1,-1,-1]},"functions":{"total":1,"covered":0,"pct":0},"branches":{"total":0,"covered":0,"pct":100}}},"title":"HomeText.ets.html","relativeHome":"..\\..\\..\\..\\..\\index.html"};
+    }
+  };
+
+  const app = Vue.createApp(App);
+  app.use(ElementPlus);
+  app.mount("#app");
+
+  window.onload = function () {
+    prettyPrint();
+  }
+</script>
+
+<style scoped>
+  table.coverage {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 0 0;
+    padding: 0;
+  }
+
+  table.coverage td {
+    margin: 0;
+    padding: 0;
+    vertical-align: top;
+  }
+
+  table.coverage td.line-count {
+    width: 12%;
+    text-align: right;
+    padding: 0 5px 0 20px;
+  }
+
+  table.coverage td.line-coverage {
+    text-align: right;
+    padding-right: 10px;
+    min-width: 20px;
+  }
+
+  table.coverage td span.cline-any {
+    display: inline-block;
+    padding: 0 5px;
+    width: 100%;
+    height: 18px;
+  }
+
+  .low,
+  .cline-no {
+    background: #FCE1E5
+  }
+
+  .high,
+  .cline-yes {
+    background: rgb(230, 245, 208)
+  }
+
+  span.cline-neutral {
+    background: #eaeaea;
+  }
+
+  pre.prettyprint {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .el-main {
+    box-sizing: border-box;
+    display: block;
+    flex: 1;
+    flex-basis: auto;
+    overflow: auto;
+    padding: var(--el-main-padding)
+  }
+
+  .el-container {
+    min-height: 100vh;
+    height: 100%;
+  }
+
+  .footer {
+    font-size: small;
+  }
+
+  .el-row {
+    margin-bottom: 20px;
+  }
+
+  .el-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .el-col {
+    border-radius: 4px;
+  }
+
+  .green {
+    color: var(--el-color-success);
+  }
+
+  .red {
+    color: var(--el-color-error);
+  }
+
+  .linenums li {
+    height: 18px;
+    line-height: 18px;
+  }
+
+  li.L0,
+  li.L1,
+  li.L2,
+  li.L3,
+  li.L5,
+  li.L6,
+  li.L7,
+  li.L8 {
+    list-style-type: decimal
+  }
+
+  .el-col-5 {
+    max-width: 100%;
+  }
+
+  .el-col-3 {
+    max-width: 100%;
+  }
+
+</style>
+
+</html>

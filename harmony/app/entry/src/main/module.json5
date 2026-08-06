@@ -5,8 +5,7 @@
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
     "deviceTypes": [
-      "2in1",
-      "tablet"
+      "2in1"
     ],
     "deliveryWithInstall": true,
     "installationFree": false,
@@ -99,6 +98,13 @@
           ],
           "when": "inuse"
         }
+      }
+    ],
+    "hnpPackages": [
+      {
+        "package": "xrdp.hnp",
+        "type": "private",
+        "independentSign": false
       }
     ],
     "pages": "$profile:main_pages",

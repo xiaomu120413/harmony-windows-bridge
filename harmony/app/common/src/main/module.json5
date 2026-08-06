@@ -1,0 +1,13 @@
+{
+  "module": {
+    "name": "common",
+    "type": "shared",
+    "description": "$string:module_desc",
+    "deviceTypes": [
+      "2in1",
+      "tablet"
+    ],
+    "deliveryWithInstall": true,
+    "pages": "$profile:main_pages"
+  }
+}
