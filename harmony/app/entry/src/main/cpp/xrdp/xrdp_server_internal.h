@@ -20,6 +20,7 @@ using XrdpMainFn = int (*)(int, char**);
 using XrdpStopFn = int (*)(void);
 using XrdpGetAbiInfoFn = int (*)(xrdp_ohos_abi_info*);
 using XrdpSetBackendEventCallbackFn = int (*)(xrdp_ohos_backend_event_fn, void*);
+using XrdpSetRdpecamCallbackFn = int (*)(xrdp_ohos_rdpecam_event_fn, void*);
 using XrdpCaptureGetDiagnosticsFn = int (*)(xrdp_ohos_capture_diagnostics*);
 using XrdpCaptureSubmitFrameFn = int (*)(const xrdp_ohos_frame*);
 using XrdpCaptureResetFn = void (*)(const char*);
@@ -36,6 +37,7 @@ struct XrdpLoadedBackend {
     void* handle = nullptr;
     XrdpGetAbiInfoFn getAbiInfoFn = nullptr;
     XrdpSetBackendEventCallbackFn setEventCallbackFn = nullptr;
+    XrdpSetRdpecamCallbackFn setRdpecamCallbackFn = nullptr;
     XrdpCaptureGetDiagnosticsFn captureDiagnosticsFn = nullptr;
     XrdpCaptureSubmitFrameFn captureSubmitFrameFn = nullptr;
     XrdpCaptureResetFn captureResetFn = nullptr;
@@ -58,6 +60,14 @@ struct XrdpServerState {
     uint32_t sessionBpp = 0;
     uint32_t backendEventCount = 0;
     uint32_t inputEventCount = 0;
+    uint32_t rdpecamDeviceCount = 0;
+    uint32_t rdpecamErrorCount = 0;
+    uint32_t rdpecamFormat = 0;
+    uint32_t rdpecamWidth = 0;
+    uint32_t rdpecamHeight = 0;
+    uint64_t rdpecamSampleCount = 0;
+    uint64_t rdpecamBytes = 0;
+    std::string rdpecamDeviceName;
     std::string lastMessage;
     std::string lastBackendEvent;
     std::string lastDisconnectReason;
@@ -86,6 +96,7 @@ struct XrdpResolvedPaths {
 XrdpServerState& ServerState();
 const char* XrdpBackendEventTypeName(int type);
 void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*);
+void OnXrdpRdpecamEvent(const xrdp_ohos_rdpecam_event* event, void*);
 
 std::string JoinPath(const std::string& left, const std::string& right);
 bool PathExists(const std::string& path);

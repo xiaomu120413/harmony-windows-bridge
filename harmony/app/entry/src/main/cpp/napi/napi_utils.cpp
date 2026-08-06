@@ -23,6 +23,13 @@ napi_value MakeUint32(napi_env env, uint32_t value)
     return result;
 }
 
+napi_value MakeUint64(napi_env env, uint64_t value)
+{
+    napi_value result = nullptr;
+    napi_create_double(env, static_cast<double>(value), &result);
+    return result;
+}
+
 napi_value MakeObject(napi_env env)
 {
     napi_value result = nullptr;
@@ -58,6 +65,11 @@ void SetBool(napi_env env, napi_value object, const char* name, bool value)
 void SetUint32(napi_env env, napi_value object, const char* name, uint32_t value)
 {
     SetNamed(env, object, name, MakeUint32(env, value));
+}
+
+void SetUint64(napi_env env, napi_value object, const char* name, uint64_t value)
+{
+    SetNamed(env, object, name, MakeUint64(env, value));
 }
 
 std::string GetStringProperty(napi_env env, napi_value object, const char* name)

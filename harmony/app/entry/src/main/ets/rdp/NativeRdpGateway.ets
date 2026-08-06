@@ -33,6 +33,13 @@ export interface NativeXrdpServerResult extends NativeCommandResult {
   logPath: string
   activeMstscSession: boolean
   port: number
+  rdpecamDeviceName: string
+  rdpecamFormat: number
+  rdpecamWidth: number
+  rdpecamHeight: number
+  rdpecamSampleCount: number
+  rdpecamBytes: number
+  rdpecamErrors: number
 }
 
 export type NativePermissionType = 'microphone' | 'camera' | 'clipboard' | 'location'

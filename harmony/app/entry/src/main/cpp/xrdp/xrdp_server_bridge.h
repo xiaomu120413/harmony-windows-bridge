@@ -27,6 +27,13 @@ struct XrdpServerCommandResult {
     std::string logPath;
     bool activeMstscSession = false;
     uint32_t port = 0;
+    std::string rdpecamDeviceName;
+    uint32_t rdpecamFormat = 0;
+    uint32_t rdpecamWidth = 0;
+    uint32_t rdpecamHeight = 0;
+    uint64_t rdpecamSampleCount = 0;
+    uint64_t rdpecamBytes = 0;
+    uint32_t rdpecamErrors = 0;
 };
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);

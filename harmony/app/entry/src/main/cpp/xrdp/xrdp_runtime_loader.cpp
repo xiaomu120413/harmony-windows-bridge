@@ -345,6 +345,10 @@ bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& 
             const int rc = state.backend.setEventCallbackFn(OnXrdpBackendEvent, nullptr);
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
         }
+        if (state.backend.setRdpecamCallbackFn != nullptr) {
+            const int rc = state.backend.setRdpecamCallbackFn(OnXrdpRdpecamEvent, nullptr);
+            result.logs.push_back("xrdp OHOS rdpecam callback register rc=" + std::to_string(rc));
+        }
         result.logs.push_back("xrdp OHOS input authorization deferred until client session connect");
         return true;
     }
@@ -373,6 +377,8 @@ bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& 
         }
         auto setEventCallbackFn = reinterpret_cast<XrdpSetBackendEventCallbackFn>(
             dlsym(handle, "xrdp_ohos_backend_set_event_callback"));
+        auto setRdpecamCallbackFn = reinterpret_cast<XrdpSetRdpecamCallbackFn>(
+            dlsym(handle, "xrdp_ohos_backend_set_rdpecam_callback"));
         auto captureDiagnosticsFn = reinterpret_cast<XrdpCaptureGetDiagnosticsFn>(
             dlsym(handle, "xrdp_ohos_capture_get_diagnostics"));
         auto captureSubmitFrameFn = reinterpret_cast<XrdpCaptureSubmitFrameFn>(
@@ -406,10 +412,18 @@ bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& 
             dlclose(handle);
             continue;
         }
+        if ((abiInfo.feature_flags & XRDP_OHOS_FEATURE_RDPECAM) != 0U &&
+            setRdpecamCallbackFn == nullptr) {
+            result.logs.push_back("xrdp OHOS backend advertises rdpecam but callback symbol is missing: " +
+                candidate);
+            dlclose(handle);
+            continue;
+        }
 
         state.backend.handle = handle;
         state.backend.getAbiInfoFn = getAbiInfoFn;
         state.backend.setEventCallbackFn = setEventCallbackFn;
+        state.backend.setRdpecamCallbackFn = setRdpecamCallbackFn;
         state.backend.captureDiagnosticsFn = captureDiagnosticsFn;
         state.backend.captureSubmitFrameFn = captureSubmitFrameFn;
         state.backend.captureResetFn = captureResetFn;
@@ -436,6 +450,12 @@ bool LoadBackendLocked(const XrdpResolvedPaths& paths, XrdpServerCommandResult& 
             result.logs.push_back("xrdp OHOS backend event callback register rc=" + std::to_string(rc));
         } else {
             result.logs.push_back("xrdp OHOS backend event callback symbol missing in: " + candidate);
+        }
+        if (setRdpecamCallbackFn != nullptr) {
+            const int rc = setRdpecamCallbackFn(OnXrdpRdpecamEvent, nullptr);
+            result.logs.push_back("xrdp OHOS rdpecam callback register rc=" + std::to_string(rc));
+        } else {
+            result.logs.push_back("xrdp OHOS rdpecam callback unavailable in: " + candidate);
         }
         result.logs.push_back("xrdp OHOS input authorization deferred until client session connect");
         return true;

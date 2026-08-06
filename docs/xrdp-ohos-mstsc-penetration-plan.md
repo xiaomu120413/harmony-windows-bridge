@@ -236,7 +236,69 @@ Phase 2 可能需要：
 - 平台层仅使用 OHAudio Renderer、有限环形缓冲、静音补帧和溢出丢旧帧策略，并记录 open/packet/byte/drop/underrun/error 诊断。
 - 默认配置为 `[OHOS] audin=true`，依赖 `[Channels] drdynvc=true`。
 - `wsl bash harmony/scripts/wsl/build-xrdp-ohos.sh` 干净构建、安装和产物符号校验通过；状态为“代码、构建及 MSTSC + OHOS 真机数据闭环验收完成”。
-- `rdpecam` 摄像头重定向尚未实现；本次不把它误标为完成。
+- `rdpecam` 摄像头重定向已完成首版代码和构建验收；带摄像头 MSTSC 客户端的数据闭环尚未验收，不标记为 `Verified`。
 - 2026-08-05 首轮真机验证：`HAD-W32` 2in1（`3QC0124C11000711`）完成 HAP 覆盖安装、启动和屏幕录制授权，但 `libxrdpohos.so` 首次加载失败；HiLog 记录 C++ renderer 将 C `log_message` 错误解析为 `_Z11log_message9logLevelsPKcz`，并同时提示 `libimage_ndk.z.so` namespace 加载警告。此轮尚未进入 `AUDIO_INPUT` 协商，状态保持“真机待验收”，修复动态链接后重测。
 - 动态链接修复后，xrdp 可监听 3390 且 MSTSC 显示、输入、H.264、`rdpsnd` 会话正常；显式使用 `audiocapturemode:i:1` 重连仍无 `audin` open。时序证据显示 MS-RDPEDYC capability 在 backend module 加载前完成，原 ready 通知因 module 尚不存在而丢失。通用 DVC bridge 需保存 ready 状态，并在 module 晚加载后补发且每个 module 实例只通知一次。
 - 通用 DVC bridge 保存并向晚加载 module 补发 ready 状态后，真机重测通过：MSTSC 打开 `AUDIO_INPUT` 通道，协商 `48 kHz / mono / PCM16`，OHOS OHAudio Renderer 成功启动；会话收到 683 包、1,523,090 字节，`dropped=0`、`errors=0`，renderer 记录 `pushed=1,523,090`。`audin` 状态更新为“真机数据闭环已验收”。
+
+## 10. `rdpecam` 摄像头重定向设计与实施台账
+
+### 10.1 设计状态
+
+- Change ID：`XRDP-OHOS-RDPECAM-001`
+- 状态：`Implemented / BuildVerified / DeviceDataVerified / FaultCasesPending`
+- 目标：Windows `mstsc` 作为 RDP 客户端连接 OHOS xrdp 服务端时，将 Windows 侧摄像头通过标准 MS-RDPECAM 动态虚拟通道送入 OHOS 应用进程。
+- 协议依据：微软 MS-RDPECAM；协议消息布局和服务端时序对照仓库内 FreeRDP `channels/rdpecam/server` 实现；DVC 创建、分片和回调继续使用 xrdp `server_drdynvc_*` module ABI。
+
+### 10.2 能力边界
+
+- 首版支持 `RDCamera_Device_Enumerator`、设备增删通知、单个活动摄像头设备通道、流/媒体类型协商、启动/停止和按请求拉取样本。
+- 首版通过版本化 `xrdp_ohos` C ABI 把设备事件和样本同步回调给 HAP native 层。样本内存只在回调期间有效，HAP 如需异步处理必须自行复制。
+- HAP 默认 sink 只记录设备、媒体格式、样本数和字节数，用于真机验收；后续业务预览、编码或 AI 消费复用同一 callback，不进入 xrdp 协议模块。
+- 这不是 OHOS 系统级“虚拟摄像头”注册。OHOS 浏览器或普通应用直接调用 `getUserMedia` / CameraKit 时仍会取得 OHOS 本机摄像头，除非业务显式接入上述 callback。
+- 首版不做多摄像头同时采集、摄像头属性控制、后台静默启用或绕过 Windows 的资源重定向选择。设备移除或会话断开必须立即停止请求并释放 DVC 状态。
+
+### 10.3 状态机和安全限制
+
+1. xrdp `drdynvc` ready 后，OHOS backend 打开 `RDCamera_Device_Enumerator`。
+2. 收到 `SelectVersionRequest` 后，对当前 FreeRDP/MSTSC 使用的 MS-RDPECAM v1-v2 返回同版本 `SelectVersionResponse`；版本为 0 或高于 v2 时关闭通道并记录错误。
+3. 收到 `DeviceAddedNotification` 后保存设备名和客户端给出的设备 DVC 名；若无活动设备则打开该 DVC。
+4. 设备 DVC 打开后依次发送 `ActivateDeviceRequest`、`StreamListRequest`、`MediaTypeListRequest`，选择可接受媒体类型后发送 `StartStreamsRequest`。
+5. 启动成功后仅保持一个在途 `SampleRequest`；每个 `SampleResponse` 经边界检查后同步投递 callback，再请求下一帧。
+6. `DeviceRemovedNotification`、DVC close、session disconnect 或 module exit 进入停止态，清除分片、活动格式、在途请求和设备标识。
+
+边界检查：DVC PDU 最大 32 MiB；设备名和 DVC 名必须以 NUL 结束并有长度上限；宽高不超过 8192；帧率分母不能为 0；单帧大小不得超过 32 MiB；未知消息、越界长度和不一致的 stream index 只终止摄像头子通道，不影响桌面会话。
+
+媒体类型选择优先级为 `MJPG -> NV12 -> YUY2 -> I420 -> RGB32 -> RGB24 -> H264`，同格式优先不超过 1920x1080、30 fps 且分辨率最高的条目；没有满足软上限的条目时退到客户端提供的第一个合法条目。callback 接收协议原始样本及完整媒体元数据，不在协议层做私有转码。
+
+### 10.4 文件级修改项
+
+- `harmony/third_party/xrdp/ohos/ohos_rdpecam.[ch]`：MS-RDPECAM DVC 生命周期、设备选择和统计。
+- `harmony/third_party/xrdp/ohos/ohos_rdpecam_protocol.c`、`ohos_rdpecam_internal.h`：协议 PDU 解析/生成、状态转换和媒体格式选择；拆分后单个实现文件保持在 1000 行硬限制以内。
+- `harmony/third_party/xrdp/ohos/ohos.c`、`ohos_private.h`、`ohos_module_callbacks.c`：模块装配、配置、connect/disconnect 和 DVC ready。
+- `harmony/third_party/xrdp/ohos/xrdp_ohos.h`、`ohos_events.c`：新增版本化摄像头事件/样本 callback 和 feature flag，不向 N-API 泄漏协议状态机。
+- `harmony/third_party/xrdp/ohos/Makefile.am`、`harmony/third_party/xrdp/xrdp/xrdp-ohos.ini.in`：构建源和默认 `rdpecam=true`。
+- `harmony/app/entry/src/main/cpp/xrdp/*`、`napi/napi_exports.cpp`、`napi/napi_utils.[ch]`、ArkTS 类型声明：动态加载可选 callback、记录 64 位统计并通过既有 xrdp diagnostics 返回验收数据。
+- `harmony/scripts/wsl/build-xrdp-ohos.sh`：构建验收同时检查 rdpecam 回调 ABI 与默认配置。
+
+### 10.5 验收项
+
+- `XRDP-CAM-A01`：无摄像头或未勾选重定向时，enumerator DVC 可正常打开但无 `DeviceAdded`，也允许客户端直接拒绝该 DVC；两种结果均可诊断，桌面、声音、输入和剪贴板不回归。
+- `XRDP-CAM-A02`：带摄像头 Windows 设备勾选“相机和其他视频捕获设备”后，日志出现版本协商、设备名、设备 DVC、stream 和选中媒体类型。
+- `XRDP-CAM-A03`：远端实际请求开始后，diagnostics 的 sample/byte 计数持续增长，callback 获得非空数据且 `format/width/height/stream_index` 与协商结果一致。
+- `XRDP-CAM-A04`：Windows 禁止权限、摄像头被占用、设备拔出时仅关闭摄像头子通道并给出错误；xrdp 主会话保持可用。
+- `XRDP-CAM-A05`：连续连接/断开三次，无残留活动 DVC、分片或在途 sample；断连摘要中的 open/device/sample/byte/error 计数正确。
+- `XRDP-CAM-A06`：OHOS arm64 干净交叉构建、HAP 构建和符号检查通过；真机证据未完成前状态不得改为 `Verified`。
+
+### 10.6 实施证据
+
+- 2026-08-06：10.4 所列代码已实现；`ohos_rdpecam.c` 为 945 行，低于单文件 1000 行硬限制。
+- 2026-08-06 首次真机协商发现 Windows 11 MSTSC 使用协议版本 v2，而初版只接受 v1；仓库内 FreeRDP `ECAM_PROTO_VERSION` 同为 v2，且客户端允许服务端选择不高于 v2 的版本，因此实现调整为兼容 v1-v2 后继续重测。
+- `wsl bash -lc 'cd /mnt/c/Users/mu/Desktop/code/demo && bash harmony/scripts/wsl/build-xrdp-ohos.sh'` 完整 OHOS arm64 交叉构建、安装和产物检查通过；`libxrdpohos.so` 导出 `xrdp_ohos_backend_set_rdpecam_callback`，安装配置包含 `rdpecam=true`。
+- `cmd /c harmony\app\build_hap.bat` 通过，最终签名 HAP 为 `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap`。
+- 真机 `3QC0124C11000711` 覆盖安装成功；首次自动拉起曾被设备锁屏拒绝（`10106102`），解锁后已继续完成下述协议和负向路径验证。
+- 设备解锁后 HAP 启动成功，xrdp 在 `0.0.0.0:3390` 监听；HDC `tcp:13390 -> tcp:3390` 与 TLS MSTSC 会话建立成功。日志依次出现 `enumerator open requested id=4`、`enumerator channel ready`、`protocol version selected=2`，证明 HAP 已加载新版 callback ABI 且 DVC 协议链路可用。
+- Windows 主机 `DESKTOP-2RKE2O5` 的 `Camera` / `Image` PnP 设备枚举为空。使用 `camerastoredirect:s:*` 和显式空值分别连接时，MSTSC 都建立 enumerator v2，但不发送 `DeviceAdded`，符合无摄像头负向路径；桌面、H.264、输入、`audin` 等主链路保持工作。
+- 连续 3 次 MSTSC 连接/断开均输出 `enumerator_opens=1 devices_added=0 devices_removed=0 device_opens=0 streams=0 samples=0 bytes=0 sample_errors=0 errors=0`，断开后 3390 继续监听；A01 和无设备条件下的 A05 通过，带摄像头数据结果见下。
+- 带摄像头 Windows `192.168.43.36`（客户端名 `DESKTOP-B9D1U6R`）直连 OHOS `192.168.43.38:3390` 验收通过：枚举到 `Integrated Webcam_FHD` / `RDCamera_Device_0`，选择 MS-RDPECAM v2、stream 0 和 H.264 `1920x1080@30`（6 个候选媒体类型），随后进入 `stream started`。
+- 真帧持续增长至至少 1500 帧、27,525,668 字节；协议日志在 sample 1/2/3/300/600/900/1200/1500 处持续输出，HAP `FreeRDPBridge` callback 日志在对应采样时间同步出现，证明样本已穿过 xrdp backend callback 到达 HAP native 层。A02、A03 通过；Windows 权限拒绝、摄像头占用和热拔出等 A04 故障场景仍待补测，因此总状态暂不标为完整 `Verified`。

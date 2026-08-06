@@ -273,6 +273,10 @@ verify_outputs() {
     printf 'OHOS backend does not export mod_exit: %s\n' "$backend" >&2
     exit 1
   }
+  grep -q ' T xrdp_ohos_backend_set_rdpecam_callback' "$backend_symbols" || {
+    printf 'OHOS backend does not export rdpecam callback ABI: %s\n' "$backend" >&2
+    exit 1
+  }
   grep -q ' T xrdp_ohos_server_main' "$embedded_symbols" || {
     printf 'Embedded xrdp server does not export xrdp_ohos_server_main: %s\n' "$embedded_server" >&2
     exit 1
@@ -283,6 +287,10 @@ verify_outputs() {
   }
   grep -q 'lib=libxrdpohos.so' "$config" || {
     printf 'Installed xrdp.ini does not point to libxrdpohos.so: %s\n' "$config" >&2
+    exit 1
+  }
+  grep -q '^rdpecam=true$' "$config" || {
+    printf 'Installed xrdp.ini does not enable rdpecam: %s\n' "$config" >&2
     exit 1
   }
   if is_enabled "$ENABLE_OPENH264"; then
