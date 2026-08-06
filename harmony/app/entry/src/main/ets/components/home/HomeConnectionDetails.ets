@@ -12,6 +12,7 @@ export struct HomeConnectionDetails {
   @Link username: string
   @Link password: string
   @Link rememberPassword: boolean
+  @Prop passwordLoading: boolean = false
   @Prop selectedConnectionProfileId: string = ''
   @Prop connectionFeedbackText: string = ''
   @Prop connectionFeedbackTone: SettingsStatusTone = 'neutral'
@@ -105,7 +106,7 @@ export struct HomeConnectionDetails {
 
   @Builder
   private buildUsernameInput() {
-    TextInput({ placeholder: 'Username', text: $$this.username })
+    TextInput({ placeholder: HomeText.WINDOWS_USERNAME_PLACEHOLDER, text: $$this.username })
       .type(InputType.Normal)
       .constraintSize({ minHeight: 48 })
       .width('100%')
@@ -141,6 +142,7 @@ export struct HomeConnectionDetails {
         color: HomeTheme.mutedBorderColor(this.isDark),
         style: BorderStyle.Solid
       })
+      .enabled(!this.passwordLoading)
       .onChange((value: string) => {
         this.password = value
         this.onPasswordChange(value)
@@ -193,6 +195,7 @@ export struct HomeConnectionDetails {
     .borderRadius(7)
     .backgroundColor(HomeTheme.primaryButtonBackground(this.isDark, this.connectHovered, this.connectPressed))
     .stateEffect(false)
+    .enabled(!this.passwordLoading)
     .scale({ x: this.connectPressed ? 0.99 : 1, y: this.connectPressed ? 0.99 : 1 })
     .onHover((hovered: boolean) => {
       this.connectHovered = hovered

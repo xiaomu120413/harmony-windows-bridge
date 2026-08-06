@@ -3,7 +3,7 @@ export class HomeText {
 
   static readonly CONNECTION_DETAILS_TITLE: string = '连接详情'
   static readonly WINDOWS_USERNAME_LABEL: string = 'Windows 用户名'
-  static readonly WINDOWS_USERNAME_PLACEHOLDER: string = '例如：DESKTOP-ABC\\zhangsan'
+  static readonly WINDOWS_USERNAME_PLACEHOLDER: string = '远程主机名\\用户名，例如：DESKTOP-ABC\\zhangsan'
   static readonly REMEMBER_PASSWORD: string = '记住密码'
   static readonly DEVICE_ACTIONS: string = '设备操作'
   static readonly DELETE_ACTION: string = '删除'
