@@ -88,6 +88,13 @@ void SetXrdpCommonResult(napi_env env, napi_value result, const XrdpServerComman
     SetString(env, result, "logPath", command.logPath);
     SetBool(env, result, "activeMstscSession", command.activeMstscSession);
     SetUint32(env, result, "port", command.port);
+    SetString(env, result, "rdpecamDeviceName", command.rdpecamDeviceName);
+    SetUint32(env, result, "rdpecamFormat", command.rdpecamFormat);
+    SetUint32(env, result, "rdpecamWidth", command.rdpecamWidth);
+    SetUint32(env, result, "rdpecamHeight", command.rdpecamHeight);
+    SetUint64(env, result, "rdpecamSampleCount", command.rdpecamSampleCount);
+    SetUint64(env, result, "rdpecamBytes", command.rdpecamBytes);
+    SetUint32(env, result, "rdpecamErrors", command.rdpecamErrors);
 }
 
 napi_value MakeXrdpServerResult(napi_env env, const XrdpServerCommandResult& command)

@@ -37,6 +37,21 @@ The HAP may keep:
 - N-API transport, user options, app sandbox paths and certificate storage root;
 - `XComponent` / `NativeWindow` lifecycle and surface handle forwarding.
 
+The xrdp/OHOS server path follows the same ownership split independently of
+the FreeRDP client path:
+
+- `harmony/third_party/xrdp/ohos/ohos_*` owns xrdp module callbacks, standard
+  RDP channel state machines and OHOS platform sinks/sources;
+- the public `xrdp_ohos.h` ABI may expose versioned, bounded data/event
+  callbacks, but must not expose xrdp internal channel identifiers or parser
+  state;
+- `harmony/app/entry/src/main/cpp/xrdp` owns dynamic symbol loading, callback
+  registration and product diagnostics; it must not parse MS-RDPECAM or other
+  RDP channel PDUs;
+- ArkTS/N-API may expose counters and product controls, but protocol samples
+  must stay in native modules unless a separately designed bounded transport is
+  added.
+
 If a new feature needs RDP protocol state or OS data conversion, put the
 protocol/platform implementation in FreeRDP source first, then keep HAP code as
 a thin UI, permission or handle relay.

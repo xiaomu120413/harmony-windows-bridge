@@ -33,6 +33,14 @@ struct XrdpServerDiagnostics {
     uint32_t sessionBpp = 0;
     uint32_t backendEventCount = 0;
     uint32_t inputEventCount = 0;
+    uint32_t rdpecamDeviceCount = 0;
+    uint32_t rdpecamErrorCount = 0;
+    uint32_t rdpecamFormat = 0;
+    uint32_t rdpecamWidth = 0;
+    uint32_t rdpecamHeight = 0;
+    uint64_t rdpecamSampleCount = 0;
+    uint64_t rdpecamBytes = 0;
+    std::string rdpecamDeviceName;
     int lastExitCode = 0;
     std::string state;
     std::string message;
@@ -81,6 +89,14 @@ void AppendXrdpDiagnosticsLogs(XrdpServerDiagnostics& diagnostics, const XrdpLoa
         " inputEvents=" + std::to_string(diagnostics.inputEventCount) +
         " encodedBackpressure=" + std::to_string(capture.encoded_backpressure_count) +
         " lastExitCode=" + std::to_string(diagnostics.lastExitCode));
+    diagnostics.logs.push_back("xrdp rdpecam devices=" + std::to_string(diagnostics.rdpecamDeviceCount) +
+        " active=" + diagnostics.rdpecamDeviceName +
+        " format=" + std::to_string(diagnostics.rdpecamFormat) +
+        " size=" + std::to_string(diagnostics.rdpecamWidth) + "x" +
+            std::to_string(diagnostics.rdpecamHeight) +
+        " samples=" + std::to_string(diagnostics.rdpecamSampleCount) +
+        " bytes=" + std::to_string(diagnostics.rdpecamBytes) +
+        " errors=" + std::to_string(diagnostics.rdpecamErrorCount));
     diagnostics.logs.push_back("xrdp videoOwner=internal-capture externalFrameSubmit=disabled");
     if (captureStatus != XRDP_OHOS_BACKEND_STATUS_OK) {
         diagnostics.logs.push_back("xrdp capture diagnostics unavailable status=" +
@@ -127,6 +143,15 @@ XrdpServerDiagnostics SnapshotXrdpDiagnosticsLocked(const XrdpServerState& state
     diagnostics.sessionBpp = state.sessionBpp;
     diagnostics.backendEventCount = state.backendEventCount;
     diagnostics.inputEventCount = state.inputEventCount;
+    diagnostics.rdpecamDeviceCount = state.rdpecamDeviceCount;
+    diagnostics.rdpecamErrorCount = state.rdpecamErrorCount;
+    diagnostics.rdpecamFormat = state.rdpecamFormat;
+    diagnostics.rdpecamWidth = state.rdpecamWidth;
+    diagnostics.rdpecamHeight = state.rdpecamHeight;
+    diagnostics.rdpecamSampleCount = state.rdpecamSampleCount;
+    diagnostics.rdpecamBytes = state.rdpecamBytes;
+    diagnostics.rdpecamDeviceName = state.rdpecamDeviceName.empty() ?
+        "none" : state.rdpecamDeviceName;
     diagnostics.lastExitCode = state.lastExitCode.load();
     diagnostics.message = state.lastMessage;
     diagnostics.lastBackendEvent = state.lastBackendEvent.empty() ? "none" : state.lastBackendEvent;
@@ -260,6 +285,46 @@ void OnXrdpBackendEvent(const xrdp_ohos_backend_event* event, void*)
 
 }
 
+void OnXrdpRdpecamEvent(const xrdp_ohos_rdpecam_event* event, void*)
+{
+    if (event == nullptr || event->size < sizeof(xrdp_ohos_rdpecam_event) ||
+        event->version != XRDP_OHOS_RDPECAM_EVENT_VERSION) {
+        return;
+    }
+    uint64_t sampleCount = 0;
+    {
+        std::lock_guard<std::mutex> lock(ServerState().mutex);
+        XrdpServerState& state = ServerState();
+        if (event->type == XRDP_OHOS_RDPECAM_EVENT_DEVICE_ADDED) {
+            state.rdpecamDeviceCount++;
+            state.rdpecamDeviceName = event->device_name;
+        } else if (event->type == XRDP_OHOS_RDPECAM_EVENT_DEVICE_REMOVED) {
+            state.rdpecamDeviceCount = state.rdpecamDeviceCount > 0 ?
+                state.rdpecamDeviceCount - 1 : 0;
+        } else if (event->type == XRDP_OHOS_RDPECAM_EVENT_STREAM_STARTED) {
+            state.rdpecamFormat = event->format;
+            state.rdpecamWidth = event->width;
+            state.rdpecamHeight = event->height;
+        } else if (event->type == XRDP_OHOS_RDPECAM_EVENT_SAMPLE) {
+            state.rdpecamSampleCount++;
+            state.rdpecamBytes += event->data_bytes;
+            sampleCount = state.rdpecamSampleCount;
+        } else if (event->type == XRDP_OHOS_RDPECAM_EVENT_ERROR) {
+            state.rdpecamErrorCount++;
+        }
+    }
+    if (event->type != XRDP_OHOS_RDPECAM_EVENT_SAMPLE ||
+        sampleCount <= 3 || (sampleCount % 300) == 0) {
+        BridgeLogger::Info("xrdp rdpecam event=" + std::to_string(event->type) +
+            " device=" + std::string(event->device_name) +
+            " format=" + std::to_string(event->format) +
+            " size=" + std::to_string(event->width) + "x" + std::to_string(event->height) +
+            " sample=" + std::to_string(sampleCount) +
+            " bytes=" + std::to_string(event->data_bytes) +
+            " status=" + std::to_string(event->status));
+    }
+}
+
 } // namespace xrdp_bridge_internal
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
@@ -307,8 +372,15 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             result.state = "Listening";
             result.message = "xrdp server is already running";
             result.libraryPath = state.loaded.libraryPath;
-            result.activeMstscSession = state.activeMstscSession;
             XrdpServerDiagnostics diagnostics = SnapshotXrdpDiagnosticsLocked(state);
+            result.activeMstscSession = diagnostics.activeMstscSession;
+            result.rdpecamDeviceName = diagnostics.rdpecamDeviceName;
+            result.rdpecamFormat = diagnostics.rdpecamFormat;
+            result.rdpecamWidth = diagnostics.rdpecamWidth;
+            result.rdpecamHeight = diagnostics.rdpecamHeight;
+            result.rdpecamSampleCount = diagnostics.rdpecamSampleCount;
+            result.rdpecamBytes = diagnostics.rdpecamBytes;
+            result.rdpecamErrors = diagnostics.rdpecamErrorCount;
             result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
             return result;
         }
@@ -346,6 +418,14 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         state.sessionWidth = 0;
         state.sessionHeight = 0;
         state.sessionBpp = 0;
+        state.rdpecamDeviceCount = 0;
+        state.rdpecamErrorCount = 0;
+        state.rdpecamFormat = 0;
+        state.rdpecamWidth = 0;
+        state.rdpecamHeight = 0;
+        state.rdpecamSampleCount = 0;
+        state.rdpecamBytes = 0;
+        state.rdpecamDeviceName.clear();
         state.lastMessage = "xrdp server thread starting";
         state.lastBackendEvent = "none";
         state.lastDisconnectReason = "none";
@@ -390,6 +470,13 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         std::lock_guard<std::mutex> lock(state.mutex);
         XrdpServerDiagnostics diagnostics = SnapshotXrdpDiagnosticsLocked(state);
         result.activeMstscSession = diagnostics.activeMstscSession;
+        result.rdpecamDeviceName = diagnostics.rdpecamDeviceName;
+        result.rdpecamFormat = diagnostics.rdpecamFormat;
+        result.rdpecamWidth = diagnostics.rdpecamWidth;
+        result.rdpecamHeight = diagnostics.rdpecamHeight;
+        result.rdpecamSampleCount = diagnostics.rdpecamSampleCount;
+        result.rdpecamBytes = diagnostics.rdpecamBytes;
+        result.rdpecamErrors = diagnostics.rdpecamErrorCount;
         result.logs.insert(result.logs.end(), diagnostics.logs.begin(), diagnostics.logs.end());
     }
     BridgeLogger::Info(result.message);
@@ -412,6 +499,13 @@ XrdpServerCommandResult GetXrdpServerDiagnostics()
     result.logPath = diagnostics.logPath;
     result.activeMstscSession = diagnostics.activeMstscSession;
     result.port = diagnostics.port;
+    result.rdpecamDeviceName = diagnostics.rdpecamDeviceName;
+    result.rdpecamFormat = diagnostics.rdpecamFormat;
+    result.rdpecamWidth = diagnostics.rdpecamWidth;
+    result.rdpecamHeight = diagnostics.rdpecamHeight;
+    result.rdpecamSampleCount = diagnostics.rdpecamSampleCount;
+    result.rdpecamBytes = diagnostics.rdpecamBytes;
+    result.rdpecamErrors = diagnostics.rdpecamErrorCount;
     return result;
 }
 

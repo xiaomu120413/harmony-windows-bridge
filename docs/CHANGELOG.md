@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| `CHG-20260806-002` | `feat(xrdp): add OHOS rdpecam camera redirection` | 功能/xrdp OHOS 摄像头重定向 | 在 xrdp OHOS backend 接入标准 MS-RDPECAM v1/v2 动态虚拟通道，完成设备枚举、媒体类型协商和样本请求循环，并通过 N-API/ArkTS 暴露低频诊断状态；默认配置启用摄像头重定向。 | xrdp OHOS arm64 交叉编译、Debug HAP 构建签名及真机安装启动通过；Windows 11 MSTSC v2 将 `Integrated Webcam_FHD` 以 H.264 1920×1080@30 连续传入，实测至少 1500 帧/27,525,668 字节且错误为 0；无摄像头主机 3 次连接/断开错误为 0。权限拒绝、占用和热拔插待补。关联 `docs/xrdp-ohos-mstsc-penetration-plan.md`。 |
 | `CHG-20260806-001` | `fix(ux): constrain minimum app window size` | 修复/应用窗口与 Compact 布局 | 为主 UIAbility 恢复适度的 `720 × 560vp` 窗口下限，保留 Compact 小窗能力，同时阻止标题截断、设备条目消失和底部状态区挤占主体的过小窗口；补回连接详情已引用但缺失的 Windows 用户名标签常量，保证完整构建可复现。 | ArkTS 策略测试和 Debug HAP 完整构建签名通过；真机覆盖安装后拖拽停在 `1368 × 1064px`（密度 1.9），标题、设备条目和四张状态卡完整显示。关联 `docs/settings-desktop-current-interactions.md`。 |
 
 ## 2026-08-05
