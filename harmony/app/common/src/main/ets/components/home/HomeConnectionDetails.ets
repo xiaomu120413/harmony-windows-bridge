@@ -61,6 +61,20 @@ export struct HomeConnectionDetails {
   }
 
   @Builder
+  private buildActionLabel(text: string) {
+    Row() {
+      Text(text)
+        .fontSize(16)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .maxLines(1)
+    }
+    .width('100%')
+    .height(SettingsTheme.SECONDARY_ACTION_HEIGHT)
+    .alignItems(VerticalAlign.Center)
+    .justifyContent(this.formBreakpoint === 'xs' ? FlexAlign.Start : FlexAlign.End)
+  }
+
+  @Builder
   private buildHostInput() {
     TextInput({ placeholder: 'Windows host', text: $$this.host })
       .type(InputType.Normal)
@@ -277,7 +291,7 @@ export struct HomeConnectionDetails {
       breakpoints: { value: ['600vp'], reference: BreakpointsReference.ComponentSize }
     }) {
       GridCol({ span: { xs: 12, sm: 3 } }) {
-        this.buildFieldLabel(HomeText.DEVICE_ACTIONS)
+        this.buildActionLabel(HomeText.DEVICE_ACTIONS)
       }
       GridCol({ span: { xs: 12, sm: 9 } }) {
         GridRow({ columns: 12, gutter: { x: 12, y: 8 } }) {

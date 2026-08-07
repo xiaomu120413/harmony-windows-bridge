@@ -182,6 +182,8 @@ if (-not $allEtsText.Contains('SECONDARY_ACTION_HEIGHT: number = 36') -or
   -not $deviceListText.Contains('minWidth: 136, minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT') -or
   ([regex]::Matches($connectionDetailsText,
     'constraintSize\(\{ minHeight: SettingsTheme\.SECONDARY_ACTION_HEIGHT \}\)').Count -lt 2) -or
+  -not $connectionDetailsText.Contains('this.buildActionLabel(HomeText.DEVICE_ACTIONS)') -or
+  -not $connectionDetailsText.Contains('.height(SettingsTheme.SECONDARY_ACTION_HEIGHT)') -or
   -not $projectHelpText.Contains('.constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })') -or
   ([regex]::Matches($remoteCardsText,
     'constraintSize\(\{ minHeight: SettingsTheme\.SECONDARY_ACTION_HEIGHT \}\)').Count -lt 4)) {
