@@ -99,9 +99,17 @@ void app_connect_worker(struct app_state* app)
 void send_sample_input(struct app_state* app)
 {
     char message[512] = { 0 };
+    FREERDP_OHOS_SESSION_RESIZE_REQUEST resize = {
+        sizeof(FREERDP_OHOS_SESSION_RESIZE_REQUEST),
+        FREERDP_OHOS_SESSION_RESIZE_VERSION,
+        1600, 900, ORIENTATION_LANDSCAPE,
+        344, 194, 100, 100
+    };
+    FREERDP_OHOS_SESSION_RESIZE_RESULT resizeResult = { 0 };
+    resizeResult.structSize = sizeof(resizeResult);
     freerdp_ohos_session_send_pointer(app->session, &viewport, &pointerEvent, message, sizeof(message));
     freerdp_ohos_session_send_key(app->session, &keyEvent, message, sizeof(message));
-    freerdp_ohos_session_resize(app->session, 1600, 900, message, sizeof(message));
+    freerdp_ohos_session_resize_ex(app->session, &resize, &resizeResult, message, sizeof(message));
 }
 
 void stop_session(struct app_state* app)
@@ -112,12 +120,17 @@ void stop_session(struct app_state* app)
 }
 ```
 
+`resize` 必须描述完整单屏 Monitor Layout：像素尺寸、物理毫米、方向、desktop scale
+和 device scale。连接前应保存最新 desired layout，连接后再通过 `disp` 发送；动态分辨率
+由客户端窗口/本地显示拓扑驱动，不用于读取远端 Windows 主机的物理显示器设置。
+
 ## 权限和 Surface 回调
 
 HAP 必须在 `module.json5` 声明首版实际启用的权限：
 
 - `ohos.permission.PRINT`
 - `ohos.permission.CUSTOM_SCREEN_RECORDING`
+- `ohos.permission.CONTROL_DEVICE`（API 26 被控端长期键鼠注入；需受限权限审核和 profile ACL）
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
 - `ohos.permission.CAMERA`

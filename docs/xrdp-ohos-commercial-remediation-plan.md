@@ -616,3 +616,26 @@ xrdp session summary:
   远程协助确认 UI；产品说明和验收用例需要按“可能出现系统确认”设计。
 - full-disk access 只用于用户授权后的文件类剪贴板/URI 长期访问，不作为绕过
   系统确认框的手段。
+
+## 18. API 26 输入注入授权兼容设计
+
+API 26 增加适合被控端长期使用的 `ohos.permission.CONTROL_DEVICE`。xrdp OHOS
+输入门禁按以下顺序判定：
+
+1. 通过 Ability Access Control Native API 检查当前应用的 `CONTROL_DEVICE`；已授予则
+   缓存成功状态并直接进入既有键鼠注入函数。未授权状态最多每秒重查一次，避免热路径持续 IPC。
+2. 未授予时继续查询旧的 injection dialog 状态；已授权则沿用该会话授权。
+3. 两者均未授权时，继续按现有 5 秒限频请求 injection dialog，避免每个输入事件弹框。
+
+API 26 的 `OH_Input_QueryAuthorizedStatus` 只返回 dialog 授权，不反映
+`CONTROL_DEVICE`，所以不能单独作为总权限状态。实现仅修改 OHOS backend 的授权适配层
+和链接库，不改变 xrdp 通用输入 ABI，不记录具体按键、文本或逐事件权限日志。
+
+## 19. 2026-08-06 raw capture 生命周期并发收口
+
+- Change ID：`XRDP-OHOS-CAPTURE-LIFECYCLE-001`
+- 状态：`Implemented / BuildVerified / DevicePending`
+- 问题边界：动态显示 resize、suppress/resume 或快速断连可能让 raw capture 的 `Start()` 与 `Stop()` 并发进入；原实现只使用状态锁，并在启动失败时临时解锁等待 worker，无法保证 capture 指针、worker 和 audio pump 的完整生命周期互斥。
+- 实现：`RawScreenCapture` 新增独立 `lifecycleMutex_` 串行化 Start/Stop，状态锁只保护短时字段访问，不阻塞 AVScreenCapture callback；启动失败时在状态锁内一次性摘除 worker/capture，再在锁外 join、停止 audio pump 和释放 capture。
+- 不变项：帧队列、回调线程、采集参数、raw 像素格式、H264 路径和 RDP 协议行为不变。
+- 验收：OHOS arm64 xrdp 完整交叉构建、安装和产物检查通过；连续 resize/suppress/disconnect 真机压力测试尚未执行，因此不标记为完整 Verified。

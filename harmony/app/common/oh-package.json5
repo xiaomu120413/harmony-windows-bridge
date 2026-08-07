@@ -1,0 +1,11 @@
+{
+  "name": "common",
+  "version": "1.0.0",
+  "description": "MuHub shared UI and RDP client package.",
+  "main": "Index.ets",
+  "author": "MuHub",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "librdpclient.so": "file:./src/main/cpp/types/librdpclient"
+  }
+}

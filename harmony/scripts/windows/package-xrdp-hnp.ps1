@@ -6,6 +6,7 @@ param(
   [string]$HnpVersion = "0.1.0",
   [string]$HnpCliPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\hnpcli.exe",
   [string]$StripToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-strip.exe",
+  [string]$ReadElfToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-readelf.exe",
   [switch]$Force
 )
 
@@ -29,7 +30,6 @@ $sysroot = Join-Path $source "sysroot"
 $xrdpLibSource = Join-Path $sysroot "lib/xrdp"
 $depsLibSource = Join-Path $deps "sysroot/lib"
 $xrdpExecutable = Join-Path $sysroot "sbin/xrdp"
-$embeddedServer = Join-Path $sysroot "lib/libxrdpserver.so"
 $configSource = Join-Path $source "config/xrdp"
 $shareSource = Join-Path $sysroot "share/xrdp"
 
@@ -88,9 +88,6 @@ if (-not (Test-Path -LiteralPath $HnpCliPath)) {
 if (-not (Test-Path -LiteralPath $xrdpExecutable)) {
   throw "Missing xrdp executable: $xrdpExecutable"
 }
-if (-not (Test-Path -LiteralPath $embeddedServer)) {
-  throw "Missing embedded xrdp server library: $embeddedServer"
-}
 if (-not (Test-Path -LiteralPath $configSource)) {
   throw "Missing xrdp config directory: $configSource"
 }
@@ -109,7 +106,6 @@ $sourceInputs = @(
   (Join-Path $PSScriptRoot "build-cache.ps1"),
   (Join-Path $PSScriptRoot "xrdp-runtime-material.ps1"),
   $xrdpExecutable,
-  $embeddedServer,
   (Join-Path $xrdpLibSource "libcommon.so.0.0.0"),
   (Join-Path $xrdpLibSource "libipm.so.0.0.0"),
   (Join-Path $xrdpLibSource "libtoml.so.1.0.0"),
@@ -127,7 +123,7 @@ $sourceInputs = @(
 $fingerprint = Get-BuildCacheFingerprint `
   -Root $repoRoot `
   -Paths $sourceInputs `
-  -Extra @("package-xrdp-hnp:v1", "name=$HnpName", "version=$HnpVersion", "target=$TargetHnpRoot", "strip=$StripToolPath")
+  -Extra @("package-xrdp-hnp:v2-executable-only", "name=$HnpName", "version=$HnpVersion", "target=$TargetHnpRoot", "strip=$StripToolPath")
 
 if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs @($targetHnp))) {
   $targetHnpItem = Get-Item -LiteralPath $targetHnp
@@ -145,8 +141,6 @@ $stageShare = Join-Path $stage "share"
 New-Item -ItemType Directory -Force -Path $stageBin, $stageConfig, $stageLib, $stageShare | Out-Null
 
 Copy-Item -LiteralPath $xrdpExecutable -Destination (Join-Path $stageBin "xrdp") -Force
-Copy-Item -LiteralPath $embeddedServer -Destination (Join-Path $stageLib "libxrdpserver.so") -Force
-
 Copy-LibraryAs $xrdpLibSource "libcommon.so.0.0.0" "libcommon.so.0" $stageLib
 Copy-LibraryAs $xrdpLibSource "libipm.so.0.0.0" "libipm.so.0" $stageLib
 Copy-LibraryAs $xrdpLibSource "libtoml.so.1.0.0" "libtoml.so.1" $stageLib
@@ -185,7 +179,6 @@ Set-Content -LiteralPath (Join-Path $stage "hnp.json") -Value $hnpJson -Encoding
 
 $requiredHnpStageFiles = @(
   (Join-Path $stageBin "xrdp"),
-  (Join-Path $stageLib "libxrdpserver.so"),
   (Join-Path $stageLib "libxrdpohos.so"),
   (Join-Path $stageLib "libxrdp.so.0"),
   (Join-Path $stageLib "libcommon.so.0"),
@@ -210,6 +203,25 @@ foreach ($path in $requiredHnpStageFiles) {
 Strip-FileIfPossible (Join-Path $stageBin "xrdp")
 Get-ChildItem -LiteralPath $stageLib -File | ForEach-Object {
   Strip-FileIfPossible $_.FullName
+}
+
+if (-not (Test-Path -LiteralPath $ReadElfToolPath)) {
+  throw "llvm-readelf was not found: $ReadElfToolPath"
+}
+$elfFiles = @((Join-Path $stageBin "xrdp")) + @(Get-ChildItem -LiteralPath $stageLib -File |
+  Select-Object -ExpandProperty FullName)
+foreach ($elf in $elfFiles) {
+  $dynamic = (& $ReadElfToolPath -d $elf 2>&1) -join "`n"
+  if ($LASTEXITCODE -ne 0) {
+    throw "llvm-readelf failed for staged HNP ELF: $elf"
+  }
+  if ($dynamic -match '/mnt/' -or $dynamic -match '[A-Za-z]:\\' -or
+      $dynamic -match '/Users/' -or $dynamic -match '/home/') {
+    throw "Build-machine path leaked into staged HNP ELF: $elf"
+  }
+  if ($dynamic -match 'Shared library: \[libxrdpserver\.so\]') {
+    throw "Executable HNP unexpectedly depends on removed embedded server library: $elf"
+  }
 }
 
 if (Test-Path -LiteralPath $targetHnp) {

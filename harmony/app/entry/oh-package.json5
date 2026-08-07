@@ -6,6 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "libentry.so": "file:./src/main/cpp/types/libentry"
+    "common": "file:../common",
+    "libxrdpcontrol.so": "file:./src/main/cpp/types/libxrdpcontrol"
   }
 }

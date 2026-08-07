@@ -3,6 +3,9 @@ config.local.json
 agent.md
 app-server*.log
 
+# Local validation captures and generated reports
+artifacts/
+
 # Dependencies and downloaded tools
 node_modules/
 tools/vcpkg/
@@ -10,12 +13,17 @@ tools/freerdp/*.exe
 tools/hapsigner/*.hap
 tools/hapsigner/output/
 tools/hapsigner/stage-*/
+tools/hapsigner/*.bat
 
 # HarmonyOS local build output
 .hvigor/
 harmony/app/.hvigor/
 harmony/app/oh_modules/
+harmony/app/**/oh_modules/
+harmony/app/**/.cxx/
+harmony/app/**/.test/
 harmony/app/entry/libs/
+harmony/app/common/libs/
 harmony/app/entry/hnp/
 harmony/app/entry/src/main/resources/rawfile/xrdp/
 harmony/app/entry/src/main/libs/

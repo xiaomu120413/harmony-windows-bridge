@@ -6,11 +6,11 @@ param(
   [string]$JavaPath = "C:\Program Files\Huawei\DevEco Studio\jbr\bin\java.exe",
   [string]$AppPackingToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\app_packing_tool.jar",
   [string]$HapSignToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar",
-  [string]$SigningRoot = "tools/app",
-  [string]$KeyAlias = "muhub",
-  [string]$AppCertFileName = "muhub_debug.cer",
-  [string]$ProfileFileName = "muhub_debugDebug.p7b",
-  [string]$KeystoreFileName = "muhub.p12",
+  [string]$SigningRoot = "tools/hapsigner",
+  [string]$KeyAlias = "openharmony application release",
+  [string]$AppCertFileName = "OpenHarmonyApplication.pem",
+  [string]$ProfileFileName = "ohos_provision_debug.p7b",
+  [string]$KeystoreFileName = "OpenHarmony.p12",
   [string]$SigningPassword = "",
   [switch]$Force
 )
@@ -25,11 +25,15 @@ $hnpSourceRootPath = Resolve-Path (Join-Path $repoRoot $HnpSourceRoot)
 $outputs = Join-Path $moduleRootPath "build/default/outputs/default"
 $intermediates = Join-Path $moduleRootPath "build/default/intermediates"
 $nativeOut = Join-Path $outputs "native"
-$nativeRuntimeSource = Join-Path $moduleRootPath "libs/arm64-v8a/xrdp"
 $defaultLibPath = Join-Path $intermediates "libs/default"
 $strippedLibPath = Join-Path $intermediates "stripped_native_libs/default"
-$libPath = if (Test-Path -LiteralPath $strippedLibPath) { $strippedLibPath } else { $defaultLibPath }
-$nativeRuntimeTarget = Join-Path $libPath "arm64-v8a/xrdp"
+$libPath = if (Test-Path -LiteralPath $strippedLibPath) {
+  $strippedLibPath
+} elseif (Test-Path -LiteralPath $defaultLibPath) {
+  $defaultLibPath
+} else {
+  $null
+}
 
 $unsignedHnp = Join-Path $outputs "entry-default-unsigned-hnp.hap"
 $signedHnp = Join-Path $outputs "entry-default-signed-hnp.hap"
@@ -70,7 +74,6 @@ $requiredInputs = @(
   (Join-Path $intermediates "package/default/module.json"),
   (Join-Path $intermediates "res/default/resources"),
   (Join-Path $intermediates "loader_out/default/ets"),
-  $libPath,
   (Join-Path $intermediates "res/default/resources.index"),
   (Join-Path $intermediates "loader/default/pkgContextInfo.json"),
   (Join-Path $outputs "pack.info")
@@ -102,14 +105,8 @@ foreach ($path in $requiredInputs) {
     $fingerprintInputs.Add($path)
   }
 }
-$nativeRuntimeTargetFull = [System.IO.Path]::GetFullPath($nativeRuntimeTarget).TrimEnd('\', '/')
-Get-ChildItem -LiteralPath $libPath -Recurse -File | Where-Object {
-  -not $_.FullName.StartsWith($nativeRuntimeTargetFull, [System.StringComparison]::OrdinalIgnoreCase)
-} | ForEach-Object {
-  $fingerprintInputs.Add($_.FullName)
-}
-if (Test-Path -LiteralPath $nativeRuntimeSource) {
-  $fingerprintInputs.Add($nativeRuntimeSource)
+if ($null -ne $libPath) {
+  $fingerprintInputs.Add($libPath)
 }
 foreach ($path in @($appCertFile, $profileFile, $keystoreFile)) {
   $fingerprintInputs.Add($path)
@@ -119,7 +116,7 @@ $stampFile = Join-Path $outputs ".entry-default-signed-hnp.input.sha256"
 $fingerprint = Get-BuildCacheFingerprint `
   -Root $repoRoot `
   -Paths $fingerprintInputs.ToArray() `
-  -Extra @("repack-hap-with-hnp:v2", "hnp=$HnpPackage", "compatible=$CompatibleVersion", "libPath=$libPath",
+  -Extra @("repack-hap-with-hnp:v3", "hnp=$HnpPackage", "compatible=$CompatibleVersion", "libPath=$libPath",
     "signingRoot=$SigningRoot", "keyAlias=$KeyAlias", "cert=$AppCertFileName", "profile=$ProfileFileName",
     "keystore=$KeystoreFileName")
 
@@ -135,26 +132,24 @@ Reset-Directory $nativeOut
 Get-ChildItem -LiteralPath $hnpSourceRootPath | ForEach-Object {
   Copy-Item -LiteralPath $_.FullName -Destination $nativeOut -Recurse -Force
 }
-if (Test-Path -LiteralPath $nativeRuntimeSource) {
-  Assert-PathInsideRepo $nativeRuntimeTarget
-  if (Test-Path -LiteralPath $nativeRuntimeTarget) {
-    Remove-Item -LiteralPath $nativeRuntimeTarget -Recurse -Force
-  }
-  Copy-Item -LiteralPath $nativeRuntimeSource -Destination $nativeRuntimeTarget -Recurse -Force
+$packArgs = @(
+  "-jar", $AppPackingToolJar,
+  "--mode", "hap",
+  "--json-path", (Join-Path $intermediates "package/default/module.json"),
+  "--resources-path", (Join-Path $intermediates "res/default/resources"),
+  "--ets-path", (Join-Path $intermediates "loader_out/default/ets"),
+  "--out-path", $unsignedHnp,
+  "--hnp-path", $nativeOut,
+  "--index-path", (Join-Path $intermediates "res/default/resources.index"),
+  "--pack-info-path", (Join-Path $outputs "pack.info"),
+  "--pkg-context-path", (Join-Path $intermediates "loader/default/pkgContextInfo.json"),
+  "--force", "true"
+)
+if ($null -ne $libPath) {
+  $packArgs += @("--lib-path", $libPath)
 }
 
-& $JavaPath -jar $AppPackingToolJar `
-  --mode hap `
-  --json-path (Join-Path $intermediates "package/default/module.json") `
-  --resources-path (Join-Path $intermediates "res/default/resources") `
-  --ets-path (Join-Path $intermediates "loader_out/default/ets") `
-  --out-path $unsignedHnp `
-  --hnp-path $nativeOut `
-  --lib-path $libPath `
-  --index-path (Join-Path $intermediates "res/default/resources.index") `
-  --pack-info-path (Join-Path $outputs "pack.info") `
-  --pkg-context-path (Join-Path $intermediates "loader/default/pkgContextInfo.json") `
-  --force true
+& $JavaPath @packArgs
 if ($LASTEXITCODE -ne 0) {
   throw "app_packing_tool failed with exit code $LASTEXITCODE"
 }
@@ -193,15 +188,6 @@ if ($LASTEXITCODE -ne 0) {
 if (-not ($tarList | Where-Object { $_ -eq $hnpEntry })) {
   throw "Signed HAP does not contain expected HNP entry: $hnpEntry"
 }
-if (-not ($tarList | Where-Object { $_ -eq "libs/arm64-v8a/libentry.so" })) {
-  throw "Signed HAP native library layout is invalid"
-}
-if (Test-Path -LiteralPath $nativeRuntimeSource) {
-  if (-not ($tarList | Where-Object { $_ -eq "libs/arm64-v8a/xrdp/config/xrdp.ini" })) {
-    throw "Signed HAP does not contain xrdp native runtime config"
-  }
-}
-
 Copy-Item -LiteralPath $unsignedHnp -Destination $unsignedDefault -Force
 Copy-Item -LiteralPath $signedHnp -Destination $signedDefault -Force
 

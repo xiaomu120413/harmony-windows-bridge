@@ -8,7 +8,6 @@ FREERDP_BUILD_SRC=""
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/harmony/out/ohos-arm64}"
 PREFIX="$OUT_DIR/sysroot"
 LOG_DIR="$OUT_DIR/logs"
-PROBE_DIR="$OUT_DIR/probe"
 RUNTIME_DIR="$OUT_DIR/runtime-libs"
 
 OHOS_ARCH="${OHOS_ARCH:-arm64-v8a}"
@@ -316,7 +315,7 @@ EOF
 }
 
 prepare_sources() {
-  mkdir -p "$SRC_DIR" "$BUILD_DIR" "$PREFIX" "$LOG_DIR" "$PROBE_DIR"
+  mkdir -p "$SRC_DIR" "$BUILD_DIR" "$PREFIX" "$LOG_DIR"
 
   download_tarball "$SRC_DIR/openssl-$OPENSSL_VERSION.tar.gz" \
     "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" \
@@ -759,7 +758,8 @@ build_freerdp() {
     -DCHANNEL_RDPEAR=OFF \
     -DCHANNEL_RDPECAM=ON \
     -DCHANNEL_RDPECAM_CLIENT=ON \
-    -DCHANNEL_RDPEI=OFF \
+    -DCHANNEL_RDPEI=ON \
+    -DCHANNEL_RDPEI_CLIENT=ON \
     -DCHANNEL_RDPEMSC=OFF \
     -DCHANNEL_RDPEWA=OFF \
     -DCHANNEL_REMDESK=OFF \
@@ -878,78 +878,6 @@ stage_runtime_libs() {
   fi
 }
 
-build_probe() {
-  local source="$BUILD_DIR/freerdp_ohos_probe.c"
-  local output="$PROBE_DIR/libfreerdp_ohos_probe.so"
-  mkdir -p "$PROBE_DIR"
-
-  cat > "$source" <<'EOF'
-#include <cjson/cJSON.h>
-#include <freerdp/freerdp.h>
-#include <openssl/crypto.h>
-#include <winpr/winpr.h>
-#include <winpr/wlog.h>
-
-#include <stdio.h>
-
-__attribute__((visibility("default"))) const char* freerdp_ohos_probe(void)
-{
-    static char fallback[512];
-    WLog_INFO("com.freerdp.ohos.probe",
-              "FREERDP_HILOG_BRIDGE_READY WinPR WLog probe reached");
-
-    cJSON* root = cJSON_CreateObject();
-    if (!root) {
-        return "{\"ok\":false,\"error\":\"cJSON_CreateObject failed\"}";
-    }
-
-    int freerdp_major = 0;
-    int freerdp_minor = 0;
-    int freerdp_revision = 0;
-    freerdp_get_version(&freerdp_major, &freerdp_minor, &freerdp_revision);
-
-    int winpr_major = 0;
-    int winpr_minor = 0;
-    int winpr_revision = 0;
-    winpr_get_version(&winpr_major, &winpr_minor, &winpr_revision);
-
-    cJSON_AddBoolToObject(root, "ok", 1);
-    cJSON_AddStringToObject(root, "module", "freerdp_ohos_probe");
-    cJSON_AddStringToObject(root, "freerdpVersion", freerdp_get_version_string());
-    cJSON_AddStringToObject(root, "winprVersion", winpr_get_version_string());
-    cJSON_AddStringToObject(root, "opensslVersion", OpenSSL_version(OPENSSL_VERSION));
-    cJSON_AddNumberToObject(root, "freerdpMajor", freerdp_major);
-    cJSON_AddNumberToObject(root, "freerdpMinor", freerdp_minor);
-    cJSON_AddNumberToObject(root, "freerdpRevision", freerdp_revision);
-    cJSON_AddNumberToObject(root, "winprMajor", winpr_major);
-    cJSON_AddNumberToObject(root, "winprMinor", winpr_minor);
-    cJSON_AddNumberToObject(root, "winprRevision", winpr_revision);
-
-    char* json = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!json) {
-        return "{\"ok\":false,\"error\":\"cJSON_PrintUnformatted failed\"}";
-    }
-
-    snprintf(fallback, sizeof(fallback), "%s", json);
-    cJSON_free(json);
-    return fallback;
-}
-EOF
-
-  log "build OHOS probe shared library"
-  "$OHOS_LLVM_HOME/bin/aarch64-unknown-linux-ohos-clang" \
-    -fPIC -shared "$source" -o "$output" \
-    -I"$PREFIX/include" \
-    -I"$PREFIX/include/freerdp3" \
-    -I"$PREFIX/include/winpr3" \
-    -L"$PREFIX/lib" \
-    -Wl,-rpath,'$ORIGIN/../sysroot/lib' \
-    -Wl,-rpath-link,"$PREFIX/lib" \
-    -lfreerdp-client3 -lfreerdp3 -lwinpr3 -lssl -lcrypto -lcjson -lz \
-    2>&1 | tee "$LOG_DIR/probe-build.log"
-}
-
 write_manifest() {
   local manifest="$OUT_DIR/manifest.txt"
   local freerdp_commit="unknown"
@@ -982,7 +910,7 @@ write_manifest() {
     printf 'ccache_launcher=%s\n' "${CCACHE_LAUNCHER:-none}"
     printf 'ccache_dir=%s\n' "${CCACHE_DIR:-}"
     printf '\n[libs]\n'
-    find "$PREFIX/lib" "$PROBE_DIR" -maxdepth 2 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
+    find "$PREFIX/lib" -maxdepth 2 -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
     printf '\n[runtime-libs]\n'
     find "$RUNTIME_DIR" -type f \( -name '*.so' -o -name '*.so.*' \) -printf '%p\n' | sort
   } > "$manifest"
@@ -1005,7 +933,6 @@ verify_elf_outputs() {
     "$PREFIX/lib"/libopenh264*.so* \
     "$PREFIX/lib"/libav*.so* \
     "$PREFIX/lib"/libsw*.so* \
-    "$PROBE_DIR"/libfreerdp_ohos_probe.so \
     "$RUNTIME_DIR"/*.so* \
     "$RUNTIME_DIR"/ossl-modules/*.so*; do
     [[ -e "$lib" ]] || continue
@@ -1042,7 +969,6 @@ main() {
   build_ffmpeg
   build_freerdp
   stage_runtime_libs
-  build_probe
   write_manifest
   verify_elf_outputs
 

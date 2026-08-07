@@ -37,6 +37,16 @@
         }
       },
       {
+        "name": "ohos.permission.CONTROL_DEVICE",
+        "reason": "$string:control_device_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
         "name": "ohos.permission.PRINT"
       },
       {
@@ -93,7 +103,8 @@
     "hnpPackages": [
       {
         "package": "xrdp.hnp",
-        "type": "private"
+        "type": "private",
+        "independentSign": false
       }
     ],
     "pages": "$profile:main_pages",
@@ -106,9 +117,10 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:transparent_start_icon",
         "startWindowBackground": "$color:start_window_background",
-        "minWindowWidth": 1280,
-        "minWindowHeight": 760,
-        "supportWindowMode": ["fullscreen", "floating"],
+        "supportWindowMode": ["fullscreen", "floating", "split"],
+        "orientation": "auto_rotation",
+        "minWindowWidth": 660,
+        "minWindowHeight": 540,
         "exported": true,
         "skills": [
           {
@@ -120,6 +132,17 @@
             ]
           }
         ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "MuHubPrintExtension",
+        "srcEntry": "./ets/print/MuHubPrintExtension.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "type": "print",
+        "exported": true
       }
     ]
   }

@@ -37,6 +37,21 @@ The HAP may keep:
 - N-API transport, user options, app sandbox paths and certificate storage root;
 - `XComponent` / `NativeWindow` lifecycle and surface handle forwarding.
 
+The xrdp/OHOS server path follows the same ownership split independently of
+the FreeRDP client path:
+
+- `harmony/third_party/xrdp/ohos/ohos_*` owns xrdp module callbacks, standard
+  RDP channel state machines and OHOS platform sinks/sources;
+- the public `xrdp_ohos.h` ABI may expose versioned, bounded data/event
+  callbacks, but must not expose xrdp internal channel identifiers or parser
+  state;
+- `harmony/app/entry/src/main/cpp/xrdp` owns dynamic symbol loading, callback
+  registration and product diagnostics; it must not parse MS-RDPECAM or other
+  RDP channel PDUs;
+- ArkTS/N-API may expose counters and product controls, but protocol samples
+  must stay in native modules unless a separately designed bounded transport is
+  added.
+
 If a new feature needs RDP protocol state or OS data conversion, put the
 protocol/platform implementation in FreeRDP source first, then keep HAP code as
 a thin UI, permission or handle relay.
@@ -149,6 +164,36 @@ in progress. New code should still follow the target ownership rules below.
 - Owns latest-frame queueing, dirty merge, render pacing, render worker, and
   render statistics.
 - Uses injected callbacks for actual surface painting and logging.
+
+`session/rdp_display_resize_coordinator.*`
+
+- Owns the App-side display resize state machine, target generations, the bounded
+  Sent deadline, and fallback notification.
+- Consumes structured resize outcomes from `session/rdp_session_channels.*` and
+  decides whether an incoming GDI frame may enter the render queue.
+- Must not parse diagnostics strings, call N-API, own an XComponent, or create a
+  second viewport algorithm.
+- Timer lifetime is owned by the coordinator; destruction must stop and join the
+  worker instead of leaving a detached callback that captures global state.
+
+`session/rdp_display_resize_types.h`
+
+- Owns only App-level resize status/result value types and their status-name helper.
+- Has no HarmonyOS, NativeWindow, FreeRDP, channel, surface, or N-API dependencies,
+  so the coordinator state machine remains host-testable.
+
+`input/xcomponent_pen.*`
+
+- Owns Native XComponent pen tool classification, pressure/tilt extraction and active-pen cleanup.
+- Reuses session input geometry mapping and delegates RDPEI semantics to the FreeRDP OHOS session API.
+- Must not add ArkTS callbacks, UI switches or a second viewport algorithm.
+
+`session/rdp_display_layout_monitor.*`
+
+- Owns `OH_NativeDisplayManager` display enumeration/listeners and conversion to the versioned
+  FreeRDP OHOS monitor-layout request.
+- Must not own Surface rendering, ArkTS window layout or RDPEDISP wire encoding.
+- Keeps primary-display translation and physical-display metadata host-testable in pure helpers.
 
 `surface/gpu_rgba_renderer.*`
 
