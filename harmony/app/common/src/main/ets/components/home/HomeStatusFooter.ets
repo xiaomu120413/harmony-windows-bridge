@@ -1,5 +1,5 @@
 import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
-import { SettingsRemoteControlSection, SettingsText } from '../settings/SettingsConstants'
+import { SettingsRemoteControlSection, SettingsRemoteText } from '../settings/SettingsConstants'
 import { SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeResources } from './HomeResources'
 import { HomeText } from './HomeText'
@@ -52,14 +52,14 @@ export struct HomeStatusFooter {
   @State private pressedSection: string = ''
 
   private serviceStatusTone(): SettingsStatusTone {
-    return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
+    return SettingsRemoteText.serverStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
   }
 
   private serviceStatusText(): string {
     if (this.xrdpServerBusy) {
-      return SettingsText.REMOTE_SERVER_BUSY
+      return SettingsRemoteText.SERVER_BUSY
     }
-    return SettingsText.remoteServerStateLabel(this.xrdpServerRunning, this.xrdpServerState)
+    return SettingsRemoteText.serverStateLabel(this.xrdpServerRunning, this.xrdpServerState)
   }
 
   private screenStatusTone(): SettingsStatusTone {
@@ -71,10 +71,10 @@ export struct HomeStatusFooter {
 
   private screenStatusText(): string {
     if (this.screenRecordingPermissionBusy) {
-      return SettingsText.REMOTE_PERMISSION_BUSY
+      return SettingsRemoteText.PERMISSION_BUSY
     }
-    return this.screenRecordingPermissionGranted ? SettingsText.REMOTE_PERMISSION_GRANTED :
-    SettingsText.REMOTE_PERMISSION_MISSING
+    return this.screenRecordingPermissionGranted ? SettingsRemoteText.PERMISSION_GRANTED :
+    SettingsRemoteText.PERMISSION_MISSING
   }
 
   private inputStatusTone(): SettingsStatusTone {
@@ -86,10 +86,10 @@ export struct HomeStatusFooter {
 
   private inputStatusText(): string {
     if (this.inputInjectionPermissionBusy) {
-      return SettingsText.REMOTE_PERMISSION_BUSY
+      return SettingsRemoteText.PERMISSION_BUSY
     }
-    return this.inputInjectionPermissionGranted ? SettingsText.REMOTE_PERMISSION_GRANTED :
-      SettingsText.REMOTE_PERMISSION_MISSING
+    return this.inputInjectionPermissionGranted ? SettingsRemoteText.PERMISSION_GRANTED :
+      SettingsRemoteText.PERMISSION_MISSING
   }
 
   private cardValue(section: string): string {

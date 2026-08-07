@@ -12,6 +12,7 @@ export class SettingsTheme {
   static readonly MOTION_MS: number = 180
   static readonly CARD_RADIUS: number = 12
   static readonly BUTTON_RADIUS: number = 12
+  static readonly SECONDARY_ACTION_HEIGHT: number = 36
   static readonly ICON_TILE_SIZE: number = 38
   static readonly ICON_SIZE: number = 20
 

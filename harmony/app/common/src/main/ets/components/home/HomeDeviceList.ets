@@ -83,7 +83,7 @@ export struct HomeDeviceList {
         .maxLines(1)
     }
     .padding({ left: 16, right: 16 })
-    .constraintSize({ minWidth: 136, minHeight: 48 })
+    .constraintSize({ minWidth: 136, minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
     .justifyContent(FlexAlign.Center)
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)

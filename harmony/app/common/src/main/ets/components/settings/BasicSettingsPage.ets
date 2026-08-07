@@ -8,7 +8,7 @@ import {
   SettingsSectionTitle,
   SettingsTheme
 } from './SettingsUi'
-import { SettingsText } from './SettingsConstants'
+import { SettingsAppearanceText, SettingsShellText } from './SettingsConstants'
 
 @Component
 export struct BasicSettingsPage {
@@ -66,8 +66,8 @@ export struct BasicSettingsPage {
   build() {
     Column() {
       SettingsPageHeader({
-        title: SettingsText.BASIC_SETTINGS_TITLE,
-        subtitle: SettingsText.BASIC_SETTINGS_SUBTITLE,
+        title: SettingsShellText.BASIC_TITLE,
+        subtitle: SettingsShellText.BASIC_DESC,
         isDark: this.isVisualDark(),
         onBack: this.onBack
       })
@@ -75,16 +75,16 @@ export struct BasicSettingsPage {
       Scroll() {
         Column() {
           SettingsSectionTitle({
-            title: SettingsText.BASIC_APPEARANCE_SECTION,
-            subtitle: SettingsText.APPEARANCE_SECTION_MODE_DESC,
+            title: SettingsAppearanceText.SECTION,
+            subtitle: SettingsAppearanceText.SECTION_DESC,
             isDark: this.isVisualDark()
           })
 
-          this.modeOption('system', SettingsText.FOLLOW_SYSTEM_TITLE, SettingsText.FOLLOW_SYSTEM_DESC,
+          this.modeOption('system', SettingsAppearanceText.FOLLOW_SYSTEM, SettingsAppearanceText.FOLLOW_SYSTEM_DESC,
             SettingsResources.SYSTEM_ICON, SettingsAccent.CYAN)
-          this.modeOption('light', SettingsText.LIGHT_MODE_TITLE, SettingsText.LIGHT_MODE_DESC,
+          this.modeOption('light', SettingsAppearanceText.LIGHT, SettingsAppearanceText.LIGHT_DESC,
             SettingsResources.SUN_ICON, SettingsAccent.ORANGE)
-          this.modeOption('dark', SettingsText.DARK_MODE_TITLE, SettingsText.DARK_MODE_DESC,
+          this.modeOption('dark', SettingsAppearanceText.DARK, SettingsAppearanceText.DARK_DESC,
             SettingsResources.MOON_ICON, SettingsAccent.INDIGO)
 
         }

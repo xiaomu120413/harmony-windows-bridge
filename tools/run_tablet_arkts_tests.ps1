@@ -12,11 +12,13 @@ $controllerPath = Join-Path $etsRoot 'rdp\RdpClientController.ets'
 $connectionDetailsPath = Join-Path $etsRoot 'components\home\HomeConnectionDetails.ets'
 $deviceListPath = Join-Path $etsRoot 'components\home\HomeDeviceList.ets'
 $homeTextPath = Join-Path $etsRoot 'components\home\HomeText.ets'
+$homeHeaderPath = Join-Path $etsRoot 'components\home\HomeHeader.ets'
 $settingsPagePath = Join-Path $etsRoot 'components\SettingsPage.ets'
 $basicSettingsPath = Join-Path $etsRoot 'components\settings\BasicSettingsPage.ets'
 $projectHelpPath = Join-Path $etsRoot 'components\settings\ProjectHelpPage.ets'
 $remoteSettingsPath = Join-Path $etsRoot 'components\settings\RemoteControlSettingsPage.ets'
 $remoteCardsPath = Join-Path $etsRoot 'components\settings\RemoteControlCards.ets'
+$settingsConstantsPath = Join-Path $etsRoot 'components\settings\SettingsConstants.ets'
 $modulePath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\module.json5'
 $tabletModulePath = Join-Path $repositoryRoot 'harmony\app\entry_tablet\src\main\module.json5'
 $nativeTypesText = Get-Content -Raw -Encoding utf8 $nativeTypesPath
@@ -26,11 +28,13 @@ $controllerText = Get-Content -Raw -Encoding utf8 $controllerPath
 $connectionDetailsText = Get-Content -Raw -Encoding utf8 $connectionDetailsPath
 $deviceListText = Get-Content -Raw -Encoding utf8 $deviceListPath
 $homeTextText = Get-Content -Raw -Encoding utf8 $homeTextPath
+$homeHeaderText = Get-Content -Raw -Encoding utf8 $homeHeaderPath
 $settingsPageText = Get-Content -Raw -Encoding utf8 $settingsPagePath
 $basicSettingsText = Get-Content -Raw -Encoding utf8 $basicSettingsPath
 $projectHelpText = Get-Content -Raw -Encoding utf8 $projectHelpPath
 $remoteSettingsText = Get-Content -Raw -Encoding utf8 $remoteSettingsPath
 $remoteCardsText = Get-Content -Raw -Encoding utf8 $remoteCardsPath
+$settingsConstantsText = Get-Content -Raw -Encoding utf8 $settingsConstantsPath
 $moduleText = Get-Content -Raw -Encoding utf8 $modulePath
 $tabletModuleText = Get-Content -Raw -Encoding utf8 $tabletModulePath
 $entryResourceRoot = Join-Path $repositoryRoot 'harmony\app\entry\src\main\resources'
@@ -145,19 +149,86 @@ if ($basicSettingsText.Contains('@kit.NetworkKit') -or
   $basicSettingsText.Contains('BASIC_NETWORK_SECTION')) {
   throw 'Basic settings must not own remote-control connection network information.'
 }
+if (-not $settingsPageText.Contains('currentStateCardHovered') -or
+  -not $settingsPageText.Contains('setCurrentStateCardHovered')) {
+  throw 'The overview current-state card must keep the shared animated hover treatment.'
+}
 if (-not $settingsPageText.Contains('remoteControlServerAvailable: this.remoteControlServerAvailable') -or
   -not $projectHelpText.Contains('if (this.remoteControlServerAvailable)') -or
   -not $projectHelpText.Contains('this.controlledGuide()')) {
   throw 'Project help must gate controlled-device guidance behind the 2in1 capability snapshot.'
 }
-if ($remoteSettingsText.Contains('RemoteAccessCard') -or
-  -not $remoteSettingsText.Contains('localIpAddress') -or
-  -not $remoteSettingsText.Contains('onCopyConnectionAddress')) {
-  throw 'Remote settings must expose the controlled-device address without a controlled-side verification-code card.'
+if (-not $remoteSettingsText.Contains('RemoteAccessCard') -or
+  -not $remoteSettingsText.Contains('SettingsRemoteText.PASSIVE_SECTION') -or
+  -not $remoteSettingsText.Contains('SettingsRemoteText.ACTIVE_SECTION') -or
+  -not $remoteSettingsText.Contains('localIpAddress')) {
+  throw 'Remote settings must separate passive and active control, keep verification, and expose the address.'
 }
-if (([regex]::Matches($projectHelpText, 'LayoutMode\.EXPANDED').Count -lt 2) -or
+if ($remoteSettingsText.LastIndexOf('RemoteFilesCard') -gt $remoteSettingsText.LastIndexOf('RemoteAccessCard')) {
+  throw 'Active-control verification must appear below the Harmony shared-directory card.'
+}
+if ($settingsPageText.Contains('copyConnectionAddress') -or
+  $remoteSettingsText.Contains('onCopyConnectionAddress') -or
+  $remoteCardsText.Contains('copyButton()') -or
+  $settingsConstantsText.Contains('CONNECTION_COPY_ACTION') -or
+  $settingsConstantsText.Contains('CONNECTION_COPIED')) {
+  throw 'Remote connection address must be display-only without copy action or copied state.'
+}
+if ($remoteCardsText.Contains('.layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)')) {
+  throw 'The standalone connection-address block must not expand the server card to fill the scroll viewport.'
+}
+if (-not $allEtsText.Contains('SECONDARY_ACTION_HEIGHT: number = 36') -or
+  -not $homeHeaderText.Contains('.height(SettingsTheme.SECONDARY_ACTION_HEIGHT)') -or
+  -not $deviceListText.Contains('minWidth: 136, minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT') -or
+  ([regex]::Matches($connectionDetailsText,
+    'constraintSize\(\{ minHeight: SettingsTheme\.SECONDARY_ACTION_HEIGHT \}\)').Count -lt 2) -or
+  -not $projectHelpText.Contains('.constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })') -or
+  ([regex]::Matches($remoteCardsText,
+    'constraintSize\(\{ minHeight: SettingsTheme\.SECONDARY_ACTION_HEIGHT \}\)').Count -lt 4)) {
+  throw 'Settings and remote-control secondary actions must share the 36vp height token.'
+}
+if ($projectHelpText.Contains('localIpAddress') -or
+  $projectHelpText.Contains('onCopyConnectionAddress') -or
+  $projectHelpText.Contains('this.controlledReadyCard()') -or
+  -not $projectHelpText.Contains('ControlledHelpStatusCard({') -or
+  -not $projectHelpText.Contains('ControlledHelpStepCard({') -or
+  -not $projectHelpText.Contains('.onHover((isHover: boolean) =>')) {
+  throw 'Project help must use animated status and step cards without rendering the old address card.'
+}
+if (-not ($settingsConstantsText -match '\u4E3B\u63A7\u7AEF\uFF1A') -or
+  -not ($settingsConstantsText -match '\u88AB\u63A7\u7AEF\uFF1A')) {
+  throw 'Controlled-device troubleshooting must separate controller and controlled-device checks.'
+}
+$settingsTextDomains = @(
+  'SettingsShellText',
+  'SettingsAppearanceText',
+  'SettingsRemoteText',
+  'SettingsHelpText',
+  'SettingsUsageText',
+  'SettingsNetworkText',
+  'SettingsAboutText'
+)
+foreach ($domain in $settingsTextDomains) {
+  if (-not $settingsConstantsText.Contains("export class $domain")) {
+    throw "Settings copy hierarchy is missing domain: $domain"
+  }
+}
+if ($allEtsText.Contains('SettingsText.')) {
+  throw 'Settings copy must use domain-specific text classes instead of the legacy flat SettingsText class.'
+}
+$staticTextDefinitions = [regex]::Matches(
+  $settingsConstantsText,
+  "static readonly [A-Z0-9_]+: string =\s*'(?<value>[^']*)'"
+)
+$duplicateStaticText = @($staticTextDefinitions | ForEach-Object { $_.Groups['value'].Value } |
+  Group-Object | Where-Object Count -gt 1)
+if ($duplicateStaticText.Count -gt 0) {
+  $values = ($duplicateStaticText | ForEach-Object { $_.Name }) -join ', '
+  throw "Settings copy contains duplicate static values: $values"
+}
+if (([regex]::Matches($projectHelpText, 'LayoutMode\.EXPANDED').Count -lt 1) -or
   -not $remoteCardsText.Contains('layoutMode === LayoutMode.EXPANDED')) {
-  throw 'Controlled-device help and address cards must define explicit Compact and Expanded layouts.'
+  throw 'Controlled-device help steps and remote address cards must define explicit Compact and Expanded layouts.'
 }
 foreach ($forbidden in @(
   'onMicrophonePermissionRequest',

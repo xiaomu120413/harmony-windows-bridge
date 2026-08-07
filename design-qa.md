@@ -1,61 +1,49 @@
-# Settings controlled-service redesign QA
+# Settings remote-control feedback QA
 
-**Source visual truth**
+## Source visual truth
 
-- `C:\Users\mu\Desktop\code\demo\artifacts\design-reference\settings-controlled-service-v2\selected-option-2.png`
-- Source pixels: 1487 × 1058.
-- Normalized app crop: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\29-qa-source-app-normalized.png`, 1404 × 920.
+- Selected direction: `C:\Users\mu\Desktop\code\demo\artifacts\design-reference\settings-controlled-service-v2\selected-option-2.png`.
+- Normalized source: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\29-qa-source-app-normalized.png`, 1404 × 920 px.
+- Latest user requirements override the mock where they conflict: Project Help must not repeat the address, the verification card stays in Remote Settings, and troubleshooting must be split into controller/controlled-device responsibilities.
 
-**Rendered implementation**
+## Rendered implementation
 
-- Expanded help: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\22-final-copy-state-expanded.jpeg`
-- Compact help and copy-success state: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\28-final-help-copy-compact.jpeg`
-- Expanded screenshot pixels: 3120 × 2080; app window viewport: 2223 × 1447 px at `(526, 76)`.
-- Compact app launch viewport: 1200 × 1000 px inside the same 3120 × 2080 display capture.
-- Normalized implementation crop: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\30-qa-implementation-app-normalized.png`, 1404 × 920.
-- Density normalization: source app crop was kept at 1404 × 920; the 2223 × 1447 implementation app crop was bicubic-resampled to 1404 × 920. Desktop chrome outside the app was excluded.
-- State: Project Help, controlled service running on port 3390, permissions granted, connection address available.
+- Overview: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\31-feedback-overview-expanded.jpeg`.
+- Remote Settings, passive-control top: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\32-feedback-remote-top-expanded.jpeg`.
+- Remote Settings, verification and active-control section: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\33-feedback-remote-bottom-expanded.jpeg`.
+- Project Help, expanded: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\34-feedback-help-expanded.jpeg`.
+- Project Help, compact: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\36-feedback-help-compact-final.jpeg`.
+- Normalized implementation: `C:\Users\mu\Desktop\code\demo\artifacts\design-audit\2026-08-07-controlled-service-help\37-qa-feedback-implementation-normalized.png`, 1404 × 920 px.
+- Expanded app viewport: 2223 × 1447 px at `(526, 76)` in a 3120 × 2080 capture. Compact launch viewport: 1200 × 1000 px.
+- State: controlled service running; permissions granted; Remote Settings and Project Help scrolled through their complete relevant content.
 
-**Findings**
+## Findings
 
-- No actionable P0/P1/P2 differences remain.
-- Fonts and typography: HarmonyOS system typography preserves the source hierarchy; headings, connection address, step titles, supporting text, wrapping, and optical weight remain readable at both Expanded and Compact sizes.
-- Spacing and layout rhythm: the left navigation, content margins, primary connection card, three-step row, troubleshooting block, and secondary direction entry follow the selected design. Compact mode intentionally stacks the card controls and steps without clipping.
-- Colors and visual tokens: existing product tokens retain the white/light-gray surfaces, blue action color, green running state, purple help selection, borders, and radii from the source direction.
-- Image and icon quality: all visible icons use existing app media resources; no emoji, placeholder, CSS art, custom SVG approximation, or degraded raster asset was introduced.
-- Copy and content: the implementation intentionally removes the source mock's controlled-side verification code because the product rule is that the code is set by the controller. The help text states this explicitly and keeps the address, port, service state, permissions, and troubleshooting guidance coherent.
-- Interaction and accessibility: settings navigation, remote-settings entry, help direction entry, scroll behavior, and connection-address copy were exercised. The copy button reached the visible `已复制` state. Controls retain native focus/tap behavior and practical target sizes.
-- Responsiveness: Expanded uses a three-column step layout; Compact uses vertical cards. No overlap, clipping, hidden primary action, or broken text wrapping was observed in the final captures.
+- No actionable P0/P1/P2 visual differences remain.
+- Overview: the current-state card now uses the shared hover/press elevation, translation, scale, shadow, and surface transition pattern.
+- Remote Settings: service, screen permission, and input permission are grouped under `被动控制`. The shared-directory and verification cards are grouped under `主动控制`, with verification below the shared directory. The address is display-only without copy feedback.
+- Project Help: the duplicate address block is gone. Service status, connection steps, role-labelled troubleshooting, and the controller-direction entry remain legible and visually ordered.
+- Motion: service status and all connection-step cards use the same hover/press transition language as other settings cards. Static captures show the resting states; ArkTS policy tests verify the hover handlers and shared animation calls.
+- Typography and spacing: headings, labels, step copy, and role-specific troubleshooting wrap cleanly at both tested sizes.
+- Colors and icons: existing app tokens and media resources are retained; no placeholder or approximate asset was introduced.
+- Responsiveness: Expanded keeps a three-column step row; Compact stacks the cards. No clipping, overlap, inaccessible action, or broken scroll region was observed.
 
-**Full-view comparison evidence**
+## Comparison evidence
 
-- The normalized 1404 × 920 source and implementation were opened together in one comparison input.
-- The implementation keeps the same information hierarchy and above-the-fold task flow. Differences are intentional product corrections: no controlled-side verification code, an explicit troubleshooting block, and existing product icon/token usage.
+- The normalized source and latest expanded implementation were opened together in one comparison input.
+- The implementation preserves the selected direction's navigation, title hierarchy, status-first structure, steps, and secondary connection direction.
+- Intentional differences follow the latest user requirements: no address in Project Help, no introductory troubleshooting sentence, explicit `主控端`/`被控端` guidance, and clearer passive/active control grouping in Remote Settings.
 
-**Focused region comparison evidence**
+## Comparison history
 
-- A separate focused crop was not required because the normalized full-app captures keep the connection address, copy action, status, step copy, icons, and typography legible at 1404 × 920.
-- The Compact copy-success capture separately verifies the most important interaction state and stacked layout.
+- Pass 1: implemented the selected second direction and established Expanded/Compact behavior.
+- Pass 2: corrected the overview card motion, restored the verification card, clarified passive/active control, removed the help address, animated help cards, and rewrote troubleshooting by role.
+- Pass 3: removed address-copy UI and moved verification below the shared-directory card in active control.
+- Pass 2 result: no P0/P1/P2 issue found in the final captures.
 
-**Open Questions**
+## Verification gaps
 
-- A real tablet was not connected during this pass. Tablet isolation is covered by ArkTS policy tests and App Pack module/package verification, but a fresh tablet screenshot remains a device-availability test gap.
-
-**Comparison History**
-
-- Pass 1: no P0/P1/P2 visual issue was found after normalization. The apparent verification-code difference was classified as an intentional correction required by the user, not design drift. No visual fix iteration was necessary.
-
-**Implementation Checklist**
-
-- [x] Remove local network information from Basic Settings.
-- [x] Put connection address, service state, permissions, and copy action in controlled-device surfaces.
-- [x] Remove controlled-side verification-code UI and explain controller ownership.
-- [x] Gate controlled-service help to the 2in1 capability.
-- [x] Verify Expanded and Compact layouts plus copy-success state.
-- [x] Build and verify the multi-device App Pack.
-
-**Follow-up Polish**
-
-- P3: capture the tablet-only help screen on real tablet hardware when one is available, to complement the package and policy evidence.
+- Pointer-hover state could not be captured through the connected device test driver; implementation and policy tests verify the same proven shared motion pattern used elsewhere in Settings.
+- No physical tablet was connected. Tablet isolation remains covered by policy tests and multi-device App Pack verification; a physical-tablet screenshot is still desirable when hardware is available.
 
 final result: passed

@@ -43,7 +43,7 @@ import { HomePage } from '../components/home/HomePage'
 import { HomeText } from '../components/home/HomeText'
 import { RdpSessionPage } from '../components/session/RdpSessionPage'
 import { SettingsPage } from '../components/SettingsPage'
-import { SettingsRoute, SettingsText } from '../components/settings/SettingsConstants'
+import { SettingsRemoteText, SettingsRoute } from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
 @Component
 export struct MuHubApp {
@@ -472,12 +472,12 @@ export struct MuHubApp {
 
   private xrdpServerDisplayMessages(): XrdpServerDisplayMessages {
     return {
-      active: SettingsText.REMOTE_SERVER_MESSAGE_ACTIVE,
-      listening: SettingsText.REMOTE_SERVER_MESSAGE_LISTENING,
-      stopped: SettingsText.REMOTE_SERVER_MESSAGE_STOPPED,
-      exited: SettingsText.REMOTE_SERVER_MESSAGE_EXITED,
-      failed: SettingsText.REMOTE_SERVER_MESSAGE_FAILED,
-      unavailable: SettingsText.REMOTE_SERVER_MESSAGE_UNAVAILABLE
+      active: SettingsRemoteText.SERVER_MESSAGE_ACTIVE,
+      listening: SettingsRemoteText.SERVER_MESSAGE_LISTENING,
+      stopped: SettingsRemoteText.SERVER_MESSAGE_STOPPED,
+      exited: SettingsRemoteText.SERVER_MESSAGE_EXITED,
+      failed: SettingsRemoteText.SERVER_MESSAGE_FAILED,
+      unavailable: SettingsRemoteText.SERVER_MESSAGE_UNAVAILABLE
     }
   }
 
