@@ -1,4 +1,4 @@
-import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
+import { SettingsNetworkText, SettingsRemoteControlSection, SettingsRemoteText } from './SettingsConstants'
 import { SettingsAccent, SettingsAccentName, SettingsResources, SettingsTheme } from './SettingsUi'
 import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 
@@ -7,8 +7,7 @@ export struct XrdpServerCard {
   @Prop isDark: boolean = false
   @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop targetSection: string = ''
-  @Prop localIpAddress: string = SettingsText.NETWORK_LOADING
-  @Prop connectionCopyLabel: string = SettingsText.REMOTE_CONNECTION_COPY_ACTION
+  @Prop localIpAddress: string = SettingsNetworkText.LOADING
   @Prop running: boolean = false
   @Prop busy: boolean = false
   @Prop state: string = 'Stopped'
@@ -17,8 +16,6 @@ export struct XrdpServerCard {
   onRefresh: () => void = () => {
   }
   onStart: () => void = () => {
-  }
-  onCopyConnectionAddress: () => void = () => {
   }
   @State private hovered: boolean = false
   @State private pressed: boolean = false
@@ -34,14 +31,14 @@ export struct XrdpServerCard {
   }
 
   private statusText(): string {
-    return SettingsText.remoteServerStatusText(this.running, this.busy, this.state, this.port)
+    return SettingsRemoteText.serverStatusText(this.running, this.busy, this.state, this.port)
   }
 
   private actionText(): string {
     if (this.busy) {
-      return SettingsText.REMOTE_SERVER_BUSY
+      return SettingsRemoteText.SERVER_BUSY
     }
-    return this.running ? SettingsText.REMOTE_SERVER_REFRESH_ACTION : SettingsText.REMOTE_SERVER_START_ACTION
+    return this.running ? SettingsRemoteText.SERVER_REFRESH_ACTION : SettingsRemoteText.SERVER_START_ACTION
   }
 
   private actionDisabled(): boolean {
@@ -49,58 +46,21 @@ export struct XrdpServerCard {
   }
 
   private connectionAddress(): string {
-    if (this.localIpAddress === SettingsText.NETWORK_LOADING ||
-      this.localIpAddress === SettingsText.NETWORK_EMPTY ||
-      this.localIpAddress === SettingsText.NETWORK_NO_IP ||
-      this.localIpAddress === SettingsText.NETWORK_READ_FAILED) {
-      return SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
+    if (this.localIpAddress === SettingsNetworkText.LOADING ||
+      this.localIpAddress === SettingsNetworkText.EMPTY ||
+      this.localIpAddress === SettingsNetworkText.NO_IP ||
+      this.localIpAddress === SettingsNetworkText.READ_FAILED) {
+      return SettingsRemoteText.CONNECTION_ADDRESS_WAITING
     }
     const host = this.localIpAddress.indexOf(':') >= 0 ? `[${this.localIpAddress}]` : this.localIpAddress
     const safePort = this.port > 0 ? this.port : 3390
     return `${host}:${safePort}`
   }
 
-  private copyDisabled(): boolean {
-    return this.connectionAddress() === SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
-  }
-
-  @Builder
-  private copyButton() {
-    Button() {
-      Row({ space: 6 }) {
-        Image(SettingsResources.COPY_ICON)
-          .width(16)
-          .height(16)
-          .fillColor(this.copyDisabled() ? SettingsTheme.disabledText(this.isDark) :
-            SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
-          .draggable(false)
-        Text(this.connectionCopyLabel)
-          .fontSize(12)
-          .fontWeight(FontWeight.Medium)
-      }
-      .alignItems(VerticalAlign.Center)
-    }
-    .type(ButtonType.Normal)
-    .constraintSize({ minHeight: 48 })
-    .padding({ left: 14, right: 14 })
-    .borderRadius(SettingsTheme.BUTTON_RADIUS)
-    .backgroundColor(this.copyDisabled() ? SettingsTheme.disabledButton(this.isDark) :
-      SettingsTheme.accentBackground(this.isDark, SettingsAccent.BLUE))
-    .fontColor(this.copyDisabled() ? SettingsTheme.disabledText(this.isDark) :
-      SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
-    .stateEffect(false)
-    .enabled(!this.copyDisabled())
-    .onClick(() => {
-      if (!this.copyDisabled()) {
-        this.onCopyConnectionAddress()
-      }
-    })
-  }
-
   @Builder
   private addressBlock() {
     Column({ space: 6 }) {
-      Text(SettingsText.REMOTE_CONNECTION_ADDRESS_LABEL)
+      Text(SettingsRemoteText.CONNECTION_ADDRESS_LABEL)
         .fontSize(12)
         .fontColor(SettingsTheme.mutedText(this.isDark))
         .width('100%')
@@ -113,7 +73,6 @@ export struct XrdpServerCard {
         .width('100%')
     }
     .alignItems(HorizontalAlign.Start)
-    .layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)
     .width('100%')
   }
 
@@ -137,12 +96,12 @@ export struct XrdpServerCard {
           SettingsAccent.AMBER))
 
         Column({ space: 5 }) {
-          Text(SettingsText.REMOTE_SERVER_TITLE)
+          Text(SettingsRemoteText.CONTROLLED_DEVICE_TITLE)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor(SettingsTheme.primaryText(this.isDark))
             .width('100%')
-          Text(SettingsText.REMOTE_SERVER_DESC)
+          Text(SettingsRemoteText.SERVER_DESC)
             .fontSize(13)
             .fontColor(SettingsTheme.mutedText(this.isDark))
             .lineHeight(19)
@@ -159,7 +118,7 @@ export struct XrdpServerCard {
 
         Button(this.actionText())
           .type(ButtonType.Normal)
-          .constraintSize({ minHeight: 48 })
+          .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
           .borderRadius(SettingsTheme.BUTTON_RADIUS)
           .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
             SettingsTheme.subtleButton(this.isDark, false, false))
@@ -182,23 +141,9 @@ export struct XrdpServerCard {
       .alignItems(VerticalAlign.Center)
       .width('100%')
 
-      if (this.layoutMode === LayoutMode.EXPANDED) {
-        Row({ space: 14 }) {
-          this.addressBlock()
-          this.copyButton()
-        }
-        .alignItems(VerticalAlign.Center)
-        .width('100%')
-      } else {
-        Column({ space: 12 }) {
-          this.addressBlock()
-          this.copyButton()
-        }
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
-      }
+      this.addressBlock()
 
-      Text(this.message.length > 0 ? this.message : SettingsText.REMOTE_CONNECTION_NETWORK_HINT)
+      Text(this.message.length > 0 ? this.message : SettingsRemoteText.CONNECTION_NETWORK_HINT)
         .fontSize(12)
         .fontColor(SettingsTheme.mutedText(this.isDark))
         .lineHeight(18)
@@ -275,12 +220,12 @@ export struct RemoteFilesCard {
       .backgroundColor(SettingsTheme.accentBackground(this.isDark, SettingsAccent.PURPLE))
 
       Column({ space: 5 }) {
-        Text(SettingsText.REMOTE_FILES_FEATURE_TITLE)
+        Text(SettingsRemoteText.FILES_TITLE)
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor(SettingsTheme.primaryText(this.isDark))
           .width('100%')
-        Text(SettingsText.REMOTE_FILES_FEATURE_DESC)
+        Text(SettingsRemoteText.FILES_DESC)
           .fontSize(13)
           .fontColor(SettingsTheme.mutedText(this.isDark))
           .lineHeight(19)
@@ -290,9 +235,9 @@ export struct RemoteFilesCard {
       }
       .layoutWeight(1)
 
-      Button(SettingsText.REMOTE_FILES_FEATURE_ACTION)
+      Button(SettingsRemoteText.FILES_ACTION)
         .type(ButtonType.Normal)
-        .constraintSize({ minHeight: 48 })
+        .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
         .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, false))
         .fontColor(SettingsTheme.primaryText(this.isDark))
@@ -359,11 +304,11 @@ export struct RemoteAccessCard {
   }
 
   private gateStatusText(): string {
-    return this.gateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
+    return this.gateEnabled ? SettingsRemoteText.ACCESS_GATE_ON : SettingsRemoteText.ACCESS_GATE_OFF
   }
 
   private accessCodeText(): string {
-    return this.gateEnabled ? this.accessCode : SettingsText.REMOTE_ACCESS_CODE_DISABLED
+    return this.gateEnabled ? this.accessCode : SettingsRemoteText.ACCESS_GATE_OFF
   }
 
   private regenerateDisabled(): boolean {
@@ -388,12 +333,12 @@ export struct RemoteAccessCard {
         .backgroundColor(SettingsTheme.accentBackground(this.isDark, SettingsAccent.BLUE))
 
         Column({ space: 5 }) {
-          Text(SettingsText.REMOTE_ACCESS_GATE_TITLE)
+          Text(SettingsRemoteText.ACCESS_TITLE)
             .fontSize(15)
             .fontWeight(FontWeight.Medium)
             .fontColor(SettingsTheme.primaryText(this.isDark))
             .width('100%')
-          Text(SettingsText.REMOTE_ACCESS_GATE_DESC)
+          Text(SettingsRemoteText.ACCESS_DESC)
             .fontSize(13)
             .fontColor(SettingsTheme.mutedText(this.isDark))
             .lineHeight(19)
@@ -413,7 +358,7 @@ export struct RemoteAccessCard {
 
       Row() {
         Column({ space: 4 }) {
-          Text(SettingsText.REMOTE_ACCESS_CODE_LABEL)
+          Text(SettingsRemoteText.ACCESS_CODE_LABEL)
             .fontSize(12)
             .fontColor(SettingsTheme.mutedText(this.isDark))
             .width('100%')
@@ -427,9 +372,9 @@ export struct RemoteAccessCard {
         }
         .layoutWeight(1)
 
-        Button(SettingsText.REMOTE_ACCESS_CODE_ACTION)
+        Button(SettingsRemoteText.ACCESS_CODE_ACTION)
           .type(ButtonType.Normal)
-          .constraintSize({ minHeight: 48 })
+          .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
           .borderRadius(SettingsTheme.BUTTON_RADIUS)
           .backgroundColor(this.regenerateDisabled() ? SettingsTheme.disabledButton(this.isDark) :
             SettingsTheme.subtleButton(this.isDark, false, false))
@@ -492,12 +437,12 @@ export struct RemotePermissionCard {
   @Prop isDark: boolean = false
   @Prop targetSection: string = ''
   @Prop section: string = SettingsRemoteControlSection.SCREEN
-  @Prop title: string = SettingsText.REMOTE_SCREEN_PERMISSION_TITLE
-  @Prop description: string = SettingsText.REMOTE_SCREEN_PERMISSION_DESC
-  @Prop grantedText: string = SettingsText.REMOTE_PERMISSION_GRANTED
-  @Prop missingText: string = SettingsText.REMOTE_PERMISSION_MISSING
-  @Prop actionTextValue: string = SettingsText.REMOTE_PERMISSION_ACTION
-  @Prop busyText: string = SettingsText.REMOTE_PERMISSION_BUSY
+  @Prop title: string = SettingsRemoteText.SCREEN_PERMISSION_TITLE
+  @Prop description: string = SettingsRemoteText.SCREEN_PERMISSION_DESC
+  @Prop grantedText: string = SettingsRemoteText.PERMISSION_GRANTED
+  @Prop missingText: string = SettingsRemoteText.PERMISSION_MISSING
+  @Prop actionTextValue: string = SettingsRemoteText.PERMISSION_ACTION
+  @Prop busyText: string = SettingsRemoteText.PERMISSION_BUSY
   @Prop icon: Resource = SettingsResources.REMOTE_SCREEN_ICON
   @Prop accent: SettingsAccentName = SettingsAccent.CYAN
   @Prop granted: boolean = false
@@ -574,7 +519,7 @@ export struct RemotePermissionCard {
 
       Button(this.actionText())
         .type(ButtonType.Normal)
-        .constraintSize({ minHeight: 48 })
+        .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
         .borderRadius(SettingsTheme.BUTTON_RADIUS)
         .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
           SettingsTheme.subtleButton(this.isDark, false, false))

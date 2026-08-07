@@ -190,7 +190,7 @@ export struct HomeConnectionDetails {
       .alignItems(VerticalAlign.Center)
     }
     .type(ButtonType.Normal)
-    .constraintSize({ minHeight: 48 })
+    .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
     .width('100%')
     .borderRadius(7)
     .backgroundColor(HomeTheme.primaryButtonBackground(this.isDark, this.connectHovered, this.connectPressed))
@@ -238,7 +238,7 @@ export struct HomeConnectionDetails {
       .padding({ left: 6, right: 6 })
     }
     .type(ButtonType.Normal)
-    .constraintSize({ minHeight: 48 })
+    .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
     .width('100%')
     .borderRadius(7)
     .backgroundColor(this.pressedAction === action ? SettingsTheme.statusBackground(this.isDark, tone) :

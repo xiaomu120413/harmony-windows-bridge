@@ -5,9 +5,10 @@ import {
 } from './SettingsUi'
 import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { XrdpServerStatus } from '../../rdp/RemoteControlCoordinator'
-import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
+import { SettingsNetworkText, SettingsRemoteControlSection, SettingsRemoteText, SettingsShellText } from './SettingsConstants'
 import { SettingsAccent, SettingsResources } from './SettingsUi'
 import {
+  RemoteAccessCard,
   RemoteFilesCard,
   RemotePermissionCard,
   XrdpServerCard
@@ -17,9 +18,13 @@ import {
 export struct RemoteControlSettingsPage {
   onBack: () => void = () => {
   }
-  onRefreshNetwork: () => void = () => {
+  onRemoteAccessCodeGateChange: (enabled: boolean) => string = (_enabled: boolean) => {
+    return ''
   }
-  onCopyConnectionAddress: () => void = () => {
+  onRemoteAccessCodeRegenerate: () => string = () => {
+    return ''
+  }
+  onRefreshNetwork: () => void = () => {
   }
   onRequestScreenRecordingPermission: () => Promise<boolean> = () => {
     return Promise.resolve(false)
@@ -55,8 +60,9 @@ export struct RemoteControlSettingsPage {
   @Prop isDark: boolean = false
   @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop targetSection: string = ''
-  @Prop localIpAddress: string = SettingsText.NETWORK_LOADING
-  @Prop connectionCopyLabel: string = SettingsText.REMOTE_CONNECTION_COPY_ACTION
+  @Prop localIpAddress: string = SettingsNetworkText.LOADING
+  @Prop remoteAccessCode: string = '000000'
+  @Prop remoteAccessCodeGateEnabled: boolean = false
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop inputInjectionPermissionGranted: boolean = false
   @Prop xrdpServerRunning: boolean = false
@@ -68,6 +74,8 @@ export struct RemoteControlSettingsPage {
   @Prop inputInjectionPermissionBusy: boolean = false
   @State private localScreenRecordingGranted: boolean = false
   @State private localInputInjectionGranted: boolean = false
+  @State private localGateEnabled: boolean = false
+  @State private localAccessCode: string = '000000'
   @State private localXrdpServerRunning: boolean = false
   @State private localXrdpServerState: string = 'Stopped'
   @State private localXrdpServerPort: number = 3390
@@ -79,6 +87,8 @@ export struct RemoteControlSettingsPage {
   aboutToAppear(): void {
     this.localScreenRecordingGranted = this.screenRecordingPermissionGranted
     this.localInputInjectionGranted = this.inputInjectionPermissionGranted
+    this.localGateEnabled = this.remoteAccessCodeGateEnabled
+    this.localAccessCode = this.remoteAccessCode
     this.localXrdpServerRunning = this.xrdpServerRunning
     this.localXrdpServerState = this.xrdpServerState
     this.localXrdpServerPort = this.xrdpServerPort
@@ -88,6 +98,15 @@ export struct RemoteControlSettingsPage {
     this.refreshInputInjectionState()
     this.refreshXrdpServerStatus()
     this.onRefreshNetwork()
+  }
+
+  private setGateEnabled(enabled: boolean): void {
+    this.localAccessCode = this.onRemoteAccessCodeGateChange(enabled)
+    this.localGateEnabled = enabled
+  }
+
+  private regenerateAccessCode(): void {
+    this.localAccessCode = this.onRemoteAccessCodeRegenerate()
   }
 
   private applyXrdpServerStatus(status: XrdpServerStatus): void {
@@ -173,8 +192,8 @@ export struct RemoteControlSettingsPage {
   build() {
     Column() {
       SettingsPageHeader({
-        title: SettingsText.REMOTE_CONTROL_TITLE,
-        subtitle: SettingsText.REMOTE_CONTROL_SUBTITLE,
+        title: SettingsShellText.REMOTE_TITLE,
+        subtitle: SettingsRemoteText.PAGE_SUBTITLE,
         isDark: this.isDark,
         onBack: this.onBack
       })
@@ -182,8 +201,8 @@ export struct RemoteControlSettingsPage {
       Scroll() {
         Column({ space: 14 }) {
           SettingsSectionTitle({
-            title: SettingsText.REMOTE_CONTROL_TITLE,
-            subtitle: SettingsText.REMOTE_CONTROL_SUBTITLE,
+            title: SettingsRemoteText.PASSIVE_SECTION,
+            subtitle: SettingsRemoteText.PASSIVE_DESC,
             isDark: this.isDark
           })
 
@@ -192,7 +211,6 @@ export struct RemoteControlSettingsPage {
             layoutMode: this.layoutMode,
             targetSection: this.targetSection,
             localIpAddress: this.localIpAddress,
-            connectionCopyLabel: this.connectionCopyLabel,
             running: this.localXrdpServerRunning,
             busy: this.localXrdpServerBusy || this.xrdpServerBusy || this.screenRecordingPermissionBusy,
             state: this.localXrdpServerState,
@@ -202,7 +220,6 @@ export struct RemoteControlSettingsPage {
               this.refreshXrdpServerStatus()
               this.onRefreshNetwork()
             },
-            onCopyConnectionAddress: this.onCopyConnectionAddress,
             onStart: (): void => {
               this.startXrdpServer()
             }
@@ -221,8 +238,8 @@ export struct RemoteControlSettingsPage {
             isDark: this.isDark,
             targetSection: this.targetSection,
             section: SettingsRemoteControlSection.INPUT,
-            title: SettingsText.REMOTE_INPUT_PERMISSION_TITLE,
-            description: SettingsText.REMOTE_INPUT_PERMISSION_DESC,
+            title: SettingsRemoteText.INPUT_PERMISSION_TITLE,
+            description: SettingsRemoteText.INPUT_PERMISSION_DESC,
             icon: SettingsResources.REMOTE_ACCESS_ICON,
             accent: SettingsAccent.PURPLE,
             granted: this.localInputInjectionGranted,
@@ -231,10 +248,27 @@ export struct RemoteControlSettingsPage {
               this.requestInputInjectionPermission()
             }
           })
+          SettingsSectionTitle({
+            title: SettingsRemoteText.ACTIVE_SECTION,
+            subtitle: SettingsRemoteText.ACTIVE_DESC,
+            isDark: this.isDark
+          })
           RemoteFilesCard({
             isDark: this.isDark,
             targetSection: this.targetSection,
             onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory
+          })
+          RemoteAccessCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            gateEnabled: this.localGateEnabled,
+            accessCode: this.localAccessCode,
+            onGateChange: (enabled: boolean): void => {
+              this.setGateEnabled(enabled)
+            },
+            onRegenerate: (): void => {
+              this.regenerateAccessCode()
+            }
           })
         }
         .alignItems(HorizontalAlign.Start)

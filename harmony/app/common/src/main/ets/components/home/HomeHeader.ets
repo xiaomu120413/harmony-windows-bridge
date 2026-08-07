@@ -1,5 +1,5 @@
 import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
-import { SettingsText } from '../settings/SettingsConstants'
+import { SettingsRemoteText, SettingsShellText } from '../settings/SettingsConstants'
 import { SettingsAccent, SettingsResources, SettingsStatusTone, SettingsTheme } from '../settings/SettingsUi'
 import { HomeText } from './HomeText'
 import { HomeTheme } from './HomeTheme'
@@ -18,14 +18,14 @@ export struct HomeHeader {
   @State private settingsPressed: boolean = false
 
   private headerStatusTone(): SettingsStatusTone {
-    return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
+    return SettingsRemoteText.serverStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
   }
 
   private headerStatusText(): string {
     if (this.xrdpServerBusy) {
-      return SettingsText.REMOTE_SERVER_BUSY
+      return SettingsRemoteText.SERVER_BUSY
     }
-    return SettingsText.remoteServerStateLabel(this.xrdpServerRunning, this.xrdpServerState)
+    return SettingsRemoteText.serverStateLabel(this.xrdpServerRunning, this.xrdpServerState)
   }
 
   @Builder
@@ -53,13 +53,13 @@ export struct HomeHeader {
         .height(19)
         .fillColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
         .draggable(false)
-      Text(SettingsText.SETTINGS_TITLE)
+      Text(SettingsShellText.TITLE)
         .fontSize(14)
         .fontWeight(FontWeight.Medium)
         .fontColor(SettingsTheme.primaryText(this.isDark))
         .maxLines(1)
     }
-    .height(48)
+    .height(SettingsTheme.SECONDARY_ACTION_HEIGHT)
     .padding({ left: 12, right: 12 })
     .alignItems(VerticalAlign.Center)
     .borderRadius(8)

@@ -8,13 +8,184 @@ import {
   SettingsSectionTitle,
   SettingsTheme
 } from './SettingsUi'
-import { SettingsText } from './SettingsConstants'
+import {
+  SettingsAboutText,
+  SettingsHelpText,
+  SettingsRemoteText,
+  SettingsShellText,
+  SettingsUsageText
+} from './SettingsConstants'
+
+@Component
+struct ControlledHelpStatusCard {
+  @Prop isDark: boolean = false
+  @Prop running: boolean = false
+  onOpenRemoteControlSettings: () => void = () => {
+  }
+  @State private hovered: boolean = false
+  @State private pressed: boolean = false
+
+  private setHovered(hovered: boolean): void {
+    SettingsTheme.animate(this.getUIContext(), () => {
+      this.hovered = hovered
+    })
+  }
+
+  build() {
+    Row({ space: 14 }) {
+      Column() {
+        Image(SettingsResources.REMOTE_SERVICE_ICON)
+          .width(SettingsTheme.ICON_SIZE)
+          .height(SettingsTheme.ICON_SIZE)
+          .fillColor(SettingsTheme.accentColor(this.isDark, this.running ? SettingsAccent.GREEN :
+            SettingsAccent.AMBER))
+          .draggable(false)
+      }
+      .width(SettingsTheme.ICON_TILE_SIZE)
+      .height(SettingsTheme.ICON_TILE_SIZE)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .borderRadius(SettingsTheme.BUTTON_RADIUS)
+      .backgroundColor(SettingsTheme.accentBackground(this.isDark, this.running ? SettingsAccent.GREEN :
+        SettingsAccent.AMBER))
+
+      Column({ space: 5 }) {
+        Text(this.running ? SettingsHelpText.CONTROLLED_READY : SettingsHelpText.CONTROLLED_NOT_READY)
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(SettingsTheme.primaryText(this.isDark))
+          .width('100%')
+        Text(this.running ? SettingsHelpText.CONTROLLED_READY_DESC : SettingsHelpText.CONTROLLED_NOT_READY_DESC)
+          .fontSize(13)
+          .fontColor(SettingsTheme.mutedText(this.isDark))
+          .lineHeight(19)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Button(SettingsHelpText.CONTROLLED_SETTINGS_ACTION)
+        .type(ButtonType.Normal)
+        .constraintSize({ minHeight: SettingsTheme.SECONDARY_ACTION_HEIGHT })
+        .padding({ left: 14, right: 14 })
+        .borderRadius(SettingsTheme.BUTTON_RADIUS)
+        .backgroundColor(SettingsTheme.subtleButton(this.isDark, this.hovered, this.pressed))
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .fontSize(12)
+        .stateEffect(false)
+        .onClick(() => {
+          this.onOpenRemoteControlSettings()
+        })
+    }
+    .alignItems(VerticalAlign.Center)
+    .width('100%')
+    .padding(18)
+    .backgroundColor(this.hovered || this.pressed ? SettingsTheme.cardHoverBackground(this.isDark) :
+      SettingsTheme.cardBackground(this.isDark))
+    .borderRadius(SettingsTheme.CARD_RADIUS)
+    .border({ width: 1, color: SettingsTheme.borderColor(this.isDark) })
+    .shadow(SettingsTheme.shadow(this.isDark, this.hovered))
+    .translate({ y: this.hovered ? -5 : 0 })
+    .scale({
+      x: this.pressed ? 0.99 : this.hovered ? 1.012 : 1,
+      y: this.pressed ? 0.99 : this.hovered ? 1.012 : 1
+    })
+    .margin({ bottom: 14 })
+    .onHover((isHover: boolean) => {
+      this.setHovered(isHover)
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.pressed = true
+        return
+      }
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressed = false
+      }
+    })
+  }
+}
+
+@Component
+struct ControlledHelpStepCard {
+  @Prop isDark: boolean = false
+  @Prop expanded: boolean = false
+  @Prop number: string = ''
+  @Prop title: string = ''
+  @Prop body: string = ''
+  @State private hovered: boolean = false
+  @State private pressed: boolean = false
+
+  private setHovered(hovered: boolean): void {
+    SettingsTheme.animate(this.getUIContext(), () => {
+      this.hovered = hovered
+    })
+  }
+
+  build() {
+    Row({ space: 12 }) {
+      Column() {
+        Text(this.number)
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
+      }
+      .width(28)
+      .height(28)
+      .borderRadius(14)
+      .backgroundColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+
+      Column({ space: 6 }) {
+        Text(this.title)
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(SettingsTheme.primaryText(this.isDark))
+          .width('100%')
+        Text(this.body)
+          .fontSize(12)
+          .fontColor(SettingsTheme.mutedText(this.isDark))
+          .lineHeight(18)
+          .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+    }
+    .alignItems(VerticalAlign.Top)
+    .layoutWeight(this.expanded ? 1 : 0)
+    .width('100%')
+    .padding(14)
+    .backgroundColor(this.hovered || this.pressed ? SettingsTheme.cardHoverBackground(this.isDark) :
+      SettingsTheme.cardBackground(this.isDark))
+    .borderRadius(SettingsTheme.CARD_RADIUS)
+    .border({ width: 1, color: SettingsTheme.borderColor(this.isDark) })
+    .shadow(SettingsTheme.shadow(this.isDark, this.hovered))
+    .translate({ y: this.hovered ? -5 : 0 })
+    .scale({
+      x: this.pressed ? 0.99 : this.hovered ? 1.012 : 1,
+      y: this.pressed ? 0.99 : this.hovered ? 1.012 : 1
+    })
+    .onHover((isHover: boolean) => {
+      this.setHovered(isHover)
+    })
+    .onTouch((event: TouchEvent) => {
+      if (event.type === TouchType.Down) {
+        this.pressed = true
+        return
+      }
+      if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        this.pressed = false
+      }
+    })
+  }
+}
 
 @Component
 export struct ProjectHelpPage {
   onBack: () => void = () => {
-  }
-  onCopyConnectionAddress: () => void = () => {
   }
   onOpenRemoteControlSettings: () => void = () => {
   }
@@ -22,9 +193,6 @@ export struct ProjectHelpPage {
   @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop remoteControlServerAvailable: boolean = false
   @Prop xrdpServerRunning: boolean = false
-  @Prop xrdpServerPort: number = 3390
-  @Prop localIpAddress: string = SettingsText.NETWORK_LOADING
-  @Prop connectionCopyLabel: string = SettingsText.REMOTE_CONNECTION_COPY_ACTION
   @State private showControllerGuide: boolean = false
   @State private aboutCardHovered: boolean = false
   @State private aboutCardPressed: boolean = false
@@ -39,235 +207,77 @@ export struct ProjectHelpPage {
     return value.startsWith('http://') || value.startsWith('https://')
   }
 
-  private connectionAddress(): string {
-    if (this.localIpAddress === SettingsText.NETWORK_LOADING ||
-      this.localIpAddress === SettingsText.NETWORK_EMPTY ||
-      this.localIpAddress === SettingsText.NETWORK_NO_IP ||
-      this.localIpAddress === SettingsText.NETWORK_READ_FAILED) {
-      return SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
-    }
-    const host = this.localIpAddress.indexOf(':') >= 0 ? `[${this.localIpAddress}]` : this.localIpAddress
-    const port = this.xrdpServerPort > 0 ? this.xrdpServerPort : 3390
-    return `${host}:${port}`
-  }
-
-  private copyDisabled(): boolean {
-    return this.connectionAddress() === SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
-  }
-
-  @Builder
-  private copyButton() {
-    Button() {
-      Row({ space: 6 }) {
-        Image(SettingsResources.COPY_ICON)
-          .width(16)
-          .height(16)
-          .fillColor(this.copyDisabled() ? SettingsTheme.disabledText(this.isDark) :
-            SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
-          .draggable(false)
-        Text(this.connectionCopyLabel)
-          .fontSize(12)
-          .fontWeight(FontWeight.Medium)
-      }
-      .alignItems(VerticalAlign.Center)
-    }
-    .type(ButtonType.Normal)
-    .constraintSize({ minHeight: 48 })
-    .padding({ left: 14, right: 14 })
-    .borderRadius(SettingsTheme.BUTTON_RADIUS)
-    .backgroundColor(this.copyDisabled() ? SettingsTheme.disabledButton(this.isDark) :
-      SettingsTheme.accentBackground(this.isDark, SettingsAccent.BLUE))
-    .fontColor(this.copyDisabled() ? SettingsTheme.disabledText(this.isDark) :
-      SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
-    .stateEffect(false)
-    .enabled(!this.copyDisabled())
-    .onClick(() => {
-      if (!this.copyDisabled()) {
-        this.onCopyConnectionAddress()
-      }
-    })
-  }
-
-  @Builder
-  private addressValue() {
-    Column({ space: 6 }) {
-      Text(SettingsText.REMOTE_CONNECTION_ADDRESS_LABEL)
-        .fontSize(12)
-        .fontColor(SettingsTheme.mutedText(this.isDark))
-        .width('100%')
-      Text(this.connectionAddress())
-        .fontSize(this.layoutMode === LayoutMode.EXPANDED ? 22 : 18)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(SettingsTheme.primaryText(this.isDark))
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .width('100%')
-    }
-    .alignItems(HorizontalAlign.Start)
-    .layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)
-    .width('100%')
-  }
-
-  @Builder
-  private controlledReadyCard() {
-    Column({ space: 16 }) {
-      Row({ space: 14 }) {
-        Column() {
-          Image(SettingsResources.REMOTE_SERVICE_ICON)
-            .width(SettingsTheme.ICON_SIZE)
-            .height(SettingsTheme.ICON_SIZE)
-            .fillColor(SettingsTheme.accentColor(this.isDark, this.xrdpServerRunning ? SettingsAccent.GREEN :
-              SettingsAccent.AMBER))
-            .draggable(false)
-        }
-        .width(SettingsTheme.ICON_TILE_SIZE)
-        .height(SettingsTheme.ICON_TILE_SIZE)
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-        .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(SettingsTheme.accentBackground(this.isDark, this.xrdpServerRunning ? SettingsAccent.GREEN :
-          SettingsAccent.AMBER))
-
-        Column({ space: 5 }) {
-          Text(this.xrdpServerRunning ? SettingsText.CONTROLLED_HELP_READY :
-            SettingsText.CONTROLLED_HELP_NOT_READY)
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(SettingsTheme.primaryText(this.isDark))
-            .width('100%')
-          Text(this.xrdpServerRunning ? SettingsText.CONTROLLED_HELP_READY_DESC :
-            SettingsText.CONTROLLED_HELP_NOT_READY_DESC)
-            .fontSize(13)
-            .fontColor(SettingsTheme.mutedText(this.isDark))
-            .lineHeight(19)
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .width('100%')
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-
-        Button(SettingsText.CONTROLLED_HELP_SETTINGS_ACTION)
-          .type(ButtonType.Normal)
-          .constraintSize({ minHeight: 48 })
-          .padding({ left: 14, right: 14 })
-          .borderRadius(SettingsTheme.BUTTON_RADIUS)
-          .backgroundColor(SettingsTheme.subtleButton(this.isDark, false, false))
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .fontSize(12)
-          .stateEffect(false)
-          .onClick(() => {
-            this.onOpenRemoteControlSettings()
-          })
-      }
-      .alignItems(VerticalAlign.Center)
-      .width('100%')
-
-      if (this.layoutMode === LayoutMode.EXPANDED) {
-        Row({ space: 14 }) {
-          this.addressValue()
-          this.copyButton()
-        }
-        .alignItems(VerticalAlign.Center)
-        .width('100%')
-      } else {
-        Column({ space: 12 }) {
-          this.addressValue()
-          this.copyButton()
-        }
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
-      }
-    }
-    .alignItems(HorizontalAlign.Start)
-    .width('100%')
-    .padding(18)
-    .backgroundColor(SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
-    })
-    .margin({ bottom: 14 })
-  }
-
-  @Builder
-  private controlStep(number: string, title: string, body: string) {
-    Row({ space: 12 }) {
-      Column() {
-        Text(number)
-          .fontSize(12)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
-      }
-      .width(28)
-      .height(28)
-      .borderRadius(14)
-      .backgroundColor(SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-
-      Column({ space: 6 }) {
-        Text(title)
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .width('100%')
-        Text(body)
-          .fontSize(12)
-          .fontColor(SettingsTheme.mutedText(this.isDark))
-          .lineHeight(18)
-          .width('100%')
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-    }
-    .alignItems(VerticalAlign.Top)
-    .layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)
-    .width('100%')
-    .padding(14)
-    .backgroundColor(SettingsTheme.cardBackground(this.isDark))
-    .borderRadius(SettingsTheme.CARD_RADIUS)
-    .border({
-      width: 1,
-      color: SettingsTheme.borderColor(this.isDark)
-    })
-  }
-
   @Builder
   private controlledGuide() {
     SettingsSectionTitle({
-      title: SettingsText.CONTROLLED_HELP_TITLE,
-      subtitle: SettingsText.CONTROLLED_HELP_DESC,
+      title: SettingsRemoteText.CONTROLLED_DEVICE_TITLE,
+      subtitle: SettingsHelpText.CONTROLLED_DESC,
       isDark: this.isDark
     })
-    this.controlledReadyCard()
+    ControlledHelpStatusCard({
+      isDark: this.isDark,
+      running: this.xrdpServerRunning,
+      onOpenRemoteControlSettings: this.onOpenRemoteControlSettings
+    })
     SettingsSectionTitle({
-      title: SettingsText.CONTROLLED_HELP_STEPS_TITLE,
-      subtitle: SettingsText.REMOTE_CONNECTION_NETWORK_HINT,
+      title: SettingsHelpText.CONTROLLED_STEPS_TITLE,
+      subtitle: SettingsRemoteText.CONNECTION_NETWORK_HINT,
       isDark: this.isDark
     })
     if (this.layoutMode === LayoutMode.EXPANDED) {
       Row({ space: 12 }) {
-        this.controlStep('1', SettingsText.CONTROLLED_HELP_STEP_ONE, SettingsText.CONTROLLED_HELP_STEP_ONE_DESC)
-        this.controlStep('2', SettingsText.CONTROLLED_HELP_STEP_TWO, SettingsText.CONTROLLED_HELP_STEP_TWO_DESC)
-        this.controlStep('3', SettingsText.CONTROLLED_HELP_STEP_THREE, SettingsText.CONTROLLED_HELP_STEP_THREE_DESC)
+        ControlledHelpStepCard({
+          isDark: this.isDark,
+          expanded: true,
+          number: '1',
+          title: SettingsHelpText.CONTROLLED_STEP_ONE,
+          body: SettingsHelpText.CONTROLLED_STEP_ONE_DESC
+        })
+        ControlledHelpStepCard({
+          isDark: this.isDark,
+          expanded: true,
+          number: '2',
+          title: SettingsHelpText.CONTROLLED_STEP_TWO,
+          body: SettingsHelpText.CONTROLLED_STEP_TWO_DESC
+        })
+        ControlledHelpStepCard({
+          isDark: this.isDark,
+          expanded: true,
+          number: '3',
+          title: SettingsHelpText.CONTROLLED_STEP_THREE,
+          body: SettingsHelpText.CONTROLLED_STEP_THREE_DESC
+        })
       }
       .alignItems(VerticalAlign.Top)
       .width('100%')
       .margin({ bottom: 12 })
     } else {
       Column({ space: 10 }) {
-        this.controlStep('1', SettingsText.CONTROLLED_HELP_STEP_ONE, SettingsText.CONTROLLED_HELP_STEP_ONE_DESC)
-        this.controlStep('2', SettingsText.CONTROLLED_HELP_STEP_TWO, SettingsText.CONTROLLED_HELP_STEP_TWO_DESC)
-        this.controlStep('3', SettingsText.CONTROLLED_HELP_STEP_THREE, SettingsText.CONTROLLED_HELP_STEP_THREE_DESC)
+        ControlledHelpStepCard({
+          isDark: this.isDark,
+          number: '1',
+          title: SettingsHelpText.CONTROLLED_STEP_ONE,
+          body: SettingsHelpText.CONTROLLED_STEP_ONE_DESC
+        })
+        ControlledHelpStepCard({
+          isDark: this.isDark,
+          number: '2',
+          title: SettingsHelpText.CONTROLLED_STEP_TWO,
+          body: SettingsHelpText.CONTROLLED_STEP_TWO_DESC
+        })
+        ControlledHelpStepCard({
+          isDark: this.isDark,
+          number: '3',
+          title: SettingsHelpText.CONTROLLED_STEP_THREE,
+          body: SettingsHelpText.CONTROLLED_STEP_THREE_DESC
+        })
       }
       .width('100%')
       .margin({ bottom: 12 })
     }
     SettingsInfoCard({
-      title: SettingsText.USAGE_TROUBLESHOOT_TITLE,
-      body: `${SettingsText.CONTROLLED_HELP_SECURITY_NOTE}\n${SettingsText.CONTROLLED_HELP_TROUBLESHOOT}`,
+      title: SettingsUsageText.TROUBLESHOOT_TITLE,
+      body: SettingsHelpText.CONTROLLED_TROUBLESHOOT,
       isDark: this.isDark
     })
   }
@@ -275,53 +285,53 @@ export struct ProjectHelpPage {
   @Builder
   private controllerGuide() {
     SettingsSectionTitle({
-      title: SettingsText.USAGE_SECTION_PREP,
-      subtitle: SettingsText.USAGE_SECTION_PREP_DESC,
+      title: SettingsUsageText.PREP_SECTION,
+      subtitle: SettingsUsageText.PREP_SECTION_DESC,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_PREP_TITLE,
-      body: SettingsText.USAGE_PREP_BODY,
+      title: SettingsUsageText.PREP_TITLE,
+      body: SettingsUsageText.PREP_BODY,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_WINDOWS_RDP_TITLE,
-      body: SettingsText.USAGE_WINDOWS_RDP_BODY,
+      title: SettingsUsageText.WINDOWS_RDP_TITLE,
+      body: SettingsUsageText.WINDOWS_RDP_BODY,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_USERNAME_TITLE,
-      body: SettingsText.USAGE_USERNAME_BODY,
+      title: SettingsUsageText.USERNAME_TITLE,
+      body: SettingsUsageText.USERNAME_BODY,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_HARDWARE_ACCEL_TITLE,
-      body: SettingsText.USAGE_HARDWARE_ACCEL_BODY,
+      title: SettingsUsageText.HARDWARE_ACCEL_TITLE,
+      body: SettingsUsageText.HARDWARE_ACCEL_BODY,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_FORM_TITLE,
-      body: SettingsText.USAGE_FORM_BODY,
+      title: SettingsUsageText.FORM_TITLE,
+      body: SettingsUsageText.FORM_BODY,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.REMOTE_FILES_FEATURE_TITLE,
-      body: SettingsText.REMOTE_FILES_FEATURE_DESC,
+      title: SettingsRemoteText.FILES_TITLE,
+      body: SettingsRemoteText.FILES_DESC,
       isDark: this.isDark
     })
     SettingsSectionTitle({
-      title: SettingsText.USAGE_SECTION_SECURITY,
-      subtitle: SettingsText.USAGE_SECTION_SECURITY_DESC,
+      title: SettingsUsageText.SECURITY_SECTION,
+      subtitle: SettingsUsageText.SECURITY_SECTION_DESC,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_CERT_TITLE,
-      body: SettingsText.USAGE_CERT_BODY,
+      title: SettingsUsageText.CERT_TITLE,
+      body: SettingsUsageText.CERT_BODY,
       isDark: this.isDark
     })
     SettingsInfoCard({
-      title: SettingsText.USAGE_TROUBLESHOOT_TITLE,
-      body: SettingsText.USAGE_TROUBLESHOOT_BODY,
+      title: SettingsUsageText.TROUBLESHOOT_TITLE,
+      body: SettingsUsageText.TROUBLESHOOT_BODY,
       isDark: this.isDark
     })
   }
@@ -354,11 +364,10 @@ export struct ProjectHelpPage {
   @Builder
   private aboutInfoCard() {
     Column() {
-      this.aboutInfoRow(SettingsText.ABOUT_GITHUB_LABEL, SettingsText.ABOUT_GITHUB_VALUE)
-      this.aboutInfoRow(SettingsText.ABOUT_FREERDP_ADAPTATION_LABEL,
-        SettingsText.ABOUT_FREERDP_ADAPTATION_VALUE)
-      this.aboutInfoRow(SettingsText.ABOUT_XRDP_ADAPTATION_LABEL, SettingsText.ABOUT_XRDP_ADAPTATION_VALUE)
-      this.aboutInfoRow(SettingsText.ABOUT_LICENSE_LABEL, SettingsText.ABOUT_LICENSE_VALUE)
+      this.aboutInfoRow(SettingsAboutText.GITHUB_LABEL, SettingsAboutText.GITHUB_VALUE)
+      this.aboutInfoRow(SettingsAboutText.FREERDP_LABEL, SettingsAboutText.FREERDP_VALUE)
+      this.aboutInfoRow(SettingsAboutText.XRDP_LABEL, SettingsAboutText.XRDP_VALUE)
+      this.aboutInfoRow(SettingsAboutText.LICENSE_LABEL, SettingsAboutText.LICENSE_VALUE)
     }
     .width('100%')
     .padding(16)
@@ -393,8 +402,8 @@ export struct ProjectHelpPage {
   build() {
     Column() {
       SettingsPageHeader({
-        title: SettingsText.PROJECT_HELP_TITLE,
-        subtitle: SettingsText.PROJECT_HELP_SUBTITLE,
+        title: SettingsShellText.HELP_TITLE,
+        subtitle: SettingsHelpText.PAGE_SUBTITLE,
         isDark: this.isDark,
         onBack: this.onBack
       })
@@ -404,8 +413,8 @@ export struct ProjectHelpPage {
           if (this.remoteControlServerAvailable) {
             this.controlledGuide()
             SettingsListItem({
-              title: SettingsText.CONTROLLER_HELP_TITLE,
-              description: SettingsText.CONTROLLER_HELP_DESC,
+              title: SettingsHelpText.CONTROLLER_TITLE,
+              description: SettingsHelpText.CONTROLLER_DESC,
               iconResource: SettingsResources.REMOTE_CONTROL_ICON,
               accentName: SettingsAccent.CYAN,
               selected: this.showControllerGuide,
@@ -422,8 +431,8 @@ export struct ProjectHelpPage {
           }
 
           SettingsSectionTitle({
-            title: SettingsText.PROJECT_HELP_ABOUT_SECTION,
-            subtitle: SettingsText.ABOUT_SECTION_PROJECT_DESC,
+            title: SettingsHelpText.ABOUT_SECTION,
+            subtitle: SettingsAboutText.SECTION_DESC,
             isDark: this.isDark
           })
           this.aboutInfoCard()
