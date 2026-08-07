@@ -1,9 +1,11 @@
+import { pasteboard } from '@kit.BasicServicesKit'
+import { connection } from '@kit.NetworkKit'
 import { BasicSettingsPage } from './settings/BasicSettingsPage'
 import { LayoutMode } from '../adaptive/WindowLayoutPolicy'
 import { ProjectHelpPage } from './settings/ProjectHelpPage'
 import { RemoteControlSettingsPage } from './settings/RemoteControlSettingsPage'
 import { XrdpServerStatus } from '../rdp/RemoteControlCoordinator'
-import { SettingsRoute, SettingsText } from './settings/SettingsConstants'
+import { SettingsRemoteControlSection, SettingsRoute, SettingsText } from './settings/SettingsConstants'
 import {
   SettingsAccent,
   SettingsAccentName,
@@ -77,6 +79,8 @@ export struct SettingsPage {
   @State private pageName: string = SettingsRoute.SETTINGS
   @State private remoteControlTargetSection: string = ''
   @State private appearanceMode: SettingsAppearanceMode = SettingsTheme.getStoredAppearanceMode()
+  @State private localIpAddress: string = SettingsText.NETWORK_LOADING
+  @State private connectionCopyLabel: string = SettingsText.REMOTE_CONNECTION_COPY_ACTION
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
 
   aboutToAppear(): void {
@@ -87,6 +91,9 @@ export struct SettingsPage {
     }
     this.remoteControlTargetSection = this.pageName === SettingsRoute.REMOTE_CONTROL ?
       this.initialRemoteControlSection : ''
+    if (this.remoteControlServerAvailable) {
+      this.refreshLocalIpAddress()
+    }
   }
 
   private isDarkMode(): boolean {
@@ -120,12 +127,99 @@ export struct SettingsPage {
       SettingsText.REMOTE_PERMISSION_MISSING
   }
 
-  private gateStatusTone(): SettingsStatusTone {
-    return this.remoteAccessCodeGateEnabled ? 'ok' : 'neutral'
+  private inputStatusTone(): SettingsStatusTone {
+    if (this.inputInjectionPermissionBusy) {
+      return 'info'
+    }
+    return this.inputInjectionPermissionGranted ? 'ok' : 'warning'
   }
 
-  private gateStatusText(): string {
-    return this.remoteAccessCodeGateEnabled ? SettingsText.REMOTE_ACCESS_GATE_ON : SettingsText.REMOTE_ACCESS_GATE_OFF
+  private inputStatusText(): string {
+    if (this.inputInjectionPermissionBusy) {
+      return SettingsText.REMOTE_PERMISSION_BUSY
+    }
+    return this.inputInjectionPermissionGranted ? SettingsText.REMOTE_PERMISSION_GRANTED :
+      SettingsText.REMOTE_PERMISSION_MISSING
+  }
+
+  private connectionAddress(): string {
+    if (this.localIpAddress === SettingsText.NETWORK_LOADING ||
+      this.localIpAddress === SettingsText.NETWORK_EMPTY ||
+      this.localIpAddress === SettingsText.NETWORK_NO_IP ||
+      this.localIpAddress === SettingsText.NETWORK_READ_FAILED) {
+      return SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
+    }
+    const host = this.localIpAddress.indexOf(':') >= 0 ? `[${this.localIpAddress}]` : this.localIpAddress
+    const port = this.xrdpServerPort > 0 ? this.xrdpServerPort : 3390
+    return `${host}:${port}`
+  }
+
+  private canCopyConnectionAddress(): boolean {
+    return this.connectionAddress() !== SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
+  }
+
+  private async refreshLocalIpAddress(): Promise<void> {
+    this.localIpAddress = SettingsText.NETWORK_LOADING
+    this.connectionCopyLabel = SettingsText.REMOTE_CONNECTION_COPY_ACTION
+    try {
+      const netHandles = await connection.getAllNets()
+      if (netHandles.length === 0) {
+        this.localIpAddress = SettingsText.NETWORK_EMPTY
+        return
+      }
+      let bestAddress = ''
+      let bestScore = -1
+      for (let netIndex = 0; netIndex < netHandles.length; netIndex++) {
+        const netHandle = netHandles[netIndex]
+        const capabilities = await connection.getNetCapabilities(netHandle)
+        const properties = await connection.getConnectionProperties(netHandle)
+        let bearerScore = 10
+        if (capabilities.bearerTypes.indexOf(connection.NetBearType.BEARER_ETHERNET) >= 0) {
+          bearerScore = 300
+        } else if (capabilities.bearerTypes.indexOf(connection.NetBearType.BEARER_WIFI) >= 0) {
+          bearerScore = 200
+        } else if (capabilities.bearerTypes.indexOf(connection.NetBearType.BEARER_VPN) >= 0) {
+          bearerScore = 0
+        }
+        for (let addressIndex = 0; addressIndex < properties.linkAddresses.length; addressIndex++) {
+          const address = properties.linkAddresses[addressIndex].address.address
+          if (!address || address === '::1' || address.indexOf('127.') === 0) {
+            continue
+          }
+          let addressScore = address.indexOf(':') < 0 ? 30 : 5
+          if (address.indexOf('192.168.') === 0 || address.indexOf('10.') === 0) {
+            addressScore = 80
+          } else if (address.indexOf('172.') === 0) {
+            const secondPart = Number(address.split('.')[1])
+            if (secondPart >= 16 && secondPart <= 31) {
+              addressScore = 70
+            }
+          }
+          const score = bearerScore + addressScore
+          if (score > bestScore) {
+            bestScore = score
+            bestAddress = address
+          }
+        }
+      }
+      this.localIpAddress = bestAddress.length > 0 ? bestAddress : SettingsText.NETWORK_NO_IP
+    } catch (_error) {
+      this.localIpAddress = SettingsText.NETWORK_READ_FAILED
+    }
+  }
+
+  private copyConnectionAddress(): void {
+    if (!this.canCopyConnectionAddress()) {
+      return
+    }
+    const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, this.connectionAddress())
+    pasteboard.getSystemPasteboard().setData(data)
+      .then(() => {
+        this.connectionCopyLabel = SettingsText.REMOTE_CONNECTION_COPIED
+      })
+      .catch((_error: Error) => {
+        this.connectionCopyLabel = SettingsText.REMOTE_CONNECTION_COPY_FAILED
+      })
   }
 
   @Builder
@@ -288,11 +382,45 @@ export struct SettingsPage {
           .width('100%')
           .margin({ bottom: 14 })
 
-          Row({ space: 24 }) {
+          if (this.layoutMode === LayoutMode.EXPANDED) {
+            Row({ space: 24 }) {
+              Column() {
+                SettingsKeyValueRow({
+                  label: SettingsText.REMOTE_CONNECTION_ADDRESS_LABEL,
+                  value: this.connectionAddress(),
+                  isDark: this.isDarkMode()
+                })
+                SettingsKeyValueRow({
+                  label: SettingsText.REMOTE_SERVER_STATUS_LABEL,
+                  value: this.xrdpStatusText(),
+                  tone: this.xrdpStatusTone(),
+                  isDark: this.isDarkMode()
+                })
+              }
+              .layoutWeight(1)
+
+              Column() {
+                SettingsKeyValueRow({
+                  label: SettingsText.REMOTE_SCREEN_SECTION,
+                  value: this.screenStatusText(),
+                  tone: this.screenStatusTone(),
+                  isDark: this.isDarkMode()
+                })
+                SettingsKeyValueRow({
+                  label: SettingsText.REMOTE_INPUT_SECTION,
+                  value: this.inputStatusText(),
+                  tone: this.inputStatusTone(),
+                  isDark: this.isDarkMode()
+                })
+              }
+              .layoutWeight(1)
+            }
+            .width('100%')
+          } else {
             Column() {
               SettingsKeyValueRow({
-                label: SettingsText.BASIC_APPEARANCE_SECTION,
-                value: SettingsText.appearanceValue(this.appearanceMode),
+                label: SettingsText.REMOTE_CONNECTION_ADDRESS_LABEL,
+                value: this.connectionAddress(),
                 isDark: this.isDarkMode()
               })
               SettingsKeyValueRow({
@@ -301,10 +429,6 @@ export struct SettingsPage {
                 tone: this.xrdpStatusTone(),
                 isDark: this.isDarkMode()
               })
-            }
-            .layoutWeight(1)
-
-            Column() {
               SettingsKeyValueRow({
                 label: SettingsText.REMOTE_SCREEN_SECTION,
                 value: this.screenStatusText(),
@@ -312,15 +436,14 @@ export struct SettingsPage {
                 isDark: this.isDarkMode()
               })
               SettingsKeyValueRow({
-                label: SettingsText.REMOTE_ACCESS_SECTION,
-                value: this.gateStatusText(),
-                tone: this.gateStatusTone(),
+                label: SettingsText.REMOTE_INPUT_SECTION,
+                value: this.inputStatusText(),
+                tone: this.inputStatusTone(),
                 isDark: this.isDarkMode()
               })
             }
-            .layoutWeight(1)
+            .width('100%')
           }
-          .width('100%')
         }
         .width('100%')
         .padding(18)
@@ -381,9 +504,10 @@ export struct SettingsPage {
     } else if (this.pageName === SettingsRoute.REMOTE_CONTROL && this.remoteControlServerAvailable) {
       RemoteControlSettingsPage({
         isDark: this.isDarkMode(),
+        layoutMode: this.layoutMode,
         targetSection: this.remoteControlTargetSection,
-        remoteAccessCode: this.remoteAccessCode,
-        remoteAccessCodeGateEnabled: this.remoteAccessCodeGateEnabled,
+        localIpAddress: this.localIpAddress,
+        connectionCopyLabel: this.connectionCopyLabel,
         screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
         inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
         xrdpServerRunning: this.xrdpServerRunning,
@@ -393,14 +517,18 @@ export struct SettingsPage {
         xrdpServerBusy: this.xrdpServerBusy,
         screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
         inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
-        onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
-        onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
         onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,
         onRefreshScreenRecordingPermission: this.onRefreshScreenRecordingPermission,
         onRequestInputInjectionPermission: this.onRequestInputInjectionPermission,
         onRefreshInputInjectionPermission: this.onRefreshInputInjectionPermission,
         onRefreshXrdpServerStatus: this.onRefreshXrdpServerStatus,
         onStartXrdpServer: this.onStartXrdpServer,
+        onRefreshNetwork: (): void => {
+          this.refreshLocalIpAddress()
+        },
+        onCopyConnectionAddress: (): void => {
+          this.copyConnectionAddress()
+        },
         onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
         onBack: () => {
           this.pageName = SettingsRoute.SETTINGS
@@ -410,6 +538,21 @@ export struct SettingsPage {
     } else if (this.pageName === SettingsRoute.PROJECT_HELP) {
       ProjectHelpPage({
         isDark: this.isDarkMode(),
+        layoutMode: this.layoutMode,
+        remoteControlServerAvailable: this.remoteControlServerAvailable,
+        xrdpServerRunning: this.xrdpServerRunning,
+        xrdpServerPort: this.xrdpServerPort,
+        localIpAddress: this.localIpAddress,
+        connectionCopyLabel: this.connectionCopyLabel,
+        onCopyConnectionAddress: (): void => {
+          this.copyConnectionAddress()
+        },
+        onOpenRemoteControlSettings: (): void => {
+          if (this.remoteControlServerAvailable) {
+            this.pageName = SettingsRoute.REMOTE_CONTROL
+            this.remoteControlTargetSection = SettingsRemoteControlSection.SERVER
+          }
+        },
         onBack: () => {
           this.pageName = SettingsRoute.SETTINGS
         }

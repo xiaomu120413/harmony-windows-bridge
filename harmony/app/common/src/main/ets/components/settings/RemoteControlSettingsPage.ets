@@ -3,11 +3,11 @@ import {
   SettingsSectionTitle,
   SettingsTheme
 } from './SettingsUi'
+import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 import { XrdpServerStatus } from '../../rdp/RemoteControlCoordinator'
 import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
 import { SettingsAccent, SettingsResources } from './SettingsUi'
 import {
-  RemoteAccessCard,
   RemoteFilesCard,
   RemotePermissionCard,
   XrdpServerCard
@@ -17,11 +17,9 @@ import {
 export struct RemoteControlSettingsPage {
   onBack: () => void = () => {
   }
-  onRemoteAccessCodeGateChange: (enabled: boolean) => string = (_enabled: boolean) => {
-    return ''
+  onRefreshNetwork: () => void = () => {
   }
-  onRemoteAccessCodeRegenerate: () => string = () => {
-    return ''
+  onCopyConnectionAddress: () => void = () => {
   }
   onRequestScreenRecordingPermission: () => Promise<boolean> = () => {
     return Promise.resolve(false)
@@ -55,9 +53,10 @@ export struct RemoteControlSettingsPage {
   onOpenRemoteFilesDirectory: () => void = () => {
   }
   @Prop isDark: boolean = false
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop targetSection: string = ''
-  @Prop remoteAccessCode: string = '000000'
-  @Prop remoteAccessCodeGateEnabled: boolean = false
+  @Prop localIpAddress: string = SettingsText.NETWORK_LOADING
+  @Prop connectionCopyLabel: string = SettingsText.REMOTE_CONNECTION_COPY_ACTION
   @Prop screenRecordingPermissionGranted: boolean = false
   @Prop inputInjectionPermissionGranted: boolean = false
   @Prop xrdpServerRunning: boolean = false
@@ -67,8 +66,6 @@ export struct RemoteControlSettingsPage {
   @Prop xrdpServerBusy: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
   @Prop inputInjectionPermissionBusy: boolean = false
-  @State private localAccessCode: string = '000000'
-  @State private localGateEnabled: boolean = false
   @State private localScreenRecordingGranted: boolean = false
   @State private localInputInjectionGranted: boolean = false
   @State private localXrdpServerRunning: boolean = false
@@ -80,8 +77,6 @@ export struct RemoteControlSettingsPage {
   private inputPermissionRequestPending: boolean = false
 
   aboutToAppear(): void {
-    this.localAccessCode = this.remoteAccessCode
-    this.localGateEnabled = this.remoteAccessCodeGateEnabled
     this.localScreenRecordingGranted = this.screenRecordingPermissionGranted
     this.localInputInjectionGranted = this.inputInjectionPermissionGranted
     this.localXrdpServerRunning = this.xrdpServerRunning
@@ -92,21 +87,7 @@ export struct RemoteControlSettingsPage {
     this.refreshScreenRecordingState()
     this.refreshInputInjectionState()
     this.refreshXrdpServerStatus()
-  }
-
-  private setGateEnabled(enabled: boolean): void {
-    this.localGateEnabled = enabled
-    const nextCode = this.onRemoteAccessCodeGateChange(enabled)
-    if (nextCode.length > 0) {
-      this.localAccessCode = nextCode
-    }
-  }
-
-  private regenerateAccessCode(): void {
-    const nextCode = this.onRemoteAccessCodeRegenerate()
-    if (nextCode.length > 0) {
-      this.localAccessCode = nextCode
-    }
+    this.onRefreshNetwork()
   }
 
   private applyXrdpServerStatus(status: XrdpServerStatus): void {
@@ -208,7 +189,10 @@ export struct RemoteControlSettingsPage {
 
           XrdpServerCard({
             isDark: this.isDark,
+            layoutMode: this.layoutMode,
             targetSection: this.targetSection,
+            localIpAddress: this.localIpAddress,
+            connectionCopyLabel: this.connectionCopyLabel,
             running: this.localXrdpServerRunning,
             busy: this.localXrdpServerBusy || this.xrdpServerBusy || this.screenRecordingPermissionBusy,
             state: this.localXrdpServerState,
@@ -216,7 +200,9 @@ export struct RemoteControlSettingsPage {
             message: this.localXrdpServerMessage,
             onRefresh: (): void => {
               this.refreshXrdpServerStatus()
+              this.onRefreshNetwork()
             },
+            onCopyConnectionAddress: this.onCopyConnectionAddress,
             onStart: (): void => {
               this.startXrdpServer()
             }
@@ -243,18 +229,6 @@ export struct RemoteControlSettingsPage {
             busy: this.inputInjectionPermissionBusy,
             onRequest: (): void => {
               this.requestInputInjectionPermission()
-            }
-          })
-          RemoteAccessCard({
-            isDark: this.isDark,
-            targetSection: this.targetSection,
-            gateEnabled: this.localGateEnabled,
-            accessCode: this.localAccessCode,
-            onGateChange: (enabled: boolean): void => {
-              this.setGateEnabled(enabled)
-            },
-            onRegenerate: (): void => {
-              this.regenerateAccessCode()
             }
           })
           RemoteFilesCard({
