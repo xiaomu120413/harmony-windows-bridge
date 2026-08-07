@@ -9,7 +9,7 @@
 
 namespace rdp_bridge::xrdp_bridge_internal {
 
-constexpr const char* kDefaultHnpRoot = "/data/service/hnp/xrdp.org/xrdp_0.1.0";
+constexpr const char* kPrivateHnpExecutable = "/data/app/bin/xrdp";
 constexpr const char* kBackendLibraryName = "libxrdpohos.so";
 constexpr uint32_t kDefaultPort = 3390;
 

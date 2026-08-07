@@ -124,6 +124,10 @@ build_app projectPath=harmony/app
 1. `SignHap` 不再出现 `DecipherUtil.getKey`、`decryptPwd` 或 `material` 路径缺失错误。
 2. `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap` 成功生成。
 3. 对携带 xrdp HNP 的交付包继续执行 HNP 重打包和最终签名，不能用普通 unsigned HAP 直接签名替代 HNP 注入流程。
+4. 2in1 私有 HNP 在应用进程沙箱内应通过 `/data/app` 访问：业务代码只固定清单生成的无版本号链接
+   `/data/app/bin/xrdp`，通过 `realpath()` 获得当前版本目录并派生 `lib/config/share`，不得硬编码
+   `xrdp_0.1.0` 等版本号。`/data/service/hnp` 属于公共 HNP 挂载点；也不得硬编码宿主机用户号和
+   bundle 物理安装目录。
 
 `SIGN-A-01` 验证记录（2026-08-04）：
 
