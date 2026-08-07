@@ -2,6 +2,8 @@
 
 #include <cerrno>
 #include <cstring>
+#include <limits.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 
 namespace rdp_bridge::xrdp_bridge_internal {
@@ -31,6 +33,24 @@ bool EnsureDirectory(const std::string& path, std::vector<std::string>& logs)
         index = slash + 1;
     }
     return true;
+}
+
+std::string ParentPath(const std::string& path)
+{
+    const size_t slash = path.find_last_of('/');
+    if (slash == std::string::npos) {
+        return {};
+    }
+    return slash == 0 ? "/" : path.substr(0, slash);
+}
+
+std::string ResolvePrivateHnpRoot(const std::string& executablePath)
+{
+    char resolvedPath[PATH_MAX] {};
+    if (realpath(executablePath.c_str(), resolvedPath) == nullptr) {
+        return {};
+    }
+    return ParentPath(ParentPath(resolvedPath));
 }
 
 } // namespace
@@ -64,13 +84,14 @@ XrdpResolvedPaths ResolvePaths(const XrdpServerParams& params)
     const std::string filesRoot = params.appFilesDir.empty() ?
         "/data/storage/el2/base/files" : params.appFilesDir;
     paths.runtimeRoot = JoinPath(filesRoot, "xrdp");
-    paths.executablePath = JoinPath(kDefaultHnpRoot, "bin/xrdp");
-    paths.modulePath = JoinPath(kDefaultHnpRoot, "lib");
-    paths.packagedConfigPath = JoinPath(kDefaultHnpRoot, "config/xrdp.ini");
+    paths.executablePath = kPrivateHnpExecutable;
+    const std::string hnpRoot = ResolvePrivateHnpRoot(paths.executablePath);
+    paths.modulePath = hnpRoot.empty() ? "" : JoinPath(hnpRoot, "lib");
+    paths.packagedConfigPath = hnpRoot.empty() ? "" : JoinPath(hnpRoot, "config/xrdp.ini");
     paths.configPath = JoinPath(paths.runtimeRoot, "config/xrdp.ini");
     paths.tlsCertificatePath = JoinPath(paths.runtimeRoot, "config/cert.pem");
     paths.tlsKeyPath = JoinPath(paths.runtimeRoot, "config/key.pem");
-    paths.sharePath = JoinPath(kDefaultHnpRoot, "share");
+    paths.sharePath = hnpRoot.empty() ? "" : JoinPath(hnpRoot, "share");
     paths.pidPath = JoinPath(paths.runtimeRoot, "run");
     paths.logPath = JoinPath(paths.runtimeRoot, "log");
     return paths;

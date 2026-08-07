@@ -600,8 +600,35 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 - tablet `5JB0223804000371` 重新安装启动通过，设备端仅有 `common,entry_tablet`，
   `hnpPackages` 为空、没有 xrdp 进程；正式 UI 截图为
   `artifacts/multidevice-hnp/2026-08-06/muhub-mdp03-tablet.jpeg`。
-- 当前没有在线 2in1，独立 PID、3389/3390 连接、显式/异常/强停/卸载清理仍需该设备补验，不能将
-  MDP-03 标记为 device verified。
+- 2026-08-06 实施时没有在线 2in1，独立 PID、3389/3390 连接、显式/异常/强停/卸载清理当时未验；
+  2026-08-07 已通过 MDP-03A 补齐启动、3390 监听和应用强停清理，MSTSC 会话、显式 UI 停止、异常
+  退出和卸载清理仍需继续补验。
+
+#### MDP-03A：修正私有 HNP 沙箱运行路径
+
+- 状态：`Implemented / 2in1 runtime verified`。
+- 触发证据：2026-08-07 在 2in1 `3QC0124C11000711` 的木枢进程挂载命名空间中确认，私有
+  `xrdp.hnp` 暴露为 `/data/app/xrdp.org/xrdp_0.1.0`，清单生成的稳定可执行文件链接为
+  `/data/app/bin/xrdp`；`/data/service/hnp` 是公共 HNP 沙箱挂载点，在该应用内为空。当前 bridge
+  错用 `/data/service/hnp/xrdp.org/xrdp_0.1.0`，因此在 `fork()` 前的 runtime 检查即失败。
+- 修改范围：仅调整 2in1 `libxrdpcontrol.so` 的 HNP 路径解析，并在独立进程策略门禁中固定私有
+  HNP 沙箱约束；不修改 tablet Entry、共享 UI、权限或分发模块边界。
+- 目标行为：可执行文件从无版本号链接 `/data/app/bin/xrdp` 启动，并用 `realpath()` 解析链接当前指向的
+  版本目录，再从真实的 `.../bin/xrdp` 路径反推 `lib/config/share` 根目录；运行时代码不得硬编码
+  `xrdp_0.1.0` 等 HNP 版本号；
+  不允许硬编码宿主机 `/data/app/el1/bundle/<userId>/hnp/<bundleName>` 物理路径，也不回退到进程内
+  XRDP。
+- 验收：静态门禁通过；2in1 HAP/App Pack 构建与覆盖安装通过；启动后 xrdp 为独立 PID，监听
+  `3390`，日志不再出现 `HNP xrdp runtime is unavailable`；tablet 包继续无 HNP、无
+  `libxrdpcontrol.so`。显式停止后进程和端口均消失。
+- 实施结果：`xrdp_server_internal.h` 只保留 `/data/app/bin/xrdp`；`xrdp_runtime_loader.cpp` 用
+  `realpath()` 从该链接动态反推 HNP 根目录；`verify_xrdp_process_control.ps1` 拒绝公共 HNP、宿主机
+  物理路径和固定版本号。无设计偏差。
+- 验证结果：`verify_xrdp_process_control.ps1` 与 `git diff --check` 通过；2in1 Native/ArkTS/HNP
+  重封及签名构建成功，HAP 为 5,384,040 字节，覆盖安装成功。木枢 PID `32250` 启动独立 xrdp
+  PID `32402` 并监听 `0.0.0.0:3390`；应用强停后进程和端口均消失，重启后木枢 PID `32318`、
+  xrdp PID `32704` 再次监听 3390。tablet HAP 构建成功，为 197,649 字节，包内 37 项且无 HNP、
+  无 `libxrdpcontrol.so`。尚未执行 MSTSC 会话、显式 UI 停止、异常退出和卸载清理。
 
 ### 12.4 MDP-04 当前结果（2026-08-07）
 
@@ -653,6 +680,7 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 | MDP-01 | Implemented / device verified | 正式 UI、资源、RDP 客户端与 Native bridge 迁入共享 HSP，两个 Entry 薄壳挂载同一 `MuHubApp` | `common`、两个 Entry、运行库同步和测试脚本 | 构建/包门禁/ArkTS/Native 通过；2in1 与 tablet UI 真机通过，tablet 无 HNP/PC 权限，Native 物理拆分留 MDP-03 |
 | MDP-02 | Implemented / tablet verified | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | tablet 包与设备权限通过；2in1 权限回归待设备在线补验 |
 | MDP-03 | Implemented / package verified | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | 编译、进程策略和包门禁通过；2in1 独立 PID/连接/清理待补验 |
+| MDP-03A | Implemented / 2in1 runtime verified | 修正私有 HNP 沙箱运行路径 | xrdp runtime loader、进程策略门禁、验证基线 | 从 `/data/app/bin/xrdp` 动态解析当前版本根目录；2in1 独立 PID/3390/强停清理通过；tablet 物理隔离不变；MSTSC/显式停止/异常/卸载待验 |
 | MDP-04 | Implemented / release blocked | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 三模式与本地门禁通过；覆盖升级 P0 和应用市场真实分发未通过 |
 
 状态定义：
