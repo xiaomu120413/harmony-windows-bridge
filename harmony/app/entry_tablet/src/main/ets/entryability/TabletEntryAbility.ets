@@ -2,7 +2,6 @@ import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit
 import { window } from '@kit.ArkUI'
 import {
   ImeHostWindowBinder,
-  packagingProbe,
   RemoteFilesDirectory,
   SettingsTheme
 } from 'common'
@@ -13,7 +12,6 @@ export default class TabletEntryAbility extends UIAbility {
   private readonly imeHostWindowBinder: ImeHostWindowBinder = new ImeHostWindowBinder()
 
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
-    console.info(`${TAG} ${packagingProbe('tablet')}`)
     SettingsTheme.initAppearance(this.context)
     if (!SettingsTheme.applyAppearanceModeToApplication(this.context, SettingsTheme.getStoredAppearanceMode())) {
       console.error(`${TAG} setColorMode failed`)

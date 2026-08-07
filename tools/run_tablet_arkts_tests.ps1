@@ -13,6 +13,7 @@ $connectionDetailsPath = Join-Path $etsRoot 'components\home\HomeConnectionDetai
 $deviceListPath = Join-Path $etsRoot 'components\home\HomeDeviceList.ets'
 $homeTextPath = Join-Path $etsRoot 'components\home\HomeText.ets'
 $modulePath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\module.json5'
+$tabletModulePath = Join-Path $repositoryRoot 'harmony\app\entry_tablet\src\main\module.json5'
 $nativeTypesText = Get-Content -Raw -Encoding utf8 $nativeTypesPath
 $indexText = Get-Content -Raw -Encoding utf8 $indexPath
 $gatewayText = Get-Content -Raw -Encoding utf8 $gatewayPath
@@ -21,8 +22,25 @@ $connectionDetailsText = Get-Content -Raw -Encoding utf8 $connectionDetailsPath
 $deviceListText = Get-Content -Raw -Encoding utf8 $deviceListPath
 $homeTextText = Get-Content -Raw -Encoding utf8 $homeTextPath
 $moduleText = Get-Content -Raw -Encoding utf8 $modulePath
+$tabletModuleText = Get-Content -Raw -Encoding utf8 $tabletModulePath
+$entryResourceRoot = Join-Path $repositoryRoot 'harmony\app\entry\src\main\resources'
+$tabletResourceRoot = Join-Path $repositoryRoot 'harmony\app\entry_tablet\src\main\resources'
 $allEtsText = (Get-ChildItem -Path $etsRoot -Recurse -Filter '*.ets' |
   ForEach-Object { Get-Content -Raw -Encoding utf8 $_.FullName }) -join "`n"
+if ($tabletModuleText.Contains('probe_icon') -or $tabletModuleText.Contains('packaging probe') -or
+    -not $tabletModuleText.Contains('MuHubPrintExtension') -or
+    -not $tabletModuleText.Contains('$media:layered_image')) {
+  throw 'Tablet entry must use production icon, description, and print extension resources.'
+}
+$entryResources = @(Get-ChildItem $entryResourceRoot -Recurse -File | ForEach-Object {
+  "$($_.FullName.Substring($entryResourceRoot.Length + 1))|$((Get-FileHash $_.FullName).Hash)"
+})
+$tabletResources = @(Get-ChildItem $tabletResourceRoot -Recurse -File | ForEach-Object {
+  "$($_.FullName.Substring($tabletResourceRoot.Length + 1))|$((Get-FileHash $_.FullName).Hash)"
+})
+if (Compare-Object $entryResources $tabletResources) {
+  throw 'PC and tablet Entry resource files must remain identical.'
+}
 foreach ($required in @(
   "export type NativePermissionType = 'microphone' | 'camera' | 'clipboard' | 'location'",
   'onPermissionRequest(callback: (request: NativePermissionRequest) => void)',

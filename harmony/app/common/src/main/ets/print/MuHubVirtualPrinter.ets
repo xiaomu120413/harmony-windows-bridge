@@ -1,5 +1,5 @@
 import { print } from '@kit.BasicServicesKit'
-import { RdpLogger } from 'common'
+import { RdpLogger } from '../rdp/RdpLogger'
 
 const TAG = 'MuHubVirtualPrinter'
 
@@ -24,9 +24,7 @@ export function buildMuHubPrinterInformation(status: print.PrinterStatus): print
     printerMake: 'MuHub',
     alias: 'MuHub Windows Printer',
     capability: {
-      supportedPageSizes: [
-        MUHUB_A4_PAGE_SIZE
-      ],
+      supportedPageSizes: [MUHUB_A4_PAGE_SIZE],
       supportedColorModes: [
         print.PrintColorMode.COLOR_MODE_COLOR,
         print.PrintColorMode.COLOR_MODE_MONOCHROME
@@ -35,12 +33,8 @@ export function buildMuHubPrinterInformation(status: print.PrinterStatus): print
         print.PrintDuplexMode.DUPLEX_MODE_NONE,
         print.PrintDuplexMode.DUPLEX_MODE_LONG_EDGE
       ],
-      supportedMediaTypes: [
-        'stationery'
-      ],
-      supportedQualities: [
-        print.PrintQuality.QUALITY_NORMAL
-      ],
+      supportedMediaTypes: ['stationery'],
+      supportedQualities: [print.PrintQuality.QUALITY_NORMAL],
       supportedOrientations: [
         print.PrintOrientationMode.ORIENTATION_MODE_PORTRAIT,
         print.PrintOrientationMode.ORIENTATION_MODE_LANDSCAPE
@@ -59,9 +53,7 @@ export function buildMuHubPrinterInformation(status: print.PrinterStatus): print
 export function addMuHubVirtualPrinter(reason: string,
   status: print.PrinterStatus = print.PrinterStatus.PRINTER_IDLE): void {
   print.addPrinterToDiscovery(buildMuHubPrinterInformation(status))
-    .then(() => {
-      RdpLogger.info(`${TAG} registered virtual printer reason=${reason}`)
-    })
+    .then(() => RdpLogger.info(`${TAG} registered virtual printer reason=${reason}`))
     .catch((error: Error) => {
       RdpLogger.error(`${TAG} register virtual printer failed reason=${reason}: ${JSON.stringify(error)}`)
     })
@@ -87,9 +79,7 @@ export function removeMuHubVirtualPrinter(reason: string): void {
 
 export function startMuHubPrintDiscovery(reason: string): void {
   print.startDiscoverPrinter([MUHUB_PRINT_EXTENSION_BUNDLE])
-    .then(() => {
-      RdpLogger.info(`${TAG} started print discovery reason=${reason}`)
-    })
+    .then(() => RdpLogger.info(`${TAG} started print discovery reason=${reason}`))
     .catch((error: Error) => {
       RdpLogger.error(`${TAG} start print discovery failed reason=${reason}: ${JSON.stringify(error)}`)
     })
