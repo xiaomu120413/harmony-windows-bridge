@@ -43,7 +43,11 @@ import { HomePage } from '../components/home/HomePage'
 import { HomeText } from '../components/home/HomeText'
 import { RdpSessionPage } from '../components/session/RdpSessionPage'
 import { SettingsPage } from '../components/SettingsPage'
-import { SettingsRemoteText, SettingsRoute } from '../components/settings/SettingsConstants'
+import {
+  SettingsRemoteControlSection,
+  SettingsRemoteText,
+  SettingsRoute
+} from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
 @Component
 export struct MuHubApp {
@@ -609,10 +613,15 @@ export struct MuHubApp {
   }
 
   private openSettingsFromHome(remoteControlSection: string): void {
-    if (this.remoteControlServerAvailable()) {
+    const passiveControlAvailable = this.remoteControlServerAvailable()
+    const activeControlSection = remoteControlSection === SettingsRemoteControlSection.FILES ||
+      remoteControlSection === SettingsRemoteControlSection.ACCESS
+    if (passiveControlAvailable) {
       this.refreshScreenRecordingPermissionState()
       this.refreshInputInjectionPermissionState()
       this.refreshXrdpServerDiagnostics()
+    }
+    if (passiveControlAvailable || activeControlSection) {
       this.settingsRemoteControlSection = remoteControlSection
       this.settingsInitialPageName = remoteControlSection.length > 0 ? SettingsRoute.REMOTE_CONTROL :
         SettingsRoute.SETTINGS

@@ -72,6 +72,7 @@ export struct RemoteControlSettingsPage {
   @Prop xrdpServerBusy: boolean = false
   @Prop screenRecordingPermissionBusy: boolean = false
   @Prop inputInjectionPermissionBusy: boolean = false
+  @Prop passiveControlAvailable: boolean = true
   @State private localScreenRecordingGranted: boolean = false
   @State private localInputInjectionGranted: boolean = false
   @State private localGateEnabled: boolean = false
@@ -94,10 +95,12 @@ export struct RemoteControlSettingsPage {
     this.localXrdpServerPort = this.xrdpServerPort
     this.localXrdpServerMessage = this.xrdpServerMessage
     this.localXrdpServerBusy = false
-    this.refreshScreenRecordingState()
-    this.refreshInputInjectionState()
-    this.refreshXrdpServerStatus()
-    this.onRefreshNetwork()
+    if (this.passiveControlAvailable) {
+      this.refreshScreenRecordingState()
+      this.refreshInputInjectionState()
+      this.refreshXrdpServerStatus()
+      this.onRefreshNetwork()
+    }
   }
 
   private setGateEnabled(enabled: boolean): void {
@@ -193,61 +196,64 @@ export struct RemoteControlSettingsPage {
     Column() {
       SettingsPageHeader({
         title: SettingsShellText.REMOTE_TITLE,
-        subtitle: SettingsRemoteText.PAGE_SUBTITLE,
+        subtitle: this.passiveControlAvailable ? SettingsRemoteText.PAGE_SUBTITLE :
+          SettingsRemoteText.PAGE_CONTROLLER_SUBTITLE,
         isDark: this.isDark,
         onBack: this.onBack
       })
 
       Scroll() {
         Column({ space: 14 }) {
-          SettingsSectionTitle({
-            title: SettingsRemoteText.PASSIVE_SECTION,
-            subtitle: SettingsRemoteText.PASSIVE_DESC,
-            isDark: this.isDark
-          })
+          if (this.passiveControlAvailable) {
+            SettingsSectionTitle({
+              title: SettingsRemoteText.PASSIVE_SECTION,
+              subtitle: SettingsRemoteText.PASSIVE_DESC,
+              isDark: this.isDark
+            })
 
-          XrdpServerCard({
-            isDark: this.isDark,
-            layoutMode: this.layoutMode,
-            targetSection: this.targetSection,
-            localIpAddress: this.localIpAddress,
-            running: this.localXrdpServerRunning,
-            busy: this.localXrdpServerBusy || this.xrdpServerBusy || this.screenRecordingPermissionBusy,
-            state: this.localXrdpServerState,
-            port: this.localXrdpServerPort,
-            message: this.localXrdpServerMessage,
-            onRefresh: (): void => {
-              this.refreshXrdpServerStatus()
-              this.onRefreshNetwork()
-            },
-            onStart: (): void => {
-              this.startXrdpServer()
-            }
-          })
-          RemotePermissionCard({
-            isDark: this.isDark,
-            targetSection: this.targetSection,
-            section: SettingsRemoteControlSection.SCREEN,
-            granted: this.localScreenRecordingGranted,
-            busy: this.screenRecordingPermissionBusy,
-            onRequest: (): void => {
-              this.requestScreenRecordingPermission()
-            }
-          })
-          RemotePermissionCard({
-            isDark: this.isDark,
-            targetSection: this.targetSection,
-            section: SettingsRemoteControlSection.INPUT,
-            title: SettingsRemoteText.INPUT_PERMISSION_TITLE,
-            description: SettingsRemoteText.INPUT_PERMISSION_DESC,
-            icon: SettingsResources.REMOTE_ACCESS_ICON,
-            accent: SettingsAccent.PURPLE,
-            granted: this.localInputInjectionGranted,
-            busy: this.inputInjectionPermissionBusy,
-            onRequest: (): void => {
-              this.requestInputInjectionPermission()
-            }
-          })
+            XrdpServerCard({
+              isDark: this.isDark,
+              layoutMode: this.layoutMode,
+              targetSection: this.targetSection,
+              localIpAddress: this.localIpAddress,
+              running: this.localXrdpServerRunning,
+              busy: this.localXrdpServerBusy || this.xrdpServerBusy || this.screenRecordingPermissionBusy,
+              state: this.localXrdpServerState,
+              port: this.localXrdpServerPort,
+              message: this.localXrdpServerMessage,
+              onRefresh: (): void => {
+                this.refreshXrdpServerStatus()
+                this.onRefreshNetwork()
+              },
+              onStart: (): void => {
+                this.startXrdpServer()
+              }
+            })
+            RemotePermissionCard({
+              isDark: this.isDark,
+              targetSection: this.targetSection,
+              section: SettingsRemoteControlSection.SCREEN,
+              granted: this.localScreenRecordingGranted,
+              busy: this.screenRecordingPermissionBusy,
+              onRequest: (): void => {
+                this.requestScreenRecordingPermission()
+              }
+            })
+            RemotePermissionCard({
+              isDark: this.isDark,
+              targetSection: this.targetSection,
+              section: SettingsRemoteControlSection.INPUT,
+              title: SettingsRemoteText.INPUT_PERMISSION_TITLE,
+              description: SettingsRemoteText.INPUT_PERMISSION_DESC,
+              icon: SettingsResources.REMOTE_ACCESS_ICON,
+              accent: SettingsAccent.PURPLE,
+              granted: this.localInputInjectionGranted,
+              busy: this.inputInjectionPermissionBusy,
+              onRequest: (): void => {
+                this.requestInputInjectionPermission()
+              }
+            })
+          }
           SettingsSectionTitle({
             title: SettingsRemoteText.ACTIVE_SECTION,
             subtitle: SettingsRemoteText.ACTIVE_DESC,

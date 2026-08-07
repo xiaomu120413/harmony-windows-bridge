@@ -155,10 +155,18 @@ if (-not $settingsPageText.Contains('currentStateCardHovered') -or
 }
 if (-not $settingsPageText.Contains('remoteControlServerAvailable: this.remoteControlServerAvailable') -or
   -not $projectHelpText.Contains('if (this.remoteControlServerAvailable)') -or
-  -not $projectHelpText.Contains('this.controlledGuide()')) {
+  -not $projectHelpText.Contains('this.controlledGuide()') -or
+  -not $projectHelpText.Contains('this.showControllerGuide = !this.remoteControlServerAvailable') -or
+  -not $projectHelpText.Contains('selected: this.showControllerGuide') -or
+  -not $projectHelpText.Contains('if (this.showControllerGuide)') -or
+  -not $settingsPageText.Contains('SettingsShellText.HELP_CLIENT_DESC')) {
   throw 'Project help must gate controlled-device guidance behind the 2in1 capability snapshot.'
 }
 if (-not $remoteSettingsText.Contains('RemoteAccessCard') -or
+  -not $remoteSettingsText.Contains('if (this.passiveControlAvailable)') -or
+  -not $settingsPageText.Contains('passiveControlAvailable: this.remoteControlServerAvailable') -or
+  $settingsPageText.Contains('this.pageName === SettingsRoute.REMOTE_CONTROL && this.remoteControlServerAvailable') -or
+  -not $settingsPageText.Contains('SettingsShellText.REMOTE_CLIENT_DESC') -or
   -not $remoteSettingsText.Contains('SettingsRemoteText.PASSIVE_SECTION') -or
   -not $remoteSettingsText.Contains('SettingsRemoteText.ACTIVE_SECTION') -or
   -not $remoteSettingsText.Contains('localIpAddress')) {
