@@ -86,8 +86,8 @@
           "floating",
           "split"
         ],
-        "minWindowWidth": 720,
-        "minWindowHeight": 560,
+        "minWindowWidth": 660,
+        "minWindowHeight": 540,
         "exported": true,
         "skills": [
           {

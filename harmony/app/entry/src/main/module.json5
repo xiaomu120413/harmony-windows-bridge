@@ -117,10 +117,10 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:transparent_start_icon",
         "startWindowBackground": "$color:start_window_background",
-        "orientation": "auto_rotation",
         "supportWindowMode": ["fullscreen", "floating", "split"],
-        "minWindowWidth": 720,
-        "minWindowHeight": 560,
+        "orientation": "auto_rotation",
+        "minWindowWidth": 660,
+        "minWindowHeight": 540,
         "exported": true,
         "skills": [
           {
