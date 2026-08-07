@@ -93,9 +93,6 @@ export struct SettingsPage {
   aboutToAppear(): void {
     this.appearanceMode = SettingsTheme.getStoredAppearanceMode()
     this.pageName = this.initialPageName.length > 0 ? this.initialPageName : SettingsRoute.SETTINGS
-    if (!this.remoteControlServerAvailable && this.pageName === SettingsRoute.REMOTE_CONTROL) {
-      this.pageName = SettingsRoute.SETTINGS
-    }
     this.remoteControlTargetSection = this.pageName === SettingsRoute.REMOTE_CONTROL ?
       this.initialRemoteControlSection : ''
     if (this.remoteControlServerAvailable) {
@@ -264,19 +261,17 @@ export struct SettingsPage {
             this.remoteControlTargetSection = ''
           }
         })
-        if (this.remoteControlServerAvailable) {
-          SettingsDesktopNavItem({
-            title: SettingsShellText.REMOTE_TITLE,
-            iconResource: SettingsResources.REMOTE_CONTROL_ICON,
-            accentName: SettingsAccent.BLUE,
-            selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
-            isDark: this.isDarkMode(),
-            onPress: () => {
-              this.pageName = SettingsRoute.REMOTE_CONTROL
-              this.remoteControlTargetSection = ''
-            }
-          })
-        }
+        SettingsDesktopNavItem({
+          title: SettingsShellText.REMOTE_TITLE,
+          iconResource: SettingsResources.REMOTE_CONTROL_ICON,
+          accentName: SettingsAccent.BLUE,
+          selected: this.pageName === SettingsRoute.REMOTE_CONTROL,
+          isDark: this.isDarkMode(),
+          onPress: () => {
+            this.pageName = SettingsRoute.REMOTE_CONTROL
+            this.remoteControlTargetSection = ''
+          }
+        })
         SettingsDesktopNavItem({
           title: SettingsShellText.HELP_TITLE,
           iconResource: SettingsResources.PROJECT_HELP_ICON,
@@ -476,19 +471,15 @@ export struct SettingsPage {
             this.pageName = SettingsRoute.BASIC
             this.remoteControlTargetSection = ''
           })
-        if (this.remoteControlServerAvailable) {
-          this.overviewEntry(SettingsShellText.REMOTE_TITLE, SettingsShellText.REMOTE_DESC,
-            SettingsResources.REMOTE_CONTROL_ICON, SettingsAccent.BLUE, this.xrdpStatusText(), () => {
-              this.pageName = SettingsRoute.REMOTE_CONTROL
-              this.remoteControlTargetSection = ''
-            })
-        } else {
-          this.overviewEntry(SettingsRemoteText.FILES_TITLE, SettingsRemoteText.FILES_DESC,
-            SettingsResources.REMOTE_FILES_ICON, SettingsAccent.GREEN, '', () => {
-              this.onOpenRemoteFilesDirectory()
-            })
-        }
-        this.overviewEntry(SettingsShellText.HELP_TITLE, SettingsShellText.HELP_DESC,
+        this.overviewEntry(SettingsShellText.REMOTE_TITLE, this.remoteControlServerAvailable ?
+          SettingsShellText.REMOTE_DESC : SettingsShellText.REMOTE_CLIENT_DESC,
+          SettingsResources.REMOTE_CONTROL_ICON, SettingsAccent.BLUE,
+          this.remoteControlServerAvailable ? this.xrdpStatusText() : '', () => {
+            this.pageName = SettingsRoute.REMOTE_CONTROL
+            this.remoteControlTargetSection = ''
+          })
+        this.overviewEntry(SettingsShellText.HELP_TITLE, this.remoteControlServerAvailable ?
+          SettingsShellText.HELP_DESC : SettingsShellText.HELP_CLIENT_DESC,
           SettingsResources.PROJECT_HELP_ICON, SettingsAccent.PURPLE, '', () => {
             this.pageName = SettingsRoute.PROJECT_HELP
             this.remoteControlTargetSection = ''
@@ -514,7 +505,7 @@ export struct SettingsPage {
           this.pageName = SettingsRoute.SETTINGS
         }
       })
-    } else if (this.pageName === SettingsRoute.REMOTE_CONTROL && this.remoteControlServerAvailable) {
+    } else if (this.pageName === SettingsRoute.REMOTE_CONTROL) {
       RemoteControlSettingsPage({
         isDark: this.isDarkMode(),
         layoutMode: this.layoutMode,
@@ -531,6 +522,7 @@ export struct SettingsPage {
         xrdpServerBusy: this.xrdpServerBusy,
         screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
         inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
+        passiveControlAvailable: this.remoteControlServerAvailable,
         onRemoteAccessCodeGateChange: this.onRemoteAccessCodeGateChange,
         onRemoteAccessCodeRegenerate: this.onRemoteAccessCodeRegenerate,
         onRequestScreenRecordingPermission: this.onRequestScreenRecordingPermission,

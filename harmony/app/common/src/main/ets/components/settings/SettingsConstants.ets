@@ -29,8 +29,10 @@ export class SettingsShellText {
   static readonly BASIC_DESC: string = '调整应用外观与通用偏好'
   static readonly REMOTE_TITLE: string = '远控设置'
   static readonly REMOTE_DESC: string = '管理本机的被动控制与主动控制能力'
+  static readonly REMOTE_CLIENT_DESC: string = '管理本机主动连接 Windows 的能力'
   static readonly HELP_TITLE: string = '项目帮助'
   static readonly HELP_DESC: string = '查看windows 如何连接本机，以及本机如何连接 Windows'
+  static readonly HELP_CLIENT_DESC: string = '查看本机连接 Windows 的步骤和排查方法'
 }
 
 export class SettingsAppearanceText {
@@ -56,6 +58,7 @@ export class SettingsAppearanceText {
 
 export class SettingsRemoteText {
   static readonly PAGE_SUBTITLE: string = '管理别人连接本机和本机主动连接 Windows 的能力'
+  static readonly PAGE_CONTROLLER_SUBTITLE: string = '管理本机主动连接 Windows 的共享目录和连接验证码'
   static readonly PASSIVE_SECTION: string = '被动控制'
   static readonly PASSIVE_DESC: string = 'windows机器 连接并控制本机。'
   static readonly ACTIVE_SECTION: string = '主动控制'

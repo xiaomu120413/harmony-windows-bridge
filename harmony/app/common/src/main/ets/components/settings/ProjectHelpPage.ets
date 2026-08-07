@@ -197,6 +197,10 @@ export struct ProjectHelpPage {
   @State private aboutCardHovered: boolean = false
   @State private aboutCardPressed: boolean = false
 
+  aboutToAppear(): void {
+    this.showControllerGuide = !this.remoteControlServerAvailable
+  }
+
   private setAboutCardHovered(hovered: boolean): void {
     SettingsTheme.animate(this.getUIContext(), () => {
       this.aboutCardHovered = hovered
@@ -403,7 +407,8 @@ export struct ProjectHelpPage {
     Column() {
       SettingsPageHeader({
         title: SettingsShellText.HELP_TITLE,
-        subtitle: SettingsHelpText.PAGE_SUBTITLE,
+        subtitle: this.remoteControlServerAvailable ? SettingsHelpText.PAGE_SUBTITLE :
+          SettingsShellText.HELP_CLIENT_DESC,
         isDark: this.isDark,
         onBack: this.onBack
       })
@@ -412,21 +417,19 @@ export struct ProjectHelpPage {
         Column() {
           if (this.remoteControlServerAvailable) {
             this.controlledGuide()
-            SettingsListItem({
-              title: SettingsHelpText.CONTROLLER_TITLE,
-              description: SettingsHelpText.CONTROLLER_DESC,
-              iconResource: SettingsResources.REMOTE_CONTROL_ICON,
-              accentName: SettingsAccent.CYAN,
-              selected: this.showControllerGuide,
-              isDark: this.isDark,
-              onPress: (): void => {
-                this.showControllerGuide = !this.showControllerGuide
-              }
-            })
-            if (this.showControllerGuide) {
-              this.controllerGuide()
+          }
+          SettingsListItem({
+            title: SettingsHelpText.CONTROLLER_TITLE,
+            description: SettingsHelpText.CONTROLLER_DESC,
+            iconResource: SettingsResources.REMOTE_CONTROL_ICON,
+            accentName: SettingsAccent.CYAN,
+            selected: this.showControllerGuide,
+            isDark: this.isDark,
+            onPress: (): void => {
+              this.showControllerGuide = !this.showControllerGuide
             }
-          } else {
+          })
+          if (this.showControllerGuide) {
             this.controllerGuide()
           }
 
