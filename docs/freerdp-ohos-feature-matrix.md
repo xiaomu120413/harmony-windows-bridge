@@ -1,6 +1,6 @@
 # FreeRDP OHOS Feature Matrix
 
-更新时间：2026-05-26
+更新时间：2026-08-05
 
 ## 结论
 
@@ -59,13 +59,15 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | 基础 RDP/TLS/NLA | 首版交付 | 默认启用 | `INTERNET`、网络状态 | 待按 T00 基线复测连接、认证、证书 |
 | RDPGFX/H.264 + AVC444 GPU compositor | 首版交付 | 默认 `rdpgfx-h264`，AVC444 GPU compositor 开启 | 无新增权限 | 待真机确认协商、首帧、resize、fallback |
 | GDI/software render | 保留 fallback | 图形失败时可回退 | 无新增权限 | 待真机确认失败场景不黑屏 |
-| 动态分辨率 `disp` | 首版交付 | 默认请求 | 无新增权限 | 待真机确认 resize 和服务端不支持提示 |
+| 动态分辨率 `disp` | 首版交付 | 默认请求；单屏发送完整像素/物理尺寸/方向/scale，窗口变化 trailing debounce | 无新增权限 | API 22 2in1 真机确认全屏 `3120×1872`、浮窗 `2080×1312` 请求均为 Sent；服务端不支持提示待补 |
+| FreeRDP 多显示器 `disp/multimon` | 已实现，待动作级真机验收 | 仅检测到 2 块及以上本地显示器时启用；回到单屏自动清除多屏快照 | 无新增权限 | OHOS 交叉编译与 HAP 构建通过；待外接屏热插拔、拓扑和四角输入验收 |
+| 手写笔 `RDPEI` | 已实现，待动作级真机验收 | Native XComponent 检测到 pen 时自动启用；不提供 ArkTS 开关 | 无新增权限 | 压力/倾角/橡皮字段及生命周期静态检查通过；待 Windows Ink 真机验收 |
 | Geometry tracking `geometry` | 首版交付 | 默认注册动态虚拟通道 | 无新增权限 | 待真机确认服务端是否协商；当前不消费 region 数据 |
 | 剪贴板文本 `cliprdr` + Pasteboard | 首版交付 | 默认接入，按需授权 | `READ_PASTEBOARD` | 待真机确认双向文本、拒绝权限和 change echo |
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |
 | 音频播放 `rdpsnd` | 首版交付 | 默认接入 OHAudio/OpenSLES backend | 无新增权限 | 已覆盖延迟、断连、前后台和路由回归 |
 | 麦克风 `audin` | 首版交付 | 默认接入，远端请求采集时按需授权 | `MICROPHONE` | 已覆盖授权、拒绝、采集路径和断连回归 |
-| 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 待真机确认授权、拒绝、采集路径 |
+| 摄像头 `rdpecam` | 首版交付 | 默认接入，远端请求摄像头时按需授权 | `CAMERA` | 已覆盖授权、拒绝、采集路径和断连释放回归 |
 | 地理位置 `location` | 后端就绪，默认关闭 channel | 默认 session config 关闭；启用后远端请求定位时按需授权 | `APPROXIMATELY_LOCATION`、`LOCATION` | 已完成本地构建和真机安装；仍需远端策略、授权/拒绝、channel 开关和服务端接收回归 |
 | 文件重定向 `rdpdr/drive` | 首版交付 | 默认映射固定 Download 子目录，不暴露任意路径 | 不声明额外文件权限；依赖下载控件授权 | 已真机确认启动后创建 `Download/com.muhub.desktop`；仍需 Windows `\\tsclient\Downloads` 读写回归 |
 | 打印 `printer` channel | 可选，已接入 OHOS 后端 | 默认暴露虚拟打印机；PrintKit 在远端打印作业到达时按需启动 | `PRINT` | 已覆盖 Harmony PDF Printer/CUPS job、真实打印机选择、失败提示和多设备回归 |
@@ -81,6 +83,10 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | `rdpgfx-h264` 到 `rdpgfx`/`gdi` | 保留 | 图形协商、codec、surface 或 compositor 路径失败 | 只在图形失败时重试下一档 | 密码、证书、TCP 失败不能触发图形 fallback |
 | AVC444 GPU compositor 到 FreeRDP native GDI | 保留 | 单条 AVC444 command 不可消费或 Surface 不可用 | 该 command 交回 native GDI/RGB 输出 | 不允许 GPU/GDI 双写、旧帧或黑屏 |
 | `disp` resize 失败到固定分辨率 | 保留 | 服务端不支持 display-control 或 caps 未就绪 | 保持当前桌面尺寸并记录原因 | 日志说明未发送、待重试或服务端不支持 |
+
+`disp` 是客户端主导的 RDP 会话布局协议：本地窗口、方向或本地显示拓扑变化会请求
+Windows 调整虚拟桌面。Windows 主机物理显示器的分辨率/缩放变化不属于该通道的
+上报范围；需要此能力时必须另行设计 Windows 侧代理或自定义虚拟通道。
 | Pasteboard 权限拒绝到剪贴板操作失败 | 保留 | 用户拒绝或权限请求超时 | 本次剪贴板读写失败，会话继续 | 不崩溃，不在连接开始弹权限 |
 | 麦克风权限拒绝到 `audin` open 失败 | 保留 | 用户拒绝或权限请求超时 | 采集通道失败，会话和播放继续 | 日志说明拒绝；不影响基础 RDP |
 | 地理位置权限拒绝到 location sample 失败 | 保留 | 用户拒绝、定位服务关闭或权限请求超时 | 本次 location sample 不发送，会话继续 | 日志说明拒绝或采样失败；不影响基础 RDP |
@@ -98,7 +104,8 @@ T00 已把后续任务的可重复验收口径整理到 `docs/freerdp-ohos-valid
 - 地理位置后端已进包，但当前默认 session config 关闭 `location` channel；若后续启用后连接中弹定位权限，触发源应是服务端发起 `LocationStart`，不是打印链路依赖。
 - 文件重定向默认只共享系统下载目录下的 `com.muhub.desktop`；App 启动时用下载控件准备目录，RDP 连接时 FreeRDP 映射为 `\\tsclient\Downloads`。
 - 打印功能新增 OHOS PrintKit backend；连接时只注册虚拟打印机，远端提交打印作业后才进入 PrintKit。
-- 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat`
+- 验证构建：`harmony/scripts/wsl/build-freerdp-ohos.sh`、`harmony/app/build_hap.bat app`；
+  设备定向构建使用 `tablet` 或 `2in1` 参数。
 
 ## 本轮验证命令
 
@@ -111,10 +118,13 @@ harmony/scripts/wsl/build-freerdp-ohos.sh
 powershell -NoProfile -ExecutionPolicy Bypass -File .\harmony\scripts\windows\sync-freerdp-runtime.ps1
 ```
 
-HAP 构建使用 `harmony/app/build_hap.bat`，目标产物：
+多设备构建使用 `harmony/app/build_hap.bat app`，目标产物：
 
 ```text
+harmony/app/build/outputs/default/app-default-signed.app
+harmony/app/common/build/default/outputs/default/common-default-signed.hsp
 harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
+harmony/app/entry_tablet/build/default/outputs/default/entry_tablet-default-signed.hap
 ```
 
 每个 T01-T18 任务完成后，应在任务说明中明确是否已覆盖 FreeRDP build、runtime sync、HAP build 和真机检查。未覆盖的检查不能默认为通过。
@@ -135,6 +145,8 @@ harmony/app/entry/build/default/outputs/default/entry-default-signed.hap
 10. 启动 App 后确认系统下载目录下存在 `com.muhub.desktop`；连接 Windows 后验证 `\\tsclient\Downloads` 能列出该目录内容并完成小文件读写。
 11. 检查构建 manifest：`with_smartcard=OFF`、`with_smartcard_pcsc=OFF`，运行包内不应出现 smartcard/TSMF addin。
 12. 有 RD Gateway 服务端环境后再启动 RD Gateway 专项：补 UI 参数和 settings 映射，并验证网关认证、证书、错误提示和目标机透传。
+13. 使用 HarmonyOS 手写笔在 Windows Ink/画图验证轻压、重压、X/Y 倾斜、橡皮和失焦/断连释放；确认笔事件不会同时触发 finger Tap/Pan。
+14. 连接外接屏，确认 Windows 显示设置中的数量、主屏和相对拓扑一致；热拔插后无需重连，并验证每块屏幕四角点击坐标。
 
 ## 影响
 

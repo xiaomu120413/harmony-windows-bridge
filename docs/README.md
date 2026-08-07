@@ -5,8 +5,24 @@ validation notes live under `docs/archive/`.
 
 ## Current Docs
 
+- [CHANGELOG.md](CHANGELOG.md): repository-wide change ledger. Each Git commit
+  has one concise record of what changed, its impact and where to find
+  validation evidence.
+
+- [harmonyos-tablet-adaptation-architecture-and-acceptance.md](harmonyos-tablet-adaptation-architecture-and-acceptance.md):
+  existing tablet/2in1 UI, session, input, XComponent and acceptance ledger.
+  Its former single-HAP packaging constraint is retained as history and is
+  superseded by the multi-device packaging plan below.
+
+- [harmonyos-multidevice-hnp-packaging-plan.md](harmonyos-multidevice-hnp-packaging-plan.md):
+  DesignReady target architecture and staged validation plan for one App Pack,
+  device-specific Entry HAPs, shared HSP, 2in1-only HNP/permissions, independent
+  XRDP process, upgrade safety and AppGallery distribution checks.
+
 - `freerdp-ohos-feature-matrix.md`: current OHOS FreeRDP feature status,
   default channel policy, permissions and fallback behavior.
+- `freerdp-ohos-pen-and-multimon-design.md`: DesignReady ownership, ABI,
+  fallback and acceptance contract for native stylus and multi-monitor support.
 - `freerdp-ohos-validation-baseline.md`: repeatable build, runtime sync, HAP
   packaging and true-device validation checklist.
 - `freerdp-ohos-sdk-quickstart.md`: public OHOS FreeRDP SDK integration guide.

@@ -1,0 +1,11 @@
+{
+  "name": "entry_tablet",
+  "version": "15.0.0",
+  "description": "MuHub tablet entry.",
+  "main": "",
+  "author": "MuHub",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "common": "file:../common"
+  }
+}

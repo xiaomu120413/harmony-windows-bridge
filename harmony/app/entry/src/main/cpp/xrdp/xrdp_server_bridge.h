@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "ohos/xrdp_ohos.h"
-
 namespace rdp_bridge {
 
 struct XrdpServerParams {
@@ -20,16 +18,13 @@ struct XrdpServerCommandResult {
     std::string state;
     std::string message;
     std::vector<std::string> logs;
-    std::string libraryPath;
-    std::string runtimeRoot;
-    std::string configPath;
-    std::string modulePath;
-    std::string logPath;
-    bool activeMstscSession = false;
-    uint32_t port = 0;
+    int32_t pid = 0;
+    int32_t lastExitCode = 0;
+    uint32_t port = 3390;
 };
 
 XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params);
 XrdpServerCommandResult GetXrdpServerDiagnostics();
+XrdpServerCommandResult StopXrdpServer(const std::string& reason);
 
 } // namespace rdp_bridge

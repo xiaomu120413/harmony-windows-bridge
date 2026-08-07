@@ -1,0 +1,139 @@
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if ($repoRoot.Length -lt 3 -or $repoRoot[1] -ne ':') {
+  throw "Unsupported Windows workspace path: $repoRoot"
+}
+$drive = $repoRoot.Substring(0, 1).ToLowerInvariant()
+$pathTail = $repoRoot.Substring(2).Replace('\', '/')
+$wslRoot = "/mnt/$drive$pathTail"
+
+$cppRoot = "$wslRoot/harmony/app/common/src/main/cpp"
+$freeRdpRoot = "$wslRoot/harmony/third_party/FreeRDP"
+$freeRdpInclude = "$wslRoot/harmony/out/ohos-arm64/sysroot/include/freerdp3"
+$resizeTestSource = "$cppRoot/tests/rdp_display_resize_coordinator_test.cpp"
+$coordinatorSource = "$cppRoot/session/rdp_display_resize_coordinator.cpp"
+$resizeTestBinary = '/tmp/muhub-rdp-display-resize-test'
+$coalescerTestSource = "$cppRoot/tests/rdp_display_request_coalescer_test.cpp"
+$coalescerSource = "$cppRoot/session/rdp_display_request_coalescer.cpp"
+$coalescerTestBinary = '/tmp/muhub-rdp-display-request-coalescer-test'
+$pointerTestSource = "$cppRoot/tests/remote_pointer_text_policy_test.cpp"
+$pointerPolicySource = "$cppRoot/input/remote_pointer_text_policy.cpp"
+$pointerTestBinary = '/tmp/muhub-remote-pointer-text-test'
+$touchTestSource = "$cppRoot/tests/xcomponent_touch_policy_test.cpp"
+$touchPolicySource = "$cppRoot/input/xcomponent_touch_policy.cpp"
+$touchTestBinary = '/tmp/muhub-xcomponent-touch-policy-test'
+$geometryTestSource = "$cppRoot/tests/remote_content_geometry_test.cpp"
+$geometryPolicySource = "$cppRoot/surface/remote_content_geometry.cpp"
+$geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
+
+$napiExportsSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/napi/napi_exports.cpp'
+$napiExportsText = Get-Content -Raw -Encoding utf8 $napiExportsSource
+$displayMonitorSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/session/rdp_display_layout_monitor.cpp'
+$displayMonitorText = Get-Content -Raw -Encoding utf8 $displayMonitorSource
+foreach ($required in @(
+  'CreatePrimaryDisplay',
+  'CreateAllDisplays',
+  'GetDisplayPosition',
+  'RegisterDisplayAddListener',
+  'RegisterDisplayRemoveListener',
+  'native_display_initial'
+)) {
+  if (-not $displayMonitorText.Contains($required)) {
+    throw "Native multi-display monitor is incomplete: missing $required"
+  }
+}
+foreach ($required in @(
+  '{"onPermissionRequest", nullptr, OnPermissionRequest',
+  '{"completePermissionRequest", nullptr, CompletePermissionRequest',
+  '{"microphone", MicrophonePermissionRequestSink, CompleteMicrophonePermissionRequestFromUi}',
+  '{"camera", CameraPermissionRequestSink, CompleteCameraPermissionRequestFromUi}',
+  '{"clipboard", ClipboardPermissionRequestSink, CompleteClipboardPermissionRequestFromUi}',
+  '{"location", LocationPermissionRequestSink, CompleteLocationPermissionRequestFromUi}',
+  'FindPermissionRoute(typeName)'
+)) {
+  if (-not $napiExportsText.Contains($required)) {
+    throw "Unified native permission routing is incomplete: missing $required"
+  }
+}
+foreach ($forbidden in @(
+  '"onMicrophonePermissionRequest"',
+  '"onCameraPermissionRequest"',
+  '"onClipboardPermissionRequest"',
+  '"onLocationPermissionRequest"',
+  '"completeMicrophonePermissionRequest"',
+  '"completeCameraPermissionRequest"',
+  '"completeClipboardPermissionRequest"',
+  '"completeLocationPermissionRequest"'
+)) {
+  if ($napiExportsText.Contains($forbidden)) {
+    throw "Legacy native permission export remains: found $forbidden"
+  }
+}
+
+$gestureSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/input/xcomponent_native_gesture.cpp'
+$rawTouchSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/input/xcomponent_touch_gesture.cpp'
+$sessionPageSource = Join-Path $repoRoot 'harmony/app/common/src/main/ets/components/session/RdpSessionPage.ets'
+$gestureText = Get-Content -Raw -Encoding utf8 $gestureSource
+foreach ($required in @(
+  'createGroupGesture(PARALLEL_GROUP)',
+  'createGroupGesture(EXCLUSIVE_GROUP)',
+  'createTapGesture(1, 1)',
+  'createTapGesture(2, 1)',
+  'createLongPressGesture(1, false',
+  'createPanGesture(',
+  'OH_ArkUI_SetGestureRecognizerLimitFingerCount'
+)) {
+  if (-not $gestureText.Contains($required)) {
+    throw "Native system gesture topology is incomplete: missing $required"
+  }
+}
+$rawTouchText = Get-Content -Raw -Encoding utf8 $rawTouchSource
+foreach ($forbidden in @('NativeTouchGesturePolicy', 'HandleLongPressTimeout')) {
+  if ($rawTouchText.Contains($forbidden)) {
+    throw "Raw XComponent Touch still owns gesture semantics: found $forbidden"
+  }
+}
+$penSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/input/xcomponent_pen.cpp'
+$penText = Get-Content -Raw -Encoding utf8 $penSource
+foreach ($required in @(
+  'GetTouchPointToolType',
+  'GetTouchPointTiltX',
+  'GetTouchPointTiltY',
+  'SendLocalPen',
+  'LocalPenFlagEraser',
+  'CancelXComponentPenInput'
+)) {
+  if (-not $penText.Contains($required)) {
+    throw "Native stylus path is incomplete: missing $required"
+  }
+}
+if (-not $gestureText.Contains('UI_INPUT_EVENT_TOOL_TYPE_PEN')) {
+  throw 'System finger gesture recognizers must ignore stylus events.'
+}
+$sessionPageText = Get-Content -Raw -Encoding utf8 $sessionPageSource
+foreach ($forbidden in @('XComponent({', 'XComponentController', 'TapGesture', 'PanGesture', 'LongPressGesture')) {
+  if ($sessionPageText.Contains($forbidden)) {
+    throw "ArkTS session page still owns XComponent/gesture behavior: found $forbidden"
+  }
+}
+
+$command = "set -e; trap 'rm -f $resizeTestBinary $coalescerTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary' EXIT; " +
+  "g++ -std=c++17 -pthread " +
+  "-I'$cppRoot' -I'$freeRdpRoot' -I'$freeRdpInclude' " +
+  "'$resizeTestSource' '$coordinatorSource' -o '$resizeTestBinary'; '$resizeTestBinary'; " +
+  "g++ -std=c++17 -pthread -I'$cppRoot' '$coalescerTestSource' '$coalescerSource' " +
+  "-o '$coalescerTestBinary'; '$coalescerTestBinary'; " +
+  "g++ -std=c++17 -I'$cppRoot' '$pointerTestSource' '$pointerPolicySource' " +
+  "-o '$pointerTestBinary'; '$pointerTestBinary'; " +
+  "g++ -std=c++17 -I'$cppRoot' '$touchTestSource' '$touchPolicySource' " +
+  "-o '$touchTestBinary'; '$touchTestBinary'; " +
+  "g++ -std=c++17 -I'$cppRoot' '$geometryTestSource' '$geometryPolicySource' " +
+  "-o '$geometryTestBinary'; '$geometryTestBinary'"
+
+& wsl.exe bash -lc $command
+if ($LASTEXITCODE -ne 0) {
+  throw "Tablet native tests failed with exit code $LASTEXITCODE."
+}
+
+Write-Output 'Tablet native resize, display layout, stylus, remote pointer text, touch gesture, and content geometry tests passed.'

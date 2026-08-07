@@ -1,6 +1,6 @@
 param(
   [string]$SourceRoot = "harmony/out/ohos-arm64",
-  [string]$TargetRoot = "harmony/app/entry/libs/arm64-v8a",
+  [string]$TargetRoot = "harmony/app/common/libs/arm64-v8a",
   [switch]$Force
 )
 
@@ -14,14 +14,9 @@ $cacheDir = Join-Path $repoRoot "harmony/out/.build-cache"
 $stampFile = Join-Path $cacheDir "sync-freerdp-runtime.sha256"
 
 $runtimeSource = Join-Path $source "runtime-libs"
-$probeSource = Join-Path $source "probe/libfreerdp_ohos_probe.so"
 
 if (-not (Test-Path -LiteralPath $runtimeSource)) {
   throw "Missing runtime library directory: $runtimeSource"
-}
-
-if (-not (Test-Path -LiteralPath $probeSource)) {
-  throw "Missing probe library: $probeSource"
 }
 
 $runtimeLibraryNames = @(
@@ -56,7 +51,6 @@ $osslModuleSource = Join-Path $runtimeSource "ossl-modules/legacy.so"
 if (Test-Path -LiteralPath $osslModuleSource) {
   $sourceInputs.Add($osslModuleSource)
 }
-$sourceInputs.Add($probeSource)
 
 $requiredNames = @(
   "libcjson.so.1",
@@ -65,8 +59,7 @@ $requiredNames = @(
   "libfreerdp3.so",
   "libssl.so.3",
   "libwinpr3.so",
-  "libz.so.1",
-  "libfreerdp_ohos_probe.so"
+  "libz.so.1"
 )
 
 $requiredOutputs = New-Object System.Collections.Generic.List[string]
@@ -77,10 +70,32 @@ if (Test-Path -LiteralPath $osslModuleSource) {
   $requiredOutputs.Add((Join-Path $target "ossl-modules/legacy.so"))
 }
 
+# XRDP server runtime belongs exclusively to the 2in1 HNP. Remove legacy copies
+# before evaluating the FreeRDP cache so they cannot leak into common.hsp.
+$obsoleteServerRuntime = @(
+  "libcommon.so.0",
+  "libipm.so.0",
+  "libtoml.so.1",
+  "libxrdp.so.0",
+  "libxrdpohos.so",
+  "libxrdpserver.so",
+  "libfreerdp_ohos_probe.so"
+)
+foreach ($name in $obsoleteServerRuntime) {
+  $obsoletePath = Join-Path $target $name
+  if (Test-Path -LiteralPath $obsoletePath) {
+    Remove-Item -LiteralPath $obsoletePath -Force
+  }
+}
+$obsoleteRuntimeTree = Join-Path $target "xrdp"
+if (Test-Path -LiteralPath $obsoleteRuntimeTree) {
+  Remove-Item -LiteralPath $obsoleteRuntimeTree -Recurse -Force
+}
+
 $fingerprint = Get-BuildCacheFingerprint `
   -Root $repoRoot `
   -Paths $sourceInputs.ToArray() `
-  -Extra @("sync-freerdp-runtime:v1", "target=$TargetRoot")
+  -Extra @("sync-freerdp-runtime:v3-production-client-only", "target=$TargetRoot")
 
 if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs $requiredOutputs.ToArray())) {
   $stats = Get-BuildCacheFileStats -Path $target
@@ -116,8 +131,6 @@ if (Test-Path -LiteralPath $osslModuleSource) {
     Remove-Item -LiteralPath $osslModuleTarget -Force
   }
 }
-Copy-Item -LiteralPath $probeSource -Destination (Join-Path $target "libfreerdp_ohos_probe.so") -Force
-
 foreach ($name in $requiredNames) {
   $path = Join-Path $target $name
   if (-not (Test-Path -LiteralPath $path)) {
