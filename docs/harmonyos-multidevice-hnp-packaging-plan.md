@@ -612,8 +612,8 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 - 2in1 与 tablet Entry 的 35 项产品资源逐文件一致，均注册 `MuHubPrintExtension`；tablet 真机
   `bm dump` 已确认打印扩展存在。交付包不再包含打包探针、`probe_icon` 或诊断用
   `libfreerdp_ohos_probe.so`。
-- 最终 App Pack 为 39,807,209 字节，SHA-256 为
-  `0b5755a6152094502c77699507a76fe686896e72dfe8d50f8bd2f2fb8e47d996`，本地门禁通过。
+- 最终 App Pack 为 39,799,360 字节，SHA-256 为
+  `1c5a2d542fb794557819fea7672a28077973e89df32ca475725bd7c9fc200bb2`，本地门禁通过。
 - MDP-00 已确认旧 `entry` 到 `entry_tablet` 的覆盖升级失败；真实应用市场按设备选包也未执行。
   因此该 App Pack 仍是工程验证产物，不能替换发布基线。发布前必须验证第 13.3 节的通用 Entry +
   2in1-only Feature 方案，或取得平台支持的同名设备变体方案。

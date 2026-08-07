@@ -16,7 +16,6 @@ export struct HomeHeader {
   }
   @State private settingsHovered: boolean = false
   @State private settingsPressed: boolean = false
-  private readonly headerSideWidth: number = 260
 
   private headerStatusTone(): SettingsStatusTone {
     return SettingsText.remoteServerStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
@@ -86,10 +85,7 @@ export struct HomeHeader {
 
   @Builder
   private buildExpandedHeader() {
-    Row() {
-      Row()
-        .width(this.headerSideWidth)
-
+    Row({ space: 20 }) {
       Text(HomeText.APP_TAGLINE)
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
@@ -109,7 +105,6 @@ export struct HomeHeader {
         }
         this.buildSettingsButton()
       }
-      .width(this.headerSideWidth)
       .justifyContent(FlexAlign.End)
       .alignItems(VerticalAlign.Center)
     }
