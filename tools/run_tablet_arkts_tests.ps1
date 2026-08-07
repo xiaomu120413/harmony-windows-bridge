@@ -12,6 +12,11 @@ $controllerPath = Join-Path $etsRoot 'rdp\RdpClientController.ets'
 $connectionDetailsPath = Join-Path $etsRoot 'components\home\HomeConnectionDetails.ets'
 $deviceListPath = Join-Path $etsRoot 'components\home\HomeDeviceList.ets'
 $homeTextPath = Join-Path $etsRoot 'components\home\HomeText.ets'
+$settingsPagePath = Join-Path $etsRoot 'components\SettingsPage.ets'
+$basicSettingsPath = Join-Path $etsRoot 'components\settings\BasicSettingsPage.ets'
+$projectHelpPath = Join-Path $etsRoot 'components\settings\ProjectHelpPage.ets'
+$remoteSettingsPath = Join-Path $etsRoot 'components\settings\RemoteControlSettingsPage.ets'
+$remoteCardsPath = Join-Path $etsRoot 'components\settings\RemoteControlCards.ets'
 $modulePath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\module.json5'
 $tabletModulePath = Join-Path $repositoryRoot 'harmony\app\entry_tablet\src\main\module.json5'
 $nativeTypesText = Get-Content -Raw -Encoding utf8 $nativeTypesPath
@@ -21,6 +26,11 @@ $controllerText = Get-Content -Raw -Encoding utf8 $controllerPath
 $connectionDetailsText = Get-Content -Raw -Encoding utf8 $connectionDetailsPath
 $deviceListText = Get-Content -Raw -Encoding utf8 $deviceListPath
 $homeTextText = Get-Content -Raw -Encoding utf8 $homeTextPath
+$settingsPageText = Get-Content -Raw -Encoding utf8 $settingsPagePath
+$basicSettingsText = Get-Content -Raw -Encoding utf8 $basicSettingsPath
+$projectHelpText = Get-Content -Raw -Encoding utf8 $projectHelpPath
+$remoteSettingsText = Get-Content -Raw -Encoding utf8 $remoteSettingsPath
+$remoteCardsText = Get-Content -Raw -Encoding utf8 $remoteCardsPath
 $moduleText = Get-Content -Raw -Encoding utf8 $modulePath
 $tabletModuleText = Get-Content -Raw -Encoding utf8 $tabletModulePath
 $entryResourceRoot = Join-Path $repositoryRoot 'harmony\app\entry\src\main\resources'
@@ -130,6 +140,24 @@ foreach ($forbiddenDependency in @('../components/', '../capability/', '../adapt
 if (-not $moduleText.Contains('"orientation": "auto_rotation"') -or
   -not ($moduleText -match '"supportWindowMode"\s*:\s*\[[^\]]*"split"')) {
   throw 'EntryAbility must declare auto_rotation and split window support.'
+}
+if ($basicSettingsText.Contains('@kit.NetworkKit') -or
+  $basicSettingsText.Contains('BASIC_NETWORK_SECTION')) {
+  throw 'Basic settings must not own remote-control connection network information.'
+}
+if (-not $settingsPageText.Contains('remoteControlServerAvailable: this.remoteControlServerAvailable') -or
+  -not $projectHelpText.Contains('if (this.remoteControlServerAvailable)') -or
+  -not $projectHelpText.Contains('this.controlledGuide()')) {
+  throw 'Project help must gate controlled-device guidance behind the 2in1 capability snapshot.'
+}
+if ($remoteSettingsText.Contains('RemoteAccessCard') -or
+  -not $remoteSettingsText.Contains('localIpAddress') -or
+  -not $remoteSettingsText.Contains('onCopyConnectionAddress')) {
+  throw 'Remote settings must expose the controlled-device address without a controlled-side verification-code card.'
+}
+if (([regex]::Matches($projectHelpText, 'LayoutMode\.EXPANDED').Count -lt 2) -or
+  -not $remoteCardsText.Contains('layoutMode === LayoutMode.EXPANDED')) {
+  throw 'Controlled-device help and address cards must define explicit Compact and Expanded layouts.'
 }
 foreach ($forbidden in @(
   'onMicrophonePermissionRequest',

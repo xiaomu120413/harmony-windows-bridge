@@ -156,11 +156,12 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 
 | 字段 | 数据来源 |
 | --- | --- |
-| 外观 | `appearanceMode` |
-| 本机 IP | 基础设置页已有的网络读取逻辑，可显示 `Ready / Loading / Empty` |
+| 连接地址 | `SettingsPage.localIpAddress` 与 `xrdpServerPort` |
 | xrdp | `xrdpServerRunning`、`xrdpServerPort`、`xrdpServerState` |
-| 门禁 | `remoteAccessCodeGateEnabled` |
 | 录屏权限 | `screenRecordingPermissionGranted` |
+| 键鼠权限 | `inputInjectionPermissionGranted` |
+
+连接地址不再复用基础设置页状态。`SettingsPage` 统一遍历当前所有网络，优先 Ethernet/Wi-Fi 和常见局域网 IPv4，VPN 地址只作为最后回退；远控设置和项目帮助共享同一个结果。
 
 概览卡片点击：
 
@@ -170,7 +171,7 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 
 ## 4. 基础设置页
 
-当前可做内容：外观模式、本机 IP。
+当前只承载外观模式和通用偏好。本机 IP 属于“别人如何连接本机”的任务信息，已迁移到远控设置与项目帮助，不再放在基础设置。
 
 ### 外观模式
 
@@ -193,31 +194,9 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 - 选中的行显示蓝色边框或勾选图标。
 - 未选中的行保持普通白底。
 
-### 本机 IP
-
-页面出现时自动调用 `refreshIp()`。
-
-刷新按钮行为：
-
-1. 将 `interfaceName = '-'`。
-2. 将 `ipAddresses = ['查询中']`。
-3. 调用 `connection.getDefaultNet()` 和 `connection.getConnectionProperties()`。
-4. 成功后显示接口名和 IP 列表。
-5. 失败后显示读取失败文本。
-
-状态展示：
-
-| 状态 | 展示 |
-| --- | --- |
-| 查询中 | 蓝色/灰色 loading 文案 |
-| 无默认网络 | 灰色空状态 |
-| 无可用 IP | 黄色提示 |
-| 读取失败 | 红色错误提示，保留刷新按钮 |
-| 成功 | 显示接口名和 IP |
-
 ## 5. 远控设置页
 
-当前可做内容：xrdp 服务、录屏权限、注入权限、验证码门禁、远程文件说明。
+当前可做内容：连接地址、xrdp 服务、录屏权限、注入权限、远程文件说明。
 
 进入页面时：
 
@@ -226,15 +205,14 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 3. 调用 `refreshInputInjectionState()`。
 4. 调用 `refreshXrdpServerStatus()`。
 
-当前实现里建议展示顺序调整为：
+当前展示顺序：
 
-1. xrdp 服务
+1. 即用连接卡（服务状态、连接地址、复制、启动/刷新）
 2. 录屏权限
 3. 注入权限
-4. 验证码门禁
-5. 远程文件
+4. 远程文件
 
-原因：`startXrdpServerFromSettings()` 现在会通过 `ensureXrdpServerStarted('remote control settings button', false, true)` 立即请求录屏权限，录屏权限是启动被控服务的前置条件，所以视觉顺序也应先讲清楚权限，再讲访问门禁。
+验证码由主控端设置，不再把“主控连接验证码”作为被控端配置展示。底层既有状态与回调暂时保留以避免扩大协议改动，但设置概览、远控设置和被控帮助均不再暴露该错误语义。
 
 ### xrdp 服务卡
 
@@ -244,6 +222,8 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 - 端口：`localXrdpServerPort`
 - 消息：`localXrdpServerMessage`
 - 运行状态：`localXrdpServerRunning`
+- 连接地址：优先物理网络的本机 IP 与 `localXrdpServerPort`
+- 复制结果：`connectionCopyLabel`
 
 按钮规则：
 
@@ -262,28 +242,6 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 5. 成功：`applyXrdpServerStatus(status)`，并刷新录屏权限。
 6. 失败：刷新当前 xrdp 状态。
 7. finally：`localXrdpServerBusy = false`。
-
-### 验证码门禁卡
-
-显示字段：
-
-- 开关：`localGateEnabled`
-- 当前验证码：开启时显示 `localAccessCode`，关闭时显示“默认关闭”
-- 状态文本：开启 / 默认关闭
-
-开关行为：
-
-1. 用户切换 Toggle。
-2. 本地立即更新 `localGateEnabled`。
-3. 调用 `onRemoteAccessCodeGateChange(enabled)`。
-4. 若返回了新的验证码，则更新 `localAccessCode`。
-5. 当前 `Index.setRemoteAccessCodeGateEnabled(enabled)` 会调用 `ensureXrdpServerStarted(..., true)`，即切换门禁后会按重启被控服务的路径生效。
-
-重新生成按钮：
-
-1. 调用 `onRemoteAccessCodeRegenerate()`。
-2. 如果返回非空字符串，更新 `localAccessCode`。
-3. 如果门禁关闭，按钮可以保留，但验证码区域仍显示“默认关闭”。
 
 ### 录屏权限卡
 
@@ -317,7 +275,7 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 - 忙碌状态：`inputInjectionPermissionBusy`
 - 未授权时点击“去授权”，调用 `onRequestInputInjectionPermission()` 打开系统权限设置。
 - 返回后通过 `onRefreshInputInjectionPermission()` 回读 `CONTROL_DEVICE`。
-- 该卡不替代验证码门禁；验证码卡继续负责连接认证。
+- 该卡与录屏权限共同说明被控端是否具备完整控制能力。
 
 ### 远程文件卡
 
@@ -336,7 +294,14 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 
 ## 6. 项目帮助页
 
-当前内容包括：
+2in1 首屏优先回答“别人如何连接本机”：
+
+1. 即用连接卡：被控服务状态、实际连接地址、复制入口、前往远控设置。
+2. 三步说明：本机保持服务运行、Windows 打开 `mstsc`、输入地址并连接。
+3. 常见排查：网络可达、服务运行、端口可访问。
+4. 安全说明：验证码由主控端设置，被控端无需生成或提供。
+
+“本机连接 Windows”作为次级入口，展开后保留以下内容：
 
 - 关于项目
 - GitHub 链接
@@ -352,11 +317,16 @@ SettingsRoute.PROJECT_HELP = 'projectHelp'
 - 常见排查
 - 远程文件说明
 
-桌面版建议分三组：
+项目帮助分为：
 
-1. 连接指南
-2. 安全与排查
-3. 项目信息
+1. 被控端即用连接指南（仅 2in1）
+2. 主控端 Windows 连接指南
+3. 安全与排查
+4. 项目信息
+
+tablet 继续 fail-closed：不显示远控导航、即用连接卡或被控端帮助，只显示“本机连接 Windows”和项目信息。
+
+Compact 下连接地址、复制按钮和三个步骤纵向排列；Expanded 下连接信息同行、步骤三列排列。两种布局复用同一状态和回调，不复制业务页面。
 
 连接指南必须按实际操作顺序编号。硬件加速说明使用 Windows 本地组策略路径“计算机配置 > 管理模板 > Windows 组件 > 远程桌面服务 > 远程桌面会话主机 > 远程会话环境”，同时说明专业版/企业版/教育版适用、家庭版通常没有本地组策略编辑器，以及硬件编码失败时系统会回退软件编码。
 

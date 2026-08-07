@@ -3,6 +3,7 @@ import { SettingsAccentName } from './SettingsTypes'
 export class SettingsResources {
   static readonly ARROW_LEFT_ICON: Resource = $r('app.media.arrow_left')
   static readonly CHECK_ICON: Resource = $r('app.media.check')
+  static readonly COPY_ICON: Resource = $r('app.media.home_copy')
   static readonly OVERVIEW_ICON: Resource = $r('app.media.settings_overview')
   static readonly BASIC_ICON: Resource = $r('app.media.settings_basic')
   static readonly REMOTE_CONTROL_ICON: Resource = $r('app.media.settings_remote_control')

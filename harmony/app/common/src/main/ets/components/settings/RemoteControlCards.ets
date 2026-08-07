@@ -1,10 +1,14 @@
 import { SettingsRemoteControlSection, SettingsText } from './SettingsConstants'
 import { SettingsAccent, SettingsAccentName, SettingsResources, SettingsTheme } from './SettingsUi'
+import { LayoutMode } from '../../adaptive/WindowLayoutPolicy'
 
 @Component
 export struct XrdpServerCard {
   @Prop isDark: boolean = false
+  @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
   @Prop targetSection: string = ''
+  @Prop localIpAddress: string = SettingsText.NETWORK_LOADING
+  @Prop connectionCopyLabel: string = SettingsText.REMOTE_CONNECTION_COPY_ACTION
   @Prop running: boolean = false
   @Prop busy: boolean = false
   @Prop state: string = 'Stopped'
@@ -13,6 +17,8 @@ export struct XrdpServerCard {
   onRefresh: () => void = () => {
   }
   onStart: () => void = () => {
+  }
+  onCopyConnectionAddress: () => void = () => {
   }
   @State private hovered: boolean = false
   @State private pressed: boolean = false
@@ -42,77 +48,165 @@ export struct XrdpServerCard {
     return this.busy
   }
 
-  build() {
-    Row({ space: 14 }) {
-      Column() {
-        Image(SettingsResources.REMOTE_SERVICE_ICON)
-          .width(SettingsTheme.ICON_SIZE)
-          .height(SettingsTheme.ICON_SIZE)
-          .fillColor(SettingsTheme.accentColor(this.isDark, this.running ? SettingsAccent.GREEN :
-            SettingsAccent.AMBER))
-          .draggable(false)
-      }
-      .width(SettingsTheme.ICON_TILE_SIZE)
-      .height(SettingsTheme.ICON_TILE_SIZE)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .borderRadius(SettingsTheme.BUTTON_RADIUS)
-      .backgroundColor(SettingsTheme.accentBackground(this.isDark, this.running ? SettingsAccent.GREEN :
-        SettingsAccent.AMBER))
+  private connectionAddress(): string {
+    if (this.localIpAddress === SettingsText.NETWORK_LOADING ||
+      this.localIpAddress === SettingsText.NETWORK_EMPTY ||
+      this.localIpAddress === SettingsText.NETWORK_NO_IP ||
+      this.localIpAddress === SettingsText.NETWORK_READ_FAILED) {
+      return SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
+    }
+    const host = this.localIpAddress.indexOf(':') >= 0 ? `[${this.localIpAddress}]` : this.localIpAddress
+    const safePort = this.port > 0 ? this.port : 3390
+    return `${host}:${safePort}`
+  }
 
-      Column({ space: 5 }) {
-        Text(SettingsText.REMOTE_SERVER_TITLE)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(SettingsTheme.primaryText(this.isDark))
-          .width('100%')
-        Text(SettingsText.REMOTE_SERVER_DESC)
-          .fontSize(13)
-          .fontColor(SettingsTheme.mutedText(this.isDark))
-          .lineHeight(19)
-          .width('100%')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.statusText())
+  private copyDisabled(): boolean {
+    return this.connectionAddress() === SettingsText.REMOTE_CONNECTION_ADDRESS_WAITING
+  }
+
+  @Builder
+  private copyButton() {
+    Button() {
+      Row({ space: 6 }) {
+        Image(SettingsResources.COPY_ICON)
+          .width(16)
+          .height(16)
+          .fillColor(this.copyDisabled() ? SettingsTheme.disabledText(this.isDark) :
+            SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
+          .draggable(false)
+        Text(this.connectionCopyLabel)
           .fontSize(12)
-          .fontColor(SettingsTheme.accentColor(this.isDark, this.running ? SettingsAccent.GREEN :
-            SettingsAccent.AMBER))
-          .width('100%')
-        if (this.message.length > 0) {
-          Text(this.message)
-            .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+      }
+      .alignItems(VerticalAlign.Center)
+    }
+    .type(ButtonType.Normal)
+    .constraintSize({ minHeight: 48 })
+    .padding({ left: 14, right: 14 })
+    .borderRadius(SettingsTheme.BUTTON_RADIUS)
+    .backgroundColor(this.copyDisabled() ? SettingsTheme.disabledButton(this.isDark) :
+      SettingsTheme.accentBackground(this.isDark, SettingsAccent.BLUE))
+    .fontColor(this.copyDisabled() ? SettingsTheme.disabledText(this.isDark) :
+      SettingsTheme.accentColor(this.isDark, SettingsAccent.BLUE))
+    .stateEffect(false)
+    .enabled(!this.copyDisabled())
+    .onClick(() => {
+      if (!this.copyDisabled()) {
+        this.onCopyConnectionAddress()
+      }
+    })
+  }
+
+  @Builder
+  private addressBlock() {
+    Column({ space: 6 }) {
+      Text(SettingsText.REMOTE_CONNECTION_ADDRESS_LABEL)
+        .fontSize(12)
+        .fontColor(SettingsTheme.mutedText(this.isDark))
+        .width('100%')
+      Text(this.connectionAddress())
+        .fontSize(this.layoutMode === LayoutMode.EXPANDED ? 22 : 18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(SettingsTheme.primaryText(this.isDark))
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+    }
+    .alignItems(HorizontalAlign.Start)
+    .layoutWeight(this.layoutMode === LayoutMode.EXPANDED ? 1 : 0)
+    .width('100%')
+  }
+
+  build() {
+    Column({ space: 16 }) {
+      Row({ space: 14 }) {
+        Column() {
+          Image(SettingsResources.REMOTE_SERVICE_ICON)
+            .width(SettingsTheme.ICON_SIZE)
+            .height(SettingsTheme.ICON_SIZE)
+            .fillColor(SettingsTheme.accentColor(this.isDark, this.running ? SettingsAccent.GREEN :
+              SettingsAccent.AMBER))
+            .draggable(false)
+        }
+        .width(SettingsTheme.ICON_TILE_SIZE)
+        .height(SettingsTheme.ICON_TILE_SIZE)
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .borderRadius(SettingsTheme.BUTTON_RADIUS)
+        .backgroundColor(SettingsTheme.accentBackground(this.isDark, this.running ? SettingsAccent.GREEN :
+          SettingsAccent.AMBER))
+
+        Column({ space: 5 }) {
+          Text(SettingsText.REMOTE_SERVER_TITLE)
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(SettingsTheme.primaryText(this.isDark))
+            .width('100%')
+          Text(SettingsText.REMOTE_SERVER_DESC)
+            .fontSize(13)
             .fontColor(SettingsTheme.mutedText(this.isDark))
-            .lineHeight(18)
+            .lineHeight(19)
             .width('100%')
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(this.statusText())
+            .fontSize(12)
+            .fontColor(SettingsTheme.accentColor(this.isDark, this.running ? SettingsAccent.GREEN :
+              SettingsAccent.AMBER))
+            .width('100%')
         }
-      }
-      .layoutWeight(1)
+        .layoutWeight(1)
 
-      Button(this.actionText())
-        .type(ButtonType.Normal)
-        .constraintSize({ minHeight: 48 })
-        .borderRadius(SettingsTheme.BUTTON_RADIUS)
-        .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
-          SettingsTheme.subtleButton(this.isDark, false, false))
-        .fontColor(this.actionDisabled() ? SettingsTheme.disabledText(this.isDark) :
-          SettingsTheme.primaryText(this.isDark))
+        Button(this.actionText())
+          .type(ButtonType.Normal)
+          .constraintSize({ minHeight: 48 })
+          .borderRadius(SettingsTheme.BUTTON_RADIUS)
+          .backgroundColor(this.actionDisabled() ? SettingsTheme.disabledButton(this.isDark) :
+            SettingsTheme.subtleButton(this.isDark, false, false))
+          .fontColor(this.actionDisabled() ? SettingsTheme.disabledText(this.isDark) :
+            SettingsTheme.primaryText(this.isDark))
+          .fontSize(12)
+          .stateEffect(false)
+          .enabled(!this.actionDisabled())
+          .onClick(() => {
+            if (this.actionDisabled()) {
+              return
+            }
+            if (this.running) {
+              this.onRefresh()
+              return
+            }
+            this.onStart()
+          })
+      }
+      .alignItems(VerticalAlign.Center)
+      .width('100%')
+
+      if (this.layoutMode === LayoutMode.EXPANDED) {
+        Row({ space: 14 }) {
+          this.addressBlock()
+          this.copyButton()
+        }
+        .alignItems(VerticalAlign.Center)
+        .width('100%')
+      } else {
+        Column({ space: 12 }) {
+          this.addressBlock()
+          this.copyButton()
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
+      }
+
+      Text(this.message.length > 0 ? this.message : SettingsText.REMOTE_CONNECTION_NETWORK_HINT)
         .fontSize(12)
-        .stateEffect(false)
-        .enabled(!this.actionDisabled())
-        .onClick(() => {
-          if (this.actionDisabled()) {
-            return
-          }
-          if (this.running) {
-            this.onRefresh()
-            return
-          }
-          this.onStart()
-        })
+        .fontColor(SettingsTheme.mutedText(this.isDark))
+        .lineHeight(18)
+        .width('100%')
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
-    .alignItems(VerticalAlign.Center)
+    .alignItems(HorizontalAlign.Start)
     .width('100%')
     .padding(16)
     .backgroundColor(this.hovered || this.pressed || this.isTarget() ?
