@@ -14,14 +14,9 @@ $cacheDir = Join-Path $repoRoot "harmony/out/.build-cache"
 $stampFile = Join-Path $cacheDir "sync-freerdp-runtime.sha256"
 
 $runtimeSource = Join-Path $source "runtime-libs"
-$probeSource = Join-Path $source "probe/libfreerdp_ohos_probe.so"
 
 if (-not (Test-Path -LiteralPath $runtimeSource)) {
   throw "Missing runtime library directory: $runtimeSource"
-}
-
-if (-not (Test-Path -LiteralPath $probeSource)) {
-  throw "Missing probe library: $probeSource"
 }
 
 $runtimeLibraryNames = @(
@@ -56,7 +51,6 @@ $osslModuleSource = Join-Path $runtimeSource "ossl-modules/legacy.so"
 if (Test-Path -LiteralPath $osslModuleSource) {
   $sourceInputs.Add($osslModuleSource)
 }
-$sourceInputs.Add($probeSource)
 
 $requiredNames = @(
   "libcjson.so.1",
@@ -65,8 +59,7 @@ $requiredNames = @(
   "libfreerdp3.so",
   "libssl.so.3",
   "libwinpr3.so",
-  "libz.so.1",
-  "libfreerdp_ohos_probe.so"
+  "libz.so.1"
 )
 
 $requiredOutputs = New-Object System.Collections.Generic.List[string]
@@ -85,7 +78,8 @@ $obsoleteServerRuntime = @(
   "libtoml.so.1",
   "libxrdp.so.0",
   "libxrdpohos.so",
-  "libxrdpserver.so"
+  "libxrdpserver.so",
+  "libfreerdp_ohos_probe.so"
 )
 foreach ($name in $obsoleteServerRuntime) {
   $obsoletePath = Join-Path $target $name
@@ -101,7 +95,7 @@ if (Test-Path -LiteralPath $obsoleteRuntimeTree) {
 $fingerprint = Get-BuildCacheFingerprint `
   -Root $repoRoot `
   -Paths $sourceInputs.ToArray() `
-  -Extra @("sync-freerdp-runtime:v2-client-only", "target=$TargetRoot")
+  -Extra @("sync-freerdp-runtime:v3-production-client-only", "target=$TargetRoot")
 
 if (-not $Force -and (Test-BuildCacheStamp -StampFile $stampFile -Fingerprint $fingerprint -Outputs $requiredOutputs.ToArray())) {
   $stats = Get-BuildCacheFileStats -Path $target
@@ -137,8 +131,6 @@ if (Test-Path -LiteralPath $osslModuleSource) {
     Remove-Item -LiteralPath $osslModuleTarget -Force
   }
 }
-Copy-Item -LiteralPath $probeSource -Destination (Join-Path $target "libfreerdp_ohos_probe.so") -Force
-
 foreach ($name in $requiredNames) {
   $path = Join-Path $target $name
   if (-not (Test-Path -LiteralPath $path)) {

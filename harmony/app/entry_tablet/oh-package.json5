@@ -1,7 +1,7 @@
 {
   "name": "entry_tablet",
-  "version": "1.0.0",
-  "description": "MuHub tablet packaging probe entry.",
+  "version": "15.0.0",
+  "description": "MuHub tablet entry.",
   "main": "",
   "author": "MuHub",
   "license": "Apache-2.0",

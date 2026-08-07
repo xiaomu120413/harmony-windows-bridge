@@ -81,6 +81,10 @@ try {
         Assert-EqualSet @($manifest.module.deviceTypes) @($rule.Devices) "$name deviceTypes"
 
         $names = @($packageZip.Entries | ForEach-Object { $_.FullName })
+        $probeArtifacts = @($names | Where-Object { $_ -match '(?i)probe' })
+        if ($probeArtifacts.Count -gt 0) {
+          throw "$name contains probe artifact: $($probeArtifacts -join ',')"
+        }
         $hnpEntries = @($names | Where-Object { $_ -like "hnp/*" })
         $clientCount = @($names | Where-Object { $_ -eq "libs/arm64-v8a/librdpclient.so" }).Count
         $controlCount = @($names | Where-Object { $_ -eq "libs/arm64-v8a/libxrdpcontrol.so" }).Count
@@ -103,6 +107,15 @@ try {
             if ($actualPermissions -contains $permission) { throw "Tablet contains PC-only permission: $permission" }
           }
           if ($null -ne $manifest.module.hnpPackages) { throw "Tablet manifest contains hnpPackages" }
+        }
+
+        if ($name -eq "entry" -or $name -eq "entry_tablet") {
+          $printExtensions = @($manifest.module.extensionAbilities | Where-Object {
+            $_.name -eq "MuHubPrintExtension" -and $_.type -eq "print"
+          })
+          if ($printExtensions.Count -ne 1) {
+            throw "$name must contain exactly one MuHub print extension"
+          }
         }
 
         if ($name -eq "entry") {

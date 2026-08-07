@@ -29,10 +29,6 @@
       "value": "采集本机屏幕，用于通过 xrdp 将鸿蒙桌面传输到远程桌面客户端。"
     },
     {
-      "name": "control_device_reason",
-      "value": "允许远程桌面客户端向当前设备注入键盘和鼠标操作。"
-    },
-    {
       "name": "location_reason",
       "value": "获取本机当前位置，用于远程桌面会话中的地理位置重定向。"
     }

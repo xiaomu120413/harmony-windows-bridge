@@ -603,14 +603,17 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 - 当前没有在线 2in1，独立 PID、3389/3390 连接、显式/异常/强停/卸载清理仍需该设备补验，不能将
   MDP-03 标记为 device verified。
 
-### 12.4 MDP-04 当前结果（2026-08-06）
+### 12.4 MDP-04 当前结果（2026-08-07）
 
 - `build_hap.bat` 支持 `app`、`tablet`、`2in1` 三种显式模式；三种模式均已实际构建通过。
 - `tools/verify_multidevice_app.ps1` 校验 App 签名、精确模块/设备类型、权限边界、HNP 唯一归属、
   Native 库边界、HNP 文件结构及 xrdp ELF 依赖/RUNPATH；`tools/verify_xrdp_process_control.ps1`
   阻止旧进程内 server 路径回归。
-- 最终 App Pack 为 39,794,635 字节，SHA-256 为
-  `2f7e42928cf771390a27004a394e75acbd9dc15ed94b12909ba4435424356690`，本地门禁通过。
+- 2in1 与 tablet Entry 的 35 项产品资源逐文件一致，均注册 `MuHubPrintExtension`；tablet 真机
+  `bm dump` 已确认打印扩展存在。交付包不再包含打包探针、`probe_icon` 或诊断用
+  `libfreerdp_ohos_probe.so`。
+- 最终 App Pack 为 39,807,209 字节，SHA-256 为
+  `0b5755a6152094502c77699507a76fe686896e72dfe8d50f8bd2f2fb8e47d996`，本地门禁通过。
 - MDP-00 已确认旧 `entry` 到 `entry_tablet` 的覆盖升级失败；真实应用市场按设备选包也未执行。
   因此该 App Pack 仍是工程验证产物，不能替换发布基线。发布前必须验证第 13.3 节的通用 Entry +
   2in1-only Feature 方案，或取得平台支持的同名设备变体方案。

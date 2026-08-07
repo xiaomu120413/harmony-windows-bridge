@@ -9,6 +9,16 @@
     ],
     "deliveryWithInstall": true,
     "installationFree": false,
+    "metadata": [
+      {
+        "name": "appgallery_privacy_hosted",
+        "value": "1"
+      },
+      {
+        "name": "appgallery_privacy_link_privacy_statement",
+        "value": "https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=1964647614129396928"
+      }
+    ],
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"
@@ -66,9 +76,9 @@
         "name": "TabletEntryAbility",
         "srcEntry": "./ets/entryability/TabletEntryAbility.ets",
         "description": "$string:EntryAbility_desc",
-        "icon": "$media:probe_icon",
+        "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:probe_icon",
+        "startWindowIcon": "$media:transparent_start_icon",
         "startWindowBackground": "$color:start_window_background",
         "orientation": "auto_rotation",
         "supportWindowMode": [
@@ -76,6 +86,8 @@
           "floating",
           "split"
         ],
+        "minWindowWidth": 720,
+        "minWindowHeight": 560,
         "exported": true,
         "skills": [
           {
@@ -87,6 +99,17 @@
             ]
           }
         ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "MuHubPrintExtension",
+        "srcEntry": "./ets/print/MuHubPrintExtension.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "type": "print",
+        "exported": true
       }
     ]
   }

@@ -23,6 +23,12 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 | --- | --- | --- | --- | --- |
 | `CHG-YYYYMMDD-NNN` | `type(scope): subject` | 功能/模块 | 用一两句话说明行为变化、兼容性和主要影响范围 | 测试命令、结果或专项文档/证据链接；未执行要明示 |
 
+## 2026-08-07
+
+| Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
+| --- | --- | --- | --- | --- |
+| `CHG-20260807-001` | `fix(ohos): align tablet production resources and printing` | 修复/多设备资源、打印与交付清理 | tablet Entry 改用与 2in1 Entry 完全一致的 35 项正式资源并注册 `MuHubPrintExtension`；虚拟打印实现下沉到共享 HSP，两个 Entry 保持同一能力。移除打包探针、探针图标及未被产品使用的诊断 Native 探针库，并增加资源、打印扩展和无探针门禁。 | tablet ArkTS 测试、完整 App Pack 构建及多设备校验通过；App Pack 39,807,209 字节，SHA-256 `0b5755a6152094502c77699507a76fe686896e72dfe8d50f8bd2f2fb8e47d996`。tablet `5JB0223804000371` 安装启动成功，`bm dump` 确认一个打印扩展且无 HNP，桌面截图确认正式产品图标。打印任务端到端仍需从系统打印入口补验。关联 MDP-04。 |
+
 ## 2026-08-06
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
