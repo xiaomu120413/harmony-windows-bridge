@@ -52,6 +52,10 @@ export class NativeRdpGateway {
     return rdpNative.releaseAllInput()
   }
 
+  static getDiagnostics(): string {
+    return rdpNative.getDiagnostics()
+  }
+
   static onState(callback: (state: string) => void): NativeCommandResult {
     return rdpNative.onState(callback)
   }

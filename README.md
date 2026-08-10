@@ -9,7 +9,7 @@ GitHub: https://github.com/xiaomu120413/harmony-windows-bridge
 - HarmonyOS HAP 客户端：填写 Windows host、端口、用户名、密码后发起 RDP 连接。
 - FreeRDP native bridge：ArkTS 通过 NAPI 调用 native 层，远程画面通过 `XComponent` surface 显示。
 - xrdp/MSTSC 路径：仅 2in1 HAP 携带 xrdp HNP，并通过独立子进程监听本机 `3390`；tablet HAP 不含 HNP、PC 权限或 XRDP 服务端库。
-- 证书策略：支持 `TOFU` 和 `Strict`，用于测试和更严格的证书校验。
+- 证书策略：当前界面固定使用 `TOFU`；`Strict` 入口暂不开放。
 - 权限回调：远程会话请求剪贴板、麦克风、摄像头或地理位置时，由应用侧通用权限桥触发系统权限处理。
 - 打印重定向：默认向 Windows 暴露虚拟打印机，Windows 实际提交打印作业时才启动 HarmonyOS PrintKit。
 - 设置页：包含深色模式、浅色模式、跟随系统、使用说明、本机 IP、关于项目和第三方开源组件信息。
@@ -76,7 +76,7 @@ hdc install -r harmony\app\entry_tablet\build\default\outputs\default\entry_tabl
 ## HarmonyOS 使用说明
 
 1. 在主界面填写 `Windows host`、`Port`、`Username` 和 `Password`。
-2. 选择证书策略。内网测试可用 `TOFU`，更严格环境使用 `Strict`。
+2. 当前版本固定使用 `TOFU` 证书策略，不需要在界面选择。
 3. 点击 `Connect` 后，应用会调用 native FreeRDP 会话并打开远程桌面 surface。
 4. 远程文件：应用启动后会通过系统下载控件准备 `Download/com.muhub.desktop`。连接 Windows 后，在远程桌面中打开 `\\tsclient\Downloads`，可与该目录互传小文件；当前只共享这个固定目录。
 5. 进入 `设置` 可以查看使用说明、本机 IP、关于信息，或切换深色/浅色/跟随系统。

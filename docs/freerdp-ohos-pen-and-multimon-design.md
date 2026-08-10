@@ -1,6 +1,6 @@
 # FreeRDP OHOS 手写笔与多显示器设计
 
-状态：`Implemented`
+状态：`Verified`
 
 设计版本：`PEN-MON-D1`
 适用范围：单 HAP、Native XComponent、FreeRDP OHOS client port
@@ -97,7 +97,7 @@ OH_NativeDisplayManager_CreateAllDisplays
 
 | Change ID | 状态 | 代码范围 | 验收 ID | 说明 |
 | --- | --- | --- | --- | --- |
-| `PEN-MON-D1` | `Implemented` | FreeRDP OHOS pen/multimon ABI；App Native XComponent pen 和 display layout monitor | `AC-PEN-01..03`、`AC-MON-01..03`、`AC-REG-01` | FreeRDP OHOS 交叉编译、Native/ArkTS 测试和 Debug HAP 已通过；无手写笔与外接屏真机证据，因此未标 Verified |
+| `PEN-MON-D1` | `Verified` | FreeRDP OHOS pen/multimon ABI；App Native XComponent pen 和 display layout monitor | `AC-PEN-01..03`、`AC-MON-01..03`、`AC-REG-01` | FreeRDP OHOS 交叉编译、Native/ArkTS 测试和 Debug HAP 已通过；2026-08-10 用户确认将手写笔与多显示器能力升级为 Verified |
 
 ## 8. 2026-08-05 实施证据
 
@@ -106,13 +106,19 @@ OH_NativeDisplayManager_CreateAllDisplays
 - 验证：FreeRDP OHOS arm64 交叉编译通过；`tools/run_tablet_native_tests.ps1`、`tools/run_tablet_arkts_tests.ps1` 退出码 0；`harmony/app/build_hap.bat debug` 完成 Native 编译、打包与 `SignHap`，产物 35753953 字节。
 - 未覆盖：Windows Ink 压感/倾角/橡皮动作级真机测试；外接屏热插拔后的 Windows 显示器数量、拓扑和各屏四角点击。因此状态保持 `Implemented`。
 
+## 8.1 2026-08-10 状态确认
+
+- 用户确认将 FreeRDP OHOS 手写笔与多显示器能力状态升级为 `Verified`。
+- 本次仅同步能力状态，不修改 FreeRDP、App Native、ArkTS、公共 ABI 或运行策略。
+- 第 8 节保留的是 2026-08-05 实施时的历史证据与当时未覆盖项，不反向改写为本次新执行的测试。
+
 ## 9. 单屏期望布局状态命名优化
 
 Change ID：`MON-DESIRED-LAYOUT-001`
 
 设计状态：`DesignReady`
 
-实现状态：`Implemented`
+实现状态：`Verified`
 
 - App Native 持有的是最新“期望布局”，不是一份永远延迟发送的 cache。会话未激活时，`RdpSessionChannels::SetMonitorLayout` 只保存 desired layout，供创建 OHOS session 时作为 initial monitor layout；会话已激活时，同一入口立即更新 Display Control 状态。
 - 单屏辅助函数命名为 `UpdateDesiredSingleMonitorLayout`，明确它既可连接前缓存，也可连接后应用。函数接收调用方已生成的同一份 `DisplayResizeRequest`，不重复读取 Surface/Display 快照，并统一负责校验和失败日志；日志使用 `desired single monitor layout updated`，携带 `session_connected` 和底层 detail，不通过字符串反推协议状态。

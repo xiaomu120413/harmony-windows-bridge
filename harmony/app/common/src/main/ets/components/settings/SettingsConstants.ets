@@ -16,6 +16,7 @@ export class SettingsRemoteControlSection {
   static readonly INPUT: string = 'input'
   static readonly ACCESS: string = 'access'
   static readonly FILES: string = 'files'
+  static readonly DIAGNOSTICS: string = 'diagnostics'
 }
 
 // Settings shell and navigation copy shared by page titles and overview entries.
@@ -74,6 +75,7 @@ export class SettingsRemoteText {
   static readonly SERVER_BUSY: string = '启动中'
   static readonly SERVER_START_ACTION: string = '启动服务'
   static readonly SERVER_REFRESH_ACTION: string = '刷新'
+  static readonly SERVER_STOP_ACTION: string = '停止服务'
   static readonly SERVER_MESSAGE_LISTENING: string = '被控服务正在监听主控端连接。'
   static readonly SERVER_MESSAGE_ACTIVE: string = '已有主控端远程会话连接。'
   static readonly SERVER_MESSAGE_STOPPED: string = '服务未启动，可点击启动服务。'
@@ -107,6 +109,13 @@ export class SettingsRemoteText {
   static readonly FILES_DESC: string =
     '本机作为主控端连接 Windows 后，可在远程桌面中通过 \\\\tsclient\\Downloads 访问本机共享目录。'
   static readonly FILES_ACTION: string = '共享的鸿蒙目录'
+  static readonly DIAGNOSTICS_ACTION: string = '导出诊断'
+  static readonly DIAGNOSTICS_EXPORTING: string = '导出中'
+  static readonly DIAGNOSTICS_SECTION: string = '诊断与排障'
+  static readonly DIAGNOSTICS_SECTION_DESC: string = '导出脱敏的连接、渲染、通道、权限和服务状态。'
+  static readonly DIAGNOSTICS_TITLE: string = '一键导出诊断'
+  static readonly DIAGNOSTICS_DESC: string =
+    '包含连接阶段、端点探测、编码路径、帧率、丢帧、音频、resize、通道、权限和错误摘要；不包含密码、访问码或完整主机与用户名。'
 
   static serverStatusTone(running: boolean, busy: boolean, state: string): SettingsStatusTone {
     if (busy) {

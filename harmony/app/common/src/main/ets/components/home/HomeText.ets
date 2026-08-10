@@ -35,6 +35,8 @@ export class HomeText {
   static readonly CONNECTION_FAILURE_NO_SESSION: string = '连接失败，未建立远程桌面会话'
   static readonly CONNECTION_SUCCESS: string = '连接成功'
   static readonly CONNECTION_CONNECTING: string = '正在连接...'
+  static readonly CONNECTION_CHECKING: string = '正在检查远程主机端口...'
+  static readonly CONNECTION_PORT_REACHABLE: string = '端口可达，正在建立远程桌面会话...'
 
   static readonly USERNAME_REQUIRED: string = 'Username 必填'
   static readonly PASSWORD_REQUIRED: string = 'Password 必填'

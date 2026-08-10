@@ -726,6 +726,11 @@ bool RdpSession::IsConnected() const
     return impl_->IsConnected();
 }
 
+uint64_t RdpSession::DiagnosticSessionId() const
+{
+    return impl_->activeDiagnosticSessionId.load(std::memory_order_relaxed);
+}
+
 void RdpSession::SetDisplayOrientation(uint32_t orientation)
 {
     impl_->SetDisplayOrientation(orientation);

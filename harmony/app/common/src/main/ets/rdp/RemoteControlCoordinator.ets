@@ -11,6 +11,8 @@ export interface XrdpServerStatus {
   state: string
   port: number
   message: string
+  pid?: number
+  lastExitCode?: number
 }
 
 export interface XrdpServerDisplayMessages {
@@ -174,6 +176,26 @@ export class RemoteControlCoordinator {
     return this.ensureStarted('remote control settings button', false, true)
   }
 
+  stopFromSettings(): Promise<XrdpServerStatus> {
+    if (!this.available || this.serverBusy) {
+      return Promise.resolve(this.refreshDiagnostics())
+    }
+    this.serverBusy = true
+    this.publish()
+    return Promise.resolve()
+      .then((): XrdpServerStatus => {
+        RdpLogger.info('xrdp process stop requested: remote control settings button')
+        return this.applyStatus(this.toStatus(this.remoteControlPort.stop('remote control settings button')))
+      })
+      .catch((error: Error): XrdpServerStatus => {
+        RdpLogger.error(`xrdp stop request failed: ${JSON.stringify(error)}`)
+        return this.refreshDiagnostics()
+      })
+      .finally((): void => {
+        this.clearServerBusy('xrdp stop request finished')
+      })
+  }
+
   setAccessCodeGate(enabled: boolean): string {
     if (!this.available || this.accessCodeGateEnabled === enabled) {
       return this.accessCode
@@ -300,7 +322,9 @@ export class RemoteControlCoordinator {
       running: result.ok && result.state !== 'Stopped' && result.state !== 'Exited',
       state: result.state,
       port: result.port > 0 ? result.port : 3390,
-      message: this.displayMessage(result)
+      message: this.displayMessage(result),
+      pid: result.pid,
+      lastExitCode: result.lastExitCode
     }
   }
 

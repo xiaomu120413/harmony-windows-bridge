@@ -3,9 +3,9 @@ import { BasicSettingsPage } from './settings/BasicSettingsPage'
 import { LayoutMode } from '../adaptive/WindowLayoutPolicy'
 import { ProjectHelpPage } from './settings/ProjectHelpPage'
 import { RemoteControlSettingsPage } from './settings/RemoteControlSettingsPage'
+import { SettingsOverviewPage } from './settings/SettingsOverviewPage'
 import { XrdpServerStatus } from '../rdp/RemoteControlCoordinator'
 import {
-  SettingsAppearanceText,
   SettingsNetworkText,
   SettingsRemoteControlSection,
   SettingsRemoteText,
@@ -14,15 +14,10 @@ import {
 } from './settings/SettingsConstants'
 import {
   SettingsAccent,
-  SettingsAccentName,
   SettingsAppearanceMode,
   SettingsBackButton,
   SettingsDesktopNavItem,
-  SettingsKeyValueRow,
-  SettingsListItem,
   SettingsResources,
-  SettingsStatusChip,
-  SettingsStatusTone,
   SettingsTheme
 } from './settings/SettingsUi'
 
@@ -66,7 +61,19 @@ export struct SettingsPage {
     }
     return Promise.resolve(status)
   }
+  onStopXrdpServer: () => Promise<XrdpServerStatus> = () => {
+    const status: XrdpServerStatus = {
+      running: false,
+      state: 'Stopped',
+      port: 3390,
+      message: ''
+    }
+    return Promise.resolve(status)
+  }
   onOpenRemoteFilesDirectory: () => void = () => {
+  }
+  onExportDiagnostics: () => Promise<string> = () => {
+    return Promise.resolve('')
   }
   @Prop initialPageName: string = SettingsRoute.SETTINGS
   @Prop initialRemoteControlSection: string = ''
@@ -86,8 +93,6 @@ export struct SettingsPage {
   @State private remoteControlTargetSection: string = ''
   @State private appearanceMode: SettingsAppearanceMode = SettingsTheme.getStoredAppearanceMode()
   @State private localIpAddress: string = SettingsNetworkText.LOADING
-  @State private currentStateCardHovered: boolean = false
-  @State private currentStateCardPressed: boolean = false
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
 
   aboutToAppear(): void {
@@ -105,63 +110,6 @@ export struct SettingsPage {
       return this.systemDark
     }
     return SettingsTheme.isDark(this.getUIContext(), this.appearanceMode)
-  }
-
-  private xrdpStatusTone(): SettingsStatusTone {
-    return SettingsRemoteText.serverStatusTone(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState)
-  }
-
-  private xrdpStatusText(): string {
-    return SettingsRemoteText.serverStatusText(this.xrdpServerRunning, this.xrdpServerBusy, this.xrdpServerState,
-      this.xrdpServerPort)
-  }
-
-  private screenStatusTone(): SettingsStatusTone {
-    if (this.screenRecordingPermissionBusy) {
-      return 'info'
-    }
-    return this.screenRecordingPermissionGranted ? 'ok' : 'warning'
-  }
-
-  private screenStatusText(): string {
-    if (this.screenRecordingPermissionBusy) {
-      return SettingsRemoteText.PERMISSION_BUSY
-    }
-    return this.screenRecordingPermissionGranted ? SettingsRemoteText.PERMISSION_GRANTED :
-      SettingsRemoteText.PERMISSION_MISSING
-  }
-
-  private inputStatusTone(): SettingsStatusTone {
-    if (this.inputInjectionPermissionBusy) {
-      return 'info'
-    }
-    return this.inputInjectionPermissionGranted ? 'ok' : 'warning'
-  }
-
-  private setCurrentStateCardHovered(hovered: boolean): void {
-    SettingsTheme.animate(this.getUIContext(), () => {
-      this.currentStateCardHovered = hovered
-    })
-  }
-
-  private inputStatusText(): string {
-    if (this.inputInjectionPermissionBusy) {
-      return SettingsRemoteText.PERMISSION_BUSY
-    }
-    return this.inputInjectionPermissionGranted ? SettingsRemoteText.PERMISSION_GRANTED :
-      SettingsRemoteText.PERMISSION_MISSING
-  }
-
-  private connectionAddress(): string {
-    if (this.localIpAddress === SettingsNetworkText.LOADING ||
-      this.localIpAddress === SettingsNetworkText.EMPTY ||
-      this.localIpAddress === SettingsNetworkText.NO_IP ||
-      this.localIpAddress === SettingsNetworkText.READ_FAILED) {
-      return SettingsRemoteText.CONNECTION_ADDRESS_WAITING
-    }
-    const host = this.localIpAddress.indexOf(':') >= 0 ? `[${this.localIpAddress}]` : this.localIpAddress
-    const port = this.xrdpServerPort > 0 ? this.xrdpServerPort : 3390
-    return `${host}:${port}`
   }
 
   private async refreshLocalIpAddress(): Promise<void> {
@@ -322,179 +270,6 @@ export struct SettingsPage {
   }
 
   @Builder
-  private overviewEntry(title: string, description: string, iconResource: Resource, accentName: SettingsAccentName,
-    value: string, onPress: () => void) {
-    SettingsListItem({
-      title: title,
-      description: description,
-      iconResource: iconResource,
-      accentName: accentName,
-      value: value,
-      isDark: this.isDarkMode(),
-      onPress: onPress
-    })
-  }
-
-  @Builder
-  private buildOverviewPage() {
-    Column() {
-      Text(SettingsShellText.OVERVIEW_TITLE)
-        .fontSize(24)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(SettingsTheme.primaryText(this.isDarkMode()))
-        .width('100%')
-        .margin({ bottom: 6 })
-      Text(this.remoteControlServerAvailable ? SettingsShellText.OVERVIEW_SUBTITLE :
-        SettingsShellText.OVERVIEW_CLIENT_SUBTITLE)
-        .fontSize(13)
-        .fontColor(SettingsTheme.mutedText(this.isDarkMode()))
-        .lineHeight(20)
-        .width('100%')
-        .margin({ bottom: 18 })
-
-      if (this.remoteControlServerAvailable) {
-        Column() {
-          Row() {
-            Text(SettingsShellText.CURRENT_STATE)
-              .fontSize(15)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(SettingsTheme.primaryText(this.isDarkMode()))
-              .layoutWeight(1)
-
-            SettingsStatusChip({
-              text: this.xrdpStatusText(),
-              tone: this.xrdpStatusTone(),
-              isDark: this.isDarkMode()
-            })
-          }
-          .alignItems(VerticalAlign.Center)
-          .width('100%')
-          .margin({ bottom: 14 })
-
-          if (this.layoutMode === LayoutMode.EXPANDED) {
-            Row({ space: 24 }) {
-              Column() {
-                SettingsKeyValueRow({
-                  label: SettingsRemoteText.CONNECTION_ADDRESS_LABEL,
-                  value: this.connectionAddress(),
-                  isDark: this.isDarkMode()
-                })
-                SettingsKeyValueRow({
-                  label: SettingsRemoteText.SERVER_STATUS_LABEL,
-                  value: this.xrdpStatusText(),
-                  tone: this.xrdpStatusTone(),
-                  isDark: this.isDarkMode()
-                })
-              }
-              .layoutWeight(1)
-
-              Column() {
-                SettingsKeyValueRow({
-                  label: SettingsRemoteText.SCREEN_SECTION,
-                  value: this.screenStatusText(),
-                  tone: this.screenStatusTone(),
-                  isDark: this.isDarkMode()
-                })
-                SettingsKeyValueRow({
-                  label: SettingsRemoteText.INPUT_SECTION,
-                  value: this.inputStatusText(),
-                  tone: this.inputStatusTone(),
-                  isDark: this.isDarkMode()
-                })
-              }
-              .layoutWeight(1)
-            }
-            .width('100%')
-          } else {
-            Column() {
-              SettingsKeyValueRow({
-                label: SettingsRemoteText.CONNECTION_ADDRESS_LABEL,
-                value: this.connectionAddress(),
-                isDark: this.isDarkMode()
-              })
-              SettingsKeyValueRow({
-                label: SettingsRemoteText.SERVER_STATUS_LABEL,
-                value: this.xrdpStatusText(),
-                tone: this.xrdpStatusTone(),
-                isDark: this.isDarkMode()
-              })
-              SettingsKeyValueRow({
-                label: SettingsRemoteText.SCREEN_SECTION,
-                value: this.screenStatusText(),
-                tone: this.screenStatusTone(),
-                isDark: this.isDarkMode()
-              })
-              SettingsKeyValueRow({
-                label: SettingsRemoteText.INPUT_SECTION,
-                value: this.inputStatusText(),
-                tone: this.inputStatusTone(),
-                isDark: this.isDarkMode()
-              })
-            }
-            .width('100%')
-          }
-        }
-        .width('100%')
-        .padding(18)
-        .backgroundColor(this.currentStateCardHovered || this.currentStateCardPressed ?
-          SettingsTheme.cardHoverBackground(this.isDarkMode()) : SettingsTheme.cardBackground(this.isDarkMode()))
-        .borderRadius(SettingsTheme.CARD_RADIUS)
-        .border({
-          width: 1,
-          color: SettingsTheme.borderColor(this.isDarkMode())
-        })
-        .shadow(SettingsTheme.shadow(this.isDarkMode(), this.currentStateCardHovered))
-        .translate({ y: this.currentStateCardHovered ? -5 : 0 })
-        .scale({
-          x: this.currentStateCardPressed ? 0.99 : this.currentStateCardHovered ? 1.012 : 1,
-          y: this.currentStateCardPressed ? 0.99 : this.currentStateCardHovered ? 1.012 : 1
-        })
-        .margin({ bottom: 18 })
-        .onHover((isHover: boolean) => {
-          this.setCurrentStateCardHovered(isHover)
-        })
-        .onTouch((event: TouchEvent) => {
-          if (event.type === TouchType.Down) {
-            this.currentStateCardPressed = true
-            return
-          }
-          if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-            this.currentStateCardPressed = false
-          }
-        })
-      }
-
-      Column() {
-        this.overviewEntry(SettingsShellText.BASIC_TITLE, SettingsShellText.BASIC_DESC,
-          SettingsResources.BASIC_ICON, SettingsAccent.CYAN, SettingsAppearanceText.value(this.appearanceMode),
-          () => {
-            this.pageName = SettingsRoute.BASIC
-            this.remoteControlTargetSection = ''
-          })
-        this.overviewEntry(SettingsShellText.REMOTE_TITLE, this.remoteControlServerAvailable ?
-          SettingsShellText.REMOTE_DESC : SettingsShellText.REMOTE_CLIENT_DESC,
-          SettingsResources.REMOTE_CONTROL_ICON, SettingsAccent.BLUE,
-          this.remoteControlServerAvailable ? this.xrdpStatusText() : '', () => {
-            this.pageName = SettingsRoute.REMOTE_CONTROL
-            this.remoteControlTargetSection = ''
-          })
-        this.overviewEntry(SettingsShellText.HELP_TITLE, this.remoteControlServerAvailable ?
-          SettingsShellText.HELP_DESC : SettingsShellText.HELP_CLIENT_DESC,
-          SettingsResources.PROJECT_HELP_ICON, SettingsAccent.PURPLE, '', () => {
-            this.pageName = SettingsRoute.PROJECT_HELP
-            this.remoteControlTargetSection = ''
-          })
-      }
-      .alignItems(HorizontalAlign.Start)
-      .width('100%')
-    }
-    .alignItems(HorizontalAlign.Start)
-    .justifyContent(FlexAlign.Start)
-    .width('100%')
-    .padding(22)
-  }
-
-  @Builder
   private buildSettingsContent() {
     if (this.pageName === SettingsRoute.BASIC) {
       BasicSettingsPage({
@@ -531,10 +306,12 @@ export struct SettingsPage {
         onRefreshInputInjectionPermission: this.onRefreshInputInjectionPermission,
         onRefreshXrdpServerStatus: this.onRefreshXrdpServerStatus,
         onStartXrdpServer: this.onStartXrdpServer,
+        onStopXrdpServer: this.onStopXrdpServer,
         onRefreshNetwork: (): void => {
           this.refreshLocalIpAddress()
         },
         onOpenRemoteFilesDirectory: this.onOpenRemoteFilesDirectory,
+        onExportDiagnostics: this.onExportDiagnostics,
         onBack: () => {
           this.pageName = SettingsRoute.SETTINGS
           this.remoteControlTargetSection = ''
@@ -558,7 +335,33 @@ export struct SettingsPage {
       })
     } else {
       Scroll() {
-        this.buildOverviewPage()
+        SettingsOverviewPage({
+          layoutMode: this.layoutMode,
+          isDark: this.isDarkMode(),
+          appearanceMode: this.appearanceMode,
+          localIpAddress: this.localIpAddress,
+          remoteControlServerAvailable: this.remoteControlServerAvailable,
+          screenRecordingPermissionGranted: this.screenRecordingPermissionGranted,
+          screenRecordingPermissionBusy: this.screenRecordingPermissionBusy,
+          inputInjectionPermissionGranted: this.inputInjectionPermissionGranted,
+          inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
+          xrdpServerRunning: this.xrdpServerRunning,
+          xrdpServerState: this.xrdpServerState,
+          xrdpServerPort: this.xrdpServerPort,
+          xrdpServerBusy: this.xrdpServerBusy,
+          onOpenBasic: (): void => {
+            this.pageName = SettingsRoute.BASIC
+            this.remoteControlTargetSection = ''
+          },
+          onOpenRemoteControl: (): void => {
+            this.pageName = SettingsRoute.REMOTE_CONTROL
+            this.remoteControlTargetSection = ''
+          },
+          onOpenHelp: (): void => {
+            this.pageName = SettingsRoute.PROJECT_HELP
+            this.remoteControlTargetSection = ''
+          }
+        })
       }
       .width('100%')
       .height('100%')

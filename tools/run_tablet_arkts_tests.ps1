@@ -9,15 +9,22 @@ $indexPath = Join-Path $repositoryRoot 'harmony\app\common\src\main\ets\pages\In
 $etsRoot = Join-Path $repositoryRoot 'harmony\app\common\src\main\ets'
 $gatewayPath = Join-Path $etsRoot 'rdp\NativeRdpGateway.ets'
 $controllerPath = Join-Path $etsRoot 'rdp\RdpClientController.ets'
+$connectionPageCoordinatorPath = Join-Path $etsRoot 'rdp\WindowsConnectionPageCoordinator.ets'
+$endpointProbePath = Join-Path $etsRoot 'rdp\RdpEndpointProbe.ets'
+$connectionAttemptPath = Join-Path $etsRoot 'rdp\RdpConnectionAttemptCoordinator.ets'
+$diagnosticsExporterPath = Join-Path $etsRoot 'rdp\RdpDiagnosticsExporter.ets'
 $connectionDetailsPath = Join-Path $etsRoot 'components\home\HomeConnectionDetails.ets'
 $deviceListPath = Join-Path $etsRoot 'components\home\HomeDeviceList.ets'
 $homeTextPath = Join-Path $etsRoot 'components\home\HomeText.ets'
 $homeHeaderPath = Join-Path $etsRoot 'components\home\HomeHeader.ets'
 $settingsPagePath = Join-Path $etsRoot 'components\SettingsPage.ets'
+$settingsOverviewPath = Join-Path $etsRoot 'components\settings\SettingsOverviewPage.ets'
 $basicSettingsPath = Join-Path $etsRoot 'components\settings\BasicSettingsPage.ets'
 $projectHelpPath = Join-Path $etsRoot 'components\settings\ProjectHelpPage.ets'
 $remoteSettingsPath = Join-Path $etsRoot 'components\settings\RemoteControlSettingsPage.ets'
 $remoteCardsPath = Join-Path $etsRoot 'components\settings\RemoteControlCards.ets'
+$remoteFilesCardPath = Join-Path $etsRoot 'components\settings\RemoteFilesCard.ets'
+$diagnosticsCardPath = Join-Path $etsRoot 'components\settings\DiagnosticsCard.ets'
 $settingsConstantsPath = Join-Path $etsRoot 'components\settings\SettingsConstants.ets'
 $modulePath = Join-Path $repositoryRoot 'harmony\app\entry\src\main\module.json5'
 $tabletModulePath = Join-Path $repositoryRoot 'harmony\app\entry_tablet\src\main\module.json5'
@@ -25,15 +32,22 @@ $nativeTypesText = Get-Content -Raw -Encoding utf8 $nativeTypesPath
 $indexText = Get-Content -Raw -Encoding utf8 $indexPath
 $gatewayText = Get-Content -Raw -Encoding utf8 $gatewayPath
 $controllerText = Get-Content -Raw -Encoding utf8 $controllerPath
+$connectionPageCoordinatorText = Get-Content -Raw -Encoding utf8 $connectionPageCoordinatorPath
+$endpointProbeText = Get-Content -Raw -Encoding utf8 $endpointProbePath
+$connectionAttemptText = Get-Content -Raw -Encoding utf8 $connectionAttemptPath
+$diagnosticsExporterText = Get-Content -Raw -Encoding utf8 $diagnosticsExporterPath
 $connectionDetailsText = Get-Content -Raw -Encoding utf8 $connectionDetailsPath
 $deviceListText = Get-Content -Raw -Encoding utf8 $deviceListPath
 $homeTextText = Get-Content -Raw -Encoding utf8 $homeTextPath
 $homeHeaderText = Get-Content -Raw -Encoding utf8 $homeHeaderPath
 $settingsPageText = Get-Content -Raw -Encoding utf8 $settingsPagePath
+$settingsOverviewText = Get-Content -Raw -Encoding utf8 $settingsOverviewPath
 $basicSettingsText = Get-Content -Raw -Encoding utf8 $basicSettingsPath
 $projectHelpText = Get-Content -Raw -Encoding utf8 $projectHelpPath
 $remoteSettingsText = Get-Content -Raw -Encoding utf8 $remoteSettingsPath
 $remoteCardsText = Get-Content -Raw -Encoding utf8 $remoteCardsPath
+$remoteFilesCardText = Get-Content -Raw -Encoding utf8 $remoteFilesCardPath
+$diagnosticsCardText = Get-Content -Raw -Encoding utf8 $diagnosticsCardPath
 $settingsConstantsText = Get-Content -Raw -Encoding utf8 $settingsConstantsPath
 $moduleText = Get-Content -Raw -Encoding utf8 $modulePath
 $tabletModuleText = Get-Content -Raw -Encoding utf8 $tabletModulePath
@@ -84,9 +98,46 @@ if ($indexText.Contains('rdpNative.') -or $indexText.Contains('NativeRdpGateway'
   -not $indexText.Contains('RdpClientController')) {
   throw 'Index must coordinate RDP through dedicated controllers without Native gateway details.'
 }
-$indexLineCount = (Get-Content -Encoding utf8 $indexPath).Count
-if ($indexLineCount -gt 950) {
-  throw "Index page coordinator grew beyond the architecture budget: $indexLineCount lines."
+$oversizedEtsFiles = @()
+foreach ($moduleName in @('common', 'entry', 'entry_tablet')) {
+  $sourceRoot = Join-Path $projectDirectory "$moduleName\src"
+  if (-not (Test-Path $sourceRoot)) {
+    continue
+  }
+  Get-ChildItem -Path $sourceRoot -Recurse -File -Filter '*.ets' | ForEach-Object {
+    $lineCount = (Get-Content -Encoding utf8 $_.FullName).Count
+    if ($lineCount -gt 600) {
+      $relativePath = [System.IO.Path]::GetRelativePath($repositoryRoot, $_.FullName)
+      $oversizedEtsFiles += "$relativePath ($lineCount lines)"
+    }
+  }
+}
+if ($oversizedEtsFiles.Count -gt 0) {
+  throw "ArkTS files exceed the 600-line architecture limit: $($oversizedEtsFiles -join ', ')"
+}
+if (-not $indexText.Contains('remoteControlPageCoordinator: RemoteControlPageCoordinator | null = null') -or
+  -not $indexText.Contains('private remoteControlCoordinator(): RemoteControlPageCoordinator') -or
+  $indexText.Contains('readonly remoteControlPageCoordinator: RemoteControlPageCoordinator = new')) {
+  throw 'RemoteControlPageCoordinator must be created lazily after the Entry remoteControlPort property is injected.'
+}
+foreach ($requiredProbeRule in @('constructTCPSocketInstance', 'timeout: timeoutMs', 'await tcpSocket.close()',
+  'private generation', 'generation !== this.generation')) {
+  if (-not ($endpointProbeText + $connectionAttemptText).Contains($requiredProbeRule)) {
+    throw "RDP endpoint preflight is missing required cancellation or cleanup behavior: $requiredProbeRule"
+  }
+}
+foreach ($requiredDiagnosticRule in @('schemaVersion: 2', 'hostLength', 'usernameLength',
+  'NativeRdpGateway.getDiagnostics()', 'fileIo.OpenMode.TRUNC', 'cameraPacketCounters',
+  'lastErrorCategory', 'endpointProbeElapsedMs', 'clipboardRuntimeCounters',
+  'passiveScreenCaptureCounters')) {
+  if (-not $diagnosticsExporterText.Contains($requiredDiagnosticRule)) {
+    throw "RDP diagnostics export is missing required versioning or redaction behavior: $requiredDiagnosticRule"
+  }
+}
+foreach ($sensitiveDiagnosticField in @('password:', 'accessCode:', 'host: string', 'username: string')) {
+  if ($diagnosticsExporterText.Contains($sensitiveDiagnosticField)) {
+    throw "RDP diagnostics export must not serialize sensitive connection data: $sensitiveDiagnosticField"
+  }
 }
 foreach ($forbiddenIndexDetail in @(
   'new WindowsConnectionStore',
@@ -103,9 +154,9 @@ foreach ($forbiddenIndexDetail in @(
 }
 foreach ($requiredCoordinator in @(
   'RdpConnectionValidator',
-  'WindowsConnectionProfileCoordinator',
-  'RdpPermissionRequestCoordinator',
-  'RemoteControlCoordinator',
+  'WindowsConnectionPageCoordinator',
+  'RemoteControlPageCoordinator',
+  'RdpSessionLifecycleCoordinator',
   'RdpSurfaceContentHost'
 )) {
   if (-not $indexText.Contains($requiredCoordinator)) {
@@ -113,12 +164,11 @@ foreach ($requiredCoordinator in @(
   }
 }
 foreach ($requiredCredentialSwitchRule in @(
-  'connectionProfilePasswordLoading',
-  'connectionProfileSelectionGeneration',
-  'this.applyConnectionProfile(profile, savedPassword)',
+  'selectionGeneration',
+  'this.delegate.applyProfile(profile, password === null',
   'passwordLoading: this.connectionProfilePasswordLoading'
 )) {
-  if (-not $indexText.Contains($requiredCredentialSwitchRule)) {
+  if (-not ($indexText + $connectionPageCoordinatorText).Contains($requiredCredentialSwitchRule)) {
     throw "Connection profile switching is missing atomic credential loading: $requiredCredentialSwitchRule"
   }
 }
@@ -149,8 +199,8 @@ if ($basicSettingsText.Contains('@kit.NetworkKit') -or
   $basicSettingsText.Contains('BASIC_NETWORK_SECTION')) {
   throw 'Basic settings must not own remote-control connection network information.'
 }
-if (-not $settingsPageText.Contains('currentStateCardHovered') -or
-  -not $settingsPageText.Contains('setCurrentStateCardHovered')) {
+if (-not $settingsOverviewText.Contains('currentStateCardHovered') -or
+  -not $settingsOverviewText.Contains('setCurrentStateCardHovered')) {
   throw 'The overview current-state card must keep the shared animated hover treatment.'
 }
 if (-not $settingsPageText.Contains('remoteControlServerAvailable: this.remoteControlServerAvailable') -or
@@ -159,14 +209,14 @@ if (-not $settingsPageText.Contains('remoteControlServerAvailable: this.remoteCo
   -not $projectHelpText.Contains('this.showControllerGuide = !this.remoteControlServerAvailable') -or
   -not $projectHelpText.Contains('selected: this.showControllerGuide') -or
   -not $projectHelpText.Contains('if (this.showControllerGuide)') -or
-  -not $settingsPageText.Contains('SettingsShellText.HELP_CLIENT_DESC')) {
+  -not $settingsOverviewText.Contains('SettingsShellText.HELP_CLIENT_DESC')) {
   throw 'Project help must gate controlled-device guidance behind the 2in1 capability snapshot.'
 }
 if (-not $remoteSettingsText.Contains('RemoteAccessCard') -or
   -not $remoteSettingsText.Contains('if (this.passiveControlAvailable)') -or
   -not $settingsPageText.Contains('passiveControlAvailable: this.remoteControlServerAvailable') -or
   $settingsPageText.Contains('this.pageName === SettingsRoute.REMOTE_CONTROL && this.remoteControlServerAvailable') -or
-  -not $settingsPageText.Contains('SettingsShellText.REMOTE_CLIENT_DESC') -or
+  -not $settingsOverviewText.Contains('SettingsShellText.REMOTE_CLIENT_DESC') -or
   -not $remoteSettingsText.Contains('SettingsRemoteText.PASSIVE_SECTION') -or
   -not $remoteSettingsText.Contains('SettingsRemoteText.ACTIVE_SECTION') -or
   -not $remoteSettingsText.Contains('localIpAddress')) {
@@ -174,6 +224,12 @@ if (-not $remoteSettingsText.Contains('RemoteAccessCard') -or
 }
 if ($remoteSettingsText.LastIndexOf('RemoteFilesCard') -gt $remoteSettingsText.LastIndexOf('RemoteAccessCard')) {
   throw 'Active-control verification must appear below the Harmony shared-directory card.'
+}
+if (-not $remoteSettingsText.Contains('DiagnosticsCard') -or
+  -not $remoteSettingsText.Contains('SettingsRemoteText.DIAGNOSTICS_SECTION') -or
+  $remoteFilesCardText.Contains('onExportDiagnostics') -or
+  -not $diagnosticsCardText.Contains('onExportDiagnostics')) {
+  throw 'Diagnostics export must live in its own remote-settings section and card.'
 }
 if ($settingsPageText.Contains('copyConnectionAddress') -or
   $remoteSettingsText.Contains('onCopyConnectionAddress') -or

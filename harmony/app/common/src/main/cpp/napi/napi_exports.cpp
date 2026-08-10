@@ -96,6 +96,12 @@ napi_value ReleaseAllInput(napi_env env, napi_callback_info info)
     return result;
 }
 
+napi_value GetDiagnostics(napi_env env, napi_callback_info info)
+{
+    (void)info;
+    return MakeString(env, BuildNativeDiagnostics());
+}
+
 napi_value AttachXComponentContent(napi_env env, napi_callback_info info)
 {
     napi_value nodeContent = GetFirstArgument(env, info);
@@ -278,6 +284,7 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
         {"detachXComponentContent", nullptr, DetachXComponentContent, nullptr, nullptr, nullptr,
             napi_default, nullptr},
         {"releaseAllInput", nullptr, ReleaseAllInput, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getDiagnostics", nullptr, GetDiagnostics, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onState", nullptr, OnState, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onError", nullptr, OnError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"onPermissionRequest", nullptr, OnPermissionRequest, nullptr, nullptr, nullptr,

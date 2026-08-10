@@ -36,6 +36,7 @@ declare const rdpNative: {
   attachXComponentContent(nodeContent: NodeContent): NativeCommandResult;
   detachXComponentContent(): NativeCommandResult;
   releaseAllInput(): NativeCommandResult;
+  getDiagnostics(): string;
   onState(callback: (state: string) => void): NativeCommandResult;
   onError(callback: (message: string) => void): NativeCommandResult;
   onPermissionRequest(callback: (request: NativePermissionRequest) => void): NativeCommandResult;

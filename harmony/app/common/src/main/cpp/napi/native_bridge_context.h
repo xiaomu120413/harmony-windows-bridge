@@ -12,6 +12,7 @@ namespace rdp_bridge {
 SessionEventHub& BridgeEvents();
 RdpSession& BridgeSession();
 bool BindImeHostWindow(uint32_t windowId, std::string& message);
+std::string BuildNativeDiagnostics();
 
 void InitializeNativeBridgeContext();
 bool RegisterNativeXComponentInstance(OH_NativeXComponent* component);

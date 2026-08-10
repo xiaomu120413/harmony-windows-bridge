@@ -25,4 +25,6 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+std::string SnapshotClipboardDiagnostics();
+
 } // namespace rdp_bridge

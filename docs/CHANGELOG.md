@@ -23,6 +23,12 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 | --- | --- | --- | --- | --- |
 | `CHG-YYYYMMDD-NNN` | `type(scope): subject` | 功能/模块 | 用一两句话说明行为变化、兼容性和主要影响范围 | 测试命令、结果或专项文档/证据链接；未执行要明示 |
 
+## 2026-08-10
+
+| Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
+| --- | --- | --- | --- | --- |
+| `CHG-20260810-001` | `feat(rdp): harden lifecycle and diagnostics` | 功能/HNP 生命周期、连接预检、诊断与 ArkTS 架构 | 增加 xrdp 显式停止和异常退出轮询、FreeRDP 连接前 TCP 预检及独立的一键脱敏诊断卡；schema 2 补齐会话阶段、预检耗时、错误类别、session ID、resize、剪贴板计数和 coverage，未实现的摄像头/xrdp 计数明确为 unavailable。拆分首页/设置职责并强制全部 ETS 不超过 600 行。2in1 端口绑定改为属性注入后延迟创建。Strict 入口仍不开放，手写笔和多显示器状态同步为 Verified。 | ArkTS/Native 构建、xrdp 进程门禁、App Pack 与真机 JSON 导出通过；App Pack 40,002,044 bytes，SHA-256 `b7a6ea7dad543c6f98b9cacd28abc46e92faac6211baad41064a5696e7db69e7`。2in1 原子安装 common + entry、平板 `5JB0223804000371` 原子安装 common + entry_tablet；两端独立诊断卡均显示并导出成功，平板无 HNP/xrdp 进程。完整故障矩阵待按清单执行。 |
+
 ## 2026-08-07
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |

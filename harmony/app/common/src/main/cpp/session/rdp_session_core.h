@@ -39,6 +39,7 @@ public:
     void Disconnect();
     bool RequestDisconnect();
     bool IsConnected() const;
+    uint64_t DiagnosticSessionId() const;
     void SetDisplayOrientation(uint32_t orientation);
     uint32_t DisplayOrientation() const;
     bool SetMonitorLayout(std::vector<FREERDP_OHOS_MONITOR_LAYOUT> monitors,

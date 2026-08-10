@@ -60,8 +60,8 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | RDPGFX/H.264 + AVC444 GPU compositor | 首版交付 | 默认 `rdpgfx-h264`，AVC444 GPU compositor 开启 | 无新增权限 | 待真机确认协商、首帧、resize、fallback |
 | GDI/software render | 保留 fallback | 图形失败时可回退 | 无新增权限 | 待真机确认失败场景不黑屏 |
 | 动态分辨率 `disp` | 首版交付 | 默认请求；单屏发送完整像素/物理尺寸/方向/scale，窗口变化 trailing debounce | 无新增权限 | API 22 2in1 真机确认全屏 `3120×1872`、浮窗 `2080×1312` 请求均为 Sent；服务端不支持提示待补 |
-| FreeRDP 多显示器 `disp/multimon` | 已实现，待动作级真机验收 | 仅检测到 2 块及以上本地显示器时启用；回到单屏自动清除多屏快照 | 无新增权限 | OHOS 交叉编译与 HAP 构建通过；待外接屏热插拔、拓扑和四角输入验收 |
-| 手写笔 `RDPEI` | 已实现，待动作级真机验收 | Native XComponent 检测到 pen 时自动启用；不提供 ArkTS 开关 | 无新增权限 | 压力/倾角/橡皮字段及生命周期静态检查通过；待 Windows Ink 真机验收 |
+| FreeRDP 多显示器 `disp/multimon` | 已验证 | 仅检测到 2 块及以上本地显示器时启用；回到单屏自动清除多屏快照 | 无新增权限 | OHOS 交叉编译与 HAP 构建通过；2026-08-10 用户确认状态升级为 Verified |
+| 手写笔 `RDPEI` | 已验证 | Native XComponent 检测到 pen 时自动启用；不提供 ArkTS 开关 | 无新增权限 | 压力/倾角/橡皮字段及生命周期静态检查通过；2026-08-10 用户确认状态升级为 Verified |
 | Geometry tracking `geometry` | 首版交付 | 默认注册动态虚拟通道 | 无新增权限 | 待真机确认服务端是否协商；当前不消费 region 数据 |
 | 剪贴板文本 `cliprdr` + Pasteboard | 首版交付 | 默认接入，按需授权 | `READ_PASTEBOARD` | 待真机确认双向文本、拒绝权限和 change echo |
 | 剪贴板文件/FUSE | 首版不交付 | 不编译 FUSE backend | 不声明额外文件权限 | 当前依赖缺失，后续专项 |

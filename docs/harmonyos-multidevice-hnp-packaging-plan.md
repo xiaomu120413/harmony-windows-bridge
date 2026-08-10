@@ -1,6 +1,6 @@
 # MuHub HarmonyOS 多设备 HNP 分包架构、修改清单与验收方案
 
-> 状态：DesignReady，尚未实施
+> 状态：核心分包与独立进程已实施；发布生命周期验收进行中
 > 文档版本：1.0
 > 审阅日期：2026-08-06
 > 适用工程：`harmony/app`
@@ -681,6 +681,7 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 | MDP-02 | Implemented / tablet verified | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | tablet 包与设备权限通过；2in1 权限回归待设备在线补验 |
 | MDP-03 | Implemented / package verified | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | 编译、进程策略和包门禁通过；2in1 独立 PID/连接/清理待补验 |
 | MDP-03A | Implemented / 2in1 runtime verified | 修正私有 HNP 沙箱运行路径 | xrdp runtime loader、进程策略门禁、验证基线 | 从 `/data/app/bin/xrdp` 动态解析当前版本根目录；2in1 独立 PID/3390/强停清理通过；tablet 物理隔离不变；MSTSC/显式停止/异常/卸载待验 |
+| MDP-03B | Implemented（真机待验） | 发布生命周期收口 | xrdp 状态协调器、远控设置服务卡、生命周期轮询和门禁 | 已增加显式 UI 停止与异常退出状态刷新；MSTSC、异常退出、强停、卸载、升级和无孤儿进程按可靠性专项验收 |
 | MDP-04 | Implemented / release blocked | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 三模式与本地门禁通过；覆盖升级 P0 和应用市场真实分发未通过 |
 
 状态定义：

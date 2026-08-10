@@ -4,12 +4,17 @@
 #include "napi/clipboard_permission_bridge.h"
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <client/OHOS/ohos_clipboard.h>
 
 namespace rdp_bridge {
 namespace {
+
+std::mutex g_clipboardDiagnosticsMutex;
+FreerdpRuntimeApi* g_clipboardDiagnosticsApi = nullptr;
+freerdpOhosClipboard* g_clipboardDiagnosticsBackend = nullptr;
 
 bool IsClipboardLog(const std::string& line)
 {
@@ -88,14 +93,26 @@ public:
             api_ = nullptr;
             return false;
         }
+        {
+            std::lock_guard<std::mutex> lock(g_clipboardDiagnosticsMutex);
+            g_clipboardDiagnosticsApi = api_;
+            g_clipboardDiagnosticsBackend = clipboard_;
+        }
         return true;
     }
 
     void Uninitialize()
     {
         if (clipboard_ != nullptr) {
-            const char* diagnostics = api_ == nullptr ? nullptr :
-                api_->ohosClipboardGetDiagnostics(clipboard_);
+            const char* diagnostics = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(g_clipboardDiagnosticsMutex);
+                diagnostics = api_ == nullptr ? nullptr : api_->ohosClipboardGetDiagnostics(clipboard_);
+                if (g_clipboardDiagnosticsBackend == clipboard_) {
+                    g_clipboardDiagnosticsBackend = nullptr;
+                    g_clipboardDiagnosticsApi = nullptr;
+                }
+            }
             if (diagnostics != nullptr) {
                 Log(diagnostics);
             }
@@ -149,6 +166,18 @@ bool HarmonyClipboardBridge::Initialize(rdpContext* context, FreerdpRuntimeApi& 
 void HarmonyClipboardBridge::Uninitialize()
 {
     impl_->Uninitialize();
+}
+
+std::string SnapshotClipboardDiagnostics()
+{
+    std::lock_guard<std::mutex> lock(g_clipboardDiagnosticsMutex);
+    if (g_clipboardDiagnosticsApi == nullptr || g_clipboardDiagnosticsBackend == nullptr ||
+        g_clipboardDiagnosticsApi->ohosClipboardGetDiagnostics == nullptr) {
+        return "OHOS clipboard stats: unavailable";
+    }
+    const char* diagnostics =
+        g_clipboardDiagnosticsApi->ohosClipboardGetDiagnostics(g_clipboardDiagnosticsBackend);
+    return diagnostics == nullptr ? "OHOS clipboard stats: unavailable" : diagnostics;
 }
 
 } // namespace rdp_bridge

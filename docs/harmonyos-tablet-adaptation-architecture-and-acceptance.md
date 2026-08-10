@@ -1632,10 +1632,11 @@ build_hap.bat 内部统一调用 assembleHap，并显式传 product=default、mo
 
 ### 14.4 文件规模
 
-Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本文为本次改造设置的评审预算，不是该 Native 规范的原文要求：
+Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 文件规模由自动门禁统一约束：
 
-- 本文预算：新 ArkTS 页面/协调器目标不超过 500 行。
-- 本文预算：新 ArkTS 展示组件目标不超过 300 行。
+- ArkTS 硬上限：仓库内每个 `.ets` 文件物理行数不超过 600 行，页面、协调器、组件和测试一视同仁。
+- 新 ArkTS 页面/协调器仍以不超过 500 行为评审目标，新展示组件仍以不超过 300 行为评审目标；目标不是放宽 600 行硬上限。
+- `tools/run_tablet_arkts_tests.ps1` 必须递归扫描全部 `.ets`，不能只检查 `Index.ets` 或本次改动文件。
 - Native 规范：新 C++ 源文件目标不超过 500 行，硬上限 1000 行。
 - 已经超大的 AVC 文件不得继续承载共享几何或 resize 算法。
 
@@ -1739,7 +1740,7 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 本节登记增量入口，详细接口、状态、fallback、文件清单和验收以
 [FreeRDP OHOS 手写笔与多显示器设计](freerdp-ohos-pen-and-multimon-design.md) 为准。
 
-- `PEN-MON-D1`：`Implemented`；FreeRDP OHOS 交叉编译、Native/ArkTS 测试和 Debug HAP 已通过，手写笔与外接屏动作级真机验收待补。
+- `PEN-MON-D1`：`Verified`；FreeRDP OHOS 交叉编译、Native/ArkTS 测试和 Debug HAP 已通过，2026-08-10 用户确认将手写笔与多显示器能力升级为 Verified。
 - UI/功能隔离：ArkTS 页面不增加手写笔或多屏判断；Native 输入模块按 tool type 分流，FreeRDP OHOS port 持有 RDPEI 与 monitor layout 协议状态。
 - 渲染边界：多显示器形成一个组合远端桌面，继续由唯一 XComponent 和统一 viewport 呈现；多本地窗口不在本次范围。
 - 验收入口：`AC-PEN-01..03`、`AC-MON-01..03`、`AC-REG-01`。
@@ -1786,3 +1787,13 @@ Native C++ 遵循 docs/ohos-native-cpp-module-guidelines.md；ArkTS 数值是本
 - [CONTROL_DEVICE 受限权限](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/restricted-permissions#ohospermissioncontrol_device)
 - [OH_Input_RequestInjection](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h#oh_input_requestinjection)
 - [OH_Input_QueryAuthorizedStatus](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h#oh_input_queryauthorizedstatus)
+
+## 21. RDP 产品可靠性与诊断增量
+
+HNP 显式停止和异常退出刷新、FreeRDP 连接前端点探测、脱敏诊断导出及标准通道故障矩阵统一由
+[RDP 产品可靠性、诊断与故障验收方案](rdp-product-reliability-and-diagnostics-plan.md) 管理。
+
+- `RDP-PREFLIGHT-01`、`RDP-DIAG-01`：`Implemented`；`RDP-ARCH-ETS-600`：`Verified`。
+- `MDP-03B` 的显式停止与异常退出刷新已实现，但完整 HNP 发布生命周期和 `RDP-FAULT-01` 真机动作仍为 Pending。
+- UI 继续复用首页连接反馈、远控设置和共享目录卡，不增加第二套会话状态或设备类型分支。
+- Strict 证书策略入口不在本增量范围；FreeRDP 手写笔与多显示器维持 `Verified`。

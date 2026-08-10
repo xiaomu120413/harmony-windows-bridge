@@ -11,6 +11,11 @@ const FILE_MANAGER_OPEN_DIRECTORY_MODE = 'openDirectory'
 const FILE_MANAGER_OPEN_DIRECTORY_URI = 'filemanager://openDirectory'
 
 export class RemoteFilesDirectory {
+  static sharedDirectoryPath(): string {
+    const storedDir = AppStorage.get<string>(REMOTE_FILES_SHARED_DIR_STORAGE_KEY) || ''
+    return RemoteFilesDirectory.isDirectory(storedDir) ? storedDir : ''
+  }
+
   static async prepareSharedDirectory(context: common.UIAbilityContext | null): Promise<boolean> {
     if (context === null) {
       RdpLogger.warn('prepare download drive directory skipped: no UIAbilityContext')

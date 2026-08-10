@@ -3,6 +3,9 @@
 #include "common/bridge_log.h"
 #include "common/string_utils.h"
 #include "channels/rdpgfx_pipeline.h"
+#include "channels/audio_diagnostics.h"
+#include "channels/clipboard_bridge.h"
+#include "channels/rdpgfx_diagnostics.h"
 #include "freerdp/freerdp_gdi_bridge.h"
 #include "freerdp/freerdp_runtime.h"
 #include "input/xcomponent_input_bridge.h"
@@ -18,6 +21,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <sstream>
 #include <vector>
 
 #include <ace/xcomponent/native_interface_xcomponent.h>
@@ -432,6 +436,56 @@ bool RegisterNativeXComponentInstance(OH_NativeXComponent* component)
     (void)inputRc;
     g_surface.Register(component, ok);
     return ok;
+}
+
+std::string BuildNativeDiagnostics()
+{
+    const SurfaceSnapshot surface = g_surface.Snapshot();
+    const auto monitors = g_displayLayoutMonitor.Snapshot();
+    const DisplayResizeCoordinatorSnapshot resize = g_resizeCoordinator.Snapshot();
+    std::string runtimeError;
+    FreerdpRuntimeApi& api = SharedFreerdpRuntimeApi();
+    const bool runtimeLoaded = EnsureFreerdpRuntimeLoaded(api, runtimeError);
+    std::ostringstream out;
+    const char* resizeState = resize.state == DisplayResizeWaitState::WaitingForTarget ? "waiting" :
+        resize.state == DisplayResizeWaitState::Fallback ? "fallback" : "idle";
+    out << "schema=2"
+        << " session=" << (g_session.IsConnected() ? "connected" : "idle")
+        << " session_id=" << g_session.DiagnosticSessionId()
+        << " orientation=" << g_session.DisplayOrientation()
+        << " multimon=" << (g_multimonActive.load() ? "active" : "inactive")
+        << " monitors=" << monitors.size()
+        << " surface_registered=" << (surface.registered ? "yes" : "no")
+        << " surface_ready=" << (surface.ready ? "yes" : "no")
+        << " surface=" << surface.width << "x" << surface.height
+        << " viewport=" << surface.viewportX << "," << surface.viewportY << ","
+        << surface.viewportWidth << "x" << surface.viewportHeight
+        << " remote=" << surface.viewportRemoteWidth << "x" << surface.viewportRemoteHeight
+        << " paints=" << surface.paintCount
+        << " input_depth=" << g_session.InputQueueDepth()
+        << " input_queued=" << g_session.InputQueuedCount()
+        << " input_sent=" << g_session.InputSentCount()
+        << " input_dropped=" << g_session.InputDroppedCount()
+        << " resize_state=" << resizeState
+        << " resize_generation=" << resize.targetGeneration
+        << " resize_target=" << resize.targetWidth << "x" << resize.targetHeight
+        << " resize_skipped=" << resize.skippedFrameCount
+        << " runtime=" << (runtimeLoaded ? "loaded" : "unavailable")
+        << " channel_clipboard=" << (runtimeLoaded && api.ohosClipboardGetDiagnostics != nullptr ?
+            "available" : "unavailable")
+        << " channel_rdpsnd=" << (runtimeLoaded && api.rdpsndOhosGetDiagnostics != nullptr ?
+            "available" : "unavailable")
+        << " channel_audin=" << (runtimeLoaded && api.audinOhosGetDiagnostics != nullptr ?
+            "available" : "unavailable")
+        << " channel_rdpecam=" << (runtimeLoaded && api.rdpecamOhosSetPermissionCallback != nullptr ?
+            "available" : "unavailable")
+        << " channel_location=" << (runtimeLoaded && api.ohosLocationSetPermissionCallback != nullptr ?
+            "available" : "unavailable")
+        << " | " << g_frameRenderer.BuildStatsLog()
+        << " | " << BuildGraphicsPipelineStatsLog()
+        << " | " << BuildOHAudioStatsLog()
+        << " | " << SnapshotClipboardDiagnostics();
+    return out.str();
 }
 
 } // namespace rdp_bridge

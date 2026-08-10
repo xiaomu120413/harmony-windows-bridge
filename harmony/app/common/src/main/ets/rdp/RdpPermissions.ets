@@ -147,6 +147,22 @@ export class RdpPermissionManager {
     return this.hasPermission(SCREEN_RECORDING_PERMISSION, 'Screen recording')
   }
 
+  hasMicrophonePermission(): boolean {
+    return this.hasPermission(MICROPHONE_PERMISSION, 'Microphone')
+  }
+
+  hasCameraPermission(): boolean {
+    return this.hasPermission(CAMERA_PERMISSION, 'Camera')
+  }
+
+  hasPasteboardReadPermission(): boolean {
+    return this.hasPermission(READ_PASTEBOARD_PERMISSION, 'Pasteboard')
+  }
+
+  hasAnyLocationPermission(): boolean {
+    return this.hasLocationPermission()
+  }
+
   requestControlDevicePermission(trigger: string): Promise<boolean> {
     return this.ensurePermission(
       this.controlDevicePermission,

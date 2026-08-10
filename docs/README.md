@@ -15,16 +15,20 @@ validation notes live under `docs/archive/`.
   superseded by the multi-device packaging plan below.
 
 - [harmonyos-multidevice-hnp-packaging-plan.md](harmonyos-multidevice-hnp-packaging-plan.md):
-  DesignReady target architecture and staged validation plan for one App Pack,
+  implemented target architecture and remaining release validation plan for one App Pack,
   device-specific Entry HAPs, shared HSP, 2in1-only HNP/permissions, independent
   XRDP process, upgrade safety and AppGallery distribution checks.
 
 - `freerdp-ohos-feature-matrix.md`: current OHOS FreeRDP feature status,
   default channel policy, permissions and fallback behavior.
-- `freerdp-ohos-pen-and-multimon-design.md`: DesignReady ownership, ABI,
-  fallback and acceptance contract for native stylus and multi-monitor support.
+- `freerdp-ohos-pen-and-multimon-design.md`: Verified ownership, ABI, fallback
+  and acceptance record for native stylus and multi-monitor support.
 - `freerdp-ohos-validation-baseline.md`: repeatable build, runtime sync, HAP
   packaging and true-device validation checklist.
+- `rdp-product-reliability-and-diagnostics-plan.md`: reliability lifecycle,
+  endpoint preflight, redacted diagnostics export and channel fault matrix status.
+- `rdp-channel-fault-acceptance-checklist.md`: device-ready action checklist and
+  evidence slots for HNP lifecycle, network preflight and redirected channels.
 - `freerdp-ohos-sdk-quickstart.md`: public OHOS FreeRDP SDK integration guide.
 - `ohos-native-cpp-module-guidelines.md`: HAP/native module ownership,
   file-size rules and FreeRDP-vs-HAP delivery boundary.

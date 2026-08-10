@@ -9,10 +9,11 @@ import { SettingsNetworkText, SettingsRemoteControlSection, SettingsRemoteText, 
 import { SettingsAccent, SettingsResources } from './SettingsUi'
 import {
   RemoteAccessCard,
-  RemoteFilesCard,
   RemotePermissionCard,
   XrdpServerCard
 } from './RemoteControlCards'
+import { RemoteFilesCard } from './RemoteFilesCard'
+import { DiagnosticsCard } from './DiagnosticsCard'
 
 @Component
 export struct RemoteControlSettingsPage {
@@ -55,7 +56,19 @@ export struct RemoteControlSettingsPage {
     }
     return Promise.resolve(status)
   }
+  onStopXrdpServer: () => Promise<XrdpServerStatus> = () => {
+    const status: XrdpServerStatus = {
+      running: false,
+      state: 'Stopped',
+      port: 3390,
+      message: ''
+    }
+    return Promise.resolve(status)
+  }
   onOpenRemoteFilesDirectory: () => void = () => {
+  }
+  onExportDiagnostics: () => Promise<string> = () => {
+    return Promise.resolve('')
   }
   @Prop isDark: boolean = false
   @Prop layoutMode: LayoutMode = LayoutMode.COMPACT
@@ -84,6 +97,7 @@ export struct RemoteControlSettingsPage {
   @State private localXrdpServerBusy: boolean = false
   private screenPermissionRequestPending: boolean = false
   private inputPermissionRequestPending: boolean = false
+  private xrdpDiagnosticsTimer: number = -1
 
   aboutToAppear(): void {
     this.localScreenRecordingGranted = this.screenRecordingPermissionGranted
@@ -100,7 +114,31 @@ export struct RemoteControlSettingsPage {
       this.refreshInputInjectionState()
       this.refreshXrdpServerStatus()
       this.onRefreshNetwork()
+      this.startXrdpDiagnosticsPolling()
     }
+  }
+
+  aboutToDisappear(): void {
+    this.stopXrdpDiagnosticsPolling()
+  }
+
+  private startXrdpDiagnosticsPolling(): void {
+    if (this.xrdpDiagnosticsTimer >= 0) {
+      return
+    }
+    this.xrdpDiagnosticsTimer = setInterval((): void => {
+      if (!this.localXrdpServerBusy && !this.xrdpServerBusy) {
+        this.refreshXrdpServerStatus()
+      }
+    }, 2000)
+  }
+
+  private stopXrdpDiagnosticsPolling(): void {
+    if (this.xrdpDiagnosticsTimer < 0) {
+      return
+    }
+    clearInterval(this.xrdpDiagnosticsTimer)
+    this.xrdpDiagnosticsTimer = -1
   }
 
   private setGateEnabled(enabled: boolean): void {
@@ -171,6 +209,23 @@ export struct RemoteControlSettingsPage {
       })
   }
 
+  private stopXrdpServer(): void {
+    if (this.localXrdpServerBusy || this.xrdpServerBusy) {
+      return
+    }
+    this.localXrdpServerBusy = true
+    this.onStopXrdpServer()
+      .then((status: XrdpServerStatus) => {
+        this.applyXrdpServerStatus(status)
+      })
+      .catch((_error: Error) => {
+        this.refreshXrdpServerStatus()
+      })
+      .finally(() => {
+        this.localXrdpServerBusy = false
+      })
+  }
+
   private refreshInputInjectionState(): void {
     this.localInputInjectionGranted = this.onRefreshInputInjectionPermission()
   }
@@ -227,6 +282,9 @@ export struct RemoteControlSettingsPage {
               },
               onStart: (): void => {
                 this.startXrdpServer()
+              },
+              onStop: (): void => {
+                this.stopXrdpServer()
               }
             })
             RemotePermissionCard({
@@ -275,6 +333,16 @@ export struct RemoteControlSettingsPage {
             onRegenerate: (): void => {
               this.regenerateAccessCode()
             }
+          })
+          SettingsSectionTitle({
+            title: SettingsRemoteText.DIAGNOSTICS_SECTION,
+            subtitle: SettingsRemoteText.DIAGNOSTICS_SECTION_DESC,
+            isDark: this.isDark
+          })
+          DiagnosticsCard({
+            isDark: this.isDark,
+            targetSection: this.targetSection,
+            onExportDiagnostics: this.onExportDiagnostics
           })
         }
         .alignItems(HorizontalAlign.Start)

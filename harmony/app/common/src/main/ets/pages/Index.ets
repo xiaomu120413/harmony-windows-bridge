@@ -4,11 +4,7 @@ import {
   LayoutMode,
   layoutModeForWidthBreakpoint
 } from '../adaptive/WindowLayoutPolicy'
-import {
-  currentDeviceCapabilities,
-  DeviceCapabilitySnapshot,
-  hasRemoteControlServer
-} from '../capability/DeviceCapabilityPolicy'
+import { currentDeviceCapabilities, DeviceCapabilitySnapshot, hasRemoteControlServer } from '../capability/DeviceCapabilityPolicy'
 import {
   REMOTE_SURFACE_FOCUS_ID
 } from '../rdp/RdpConstants'
@@ -18,34 +14,30 @@ import {
   RdpConnectionValidator
 } from '../rdp/RdpConnectionValidator'
 import { RdpLogger } from '../rdp/RdpLogger'
-import { RdpPermissionRequestCoordinator } from '../rdp/RdpPermissionRequestCoordinator'
-import { RdpPermissionCallbackDelegate, RdpPermissionManager } from '../rdp/RdpPermissions'
 import {
-  RemoteControlCoordinator,
   RemoteControlSnapshot,
-  XrdpServerDisplayMessages,
   XrdpServerStatus
 } from '../rdp/RemoteControlCoordinator'
+import { RemoteControlPageCoordinator } from '../rdp/RemoteControlPageCoordinator'
 import {
   RemoteControlPort,
   UnavailableRemoteControlPort
 } from '../rdp/RemoteControlPort'
-import { RemoteFilesDirectory } from '../rdp/RemoteFilesDirectory'
 import { RdpSurfaceContentHost } from '../rdp/RdpSurfaceContentHost'
 import {
   WindowsConnectionProfile,
   WindowsConnectionSaveInput,
   WindowsConnectionSnapshot
 } from '../rdp/WindowsConnectionStore'
-import { WindowsConnectionProfileCoordinator } from '../rdp/WindowsConnectionProfileCoordinator'
+import { WindowsConnectionPageCoordinator } from '../rdp/WindowsConnectionPageCoordinator'
 import { HomeConnectionValidation } from '../components/home/HomeConnectionValidation'
 import { HomePage } from '../components/home/HomePage'
 import { HomeText } from '../components/home/HomeText'
 import { RdpSessionPage } from '../components/session/RdpSessionPage'
+import { RdpSessionLifecycleCoordinator } from '../rdp/RdpSessionLifecycleCoordinator'
 import { SettingsPage } from '../components/SettingsPage'
 import {
   SettingsRemoteControlSection,
-  SettingsRemoteText,
   SettingsRoute
 } from '../components/settings/SettingsConstants'
 import { SettingsAppearanceMode, SettingsStatusTone, SettingsTheme } from '../components/settings/SettingsUi'
@@ -86,18 +78,43 @@ export struct MuHubApp {
   private readonly deviceCapabilities: DeviceCapabilitySnapshot = currentDeviceCapabilities()
   @StorageLink('settingsSystemDark') private systemDark: boolean = false
   @StorageLink('settingsAppearanceMode') private appearanceMode: string = 'system'
-  private callbacksRegistered: boolean = false
   private readonly rdpClientController: RdpClientController = new RdpClientController()
+  private readonly sessionLifecycleCoordinator: RdpSessionLifecycleCoordinator =
+    new RdpSessionLifecycleCoordinator(this.rdpClientController, {
+      defer: (task: () => void): void => this.deferUiUpdate(task),
+      setVisible: (visible: boolean): void => {
+        this.showSession = visible
+      },
+      setNotice: (notice): void => {
+        this.remoteLoginWaiting = notice.remoteLoginWaiting
+        this.sessionNoticeTitle = notice.title
+        this.sessionNoticeSubtitle = notice.subtitle
+      },
+      setFeedback: (text: string, tone: SettingsStatusTone): void => this.setConnectionFeedback(text, tone),
+      releaseInput: (): void => this.releaseActiveInput(),
+      focusSurface: (): void => this.focusRemoteSurface(),
+      persistProfile: (input: WindowsConnectionSaveInput): void => this.saveConnectionProfile(input),
+      registerPermissionCallbacks: (): void => this.remoteControlCoordinator().registerPermissionCallbacks()
+    })
   private readonly rdpSurfaceContentHost: RdpSurfaceContentHost = new RdpSurfaceContentHost()
-  private permissionManager: RdpPermissionManager | null = null
-  private permissionRequestCoordinator: RdpPermissionRequestCoordinator | null = null
-  private remoteControlCoordinator: RemoteControlCoordinator | null = null
-  private connectionProfileCoordinator: WindowsConnectionProfileCoordinator | null = null
-  private connectionProfilesLoaded: boolean = false
-  private connectionProfileSelectionGeneration: number = 0
-  private pendingConnectionProfileSave: WindowsConnectionSaveInput | null = null
-  private lastConnectionErrorMessage: string = ''
+  private remoteControlPageCoordinator: RemoteControlPageCoordinator | null = null
+  private readonly connectionPageCoordinator: WindowsConnectionPageCoordinator =
+    new WindowsConnectionPageCoordinator({
+      context: (): common.UIAbilityContext | null => this.getUiAbilityContext(),
+      defer: (task: () => void): void => this.deferUiUpdate(task),
+      cancelEndpointProbe: (): void => this.cancelPendingEndpointProbe(),
+      applySnapshot: (snapshot: WindowsConnectionSnapshot, applySelected: boolean, clearWhenEmpty: boolean): void =>
+        this.applyConnectionSnapshot(snapshot, applySelected, clearWhenEmpty),
+      applyProfile: (profile: WindowsConnectionProfile, password: string): void =>
+        this.applyConnectionProfile(profile, password),
+      startNewProfile: (): void => this.resetConnectionForm(),
+      setPasswordLoading: (loading: boolean): void => {
+        this.connectionProfilePasswordLoading = loading
+      },
+      setFeedback: (text: string, tone: SettingsStatusTone): void => this.setConnectionFeedback(text, tone)
+    })
   private windowLayoutObserverRegistered: boolean = false
+  private xrdpLifecycleTimer: number = -1
   private windowSizeLayoutBreakpointCallback = (info: uiObserver.WindowSizeLayoutBreakpointInfo): void => {
     this.layoutMode = layoutModeForWidthBreakpoint(info.widthBreakpoint)
   }
@@ -110,32 +127,60 @@ export struct MuHubApp {
 
   aboutToAppear(): void {
     this.registerWindowLayoutObserver()
-    this.registerNativeCallbacks()
+    this.sessionLifecycleCoordinator.registerCallbacks()
     this.loadConnectionProfiles()
     if (this.remoteControlServerAvailable()) {
-      this.refreshScreenRecordingPermissionState()
-      this.refreshInputInjectionPermissionState()
-      this.refreshXrdpServerDiagnostics()
-      this.ensureXrdpServerStarted('page appear')
+      this.remoteControlCoordinator().refreshScreenRecordingPermission()
+      this.remoteControlCoordinator().refreshInputInjectionPermission()
+      this.remoteControlCoordinator().refreshDiagnostics()
+      this.remoteControlCoordinator().ensureStarted('page appear')
+      this.startXrdpLifecyclePolling()
     }
   }
 
   onPageShow(): void {
-    if (!this.connectionProfilesLoaded) {
+    if (!this.connectionPageCoordinator.isLoaded()) {
       this.loadConnectionProfiles()
     }
     if (this.remoteControlServerAvailable()) {
-      this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+      this.remoteControlCoordinator().refreshReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+      this.startXrdpLifecyclePolling()
     }
   }
 
   onPageHide(): void {
+    this.stopXrdpLifecyclePolling()
     this.releaseActiveInput()
   }
 
   aboutToDisappear(): void {
     this.unregisterWindowLayoutObserver()
+    this.stopXrdpLifecyclePolling()
+    this.cancelPendingEndpointProbe()
     this.releaseActiveInput()
+  }
+
+  private cancelPendingEndpointProbe(): void {
+    this.sessionLifecycleCoordinator.cancel()
+  }
+
+  private startXrdpLifecyclePolling(): void {
+    if (!this.remoteControlServerAvailable() || this.xrdpLifecycleTimer >= 0) {
+      return
+    }
+    this.xrdpLifecycleTimer = setInterval((): void => {
+      if (!this.xrdpServerBusy) {
+        this.remoteControlCoordinator().refreshDiagnostics()
+      }
+    }, 2000)
+  }
+
+  private stopXrdpLifecyclePolling(): void {
+    if (this.xrdpLifecycleTimer < 0) {
+      return
+    }
+    clearInterval(this.xrdpLifecycleTimer)
+    this.xrdpLifecycleTimer = -1
   }
 
   private registerWindowLayoutObserver(): void {
@@ -179,77 +224,24 @@ export struct MuHubApp {
   }
 
   private remoteControlServerAvailable(): boolean {
-    return hasRemoteControlServer(this.deviceCapabilities) && this.remoteControlPort.available
+    return this.remoteControlCoordinator().available()
   }
 
-  private getPermissionManager(): RdpPermissionManager {
-    if (this.permissionManager === null) {
-      const delegate = new RdpPermissionCallbackDelegate(
-        (): common.UIAbilityContext | null => this.getUiAbilityContext()
-      )
-      this.permissionManager = new RdpPermissionManager(delegate, (): void => {
-        this.getRemoteControlCoordinator().permissionPromptOpened()
-      })
-    }
-    return this.permissionManager
-  }
-
-  private getPermissionRequestCoordinator(): RdpPermissionRequestCoordinator {
-    if (this.permissionRequestCoordinator === null) {
-      this.permissionRequestCoordinator = new RdpPermissionRequestCoordinator(
-        this.getPermissionManager(),
-        (task: () => void): void => this.deferUiUpdate(task)
-      )
-    }
-    return this.permissionRequestCoordinator
-  }
-
-  private getRemoteControlCoordinator(): RemoteControlCoordinator {
-    if (this.remoteControlCoordinator === null) {
-      this.remoteControlCoordinator = new RemoteControlCoordinator(
+  private remoteControlCoordinator(): RemoteControlPageCoordinator {
+    if (this.remoteControlPageCoordinator === null) {
+      this.remoteControlPageCoordinator = new RemoteControlPageCoordinator(
         this.remoteControlPort,
-        this.xrdpServerDisplayMessages(),
-        (): RdpPermissionManager => this.getPermissionManager(),
-        (): string => this.getAppFilesDir(),
-        (snapshot: RemoteControlSnapshot): void => {
-          this.deferUiUpdate((): void => this.applyRemoteControlSnapshot(snapshot))
-        }
+        hasRemoteControlServer(this.deviceCapabilities),
+        (): common.UIAbilityContext | null => this.getUiAbilityContext(),
+        (task: () => void): void => this.deferUiUpdate(task),
+        (snapshot: RemoteControlSnapshot): void => this.applyRemoteControlSnapshot(snapshot)
       )
-      this.applyRemoteControlSnapshot(this.remoteControlCoordinator.snapshot())
     }
-    return this.remoteControlCoordinator
-  }
-
-  private getConnectionProfileCoordinator(): WindowsConnectionProfileCoordinator | null {
-    if (this.connectionProfileCoordinator !== null) {
-      return this.connectionProfileCoordinator
-    }
-
-    const context = this.getUiAbilityContext()
-    if (context === null) {
-      return null
-    }
-
-    this.connectionProfileCoordinator = new WindowsConnectionProfileCoordinator(context)
-    return this.connectionProfileCoordinator
+    return this.remoteControlPageCoordinator
   }
 
   private loadConnectionProfiles(): void {
-    const coordinator = this.getConnectionProfileCoordinator()
-    if (coordinator === null) {
-      return
-    }
-
-    coordinator.load()
-      .then((snapshot: WindowsConnectionSnapshot | null) => {
-        if (snapshot === null) {
-          return
-        }
-        this.deferUiUpdate(() => {
-          this.connectionProfilesLoaded = true
-          this.applyConnectionSnapshot(snapshot, true, false)
-        })
-      })
+    this.connectionPageCoordinator.load()
   }
 
   private applyConnectionSnapshot(snapshot: WindowsConnectionSnapshot, applySelectedProfile: boolean,
@@ -265,16 +257,12 @@ export struct MuHubApp {
     if (selectedProfile === null) {
       this.rememberConnectionPassword = false
       if (clearWhenEmpty) {
-        this.startNewConnectionProfile()
+        this.resetConnectionForm()
       }
       return
     }
 
     this.applyConnectionProfile(selectedProfile, snapshot.selectedPassword)
-  }
-
-  private findConnectionProfile(profileId: string): WindowsConnectionProfile | null {
-    return this.findConnectionProfileIn(this.connectionProfiles, profileId)
   }
 
   private findConnectionProfileIn(profiles: WindowsConnectionProfile[], profileId: string): WindowsConnectionProfile | null {
@@ -299,53 +287,14 @@ export struct MuHubApp {
   }
 
   private selectConnectionProfile(profileId: string): void {
-    if (profileId.length === 0) {
-      this.startNewConnectionProfile()
-      return
-    }
-
-    const profile = this.findConnectionProfile(profileId)
-    if (profile === null) {
-      return
-    }
-
-    const selectionGeneration = ++this.connectionProfileSelectionGeneration
-    if (!profile.rememberPassword) {
-      this.connectionProfilePasswordLoading = false
-      this.applyConnectionProfile(profile, '')
-      return
-    }
-
-    const coordinator = this.getConnectionProfileCoordinator()
-    if (coordinator === null) {
-      this.connectionProfilePasswordLoading = false
-      this.applyConnectionProfile(profile, '')
-      return
-    }
-    this.connectionProfilePasswordLoading = true
-    coordinator.loadPassword(profile)
-      .then((savedPassword: string | null) => {
-        if (savedPassword === null) {
-          this.deferUiUpdate(() => {
-            if (this.connectionProfileSelectionGeneration === selectionGeneration) {
-              this.connectionProfilePasswordLoading = false
-              this.applyConnectionProfile(profile, '')
-            }
-          })
-          return
-        }
-        this.deferUiUpdate(() => {
-          if (this.connectionProfileSelectionGeneration === selectionGeneration) {
-            this.applyConnectionProfile(profile, savedPassword)
-            this.connectionProfilePasswordLoading = false
-          }
-        })
-      })
+    this.connectionPageCoordinator.select(profileId)
   }
 
   private startNewConnectionProfile(): void {
-    this.connectionProfileSelectionGeneration++
-    this.connectionProfilePasswordLoading = false
+    this.connectionPageCoordinator.startNew()
+  }
+
+  private resetConnectionForm(): void {
     this.selectedConnectionProfileId = ''
     this.host = ''
     this.port = '3389'
@@ -357,25 +306,7 @@ export struct MuHubApp {
   }
 
   private deleteSelectedConnectionProfile(): void {
-    if (this.selectedConnectionProfileId.length === 0) {
-      this.startNewConnectionProfile()
-      return
-    }
-
-    const coordinator = this.getConnectionProfileCoordinator()
-    if (coordinator === null) {
-      return
-    }
-
-    coordinator.deleteProfile(this.selectedConnectionProfileId)
-      .then((snapshot: WindowsConnectionSnapshot | null) => {
-        if (snapshot === null) {
-          return
-        }
-        this.deferUiUpdate(() => {
-          this.applyConnectionSnapshot(snapshot, true, true)
-        })
-      })
+    this.connectionPageCoordinator.deleteSelected(this.selectedConnectionProfileId)
   }
 
   private setRememberConnectionPassword(remember: boolean): void {
@@ -383,65 +314,13 @@ export struct MuHubApp {
   }
 
   private saveConnectionProfile(input: WindowsConnectionSaveInput): void {
-    const coordinator = this.getConnectionProfileCoordinator()
-    if (coordinator === null) {
-      return
-    }
-
-    coordinator.saveProfile(input)
-      .then((snapshot: WindowsConnectionSnapshot | null) => {
-        if (snapshot === null) {
-          return
-        }
-        this.deferUiUpdate(() => {
-          this.connectionProfiles = snapshot.profiles
-          this.selectedConnectionProfileId = snapshot.selectedProfileId
-          const selected = this.findConnectionProfileIn(snapshot.profiles, snapshot.selectedProfileId)
-          if (selected !== null) {
-            this.rememberConnectionPassword = selected.rememberPassword
-          }
-        })
-      })
-  }
-
-  private persistPendingConnectionProfile(): void {
-    if (this.pendingConnectionProfileSave === null) {
-      return
-    }
-    const saveInput = this.pendingConnectionProfileSave
-    this.pendingConnectionProfileSave = null
-    this.saveConnectionProfile(saveInput)
+    this.connectionPageCoordinator.save(input)
   }
 
   private clearSelectedConnectionPassword(): void {
     this.password = ''
     this.rememberConnectionPassword = false
-    if (this.selectedConnectionProfileId.length === 0) {
-      this.setConnectionFeedback(HomeText.PASSWORD_CLEARED_CURRENT, 'neutral')
-      return
-    }
-
-    const coordinator = this.getConnectionProfileCoordinator()
-    if (coordinator === null) {
-      this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_STORAGE_UNAVAILABLE, 'danger')
-      return
-    }
-
-    coordinator.clearPassword(this.selectedConnectionProfileId)
-      .then((snapshot: WindowsConnectionSnapshot | null) => {
-        if (snapshot === null) {
-          this.deferUiUpdate(() => {
-            this.setConnectionFeedback(HomeText.PASSWORD_CLEAR_FAILED, 'danger')
-          })
-          return
-        }
-        this.deferUiUpdate(() => {
-          this.applyConnectionSnapshot(snapshot, true, false)
-          this.password = ''
-          this.rememberConnectionPassword = false
-          this.setConnectionFeedback(HomeText.PASSWORD_CLEARED_SAVED, 'ok')
-        })
-      })
+    this.connectionPageCoordinator.clearPassword(this.selectedConnectionProfileId)
   }
 
   private clearConnectionFeedback(): void {
@@ -454,145 +333,8 @@ export struct MuHubApp {
     this.connectionFeedbackTone = tone
   }
 
-  private connectionFailureMessage(message: string, fallback: string = HomeText.CONNECTION_FAILURE): string {
-    const detail = message.trim()
-    if (detail.length === 0) {
-      return fallback
-    }
-    return HomeText.connectionFailureWithDetail(detail)
-  }
-
-  private errorMessage(error: Error): string {
-    if (error.message.length > 0) {
-      return error.message
-    }
-    const serialized = JSON.stringify(error)
-    return serialized.length > 0 && serialized !== '{}' ? serialized : ''
-  }
-
   private validateConnectionForm(): ConnectionValidationResult {
     return RdpConnectionValidator.validate(this.host, this.port, this.username, this.password)
-  }
-
-  private xrdpServerDisplayMessages(): XrdpServerDisplayMessages {
-    return {
-      active: SettingsRemoteText.SERVER_MESSAGE_ACTIVE,
-      listening: SettingsRemoteText.SERVER_MESSAGE_LISTENING,
-      stopped: SettingsRemoteText.SERVER_MESSAGE_STOPPED,
-      exited: SettingsRemoteText.SERVER_MESSAGE_EXITED,
-      failed: SettingsRemoteText.SERVER_MESSAGE_FAILED,
-      unavailable: SettingsRemoteText.SERVER_MESSAGE_UNAVAILABLE
-    }
-  }
-
-  private registerNativeCallbacks(): void {
-    if (this.callbacksRegistered) {
-      return
-    }
-
-    try {
-      const callbackResult = this.rdpClientController.registerCallbacks({
-        onState: (state: string, wasConnected: boolean): void => {
-          this.deferUiUpdate(() => {
-            const nextConnected = this.isConnectedNativeState(state)
-            if (!nextConnected && (state === 'Disconnected' || state === 'Failed' || state === 'Idle')) {
-              if (wasConnected) {
-                this.releaseActiveInput()
-              }
-              this.setSessionVisible(false)
-            }
-            this.updateSessionNoticeForNativeState(state)
-            if (nextConnected && !wasConnected) {
-              this.setSessionVisible(true)
-              this.focusRemoteSurface()
-              this.lastConnectionErrorMessage = ''
-              this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
-              this.persistPendingConnectionProfile()
-            }
-            if (state === 'Failed') {
-              this.pendingConnectionProfileSave = null
-              this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-                HomeText.CONNECTION_FAILURE_CREDENTIALS), 'danger')
-              RdpLogger.error(`Native state: ${state}`)
-            } else if ((state === 'Disconnected' || state === 'Idle') && this.pendingConnectionProfileSave !== null) {
-              this.pendingConnectionProfileSave = null
-              this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-                HomeText.CONNECTION_FAILURE_NO_SESSION), 'danger')
-            } else if (state === 'Connected' || state === 'Disconnected' ||
-              state === 'RemoteLoginWaiting' || state === 'RemoteDesktopReady') {
-              RdpLogger.info(`Native state: ${state}`)
-            }
-          })
-        },
-        onError: (message: string, wasConnected: boolean): void => {
-          this.deferUiUpdate(() => {
-            if (wasConnected) {
-              this.releaseActiveInput()
-            }
-            this.setSessionVisible(false)
-            this.clearSessionNotice()
-            this.pendingConnectionProfileSave = null
-            this.lastConnectionErrorMessage = message
-            this.setConnectionFeedback(this.connectionFailureMessage(message), 'danger')
-            RdpLogger.error(`Native error: ${message}`)
-          })
-        }
-      })
-      if (!callbackResult.ok) {
-        RdpLogger.error(`Native callback registration failed: ${callbackResult.message}`)
-        return
-      }
-      this.registerNativePermissionCallbacks()
-      this.callbacksRegistered = true
-    } catch (error) {
-      RdpLogger.error(`Native callback registration failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private isConnectedNativeState(state: string): boolean {
-    return RdpClientController.isConnectedState(state)
-  }
-
-  private clearSessionNotice(): void {
-    this.remoteLoginWaiting = false
-    this.sessionNoticeTitle = ''
-    this.sessionNoticeSubtitle = ''
-  }
-
-  private updateSessionNoticeForNativeState(state: string): void {
-    if (state === 'RemoteLoginWaiting') {
-      this.remoteLoginWaiting = true
-      this.sessionNoticeTitle = HomeText.SESSION_REMOTE_LOGIN_WAITING_TITLE
-      this.sessionNoticeSubtitle = HomeText.SESSION_REMOTE_LOGIN_WAITING_SUBTITLE
-      return
-    }
-
-    this.remoteLoginWaiting = false
-    if (state === 'Connected') {
-      this.sessionNoticeTitle = HomeText.SESSION_CONNECTED_TITLE
-      this.sessionNoticeSubtitle = HomeText.SESSION_CONNECTED_SUBTITLE
-      return
-    }
-
-    if (state === 'RemoteDesktopReady' || state === 'Disconnected' || state === 'Failed' || state === 'Idle') {
-      this.sessionNoticeTitle = ''
-      this.sessionNoticeSubtitle = ''
-      return
-    }
-
-    if (state === 'Resolving') {
-      this.sessionNoticeTitle = HomeText.SESSION_RESOLVING_TITLE
-      this.sessionNoticeSubtitle = HomeText.SESSION_RESOLVING_SUBTITLE
-    } else if (state === 'TCP connected') {
-      this.sessionNoticeTitle = HomeText.SESSION_TCP_CONNECTED_TITLE
-      this.sessionNoticeSubtitle = HomeText.SESSION_TCP_CONNECTED_SUBTITLE
-    } else if (state === 'Negotiating') {
-      this.sessionNoticeTitle = HomeText.SESSION_NEGOTIATING_TITLE
-      this.sessionNoticeSubtitle = HomeText.SESSION_NEGOTIATING_SUBTITLE
-    } else if (state === 'Authenticating') {
-      this.sessionNoticeTitle = HomeText.SESSION_AUTHENTICATING_TITLE
-      this.sessionNoticeSubtitle = HomeText.SESSION_AUTHENTICATING_SUBTITLE
-    }
   }
 
   private getAppFilesDir(): string {
@@ -603,23 +345,14 @@ export struct MuHubApp {
     return context.filesDir
   }
 
-  private openRemoteFilesDirectoryFromSettings(): void {
-    RemoteFilesDirectory.openSharedDirectory(
-      this.getUiAbilityContext()
-    )
-      .catch((error: Error) => {
-        RdpLogger.error(`remote files directory open failed: ${JSON.stringify(error)}`)
-      })
-  }
-
   private openSettingsFromHome(remoteControlSection: string): void {
     const passiveControlAvailable = this.remoteControlServerAvailable()
     const activeControlSection = remoteControlSection === SettingsRemoteControlSection.FILES ||
       remoteControlSection === SettingsRemoteControlSection.ACCESS
     if (passiveControlAvailable) {
-      this.refreshScreenRecordingPermissionState()
-      this.refreshInputInjectionPermissionState()
-      this.refreshXrdpServerDiagnostics()
+      this.remoteControlCoordinator().refreshScreenRecordingPermission()
+      this.remoteControlCoordinator().refreshInputInjectionPermission()
+      this.remoteControlCoordinator().refreshDiagnostics()
     }
     if (passiveControlAvailable || activeControlSection) {
       this.settingsRemoteControlSection = remoteControlSection
@@ -630,52 +363,6 @@ export struct MuHubApp {
       this.settingsInitialPageName = SettingsRoute.SETTINGS
     }
     this.showSettings = true
-  }
-
-  private registerNativePermissionCallbacks(): void {
-    this.getPermissionRequestCoordinator().register()
-  }
-
-  private refreshScreenRecordingPermissionState(): boolean {
-    return this.getRemoteControlCoordinator().refreshPermissionState()
-  }
-
-  private requestScreenRecordingPermissionFromSettings(): Promise<boolean> {
-    return this.getRemoteControlCoordinator().requestPermissionFromSettings()
-  }
-
-  private refreshInputInjectionPermissionState(): boolean {
-    return this.getRemoteControlCoordinator().refreshInputInjectionPermissionState()
-  }
-
-  private requestInputInjectionPermissionFromSettings(): Promise<boolean> {
-    return this.getRemoteControlCoordinator().requestInputInjectionPermissionFromSettings()
-  }
-
-  private refreshXrdpServerDiagnostics(): XrdpServerStatus {
-    return this.getRemoteControlCoordinator().refreshDiagnostics()
-  }
-
-  private refreshRemoteControlReadiness(clearBusy: boolean = false): XrdpServerStatus {
-    return this.getRemoteControlCoordinator().refreshReadiness(clearBusy)
-  }
-
-  private startXrdpServerFromSettings(): Promise<XrdpServerStatus> {
-    return this.getRemoteControlCoordinator().startFromSettings()
-  }
-
-  private setRemoteAccessCodeGateFromSettings(enabled: boolean): string {
-    return this.getRemoteControlCoordinator().setAccessCodeGate(enabled)
-  }
-
-  private regenerateRemoteAccessCodeFromSettings(): string {
-    return this.getRemoteControlCoordinator().regenerateAccessCode()
-  }
-
-  private ensureXrdpServerStarted(trigger: string, restartIfRunning: boolean = false,
-    requestScreenRecordingImmediately: boolean = false): Promise<XrdpServerStatus> {
-    return this.getRemoteControlCoordinator().ensureStarted(
-      trigger, restartIfRunning, requestScreenRecordingImmediately)
   }
 
   private applyRemoteControlSnapshot(snapshot: RemoteControlSnapshot): void {
@@ -696,10 +383,7 @@ export struct MuHubApp {
     const validation = this.validateConnectionForm()
     if (!validation.ok) {
       const validationMessage = HomeConnectionValidation.message(validation.issues)
-      this.rdpClientController.beginConnect()
-      this.pendingConnectionProfileSave = null
-      this.setConnectionFeedback(validationMessage, 'warning')
-      RdpLogger.warn(`Connection validation failed: ${validationMessage}`)
+      this.sessionLifecycleCoordinator.rejectValidation(validationMessage)
       return
     }
 
@@ -712,7 +396,7 @@ export struct MuHubApp {
     this.host = host
     this.port = port
     this.username = username
-    this.pendingConnectionProfileSave = {
+    const profileInput: WindowsConnectionSaveInput = {
       profileId: this.selectedConnectionProfileId,
       host: host,
       port: port,
@@ -721,68 +405,15 @@ export struct MuHubApp {
       certPolicy: policy,
       rememberPassword: this.rememberConnectionPassword
     }
-    this.lastConnectionErrorMessage = ''
-    this.rdpClientController.beginConnect()
     this.remoteLoginWaiting = false
-    this.setConnectionFeedback(HomeText.CONNECTION_CONNECTING, 'info')
-    this.sessionNoticeTitle = HomeText.SESSION_CONNECTING_TITLE
-    this.sessionNoticeSubtitle = HomeText.SESSION_CONNECTING_SUBTITLE
-    this.setSessionVisible(true)
-    this.queueNativeConnect(host, port, username, password, policy, appFilesDir)
-  }
-
-  private queueNativeConnect(host: string, port: string, username: string, password: string, policy: string,
-    appFilesDir: string): void {
-    setTimeout((): void => {
-      this.startNativeConnect(host, port, username, password, policy, appFilesDir)
-    }, 0)
-  }
-
-  private startNativeConnect(host: string, port: string, username: string, password: string,
-    policy: string, appFilesDir: string): void {
-    try {
-      const result = this.rdpClientController.connect({
-        host: host,
-        port: port,
-        username: username,
-        password: password,
-        certPolicy: policy,
-        appFilesDir: appFilesDir
-      })
-      if (result.ok) {
-        this.setSessionVisible(true)
-        if (this.isConnected()) {
-          this.lastConnectionErrorMessage = ''
-          this.setConnectionFeedback(HomeText.CONNECTION_SUCCESS, 'ok')
-          this.persistPendingConnectionProfile()
-        }
-      } else {
-        RdpLogger.error(result.message)
-        this.setSessionVisible(false)
-        this.clearSessionNotice()
-        this.pendingConnectionProfileSave = null
-        this.lastConnectionErrorMessage = result.message
-        this.setConnectionFeedback(this.connectionFailureMessage(result.message), 'danger')
-      }
-    } catch (error) {
-      this.setSessionVisible(false)
-      this.clearSessionNotice()
-      this.pendingConnectionProfileSave = null
-      this.lastConnectionErrorMessage = this.errorMessage(error as Error)
-      this.setConnectionFeedback(this.connectionFailureMessage(this.lastConnectionErrorMessage,
-        HomeText.CONNECTION_FAILURE_CREDENTIALS), 'danger')
-      RdpLogger.error(`Native connect failed: ${JSON.stringify(error)}`)
-    }
-  }
-
-  private setSessionVisible(visible: boolean): void {
-    if (!visible && this.showSession && this.isConnected()) {
-      this.releaseActiveInput()
-    }
-    this.showSession = visible
-    if (!visible) {
-      this.clearSessionNotice()
-    }
+    this.sessionLifecycleCoordinator.connect({
+      host: host,
+      port: port,
+      username: username,
+      password: password,
+      certPolicy: policy,
+      appFilesDir: appFilesDir
+    }, profileInput)
   }
 
   private isConnected(): boolean {
@@ -861,19 +492,28 @@ export struct MuHubApp {
           xrdpServerMessage: this.xrdpServerMessage,
           xrdpServerBusy: this.xrdpServerBusy,
           remoteControlServerAvailable: this.remoteControlServerAvailable(),
-          onRemoteAccessCodeGateChange: (enabled: boolean): string => this.setRemoteAccessCodeGateFromSettings(enabled),
-          onRemoteAccessCodeRegenerate: (): string => this.regenerateRemoteAccessCodeFromSettings(),
-          onRequestScreenRecordingPermission: (): Promise<boolean> => this.requestScreenRecordingPermissionFromSettings(),
-          onRefreshScreenRecordingPermission: (): boolean => this.refreshScreenRecordingPermissionState(),
+          onRemoteAccessCodeGateChange: (enabled: boolean): string =>
+            this.remoteControlCoordinator().setAccessCodeGate(enabled),
+          onRemoteAccessCodeRegenerate: (): string => this.remoteControlCoordinator().regenerateAccessCode(),
+          onRequestScreenRecordingPermission: (): Promise<boolean> =>
+            this.remoteControlCoordinator().requestScreenRecordingPermission(),
+          onRefreshScreenRecordingPermission: (): boolean =>
+            this.remoteControlCoordinator().refreshScreenRecordingPermission(),
           onRequestInputInjectionPermission: (): Promise<boolean> =>
-            this.requestInputInjectionPermissionFromSettings(),
-          onRefreshInputInjectionPermission: (): boolean => this.refreshInputInjectionPermissionState(),
-          onRefreshXrdpServerStatus: (): XrdpServerStatus => this.refreshXrdpServerDiagnostics(),
-          onStartXrdpServer: (): Promise<XrdpServerStatus> => this.startXrdpServerFromSettings(),
-          onOpenRemoteFilesDirectory: (): void => this.openRemoteFilesDirectoryFromSettings(),
+            this.remoteControlCoordinator().requestInputInjectionPermission(),
+          onRefreshInputInjectionPermission: (): boolean =>
+            this.remoteControlCoordinator().refreshInputInjectionPermission(),
+          onRefreshXrdpServerStatus: (): XrdpServerStatus => this.remoteControlCoordinator().refreshDiagnostics(),
+          onStartXrdpServer: (): Promise<XrdpServerStatus> => this.remoteControlCoordinator().startFromSettings(),
+          onStopXrdpServer: (): Promise<XrdpServerStatus> => this.remoteControlCoordinator().stopFromSettings(),
+          onOpenRemoteFilesDirectory: (): void => this.remoteControlCoordinator().openRemoteFilesDirectory(),
+          onExportDiagnostics: (): Promise<string> =>
+            this.remoteControlCoordinator().exportDiagnostics(this.host.length, this.username.length, this.port,
+              this.sessionLifecycleCoordinator.diagnostics()),
           onClose: () => {
             if (this.remoteControlServerAvailable()) {
-              this.refreshRemoteControlReadiness(this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
+              this.remoteControlCoordinator().refreshReadiness(
+                this.xrdpServerBusy && !this.screenRecordingPermissionBusy)
             }
             this.showSettings = false
             this.settingsInitialPageName = SettingsRoute.SETTINGS
@@ -903,10 +543,12 @@ export struct MuHubApp {
           inputInjectionPermissionBusy: this.inputInjectionPermissionBusy,
           remoteControlServerAvailable: this.remoteControlServerAvailable(),
           onHostChange: (value: string): void => {
+            this.cancelPendingEndpointProbe()
             this.host = value
             this.clearConnectionFeedback()
           },
           onPortChange: (value: string): void => {
+            this.cancelPendingEndpointProbe()
             this.port = value
             this.clearConnectionFeedback()
           },
