@@ -111,14 +111,14 @@
 
 | Change ID | 状态 | 验收 |
 |---|---|---|
-| `MDP-03B` | `DesignReady` | AC-HNP-STOP/EXIT/OWNER/SESSION/UPGRADE |
+| `MDP-03B` | `Verified` | AC-HNP-STOP/EXIT/OWNER/SESSION/UPGRADE；用户 2026-08-12 真机确认 |
 | `RDP-PREFLIGHT-01` | `Implemented` | TCP 成功、拒绝、超时、过期 generation、RDP 认证失败 |
 | `RDP-DIAG-01` | `Implemented` | 三种运行状态导出、JSON解析、敏感字段扫描、失败路径 |
 | `RDP-DIAG-02` | `Implemented` | 独立卡片、连接/resize/剪贴板补全、coverage 与脱敏错误类别；2in1 真机已导出 schema 2 JSON |
 | `RDP-FAULT-01` | `DesignReady` | 第 5 节动作矩阵；无硬件项保持 Pending |
 | `RDP-ARCH-ETS-600` | `Verified` | 全量 `.ets` 行数门禁、ArkTS 测试、Debug 构建与行为回归 |
 
-`MDP-03B` 的代码状态已达到 Implemented，但 MSTSC、异常退出、强停、卸载和升级动作未完成，因此台账仍保留 DesignReady，避免误报发布生命周期完成。设备动作使用 [RDP 通道与 HNP 真机故障验收清单](rdp-channel-fault-acceptance-checklist.md) 记录。
+`MDP-03B` 的 MSTSC 会话、显式停止、异常退出、强停、卸载、升级及无孤儿进程动作已由用户于 2026-08-12 确认真机通过，状态升级为 Verified。该结论只覆盖 2in1 HNP 生命周期，不覆盖 tablet Entry 模块迁移和应用市场分发。设备动作记录见 [RDP 通道与 HNP 真机故障验收清单](rdp-channel-fault-acceptance-checklist.md)。
 
 ## 8. 本机实施证据
 
@@ -130,3 +130,4 @@
 - 修复包已原子覆盖安装到 2in1 `3QC0124C11000711`：远控设置恢复服务卡、录屏和输入授权，xrdp PID `24928` 独立于应用 PID `24780`，`0.0.0.0:3390` 监听。显式停止等完整动作仍按真机清单继续验收。
 - 独立“诊断与排障”卡已覆盖安装并在同一 2in1 实机显示；实际导出的 schema 2 JSON 可解析，包含应用/连接阶段/端点预检/权限/FreeRDP Native 摘要/xrdp PID 与状态/coverage/共享目录状态，host 和 username 仅保留长度，密码与访问码未出现。空闲态 session ID、帧率和通道计数为 0 属正常；剪贴板会话计数、摄像头包计数、xrdp 录屏与注入计数按实际能力标为 unavailable。
 - 本轮完整 App Pack 40,002,044 bytes，SHA-256 `b7a6ea7dad543c6f98b9cacd28abc46e92faac6211baad41064a5696e7db69e7`，模块为 `common,entry,entry_tablet`。2in1 使用 `common + entry`、平板 `5JB0223804000371` 使用 `common + entry_tablet` 分别原子覆盖安装；平板远控设置仅显示主动控制、共享目录、验证码和独立诊断卡，未安装 HNP 且无 xrdp 进程。
+- 2026-08-12 用户确认输入/IME 真机收口及 xrdp/HNP 生命周期验收通过；输入专项 TAB-F-01～TAB-F-06 与 `MDP-03B` 升级为 Verified。权限通道 TAB-F-07、外设故障矩阵和 tablet Entry 分发迁移仍独立保持原状态。

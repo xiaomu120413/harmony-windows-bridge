@@ -655,7 +655,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | TAB-C | C 系统能力 | 第 6.4、8.1、10.1 节 | AC-PKG、AC-LAYOUT、AC-FONT | DesignReady | NotStarted | TAB-B 至少完成 resize/fallback 验证 |
 | TAB-D | D UI 重排 | 第 6、8.1、8.2、10.4、10.5 节 | AC-LAYOUT、AC-FONT | DesignReady | NotStarted | 目标设备/窗口范围已确认 |
 | TAB-E | E 功能隔离 | 第 7、10.3、10.5 节 | AC-CAP | DecisionPending | NotStarted | D-01 完整决策记录 |
-| TAB-F | F 输入能力 | 第 9.3～9.5、10.6、10.7 节 | AC-INPUT、AC-IME | DesignReady | NotStarted | TAB-B 的唯一 geometry 已可用 |
+| TAB-F | F 输入能力 | 第 9.3～9.5、10.6、10.7 节 | AC-INPUT、AC-IME | DesignReady | Verified | 2026-08-12 用户确认输入与 IME 真机收口通过；TAB-F-07 权限通道另行跟踪 |
 | TAB-G | G 交付门禁 | 第 12～14 节 | 全部 AC-* | DesignReady | NotStarted | 测试/构建脚本先按第 10.8 节落地 |
 
 #### TAB-A-01：窗口断点纯策略与本地单测
@@ -1077,7 +1077,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 目标和兼容 API 均为 22；退出路径必须恢复原 KeyboardAvoidMode，Native blur/Surface destroyed/disconnect 必须 hide/detach 并清理 preview。任一 Native 输入调用失败仅记录可诊断错误并保留本地焦点，不崩溃、不重复补发。回退需同时删除 `RemoteImeClient`、XComponent 生命周期接入和宿主窗口 N-API，不能留下已 attach 但无生命周期所有者的输入链 |
 | 验收ID | AC-IME：XComponent focus 自动显示、blur 自动隐藏，系统返回键隐藏后再次触摸可自动恢复，中文拼音选词仅一次提交，英文/数字/退格/Delete/Enter及20次 focus/blur 循环；AC-INPUT：IME 显示时物理打印字符不双发且非打印键可达；AC-XC/AC-RESIZE：IME 显示隐藏前后 Surface width/height 不变、无 reconnect/resize_request；AC-ARCH：无按钮、无 TextInput、无 open/close 或逐字符 N-API，IME 状态不进入 ArkTS。HAP 构建及本机策略测试通过后标 Implemented，tablet 真机中文 IME+物理键盘+Surface 日志证据通过后升 Verified |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented（Native IME 生命周期、XComponent focus/touch 恢复、提交链和键盘 overlay 已接入；中文选词、Delete/Enter、物理键盘及20次循环完整矩阵未完成，不能升 Verified） |
+| 实现状态 | Verified（2026-08-12 用户确认输入与 IME 真机收口通过；Native IME 生命周期、中文提交、Delete/Enter、物理键盘及焦点恢复按实际使用验收通过） |
 | 实际代码文件 | `cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_bridge.h`、`xcomponent_input_internal.h`、`xcomponent_input_registration.cpp`、`xcomponent_key.cpp`、`xcomponent_touch_gesture.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/napi/api_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`cpp/CMakeLists.txt`、`ets/components/session/RdpSessionPage.ets`、`ets/entryability/EntryAbility.ets`、`ets/rdp/HostWindowTracker.ets` |
 | 设计偏差及原因 | 无功能偏差；真机发现系统“完成”可隐藏键盘但不会让 XComponent blur，因此先补充 DesignReady，再增加 Native keyboard-status 状态和下一次 touch-down 恢复 show；仍无按钮、开关、TextInput 或 IME N-API。ArkTS 只承担 `KeyboardAvoidMode.NONE` 和宿主窗口身份 |
 | 测试命令/结果/证据 | 2026-08-04：Native/ArkTS 测试均退出码0，完整 HAP Native/ArkTS/签名成功，signed HAP 35,458,600 bytes；平板 `5JB0223804000371` 覆盖安装、真实 RDP 登录和首帧成功。XComponent focus 后系统键盘自动显示；点击系统“完成”隐藏后再次触摸 XComponent 自动恢复；三张截图为 `artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-before-done.jpeg`、`muhub-native-ime-after-done.jpeg`、`muhub-native-ime-after-touch.jpeg`。全过程无 `RDP_DISPLAY event=resize_request`、FATAL 或 SIGABRT，键盘仅覆盖远端画面。中文选词、Delete/Enter、物理键盘和20次循环待补 |
@@ -1097,7 +1097,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 目标/兼容 API 22，不兼容旧 focus 自动弹出行为，也不保留 `configureHostWindow` 别名。pointer 注册/解码失败时保持键盘隐藏并记录诊断，不退回“XComponent focus 即输入”。API 23 以后可单独评估 `OH_InputMethodController_AttachWithUIContext()`，但本项不得提高 SDK 或申请 `CUSTOM_SCREEN_CAPTURE` 权限 |
 | 验收ID | AC-IME：连接、XComponent focus、鼠标操作和非文本触摸后键盘保持隐藏；直接触摸远端文本框后显示；系统关闭后触摸非文本不恢复、再次触摸文本框可恢复；静态可选择文字样本不得持续误弹；中文拼音只提交一次。AC-INPUT：物理键鼠不触发软键盘且输入不受影响。AC-XC/AC-RESIZE：键盘显示隐藏不改变 Surface、不重连、不发送 resize。AC-ARCH：无键盘按钮/TextInput、`configureHostWindow`、ArkTS displayId 监听、focus/touch 无条件 Open 或 IME N-API；pointer 分类有纯逻辑测试，N-API 只做 windowId 参数转换/转发 |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented（Native pointer shape 分类、直接触摸短窗口、IME 按需显示/隐藏及宿主窗口解耦已完成；完整中文组合态、物理键盘和多主题光标矩阵未完成，不能升 Verified） |
+| 实现状态 | Verified（2026-08-12 用户确认按需 IME、中文组合输入、物理键盘及宿主窗口解耦真机使用通过） |
 | 实际代码文件 | `cpp/input/remote_pointer_text_policy.h/.cpp`、`cpp/input/remote_pointer_text_detector.h/.cpp`、`cpp/tests/remote_pointer_text_policy_test.cpp`、`cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/input/xcomponent_key.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/freerdp/freerdp_runtime.h/.cpp`、`cpp/freerdp/freerdp_gdi_bridge.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/session/rdp_display_orientation_monitor.h/.cpp`、`cpp/types/libentry/Index.d.ts`、`cpp/CMakeLists.txt`、`ets/entryability/EntryAbility.ets`、`ets/rdp/ImeHostWindowBinder.ets`、删除 `ets/rdp/HostWindowTracker.ets`、`tools/run_tablet_native_tests.ps1` |
 | 设计偏差及原因 | 触摸后不立即以旧光标状态作最终判断，而是等待 120ms 内的新 Pointer Shape；若服务器未重复发送相同 shape，才使用触摸前缓存作为回退。这样可避免从文本区触摸到非文本区时旧 I-beam 造成键盘常驻，同时支持系统“完成”隐藏后再次触摸同一文本框恢复。无 ArkTS 键盘按钮、开关或 `RequestRemoteKeyboard` 接口 |
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，新增 I-beam/arrow/block/null 分类样本通过；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，最终 signed HAP 35,488,925 bytes；`rg` 确认无 `RequestRemoteKeyboard`、`requestRemoteKeyboard` 或键盘按钮 symbol。平板 `5JB0223804000371` 覆盖安装成功；冷启动、连接前和连接成功后键盘保持隐藏，真实 RDP 文本区直接触摸后系统 IME 显示，日志出现 `ShowCurrentInput` 且无崩溃。非文本触摸关闭、中文选词、物理键盘和多主题 Pointer Shape 完整矩阵待补 |
@@ -1115,7 +1115,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 计划代码文件 | 本文；`cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_touch_gesture.cpp`；新建 `cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/tests/xcomponent_touch_policy_test.cpp`；修改 `cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1` |
 | 验收ID | AC-IME：文本区触摸显示后点系统“完成”，远端收到一次 Enter 且键盘隐藏；XComponent 保持焦点时再次触摸文本区可恢复。AC-TOUCH：两次 tap 间隔 50/200/350ms 且距离不超过32px时远端收到两组 left down/up；351ms或距离超过32px按两个普通单击；10px手抖不启动 drag，超过18px启动一次 drag；双击不产生 right-click/wheel。AC-ARCH：无 ArkTS 键盘/双击入口，无双击专用 RDP 私有协议 |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented（IME“完成”收起已真机通过；双击 Native 判定和线协议发送已实现，远端主机恢复后补文件/窗口动作证据再升 Verified） |
+| 实现状态 | Verified（2026-08-12 用户确认 IME 收起/恢复及触屏双击远端动作通过） |
 | 实际代码文件 | `cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1` |
 | 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_native_tests.ps1` 退出码0，50/350/351ms及32/32.1px双击边界通过；第二击改为 touch-down/down、touch-up/up 后再次通过 Native 测试；`harmony/app/build_hap.bat debug` 完整构建、打包、签名成功，最新 signed HAP 35,494,385 bytes并覆盖安装到平板 `5JB0223804000371`。此前真实 RDP 文本区按需显示键盘后点击“完成”，系统日志 `HidePanel success`/`OnPanelStatus type=hide`，截图确认键盘消失。最新动作复测时远端主机持续 `connect_timed_out`，双击打开文件/窗口的最终真机动作证据待主机恢复后补，不误报 Verified |
 | 关联提交 | 待实现后回写 |
@@ -1136,7 +1136,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 仅 API 22 最优实现；不保留旧阈值、旧 `releaseAllKeys`、错误 Axis action 或 touchpad 双路发送。未取得密度时仅以 1.0 作为安全诊断回退；Surface/viewport 无效时宁可拒绝新输入，不映射到远端边缘。无需修改 FreeRDP/xrdp 通用 core，远端仍接收标准 pointer down/up/wheel 序列。 |
 | 验收ID | AC-INPUT-P0：静止长按 500ms 无 MOVE 也只产生一组右键；CANCEL、Blur、旋转、Surface change/destroy、页面隐藏和断连后远端无粘键/粘按钮；黑边与零 viewport 的新按下不产生远端事件；拖动中的 UP 仅释放一次。AC-INPUT-P1：300/301ms、60/60.1vp 双击边界；5vp 拖动边界；不同 density 下手势物理语义一致；pointer 数组换序后双指滚动方向和余量不跳变；鼠标、触屏、触控板各只走一条路径；Axis BEGIN/UPDATE/END/CANCEL、横纵轴、小量累积和大幅多 notch 全序列可纯测。AC-ARCH：Native reducer 无 ArkUI 依赖，统一释放幂等，ArkTS 无手势状态，旧 N-API symbol 不存在。 |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented（普通指针事件已在 TAB-F-05 修正后恢复；2026-08-05 真机反馈双击仍不生效，不能升 Verified，后续必须按独立子项重新定位真实事件序列） |
+| 实现状态 | Verified（TAB-F-06 已消除早期双击回归；2026-08-12 用户确认触摸、鼠标、拖动、长按、滚动和统一释放真机使用通过） |
 | 实际代码文件 | `cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_bridge.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/input/xcomponent_mouse.cpp`、`cpp/input/xcomponent_axis.cpp`、`cpp/input/xcomponent_key.cpp`、`cpp/session/rdp_session_input.cpp`、`cpp/napi/native_bridge_context.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/pages/Index.ets`、`cpp/tests/xcomponent_touch_policy_test.cpp` |
 | 设计偏差及原因 | 无协议或交互偏差。Axis 量化策略与触摸 reducer 共用纯策略文件，避免为很小的无 ArkUI 逻辑新增模块；既有 CMake/test runner 已包含该策略源和测试目标，因此无需修改。断连回调发生在传输已断后，只能保证本地幂等清理；主动隐藏、页面退出、Blur、旋转和 Surface invalidation 均在会话/geometry 有效时先发送释放。鼠标 CANCEL 同样释放活动左/右/中键。 |
 | 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，覆盖 300/301ms、60/60.1vp、5vp、静止长按、CANCEL 幂等、pointer 换序、双指余量、Axis begin/update/end、source 切换与多 notch；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功。TAB-F-05 包覆盖安装后用户确认普通输入恢复，但双击仍不生效，说明纯策略测试尚未覆盖真实 XComponent 事件形态或远端时序；本项不得标记 Verified。文档中预告的 `tools/check_tablet_architecture.ps1` 在仓库不存在，未伪报通过。 |
@@ -1157,7 +1157,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 目标 API 22 单一路径，不保留“viewport=0 即整个 Surface”的正常行为，也不按 GDI/AVC codec 分支输入。派生几何仅适用于当前无 pan/zoom/crop 的 contain 模式；未来出现额外视觉变换时必须显式发布 geometry，而不是在输入层猜测。 |
 | 验收ID | AC-GEOMETRY：16:9→4:3、4:3→16:9、同尺寸、奇数尺寸、零尺寸均与 GDI/AVC fit 一致；content 四角映射到远端四角，黑边拒绝。AC-CODEC-INPUT：GDI、AVC420、AVC444 画面出现后，即使 CPU viewport 未回写，鼠标移动/点击、触摸点击/拖动/长按/双击和 Axis 均生效；三 codec 同一点映射一致。AC-LIFECYCLE：旋转/Surface change 前释放，变更后不得复用旧 content rect。 |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented（共享几何、自动测试、构建和安装完成；GDI/AVC 远端动作级输入待真机操作后升 Verified） |
+| 实现状态 | Verified（共享几何和自动测试已通过；2026-08-12 用户确认实际远端画面下坐标、黑边与输入动作正常） |
 | 实际代码文件 | `cpp/surface/remote_content_geometry.h/.cpp`、`cpp/tests/remote_content_geometry_test.cpp`、`cpp/surface/native_rgba_copy.cpp`、`cpp/surface/surface_bridge.h/.cpp`、`cpp/surface/avc420_gpu_compositor_internal.cpp`、`cpp/session/rdp_session_input.cpp`、`cpp/CMakeLists.txt`、`tools/run_tablet_native_tests.ps1`、本文、`docs/CHANGELOG.md` |
 | 设计偏差及原因 | 无架构偏差。显式 published rect 增加对应 remoteWidth/remoteHeight 身份，只有与当前远端尺寸一致且完全位于 Surface 内时采用；AVC/过渡期使用同一纯策略派生 contain rect。没有为 codec 增加输入分支，也未恢复 FreeRDP 的零 viewport 全 Surface 回退。 |
 | 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，新增 16:9→4:3、4:3→16:9、16px 近一比一、奇数尺寸、零尺寸、黑边边界、published/stale/越界 rect 用例；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,547,212 bytes；平板 `5JB0223804000371` 覆盖安装并冷启动成功，PID 49235。用户随后确认此前全部失效的普通输入事件已恢复，双击仍不生效并继续归属 TAB-F-04；GDI/AVC420/AVC444 完整矩阵仍待补。 |
@@ -1180,7 +1180,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 兼容与回退 | 仅保留 API 22 Native XComponent node + Native Gesture 单一路径，不保留 ArkTS XComponent 或手写双击兼容分支；node 创建、callback 注册、addGesture 或 NodeContent add 失败必须记录明确错误并完整回滚。异常 CANCEL/Blur/Surface 生命周期仍走统一释放。 |
 | 验收ID | AC-GESTURE-UNIT：raw Touch 不产生远端动作；single ACCEPT=1击，single+double ACCEPT=首击同坐标的2击且不产生第3击；1指 Pan begin/update/end/cancel 按钮严格配对；2指 Pan 小量累计、大量多 notch、横纵增量正确；精确手指数、Parallel Tap 子组和外层 Exclusive 的创建结果均检查。AC-GESTURE-DEVICE：文件/标题栏双击10/10；单击、拖动、长按右键、双指纵横滚动各10次成功且互不串动作；Pinch/Rotation 不产生远端滚轮/按钮。AC-LIFECYCLE：Blur、旋转、页面销毁和 Surface 失效可释放系统 Pan 的活动左键与滚动余量；重复 attach 无重复回调、悬空 node、Surface 或粘键。AC-ARCH：ArkTS 只有 NodeContent/ContentSlot 宿主，无 XComponentController、手势参数/状态/回调，无双击专用协议，FreeRDP/xrdp 通用 core 无修改。 |
 | 设计状态 | DesignReady |
-| 实现状态 | Implemented（全 Native XComponent node 及系统 Tap/LongPress/1指Pan/2指Pan 已完成；等待远端动作级真机验收后升 Verified） |
+| 实现状态 | Verified（2026-08-12 用户确认全 Native XComponent 手势的单击、双击、长按、拖动和双指滚动真机动作通过） |
 | 实际代码文件 | `cpp/input/xcomponent_native_gesture.h/.cpp`、`cpp/surface/xcomponent_native_host.h/.cpp`、`cpp/input/xcomponent_touch_policy.h/.cpp`、`cpp/input/xcomponent_touch_gesture.cpp`、`cpp/input/xcomponent_input_internal.h`、`cpp/input/xcomponent_input_registration.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/napi/napi_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`ets/components/session/RdpSessionPage.ets`、`ets/pages/Index.ets`、`cpp/CMakeLists.txt`、`cpp/tests/xcomponent_touch_policy_test.cpp`、`tools/run_tablet_native_tests.ps1`、本文 |
 | 设计偏差及原因 | 无功能边界偏差。`ContentSlot` 本身不支持 width/height/onAppear 通用属性，因此用 100% `Stack` 承载显示槽与 attach 生命周期；NodeContent 仍只作为 Native node 的系统宿主，不持有 XComponent 或手势逻辑。系统 Pan offset 单位为 px，双指滚轮量化使用 display density 将12vp换算为px。Pinch/Rotation/Swipe 按“无已定义远端语义”明确不绑定。 |
 | 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_native_tests.ps1` 退出码0，覆盖 single+double 仅两击且锚定首击坐标、Pan accept/update/end/cancel 按钮配对、双指累计 offset 横纵滚轮、Axis/geometry 回归，并静态检查 Parallel Tap 子组、外层 Exclusive、精确手指数及 ArkTS/Raw Touch 无手势所有权；`tools/run_tablet_arkts_tests.ps1` 退出码0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,542,202 bytes。HAP 已覆盖安装到平板 `5JB0223804000371` 并以 bundle `com.muhub.desktop` 冷启动成功，PID 2371；远端双击、长按、拖动和双指滚动动作矩阵待用户在会话页验证。 |
@@ -1794,6 +1794,6 @@ HNP 显式停止和异常退出刷新、FreeRDP 连接前端点探测、脱敏�
 [RDP 产品可靠性、诊断与故障验收方案](rdp-product-reliability-and-diagnostics-plan.md) 管理。
 
 - `RDP-PREFLIGHT-01`、`RDP-DIAG-01`：`Implemented`；`RDP-ARCH-ETS-600`：`Verified`。
-- `MDP-03B` 的显式停止与异常退出刷新已实现，但完整 HNP 发布生命周期和 `RDP-FAULT-01` 真机动作仍为 Pending。
+- `MDP-03B` 的完整 HNP 发布生命周期已由用户于 2026-08-12 确认真机通过并升级为 Verified；`RDP-FAULT-01` 中未单独确认的外设故障动作仍保持 Pending。
 - UI 继续复用首页连接反馈、远控设置和共享目录卡，不增加第二套会话状态或设备类型分支。
 - Strict 证书策略入口不在本增量范围；FreeRDP 手写笔与多显示器维持 `Verified`。
