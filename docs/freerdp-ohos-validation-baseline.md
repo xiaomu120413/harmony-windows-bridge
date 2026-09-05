@@ -29,6 +29,8 @@ git -C harmony/third_party/FreeRDP rev-parse HEAD
 
 最新交付包（CHG-20260905-003）：2026-09-05 已完成 Release 干净构建及正式签名，最终 `harmony/app/build/outputs/default/app-default-signed.app` 为20,010,801 bytes，SHA-256 `d1fb89ed242bf85b07aac32b174dbd7b0e0d952c21888343e272342e6ccc69cc`。三个模块 `debug=false`，签名/profile 和公共 ABC 门禁通过；此前15:41的 Debug 包已被替换。Release 新包启动待用户测试。操作及输出清理记录见多设备打包方案12.6节。
 
+最新图标修复包（CHG-20260905-004）：同日18:45后重新完成Release构建及正式签名，替换上述交付路径；20,011,454 bytes，SHA-256 `331586f0a3c5357e54eda374dd7f857673249073b595de3b2a6ad7ac031802b5`。ArkTS、模块debug=false、签名/profile一致性和ABC门禁通过；设置概览图标的原质量工具评分待复测。
+
 ## 构建前检查
 
 从仓库根目录执行：

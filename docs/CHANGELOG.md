@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| CHG-20260905-004 | fix(ui): simplify settings overview icon contours | UI/资源 | 将设置概览SVG描边改为较宽的单色填充轮廓，同步三个模块资源，保留原导航尺寸和主题着色。 | SVG解析、一致性、ArkTS、Release正式签名及ABC门禁通过；新包20,011,454 bytes，哈希见验证基线。原报告95.98/90锯齿评分待同工具复测。 |
 | CHG-20260905-003 | docs: record release signing and clean delivery | 构建交付/记录 | 干净重建 Release，所有签名阶段使用正式材料；输出目录仅保留最终 App，中间文件因删除策略限制移至本机 tmp。临时配置已恢复。 | 三个模块 debug=false；App 和源模块签名、release profile 一致性、ABC 门禁通过；20,010,801 bytes，哈希及操作见多设备方案12.6。新包真机启动待用户测试。 |
 | CHG-20260905-002 | docs: record user-confirmed remote session acceptance | 文档/真机验收 | 根据用户确认，将真机远程会话整体状态更新为用户验收通过；同步复核报告和验证基线。 | 用户原话“真机远程会话，整个ok了”；diff检查通过，本次仅更新文档，未重复执行真机测试。 |
 | DOC-AUDIT-20260905-001 | docs: verify references and technical evidence | 文档/证据/构建 | 核对20个原始外链、40处图片引用；替换5个外部来源，补全7处图片路径，标注2张临时图缺失；修正xrdp尺寸上限、SDK权限和多设备范围。 | Native/进程策略/ArkTS（本地换行统一后）及完整App构建、签名和包ABI门禁通过；产物哈希与端到端缺口见docs/audit复核报告。 |
