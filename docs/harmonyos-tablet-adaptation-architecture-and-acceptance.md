@@ -392,6 +392,10 @@ UI 层和服务层都要保护。只隐藏入口不能防止冷启动自动调�
 
 实施回写（CHG-20260905-005，Implemented / package verified）：三份资源已替换为四个15×15、圆角3、间距6的实心方块，XML解析、文件一致性和本地预览通过。Release干净构建、正式签名及ABC门禁通过，三个模块均debug=false，App与源模块的profile确认release且与正式材料哈希一致。最终App为20,010,872 bytes，SHA-256 `8a7aebf3a4850cf1590f6a88d0edf0740a10c63f29ab2748ab4a78a45c35084d`。主输出目录仅留最终App，其余移至本机 `tmp/grid-release-intermediates`；未新增ArkTS逻辑，不重复执行独立策略测试。原质量工具评分仍待复测。
 
+风格统一（CHG-20260905-006，DesignReady）：用户否定005实心四宫格，要求与其他侧栏图标一致。对照基础设置、远控设置和项目帮助，采用相同48×48画布、3单位描边、圆角连接及圆头线段，概览改为简洁面板图案：一个圆角外框、一道横分隔和一道纵分隔，避免原三个小空心框的细碎边缘。仅修改 common/entry/entry_tablet 的 `settings_overview.svg`，保持显示尺寸、主题与交互。验收为四图并排资源预览、XML和资源一致性、Release正式签名构建与ABC检查；风格与质量评分不预先标为通过。
+
+实施回写（CHG-20260905-006，Implemented / package verified）：三模块概览图标已替换为32×30、圆角4的面板，3单位描边与基础设置/远控/帮助一致；仅有横纵两条分隔线。XML解析、资源一致性和四图并排预览通过；预览只作资源风格对照，不冒充真机截图。Release正式签名构建、模块debug=false、profile一致性和ABC门禁通过。最终App为20,010,822 bytes，SHA-256 `c1228dd54b15b501794d6e11b99b0c29a4a84916924ca9c20b3e3b2b4fdff497`。主输出仅保留最终App，其余可恢复移至本机 `tmp/panel-release-intermediates`。原质量工具评分和用户风格确认待反馈。
+
 ### 8.3 三套缩放不能混用
 
 | 缩放 | 单位/来源 | 负责层 |

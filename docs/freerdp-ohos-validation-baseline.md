@@ -33,6 +33,8 @@ git -C harmony/third_party/FreeRDP rev-parse HEAD
 
 当前交付更新（CHG-20260905-005）：按用户反馈将概览替换为实心四宫格后，再次完成Release正式签名构建及ABC检查，三个模块debug=false、签名/profile检查通过。最终路径不变，20,010,872 bytes，SHA-256 `8a7aebf3a4850cf1590f6a88d0edf0740a10c63f29ab2748ab4a78a45c35084d`，替换004测试包；图标评分待同工具复测。
 
+当前风格统一包（CHG-20260905-006）：概览更换为与侧栏其他图标一致的圆角描边面板后，Release正式签名构建、模块debug=false、签名/profile和ABC检查通过；最终路径不变，20,010,822 bytes，SHA-256 `c1228dd54b15b501794d6e11b99b0c29a4a84916924ca9c20b3e3b2b4fdff497`，替换005包。图标评分待同工具复测。
+
 ## 构建前检查
 
 从仓库根目录执行：
