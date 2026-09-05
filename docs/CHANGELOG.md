@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| CHG-20260905-006 | fix(ui): align overview icon with sidebar style | UI/资源 | 按用户反馈替换实心图案，改为与其他侧栏图标同线宽和圆角的简洁面板，同步三模块。 | 四图资源预览、XML、一致性、Release正式签名及ABC门禁通过；20,010,822 bytes，哈希见验证基线。风格确认及原工具评分待反馈。 |
 | CHG-20260905-005 | fix(ui): replace overview icon with solid grid | UI/资源 | 按用户反馈将概览图案换为圆角实心四宫格，同步三个模块，保持导航尺寸和主题着色。 | SVG解析、一致性、预览、Release正式签名及ABC门禁通过；新包20,010,872 bytes，哈希见验证基线。原工具评分待复测。 |
 | CHG-20260905-004 | fix(ui): simplify settings overview icon contours | UI/资源 | 将设置概览SVG描边改为较宽的单色填充轮廓，同步三个模块资源，保留原导航尺寸和主题着色。 | SVG解析、一致性、ArkTS、Release正式签名及ABC门禁通过；新包20,011,454 bytes，哈希见验证基线。原报告95.98/90锯齿评分待同工具复测。 |
 | CHG-20260905-003 | docs: record release signing and clean delivery | 构建交付/记录 | 干净重建 Release，所有签名阶段使用正式材料；输出目录仅保留最终 App，中间文件因删除策略限制移至本机 tmp。临时配置已恢复。 | 三个模块 debug=false；App 和源模块签名、release profile 一致性、ABC 门禁通过；20,010,801 bytes，哈希及操作见多设备方案12.6。新包真机启动待用户测试。 |
