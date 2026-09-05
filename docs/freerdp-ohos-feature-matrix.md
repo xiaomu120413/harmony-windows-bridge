@@ -93,6 +93,14 @@ Windows 调整虚拟桌面。Windows 主机物理显示器的分辨率/缩放变
 | OHAudio 播放失败到无声会话 | 暂保留 | 播放后端初始化或写入失败 | 会话继续，记录 rdpsnd/OHAudio diagnostics | 不因播放失败断开桌面 |
 | Download drive 准备失败到不注册 drive | 保留 | 下载控件授权失败、目录获取/创建失败或系统不支持 | 不请求 `drive` channel，基础 RDP 会话继续 | 日志说明失败原因；不回退到任意目录或全盘映射 |
 | 打印作业提交失败 | 保留 | PrintKit 初始化、查询、连接或 `StartPrintJob` 失败 | 当前打印作业失败，会话继续 | 日志说明失败阶段；不影响基础 RDP |
+
+## CPU-only 录屏构建
+
+| Change ID | 状态 | 目标与边界 | 文件级修改 | 验收 ID |
+| --- | --- | --- | --- | --- |
+| `CPU-RECORD-001` | `Implemented` | 提供仅用于录屏/性能对照的 Native 编译开关。开启时连接固定使用 `gdi`，关闭 RDPGFX/H.264、OH_AVCodec 和 AVC420/AVC444 GPU compositor；RGBA 最终呈现直接走 NativeWindow CPU painter，不初始化 EGL/GLES。单屏仍复用现有完整 monitor layout 与 `disp` 状态机，不改变商用默认能力定义。 | `harmony/app/common/build-profile.json5`、`harmony/app/common/src/main/cpp/CMakeLists.txt`、`napi/napi_exports.cpp`、`surface/surface_bridge.cpp` | `AC-CPU-ONLY`：源码编译开关同时约束协议图形模式和最终呈现路径；Native 编译通过；真机日志不得出现 AVC GPU compositor/GLES renderer 初始化，连接与单屏 resize 正常。 |
+
+实现/验证证据（2026-09-03）：当前 App profile 以 `-DRDP_BRIDGE_CPU_ONLY=ON` 开启录屏构建；CMake 配置输出 `RDP bridge CPU-only recording mode enabled`。直接执行生成目录的 Ninja `rdpclient` target，51 个 Native 编译/链接步骤通过；`tools/run_tablet_native_tests.ps1` 与 `tools/run_tablet_arkts_tests.ps1` 通过。将 Node 20.18.0 放到 Hvigor 的 `PATH` 前部后，`build_hap.bat 2in1` 和 `build_hap.bat app` 均成功，2in1 HAP 为 5,390,543 bytes；设备 `3QC0124C11000711` 按 `common-default-signed.hsp`、`entry-default-signed.hap` 顺序安装成功，`com.muhub.desktop` 1.0.2 冷启动 PID 9845。尚未建立真实 RDP 会话核对 CPU-only 日志与录屏表现，因此状态保持 `Implemented`。
 | FUSE/CUPS/smartcard/TSMF fallback | 不保留 | 依赖缺失、服务未闭环或 deprecated | 从交付构建裁剪或标为后续专项 | 包内不出现对应 addin/runtime 路径 |
 
 ## 验收基线

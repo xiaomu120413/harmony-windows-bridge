@@ -19,6 +19,11 @@ validation notes live under `docs/archive/`.
   device-specific Entry HAPs, shared HSP, 2in1-only HNP/permissions, independent
   XRDP process, upgrade safety and AppGallery distribution checks.
 
+- [harmonyos-file-transfer-client-design-and-implementation-plan.md](harmonyos-file-transfer-client-design-and-implementation-plan.md):
+  planned standalone HarmonyOS FTP/FTPS/SFTP client architecture, security and
+  performance design, batch-transfer state machine, platform constraints,
+  implementation phases and acceptance gates.
+
 - `freerdp-ohos-feature-matrix.md`: current OHOS FreeRDP feature status,
   default channel policy, permissions and fallback behavior.
 - `freerdp-ohos-pen-and-multimon-design.md`: DesignReady ownership, ABI,

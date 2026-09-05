@@ -2,7 +2,8 @@ param(
   [string]$AppPath = "harmony/app/build/outputs/default/app-default-signed.app",
   [string]$JavaPath = "C:\Program Files\Huawei\DevEco Studio\jbr\bin\java.exe",
   [string]$HapSignToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar",
-  [string]$ReadElfToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-readelf.exe"
+  [string]$ReadElfToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\native\llvm\bin\llvm-readelf.exe",
+  [string]$ArkDisasmToolPath = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\ark_disasm.exe"
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,7 +34,25 @@ function Open-NestedZip($Entry, [ref]$BackingStream) {
   return [System.IO.Compression.ZipArchive]::new($memory, [System.IO.Compression.ZipArchiveMode]::Read)
 }
 
-foreach ($path in @($JavaPath, $HapSignToolJar, $ReadElfToolPath, $app)) {
+function Assert-NoCrossModuleExportObfuscation([string]$ModuleName) {
+  $rulePath = Join-Path $repoRoot "harmony/app/$ModuleName/obfuscation-rules.txt"
+  if (-not (Test-Path -LiteralPath $rulePath)) { return }
+
+  $enabled = Get-Content -LiteralPath $rulePath | Where-Object {
+    $line = $_.Trim()
+    $line.Length -gt 0 -and -not $line.StartsWith("#") -and
+      $line -eq "-enable-export-obfuscation"
+  }
+  if ($enabled) {
+    throw "$ModuleName enables export obfuscation, which breaks the independently compiled common.hsp API contract"
+  }
+}
+
+foreach ($moduleName in @("entry", "entry_tablet")) {
+  Assert-NoCrossModuleExportObfuscation $moduleName
+}
+
+foreach ($path in @($JavaPath, $HapSignToolJar, $ReadElfToolPath, $ArkDisasmToolPath, $app)) {
   if (-not (Test-Path -LiteralPath $path)) { throw "Missing verifier input: $path" }
 }
 
@@ -68,6 +87,7 @@ try {
     )
     $pcOnlyPermissions = @("ohos.permission.CONTROL_DEVICE", "ohos.permission.CUSTOM_SCREEN_RECORDING")
     $seen = @{}
+    $moduleAssembly = @{}
 
     foreach ($packageEntry in $appZip.Entries | Where-Object { $_.FullName -match '\.(hap|hsp)$' }) {
       $packageMemory = $null
@@ -147,16 +167,50 @@ try {
             }
           } finally { $hnpZip.Dispose(); $hnpMemory.Dispose() }
         }
+
+        $abcEntry = $packageZip.GetEntry("ets/modules.abc")
+        if ($null -eq $abcEntry) { throw "$name misses ets/modules.abc" }
+        $abcPath = Join-Path $workDir "$name-modules.abc"
+        $assemblyPath = Join-Path $workDir "$name-modules.pa"
+        $abcOutput = [System.IO.File]::Create($abcPath)
+        $abcInput = $abcEntry.Open()
+        try { $abcInput.CopyTo($abcOutput) } finally { $abcInput.Dispose(); $abcOutput.Dispose() }
+        & $ArkDisasmToolPath $abcPath $assemblyPath
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $assemblyPath)) {
+          throw "Failed to disassemble $name ArkTS bytecode"
+        }
+        $moduleAssembly[$name] = $assemblyPath
         $seen[$name] = $true
       } finally { $packageZip.Dispose(); $packageMemory.Dispose() }
     }
     Assert-EqualSet @($seen.Keys) @($expectedModules.Keys) "App modules"
+
+    $commonAssembly = Get-Content -LiteralPath $moduleAssembly["common"] -Raw
+    $exportPattern = 'ModuleTag: (?:INDIRECT|LOCAL)_EXPORT,.*?export_name: ([^,;]+)'
+    $commonExports = @([regex]::Matches($commonAssembly, $exportPattern) | ForEach-Object {
+      $_.Groups[1].Value
+    } | Sort-Object -Unique)
+    $commonImportPattern =
+      'ModuleTag: REGULAR_IMPORT, local_name: [^,]+, import_name: ([^,]+), module_request: @normalized:N&common&&common/Index&;'
+    foreach ($entryModule in @("entry", "entry_tablet")) {
+      $entryAssembly = Get-Content -LiteralPath $moduleAssembly[$entryModule] -Raw
+      $commonImports = @([regex]::Matches($entryAssembly, $commonImportPattern) | ForEach-Object {
+        $_.Groups[1].Value
+      } | Sort-Object -Unique)
+      if ($commonImports.Count -eq 0) {
+        throw "$entryModule has no runtime imports from common/Index"
+      }
+      $missingExports = @($commonImports | Where-Object { $_ -notin $commonExports })
+      if ($missingExports.Count -gt 0) {
+        throw "$entryModule imports names not exported by common/Index: $($missingExports -join ',')"
+      }
+    }
   } finally { $appZip.Dispose(); $appStream.Dispose() }
 
   $hash = (Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash.ToLowerInvariant()
   $item = Get-Item -LiteralPath $app
   Write-Host "Multi-device App verification passed: $($item.FullName)"
-  Write-Host "bytes=$($item.Length) sha256=$hash modules=common,entry,entry_tablet"
+  Write-Host "bytes=$($item.Length) sha256=$hash modules=common,entry,entry_tablet arktsCommonAbi=passed"
 } finally {
   $resolvedWork = [System.IO.Path]::GetFullPath($workDir)
   $resolvedRoot = [System.IO.Path]::GetFullPath($verificationRoot) + [System.IO.Path]::DirectorySeparatorChar

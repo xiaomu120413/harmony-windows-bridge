@@ -4,17 +4,20 @@ param(
   [string]$JavaPath = "C:\Program Files\Huawei\DevEco Studio\jbr\bin\java.exe",
   [string]$AppPackingToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\app_packing_tool.jar",
   [string]$HapSignToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar",
-  [string]$SigningRoot = "tools/hapsigner",
-  [string]$KeyAlias = "openharmony application release",
-  [string]$AppCertFileName = "OpenHarmonyApplication.pem",
-  [string]$ProfileFileName = "ohos_provision_debug.p7b",
-  [string]$KeystoreFileName = "OpenHarmony.p12",
-  [string]$SigningPassword = ""
+  [string]$SigningRoot = "tools/app",
+  [string]$KeyAlias = "muhub",
+  [string]$AppCertFileName = "muhub_debug.cer",
+  [string]$ProfileFileName = "muhub_debugDebug.p7b",
+  [string]$KeystoreFileName = "muhub.p12",
+  [string]$SigningPassword = "",
+  [string]$StorePassword = "",
+  [string]$KeyPassword = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+. (Join-Path $PSScriptRoot "signing-passwords.ps1")
 $project = (Resolve-Path (Join-Path $repoRoot $ProjectRoot)).Path
 $outputs = Join-Path $project "build/outputs/default"
 $entryHap = Join-Path $project "entry/build/default/outputs/default/entry-default-signed.hap"
@@ -25,6 +28,7 @@ $pacJson = Join-Path $outputs "pac.json"
 $unsignedApp = Join-Path $outputs "app-default-hnp-unsigned.app"
 $signedApp = Join-Path $outputs "app-default-hnp-signed.app"
 $canonicalApp = Join-Path $outputs "app-default-signed.app"
+$packageInputDir = Join-Path $outputs "app-package-inputs"
 $signingFiles = Join-Path $repoRoot $SigningRoot
 $appCert = Join-Path $signingFiles $AppCertFileName
 $profile = Join-Path $signingFiles $ProfileFileName
@@ -37,19 +41,28 @@ foreach ($path in @($JavaPath, $AppPackingToolJar, $HapSignToolJar, $entryHap, $
   }
 }
 
-if ([string]::IsNullOrWhiteSpace($SigningPassword)) {
-  if (-not [string]::IsNullOrWhiteSpace($env:HAP_SIGN_PASSWORD)) {
-    $SigningPassword = $env:HAP_SIGN_PASSWORD
-  } else {
-    throw "Missing signing password. Set HAP_SIGN_PASSWORD or pass -SigningPassword."
-  }
+$passwords = Resolve-HvigorSigningPasswords -RepoRoot $repoRoot -SigningRoot $SigningRoot `
+  -SigningPassword $SigningPassword -StorePassword $StorePassword -KeyPassword $KeyPassword
+
+# AppGallery resolves package files from pack.info package names. DevEco stages
+# signed module outputs without the "-signed" suffix before building the App Pack.
+# Keep the same canonical names when rebuilding the App after HNP injection.
+if (Test-Path -LiteralPath $packageInputDir) {
+  Remove-Item -LiteralPath $packageInputDir -Recurse -Force
 }
+New-Item -ItemType Directory -Path $packageInputDir | Out-Null
+$stagedEntryHap = Join-Path $packageInputDir "entry-default.hap"
+$stagedTabletHap = Join-Path $packageInputDir "entry_tablet-default.hap"
+$stagedCommonHsp = Join-Path $packageInputDir "common-default.hsp"
+Copy-Item -LiteralPath $entryHap -Destination $stagedEntryHap
+Copy-Item -LiteralPath $tabletHap -Destination $stagedTabletHap
+Copy-Item -LiteralPath $commonHsp -Destination $stagedCommonHsp
 
 & $JavaPath '-Dfile.encoding=UTF-8' -jar $AppPackingToolJar `
   --mode app `
   --pack-info-path $packInfo `
-  --hap-path "$entryHap,$tabletHap" `
-  --hsp-path $commonHsp `
+  --hap-path "$stagedEntryHap,$stagedTabletHap" `
+  --hsp-path $stagedCommonHsp `
   --force true `
   --out-path $unsignedApp `
   --main-module-limit 2 `
@@ -62,13 +75,13 @@ if ($LASTEXITCODE -ne 0) {
 $signOutput = & $JavaPath -jar $HapSignToolJar sign-app `
   -mode localSign `
   -keyAlias $KeyAlias `
-  -keyPwd $SigningPassword `
+  -keyPwd $passwords.KeyPassword `
   -appCertFile $appCert `
   -profileFile $profile `
   -inFile $unsignedApp `
   -signAlg SHA256withECDSA `
   -keystoreFile $keystore `
-  -keystorePwd $SigningPassword `
+  -keystorePwd $passwords.StorePassword `
   -outFile $signedApp `
   -compatibleVersion $CompatibleVersion `
   -signCode 1 2>&1
@@ -97,9 +110,9 @@ $appStream = [System.IO.File]::OpenRead($signedApp)
 $appZip = [System.IO.Compression.ZipArchive]::new($appStream, [System.IO.Compression.ZipArchiveMode]::Read)
 try {
   $expected = @{
-    "common" = @{ Type = "shared"; Devices = @("2in1", "tablet"); Hnp = 0; RdpClient = 1; XrdpControl = 0 }
-    "entry" = @{ Type = "entry"; Devices = @("2in1"); Hnp = 1; RdpClient = 0; XrdpControl = 1 }
-    "entry_tablet" = @{ Type = "entry"; Devices = @("tablet"); Hnp = 0; RdpClient = 0; XrdpControl = 0 }
+    "common" = @{ File = "common-default.hsp"; Type = "shared"; Devices = @("2in1", "tablet"); Hnp = 0; RdpClient = 1; XrdpControl = 0 }
+    "entry" = @{ File = "entry-default.hap"; Type = "entry"; Devices = @("2in1"); Hnp = 1; RdpClient = 0; XrdpControl = 1 }
+    "entry_tablet" = @{ File = "entry_tablet-default.hap"; Type = "entry"; Devices = @("tablet"); Hnp = 0; RdpClient = 0; XrdpControl = 0 }
   }
   $seen = @{}
 
@@ -117,6 +130,9 @@ try {
         throw "Unexpected module in App Pack: $name"
       }
       $rule = $expected[$name]
+      if ($entry.FullName -ne $rule.File) {
+        throw "Package filename does not match pack.info name: module=$name expected=$($rule.File) actual=$($entry.FullName)"
+      }
       $devices = @($manifest.module.deviceTypes)
       $hnpCount = @($packageZip.Entries | Where-Object { $_.FullName -like "hnp/*" }).Count
       $rdpClientCount = @($packageZip.Entries | Where-Object {

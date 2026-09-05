@@ -105,6 +105,25 @@ build_app projectPath=harmony/app
 - 构建日志中没有回退到 mock FreeRDP runtime 的提示。
 - HAP 中包含当前同步的 `libentry.so` 和 FreeRDP runtime `.so`。
 
+### release ArkTS 跨模块 ABI 检查
+
+`common.hsp` 独立编译后，其 `Index.ets` 公共导出名属于 Entry/HSP 运行时 ABI。两个 Entry 不得启用
+`-enable-export-obfuscation`。最终 App Pack 必须执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_app.ps1 `
+  -AppPath harmony/app/build/outputs/default/app-default-signed.app
+```
+
+通过标准：
+
+- 输出包含 `arktsCommonAbi=passed`；
+- 门禁使用 SDK `ark_disasm` 反汇编包内 `ets/modules.abc`，两个 Entry 从 `common/Index` 请求的每个
+  运行时导入名都存在于 `common.hsp` 导出集合；
+- `entry` 或 `entry_tablet` 混淆规则中一旦出现有效的 `-enable-export-obfuscation`，门禁立即失败；
+- 2in1 真机全新安装和上一正式版本覆盖安装后均能启动，HiviewDFX/HiLog 不出现
+  `common/Index` 缺少导出名的 `SyntaxError`。
+
 如果本机缺少 `ohpm`、`hvigor` 或 DevEco/HarmonyOS SDK，任务说明必须明确 HAP build 未覆盖，并保留 FreeRDP build 与 runtime sync 的结果。
 
 ### 自动签名材料检查

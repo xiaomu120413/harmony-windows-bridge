@@ -6,12 +6,14 @@ param(
   [string]$JavaPath = "C:\Program Files\Huawei\DevEco Studio\jbr\bin\java.exe",
   [string]$AppPackingToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\app_packing_tool.jar",
   [string]$HapSignToolJar = "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\lib\hap-sign-tool.jar",
-  [string]$SigningRoot = "tools/hapsigner",
-  [string]$KeyAlias = "openharmony application release",
-  [string]$AppCertFileName = "OpenHarmonyApplication.pem",
-  [string]$ProfileFileName = "ohos_provision_debug.p7b",
-  [string]$KeystoreFileName = "OpenHarmony.p12",
+  [string]$SigningRoot = "tools/app",
+  [string]$KeyAlias = "muhub",
+  [string]$AppCertFileName = "muhub_debug.cer",
+  [string]$ProfileFileName = "muhub_debugDebug.p7b",
+  [string]$KeystoreFileName = "muhub.p12",
   [string]$SigningPassword = "",
+  [string]$StorePassword = "",
+  [string]$KeyPassword = "",
   [switch]$Force
 )
 
@@ -20,6 +22,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $repoResolved = (Resolve-Path -LiteralPath $repoRoot).Path
 . (Join-Path $PSScriptRoot "build-cache.ps1")
+. (Join-Path $PSScriptRoot "signing-passwords.ps1")
 $moduleRootPath = Resolve-Path (Join-Path $repoRoot $ModuleRoot)
 $hnpSourceRootPath = Resolve-Path (Join-Path $repoRoot $HnpSourceRoot)
 $outputs = Join-Path $moduleRootPath "build/default/outputs/default"
@@ -154,24 +157,19 @@ if ($LASTEXITCODE -ne 0) {
   throw "app_packing_tool failed with exit code $LASTEXITCODE"
 }
 
-if ([string]::IsNullOrWhiteSpace($SigningPassword)) {
-  if (-not [string]::IsNullOrWhiteSpace($env:HAP_SIGN_PASSWORD)) {
-    $SigningPassword = $env:HAP_SIGN_PASSWORD
-  } else {
-    throw "Missing signing password. Set HAP_SIGN_PASSWORD or pass -SigningPassword."
-  }
-}
+$passwords = Resolve-HvigorSigningPasswords -RepoRoot $repoRoot -SigningRoot $SigningRoot `
+  -SigningPassword $SigningPassword -StorePassword $StorePassword -KeyPassword $KeyPassword
 
 $signOutput = & $JavaPath -jar $HapSignToolJar sign-app `
   -mode localSign `
   -keyAlias $KeyAlias `
-  -keyPwd $SigningPassword `
+  -keyPwd $passwords.KeyPassword `
   -appCertFile $appCertFile `
   -profileFile $profileFile `
   -inFile $unsignedHnp `
   -signAlg SHA256withECDSA `
   -keystoreFile $keystoreFile `
-  -keystorePwd $SigningPassword `
+  -keystorePwd $passwords.StorePassword `
   -outFile $signedHnp `
   -compatibleVersion $CompatibleVersion `
   -signCode 1 2>&1

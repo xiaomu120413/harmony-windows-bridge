@@ -23,6 +23,12 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 | --- | --- | --- | --- | --- |
 | `CHG-YYYYMMDD-NNN` | `type(scope): subject` | 功能/模块 | 用一两句话说明行为变化、兼容性和主要影响范围 | 测试命令、结果或专项文档/证据链接；未执行要明示 |
 
+## 2026-09-05
+
+| Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
+| --- | --- | --- | --- | --- |
+| `CHG-20260905-001` | `fix(ohos): restore packaging and recording changes` | 打包、签名、Native 录屏配置及设计归档 | 恢复原 stash 全部内容：App Pack 文件名、签名材料与密码解析、跨模块导出校验、CPU-only 录屏构建和独立文件传输客户端设计。 | Native 测试、PowerShell/Node 语法检查及 diff 检查通过；ArkTS 门禁因现有资源 CRLF/LF 差异失败；未重新构建或真机验收。详见多设备打包设计的本次归档记录，关联 MDP-04A、CPU-RECORD-001、FT-ARCH-001。 |
+
 ## 2026-08-07
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
