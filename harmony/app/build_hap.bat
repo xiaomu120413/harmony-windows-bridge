@@ -53,8 +53,6 @@ if exist "%PROJECT_DIR%\..\out\ohos-arm64\runtime-libs\libfreerdp-client3.so" (
   )
 )
 
-if not defined HAP_SIGN_PASSWORD set "HAP_SIGN_PASSWORD=123456"
-
 if /i not "%BUILD_TARGET%"=="tablet" (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_DIR%\..\scripts\windows\package-xrdp-hnp.ps1"
   if errorlevel 1 (

@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.5.0)
 project(rdp_native_bridge)
 
 set(NATIVERENDER_ROOT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
+option(RDP_BRIDGE_CPU_ONLY
+    "Force the OHOS RDP client to use software GDI and CPU NativeWindow presentation"
+    OFF)
 
 if(DEFINED PACKAGE_FIND_FILE)
     include(${PACKAGE_FIND_FILE})
@@ -122,6 +125,10 @@ add_library(rdpclient SHARED
     surface/xcomponent_native_host.cpp
     common/string_utils.cpp)
 target_compile_features(rdpclient PUBLIC cxx_std_17)
+if(RDP_BRIDGE_CPU_ONLY)
+    target_compile_definitions(rdpclient PRIVATE RDP_BRIDGE_CPU_ONLY=1)
+    message(STATUS "RDP bridge CPU-only recording mode enabled")
+endif()
 target_link_libraries(rdpclient PUBLIC
     libace_napi.z.so
     libace_ndk.z.so

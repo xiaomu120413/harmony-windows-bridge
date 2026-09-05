@@ -51,6 +51,9 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
     if (!graphicsMode.empty()) {
         params.graphicsMode = graphicsMode;
     }
+#if defined(RDP_BRIDGE_CPU_ONLY)
+    params.graphicsMode = "gdi";
+#endif
     params.appFilesDir = GetStringProperty(env, args[0], "appFilesDir");
     return params;
 }
@@ -59,6 +62,9 @@ ConnectParams ReadConnectParams(napi_env env, napi_callback_info info)
 napi_value Connect(napi_env env, napi_callback_info info)
 {
     ConnectParams params = ReadConnectParams(env, info);
+#if defined(RDP_BRIDGE_CPU_ONLY)
+    BridgeLogger::Info("CPU-only recording mode: forcing FreeRDP GDI software rendering");
+#endif
 
     napi_value result = MakeObject(env);
     if (params.host.empty() || params.port.empty() || params.username.empty() || params.password.empty()) {

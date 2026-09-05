@@ -20,7 +20,10 @@
 -enable-property-obfuscation
 -enable-toplevel-obfuscation
 -enable-filename-obfuscation
--enable-export-obfuscation
+
+# common is packaged as an independently compiled HSP. Its public export names
+# are a cross-module ABI and must match the imports emitted into this Entry HAP.
+# Do not enable export obfuscation for this module.
 
 # Keep the ArkTS <-> NAPI bridge contract stable. The native layer reads and
 # writes these property names by string through napi_get_named_property and

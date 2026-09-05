@@ -645,6 +645,34 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
   因此该 App Pack 仍是工程验证产物，不能替换发布基线。发布前必须验证第 13.3 节的通用 Entry +
   2in1-only Feature 方案，或取得平台支持的同名设备变体方案。
 
+### 12.5 MDP-04A release 跨模块导出兼容性修复（2026-09-01）
+
+- 故障范围：`1.0.2`（`versionCode=1000002`）release App Pack 在 2in1 上首次安装启动，以及从
+  `1000001` 覆盖安装后启动。三份 HiviewDFX 日志均在 `EntryAbility.abc` 模块实例化阶段报告
+  `common/Index` 不提供 `entry` 请求的混淆导出名 `u1`；`libark_jsruntime.so` 回溯是该
+  `SyntaxError` 的承载栈，不是 Native 崩溃根因。
+- 根因边界：`entry` 在拆分为依赖 `common.hsp` 的薄壳后仍启用了 `-enable-export-obfuscation`。
+  release 编译把 HSP 公共 API 的消费侧导入名改写为 `u1`，而独立构建的 `common.hsp` 继续导出
+  `SettingsTheme`、`RemoteFilesDirectory`、`ImeHostWindowBinder` 等稳定名称，导致链接契约不一致。
+- 目标策略：HSP 边界上的导出名属于模块 ABI，必须保持稳定；`entry` 仍可保留属性、模块顶层内部
+  名称和文件名混淆，但不得启用 export obfuscation。Native N-API 属性白名单保持不变。
+- 允许修改范围：`harmony/app/entry/obfuscation-rules.txt`、App Pack 静态门禁、本文档和验证记录；
+  不修改业务逻辑、持久化数据、bundle/module 身份、签名材料或 HNP 生命周期。
+- 验收：静态门禁拒绝任一 Entry 再启用 `-enable-export-obfuscation`；release App Pack 重新构建并
+  通过既有包结构/签名门禁；新包在 2in1 上全新安装与 `1000001 -> 1000002` 覆盖安装后均可启动，
+  日志不再出现 `common/Index` 缺少导出名的 `SyntaxError`。未完成真机两条启动路径前状态不得标为
+  `Verified`。
+- 实施结果：删除 `entry` 的 export obfuscation 开关，保留其余混淆与 N-API 属性白名单；
+  `verify_multidevice_app.ps1` 同时增加源规则门禁，并用 SDK `ark_disasm` 反汇编 App Pack 内三个模块的
+  `ets/modules.abc`，逐项确认两个 Entry 对 `common/Index` 的运行时导入均存在于 `common.hsp`
+  导出集合。无业务逻辑、数据格式、签名身份或 HNP 行为变化。
+- 验证结果：release `assembleApp`、HNP 重封、App Pack 重组和签名完成；最终包
+  `harmony/app/build/outputs/default/app-default-signed.app` 为 `20,033,437` 字节，SHA-256 为
+  `a76d9c650c8c4e3bf7dd73628b2a76357768e880af3b79ad50c9e89fc15b37ca`。App Pack 门禁输出
+  `arktsCommonAbi=passed`；2in1 Entry 的 8 个公共导入均恢复为稳定名称，不再包含故障导入名 `u1`。
+  真机全新安装和 `1000001 -> 1000002` 覆盖安装尚未执行，因此状态为 package verified，非
+  `Verified`。
+
 ## 13. 升级、回滚和发布策略
 
 ### 13.1 升级
@@ -682,6 +710,7 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 | MDP-03 | Implemented / package verified | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | 编译、进程策略和包门禁通过；2in1 独立 PID/连接/清理待补验 |
 | MDP-03A | Implemented / 2in1 runtime verified | 修正私有 HNP 沙箱运行路径 | xrdp runtime loader、进程策略门禁、验证基线 | 从 `/data/app/bin/xrdp` 动态解析当前版本根目录；2in1 独立 PID/3390/强停清理通过；tablet 物理隔离不变；MSTSC/显式停止/异常/卸载待验 |
 | MDP-04 | Implemented / release blocked | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 三模式与本地门禁通过；覆盖升级 P0 和应用市场真实分发未通过 |
+| MDP-04A | Implemented / package verified | 修复 release Entry 与 `common.hsp` 公共导出名不一致导致的启动 JsCrash | Entry 混淆规则、App Pack 门禁、发布验证记录 | 禁止 Entry export obfuscation；release 构建、签名、包结构及实际 ABC 导入/导出门禁通过；2in1 全新安装和 `1000001 -> 1000002` 覆盖安装启动待真机验证 |
 
 状态定义：
 
@@ -704,3 +733,10 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 8. App Pack 经真实应用市场内部测试证明按设备选择正确模块，而不只是本地手工安装成功。
 9. README、feature matrix、验证基线和旧单 HAP 专项文档已同步当前事实。
 10. 所有验证记录使用实际命令、退出码、包哈希、设备信息和日志证据；未执行项明确标记未执行。
+
+## 2026-09-05 本地改动归档（CHG-20260905-001）
+
+- 状态：Implemented；将原 stash 的打包文件名修正、签名配置与密码解析、跨 HSP 导出混淆门禁、CPU-RECORD-001 录屏配置和 FT-ARCH-001 独立文件传输设计恢复到最新 main。
+- 文件范围：本设计对应的打包/签名脚本与 tools/verify_multidevice_app.ps1；CPU 代码范围见 feature matrix 的 CPU-RECORD-001；独立客户端范围见文件传输设计稿。保留原 stash 全部 19 个文件，额外更新仓库修改记录和本次验证记录。
+- 本次验证：tools/run_tablet_native_tests.ps1 通过；4 个新增/修改 PowerShell 脚本语法解析通过；decrypt-hvigor-password.js 的 Node --check 通过；git diff --check 通过。
+- 验证限制：tools/run_tablet_arkts_tests.ps1 在 Entry 资源一致性门禁失败；检查发现 8 个资源文件仅 CRLF/LF 不同，换行归一化后文本一致，且本次未修改这些资源。本次未重新构建 HAP/App Pack、未进行签名或真机验证，历史验证记录不代表本次验证。

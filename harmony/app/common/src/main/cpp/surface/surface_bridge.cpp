@@ -199,6 +199,13 @@ private:
             return result;
         }
 
+#if defined(RDP_BRIDGE_CPU_ONLY)
+        if (!cpuOnlyLogged_) {
+            Log("CPU-only recording mode: bypassing EGL/GLES RGBA renderer");
+            cpuOnlyLogged_ = true;
+        }
+        return RenderRgbaFrameCpuLocked(frame);
+#else
         const RenderViewport viewport = FitFrameIntoTarget(width_, height_, frame.width, frame.height);
         if (viewport.width == 0 || viewport.height == 0) {
             result.message = "render viewport is invalid";
@@ -225,6 +232,7 @@ private:
             gpuFallbackLogged_ = true;
         }
         return RenderRgbaFrameCpuLocked(frame);
+#endif
     }
 
     SurfacePaintResult RenderRgbaFrameCpuLocked(const RgbaFrame& frame)
@@ -339,6 +347,7 @@ private:
     GpuRgbaRenderer gpuRenderer_;
     NativeWindowRgbaPainter nativePainter_;
     bool gpuFallbackLogged_ = false;
+    bool cpuOnlyLogged_ = false;
     std::string lastPaintMessage_;
 };
 SurfaceBridge::SurfaceBridge() : impl_(std::make_unique<Impl>()) {}
