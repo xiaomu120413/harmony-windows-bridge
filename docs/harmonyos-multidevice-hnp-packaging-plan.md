@@ -7,6 +7,8 @@
 > 本文范围：tablet/2in1 的 HAP/HSP/HNP、权限、独立进程、构建分发和升级验收
 > 非本文范围：重新设计首页、设置页或 RDP 会话交互
 
+> 外部依据已于 2026-09-05 复查：访问受限的固定版本文档改用同提交官方 GitHub 原文；旧 HSP 文档改用现行 in-app HSP 页面，HNP 链接改为官方开发指南。原地址与核验方式保留在 [审计清单](audit/external-links.json)。
+
 ## 1. 初始方案与当前状态
 
 当前工程验证结构采用 **一个 bundle、一个 App Pack、两个按设备隔离的 Entry HAP、一个应用内 HSP**：
@@ -69,11 +71,11 @@ com.muhub.desktop
 
 官方模型依据：
 
-- 一个 App Pack 中，每种设备类型只能有一个 Entry HAP；不同设备类型可以各自具有 Entry HAP，应用市场按 HAP 拆分分发：<https://gitee.com/openharmony/docs/blob/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/hap-package.md?skip_mobile=true>
-- App Pack 是发布单元，云端和设备端按 HAP 安装：<https://gitee.com/openharmony/docs/blob/ecf01f0dd5c6fc9797d60a61b288f00bb68f24de/en/application-dev/quick-start/application-package-structure-stage.md?skip_mobile=true>
-- HSP 可以共享 ArkTS、资源和 C++ 库，多 HAP 引用时只保留一份：<https://gitee.com/openharmony/docs/blob/1ee51a8860968009e3d3e6f9261a8036d84b2d8e/en/application-dev/quick-start/shared-guide.md>
-- HAP 和进程不是一一对应；普通三方应用不能依靠 `process` 配置获得独立进程：<https://gitee.com/openharmony/docs/blob/e99082d84adcc46cde561d79b04fbf2fad68a723/en/application-dev/quick-start/multi-hap-principles.md>
-- HNP 由 HAP 分发，并通过 `fork/execv` 等方式执行 Native 二进制：<https://gitcode.com/openharmony/startup_appspawn/tree/master/service/hnp>
+- 一个 App Pack 中，每种设备类型只能有一个 Entry HAP；不同设备类型可以各自具有 Entry HAP，应用市场按 HAP 拆分分发：<https://raw.githubusercontent.com/openharmony/docs/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/hap-package.md>
+- App Pack 是发布单元，云端和设备端按 HAP 安装：<https://raw.githubusercontent.com/openharmony/docs/ecf01f0dd5c6fc9797d60a61b288f00bb68f24de/en/application-dev/quick-start/application-package-structure-stage.md>
+- HSP 可以共享 ArkTS、资源和 C++ 库，多 HAP 引用时只保留一份：<https://raw.githubusercontent.com/openharmony/docs/master/en/application-dev/quick-start/in-app-hsp.md>
+- HAP 和进程不是一一对应；普通三方应用不能依靠 `process` 配置获得独立进程：<https://raw.githubusercontent.com/openharmony/docs/e99082d84adcc46cde561d79b04fbf2fad68a723/en/application-dev/quick-start/multi-hap-principles.md>
+- HNP 由 HAP 分发，并通过 `fork/execv` 等方式执行 Native 二进制：<https://raw.githubusercontent.com/openharmony/startup_appspawn/master/service/hnp/README_zh.md>
 
 ## 3. 不改变的产品体验
 

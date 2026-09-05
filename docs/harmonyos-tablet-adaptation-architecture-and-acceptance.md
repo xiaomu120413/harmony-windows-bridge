@@ -855,7 +855,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（标准字体tablet构建、安装和首页回归通过；系统1.75字体及存在已保存设备时的卡片增长矩阵待补后升Verified） |
 | 实际代码文件 | `harmony/app/entry/src/main/ets/components/home/HomeDeviceList.ets` |
 | 设计偏差及原因 | 无；只替换文本容器的固定尺寸，Icon的20/22/36/18vp视觉尺寸、搜索输入48vp最小可用高度、布局拓扑、状态和回调均未改变 |
-| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试通过；完整`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34470550字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装、启动成功，标准字体首页截图`%TEMP%/muhub-d07-home.jpeg`显示新建设备、搜索和空状态无回退。静态diff确认136×48按钮、18标签/Row、72设备卡和90空状态的固定文本容器已改为min约束，Icon尺寸未改。设备当前无保存项且系统字体未切到1.75，因此不伪造对应证据 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试通过；完整`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP34470550字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装、启动成功，标准字体首页截图`%TEMP%/muhub-d07-home.jpeg`（2026-09-05复查：原临时截图缺失，无法复验此图）显示新建设备、搜索和空状态无回退。静态diff确认136×48按钮、18标签/Row、72设备卡和90空状态的固定文本容器已改为min约束，Icon尺寸未改。设备当前无保存项且系统字体未切到1.75，因此不伪造对应证据 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
 #### TAB-D-08：首页连接详情移除复制地址操作
@@ -882,7 +882,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 |---|---|
 | Change ID | TAB-D-09 |
 | 设计版本/章节 | v1.3；第 6.2、8.1、10.4、12.3、12.4 节 |
-| 触发证据 | 2026-08-05 MatePad Pro 约 1680×1318 窗口截图 `artifacts/design-audit/2026-08-05-copy-address-layout/03-recheck.png`：外层 12 列中标签、删除、清除密码各占 3 列，末尾遗留 3 列空白，按钮组缩在表单中部且与上方输入框右边界不齐；较窄窗口截图 `02-actions-before.png` 中两个按钮纵向堆叠，占用过多高度 |
+| 触发证据 | 2026-08-05 MatePad Pro 约 1680×1318 窗口截图 `artifacts/design-audit/2026-08-05-copy-address-layout/03-recheck.png`：外层 12 列中标签、删除、清除密码各占 3 列，末尾遗留 3 列空白，按钮组缩在表单中部且与上方输入框右边界不齐；较窄窗口截图 `artifacts/design-audit/2026-08-05-copy-address-layout/02-actions-before.png` 中两个按钮纵向堆叠，占用过多高度 |
 | 目标 | 设备操作标签继续遵循表单 3/9 对齐；剩余 9 列作为统一操作组，内部将删除和清除密码等分并排，使按钮组与输入框左右边界一致，消除无意义空白和窄窗纵向堆叠 |
 | 计划代码文件 | 仅修改 `harmony/app/entry/src/main/ets/components/home/HomeConnectionDetails.ets`；不改按钮文案、颜色、图标、回调、连接表单、Native 或 RDP 能力 |
 | 响应式策略 | 外层保持 `xs:12/sm:3` 标签和 `xs:12/sm:9` 操作组；操作组内部固定 12 列、两个按钮各 6 列。xs 下标签独占一行、两个按钮在下一行并排；sm 下标签与操作组同排，操作组边界与 Host/Port/Username/Password 输入框一致 |
@@ -892,7 +892,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（标准字体下宽窗与窄窗真机布局、测试及完整构建通过；1.75 字体矩阵待补后升 Verified） |
 | 实际代码文件 | `harmony/app/entry/src/main/ets/components/home/HomeConnectionDetails.ets` |
 | 设计偏差及原因 | 无；外层 3/9 表单栅格和操作组内部 6/6 等分均按 DesignReady 记录实现，按钮文案、色调、图标和回调未改变 |
-| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_arkts_tests.ps1` 退出码 0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,592,072 bytes；HAP 已覆盖安装并启动到 MatePad Pro `5JB0223804000371`。窄窗截图 `artifacts/design-audit/2026-08-05-copy-address-layout/06-actions-after.png` 显示标签换行后两按钮等分并排；最大化截图 `07-maximized-after.png` 及 UI tree 显示操作组与表单输入边界一致，删除/清除密码按钮宽度分别 651/651px、高 82px，无末尾空白；恢复窗口截图 `08-restored-after.png` 证明窗口模式切换无布局崩溃。1.75 字体尚未执行，因此不升 Verified |
+| 测试命令/结果/证据 | 2026-08-05：`tools/run_tablet_arkts_tests.ps1` 退出码 0；`harmony/app/build_hap.bat debug` 完整 Native/ArkTS/打包/签名成功，signed HAP 35,592,072 bytes；HAP 已覆盖安装并启动到 MatePad Pro `5JB0223804000371`。窄窗截图 `artifacts/design-audit/2026-08-05-copy-address-layout/06-actions-after.png` 显示标签换行后两按钮等分并排；最大化截图 `artifacts/design-audit/2026-08-05-copy-address-layout/07-maximized-after.png` 及 UI tree 显示操作组与表单输入边界一致，删除/清除密码按钮宽度分别 651/651px、高 82px，无末尾空白；恢复窗口截图 `artifacts/design-audit/2026-08-05-copy-address-layout/08-restored-after.png` 证明窗口模式切换无布局崩溃。1.75 字体尚未执行，因此不升 Verified |
 | 关联提交 | 实现与本台账回写包含在同一工作区变更（未创建提交） |
 
 #### TAB-C-01：适配候选解除应用声明的最小窗口限制
@@ -912,7 +912,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（2in1真机已进入Compact；精确600/839/840vp、tablet和小窗远程会话仍待完整矩阵） |
 | 实际代码文件 | `harmony/app/entry/src/main/module.json5`（仅删除 `EntryAbility.minWindowWidth/minWindowHeight`） |
 | 设计偏差及原因 | 无实现偏差；依赖顺序偏差已在设计阶段明确记录。实际最小窗口由系统管理，未宣称字段删除等于固定600×480vp |
-| 测试命令/结果/证据 | 2026-08-04：完整 `assembleHap` 的 `CompileArkTS`、`SignHap` 通过；HNP重签产物41788522字节，`hdc install -r`成功；包名仍为`com.muhub.desktop`。HAD-W32密度1.9真机窗口缩至1437×1229px（约756×647vp），Home切为单页设备列表，Settings概览无桌面侧栏，基础/远控子页可达。证据：`muhub-c01-home-compact.jpeg`、`muhub-c01-settings-compact.jpeg`及对应layout dump。XComponent会话、600vp下限和tablet未在本项验证 |
+| 测试命令/结果/证据 | 2026-08-04：完整 `assembleHap` 的 `CompileArkTS`、`SignHap` 通过；HNP重签产物41788522字节，`hdc install -r`成功；包名仍为`com.muhub.desktop`。HAD-W32密度1.9真机窗口缩至1437×1229px（约756×647vp），Home切为单页设备列表，Settings概览无桌面侧栏，基础/远控子页可达。证据：`artifacts/tablet-acceptance/2026-08-04/muhub-c01-home-compact.jpeg`、`artifacts/tablet-acceptance/2026-08-04/muhub-c01-settings-compact.jpeg`及对应layout dump。XComponent会话、600vp下限和tablet未在本项验证 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以 Git 历史为准） |
 
 #### TAB-C-02：同一 HAP 增加 tablet 安装声明
@@ -1013,7 +1013,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（组件隔离、静态唯一性、完整构建及 tablet 安装启动通过；实际 RDP 连接的 Controller/SURFACE/提示层回归待可用服务端凭据后升 Verified） |
 | 实际代码文件 | `harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets`、`harmony/app/entry/src/main/ets/pages/Index.ets` |
 | 设计偏差及原因 | 无行为偏差。完整构建首次发现普通必传字段不满足 ArkTS 严格初始化；未在子组件创建备用 Controller，而是使用可空初始化并由 `requireSurfaceController()` 在构建 XComponent 前 fail-fast，父级仍是唯一实际 Controller 创建和传入点 |
-| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试与模块编译通过；静态检查确认全 ArkTS 仅 `RdpSessionPage.ets` 1个XComponent构造、仅`Index.ets` 1个`new XComponentController`，session目录无`libentry.so`/deviceInfo/WidthBreakpoint/LayoutMode依赖；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP 34471202字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装和EntryAbility启动成功，首屏截图`%TEMP%/muhub-a03-home.jpeg`无首页布局回退。无可用RDP测试凭据，本项不伪造实际Surface连接证据 |
+| 测试命令/结果/证据 | 2026-08-04：`tools/run_tablet_arkts_tests.ps1`退出码0，9项策略测试与模块编译通过；静态检查确认全 ArkTS 仅 `RdpSessionPage.ets` 1个XComponent构造、仅`Index.ets` 1个`new XComponentController`，session目录无`libentry.so`/deviceInfo/WidthBreakpoint/LayoutMode依赖；`harmony/app/build_hap.bat`的CompileArkTS、PackingCheck、SignHap通过，HAP 34471202字节；明确指定MatePad Pro `5JB0223804000371`覆盖安装和EntryAbility启动成功，首屏截图`%TEMP%/muhub-a03-home.jpeg`（2026-09-05复查：原临时截图缺失，无法复验此图）无首页布局回退。无可用RDP测试凭据，本项不伪造实际Surface连接证据 |
 | 关联提交 | 实现与本台账回写包含在同一提交（以Git历史为准） |
 
 #### TAB-A-04：RDP 会话关键路径结构化诊断
@@ -1097,7 +1097,7 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实现状态 | Implemented（Native IME 生命周期、XComponent focus/touch 恢复、提交链和键盘 overlay 已接入；中文选词、Delete/Enter、物理键盘及20次循环完整矩阵未完成，不能升 Verified） |
 | 实际代码文件 | `cpp/input/remote_ime_client.h/.cpp`、`cpp/input/xcomponent_input_bridge.h`、`xcomponent_input_internal.h`、`xcomponent_input_registration.cpp`、`xcomponent_key.cpp`、`xcomponent_touch_gesture.cpp`、`cpp/napi/native_bridge_context.h/.cpp`、`cpp/napi/api_exports.cpp`、`cpp/types/libentry/Index.d.ts`、`cpp/CMakeLists.txt`、`ets/components/session/RdpSessionPage.ets`、`ets/entryability/EntryAbility.ets`、`ets/rdp/HostWindowTracker.ets` |
 | 设计偏差及原因 | 无功能偏差；真机发现系统“完成”可隐藏键盘但不会让 XComponent blur，因此先补充 DesignReady，再增加 Native keyboard-status 状态和下一次 touch-down 恢复 show；仍无按钮、开关、TextInput 或 IME N-API。ArkTS 只承担 `KeyboardAvoidMode.NONE` 和宿主窗口身份 |
-| 测试命令/结果/证据 | 2026-08-04：Native/ArkTS 测试均退出码0，完整 HAP Native/ArkTS/签名成功，signed HAP 35,458,600 bytes；平板 `5JB0223804000371` 覆盖安装、真实 RDP 登录和首帧成功。XComponent focus 后系统键盘自动显示；点击系统“完成”隐藏后再次触摸 XComponent 自动恢复；三张截图为 `artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-before-done.jpeg`、`muhub-native-ime-after-done.jpeg`、`muhub-native-ime-after-touch.jpeg`。全过程无 `RDP_DISPLAY event=resize_request`、FATAL 或 SIGABRT，键盘仅覆盖远端画面。中文选词、Delete/Enter、物理键盘和20次循环待补 |
+| 测试命令/结果/证据 | 2026-08-04：Native/ArkTS 测试均退出码0，完整 HAP Native/ArkTS/签名成功，signed HAP 35,458,600 bytes；平板 `5JB0223804000371` 覆盖安装、真实 RDP 登录和首帧成功。XComponent focus 后系统键盘自动显示；点击系统“完成”隐藏后再次触摸 XComponent 自动恢复；三张截图为 `artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-before-done.jpeg`、`artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-after-done.jpeg`、`artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-after-touch.jpeg`。全过程无 `RDP_DISPLAY event=resize_request`、FATAL 或 SIGABRT，键盘仅覆盖远端画面。中文选词、Delete/Enter、物理键盘和20次循环待补 |
 | 关联提交 | 设计先行提交待本项提交后以 Git 历史为准；实现提交待回写 |
 
 #### TAB-F-02：远程会话按需虚拟键盘与宿主窗口解耦

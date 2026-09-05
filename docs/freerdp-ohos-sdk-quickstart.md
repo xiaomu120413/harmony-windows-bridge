@@ -1,9 +1,9 @@
 # FreeRDP OHOS SDK Quickstart
 
-更新时间：2026-05-26
+源码接口核对：2026-09-05；示例为接入片段，app_* 回调由调用方实现，不是可直接运行的完整程序。
 
 本文面向希望直接复用 FreeRDP OHOS client/backend 的第三方 HarmonyOS
-Native 调用方。Demo HAP 只是一种接入方式；SDK 接入方应只依赖 FreeRDP
+Native 调用方。本仓库应用只是一种接入方式；SDK 接入方应只依赖 FreeRDP
 public headers、runtime `.so`、自己的 ArkUI/N-API 权限和 Surface 生命周期。
 
 ## 头文件和库
@@ -129,8 +129,8 @@ void stop_session(struct app_state* app)
 HAP 必须在 `module.json5` 声明首版实际启用的权限：
 
 - `ohos.permission.PRINT`
-- `ohos.permission.CUSTOM_SCREEN_RECORDING`
-- `ohos.permission.CONTROL_DEVICE`（API 26 被控端长期键鼠注入；需受限权限审核和 profile ACL）
+- `ohos.permission.CUSTOM_SCREEN_RECORDING`（仅 2in1 xrdp 被控端；纯 FreeRDP 客户端不需要）
+- `ohos.permission.CONTROL_DEVICE`（仅 API 26 的 2in1 被控端长期键鼠注入；纯 FreeRDP 客户端不需要；需受限权限审核和 profile ACL）
 - `ohos.permission.READ_PASTEBOARD`
 - `ohos.permission.MICROPHONE`
 - `ohos.permission.CAMERA`
@@ -185,7 +185,7 @@ static BOOL OnConfigure(freerdp* instance, rdpContext* context,
 `app_attach_rdpgfx_bridge` 是接入方自己的 Surface 绑定函数：它应在
 RDPGFX context 可用时调用 `freerdp_ohos_rdpgfx_bridge_attach`，并在
 Surface 销毁、会话断开或页面退出时 detach/free。不要把 ArkUI、N-API 或
-Demo HAP 私有类型塞进 FreeRDP public API。
+应用私有类型塞进 FreeRDP public API。
 
 ## 默认通道策略
 
