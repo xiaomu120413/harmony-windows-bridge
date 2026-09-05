@@ -388,6 +388,10 @@ UI 层和服务层都要保护。只隐藏入口不能防止冷启动自动调�
 
 实施回写（CHG-20260905-004，Implemented / package verified）：上述三份SVG已统一改为填充轮廓，48×48画布内线宽由3改为4，使用evenodd内孔与圆角外轮廓；无ArkTS逻辑和尺寸修改。XML解析、三模块哈希一致性、ArkTS检查通过，本地SVG预览已查看。Release clean/assembleApp、正式签名及 `arktsCommonAbi=passed`；三个模块 `debug=false`，源模块与App的提取profile均与正式材料一致。最新App为20,011,454 bytes，SHA-256 `331586f0a3c5357e54eda374dd7f857673249073b595de3b2a6ad7ac031802b5`。主输出目录仅留最终App，其余产物可恢复移至本机 `tmp/icon-release-intermediates`。原检测工具及真机视觉尚未复测，不声明锯齿评分已低于90。
 
+替换图案（CHG-20260905-005，DesignReady）：用户不接受004的轮廓方案，改为四个相同圆角实心方块组成的概览图标，移除内孔和短横线。只替换 common/entry/entry_tablet 的 `settings_overview.svg`，保留48×48画布、17vp显示尺寸、主题填色、点击区和业务行为。验收为SVG解析与资源一致性、图形预览、Release正式签名及ABC检查；原质量工具评分仍由同工具复测。
+
+实施回写（CHG-20260905-005，Implemented / package verified）：三份资源已替换为四个15×15、圆角3、间距6的实心方块，XML解析、文件一致性和本地预览通过。Release干净构建、正式签名及ABC门禁通过，三个模块均debug=false，App与源模块的profile确认release且与正式材料哈希一致。最终App为20,010,872 bytes，SHA-256 `8a7aebf3a4850cf1590f6a88d0edf0740a10c63f29ab2748ab4a78a45c35084d`。主输出目录仅留最终App，其余移至本机 `tmp/grid-release-intermediates`；未新增ArkTS逻辑，不重复执行独立策略测试。原质量工具评分仍待复测。
+
 ### 8.3 三套缩放不能混用
 
 | 缩放 | 单位/来源 | 负责层 |
