@@ -1,18 +1,18 @@
 # MuHub HarmonyOS 多设备 HNP 分包架构、修改清单与验收方案
 
-> 状态：DesignReady，尚未实施
+> 当前状态（2026-09-05 核对）：多设备拆分及独立 HNP 进程已实现；旧 tablet 覆盖升级和市场分发仍未闭环，不能视为发布 Verified。
 > 文档版本：1.0
 > 审阅日期：2026-08-06
 > 适用工程：`harmony/app`
 > 本文范围：tablet/2in1 的 HAP/HSP/HNP、权限、独立进程、构建分发和升级验收
 > 非本文范围：重新设计首页、设置页或 RDP 会话交互
 
-## 1. 最终结论
+## 1. 初始方案与当前状态
 
-目标发布结构采用 **一个 bundle、一个 App Pack、两个按设备隔离的 Entry HAP、一个应用内 HSP**：
+当前工程验证结构采用 **一个 bundle、一个 App Pack、两个按设备隔离的 Entry HAP、一个应用内 HSP**：
 
 ```text
-com.muhub.desktop.app
+com.muhub.desktop
 ├─ common.hsp
 │  ├─ 现有首页、设置页、RDP 会话页和响应式布局
 │  ├─ RDP 客户端业务、ArkTS 公共代码和资源
@@ -734,7 +734,9 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 9. README、feature matrix、验证基线和旧单 HAP 专项文档已同步当前事实。
 10. 所有验证记录使用实际命令、退出码、包哈希、设备信息和日志证据；未执行项明确标记未执行。
 
-## 2026-09-05 本地改动归档（CHG-20260905-001）
+## 2026-09-05 本地改动归档（CHG-20260905-001，历史记录）
+
+后续 SCOPE-20260905-001 已删除录屏模式和独立文件传输设计，下列内容仅描述当时恢复的范围，不能作为当前功能入口。现行范围见 [项目范围](project-scope-and-session-controls.md)。
 
 - 状态：Implemented；将原 stash 的打包文件名修正、签名配置与密码解析、跨 HSP 导出混淆门禁、CPU-RECORD-001 录屏配置和 FT-ARCH-001 独立文件传输设计恢复到最新 main。
 - 文件范围：本设计对应的打包/签名脚本与 tools/verify_multidevice_app.ps1；CPU 代码范围见 feature matrix 的 CPU-RECORD-001；独立客户端范围见文件传输设计稿。保留原 stash 全部 19 个文件，额外更新仓库修改记录和本次验证记录。

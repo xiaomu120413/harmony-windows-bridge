@@ -1,6 +1,6 @@
 # Windows RDP environment setup and troubleshooting
 
-This document captures the Windows-side setup and network checks used while testing the FreeRDP control demo.
+This document captures the Windows-side setup and network checks used for the HarmonyOS FreeRDP client.
 
 ## Roles
 

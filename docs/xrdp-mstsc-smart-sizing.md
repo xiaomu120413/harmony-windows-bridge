@@ -1,9 +1,11 @@
 # xrdp MSTSC sizing notes
 
+> Historical sizing notes for Windows MSTSC controlling HarmonyOS. The desktop cap below must be checked against the selected xrdp build; it is not a verified current default. This is separate from the planned local zoom toolbar in the HarmonyOS FreeRDP client. See [current scope](project-scope-and-session-controls.md).
+
 This document is only for the xrdp server path. It covers the case where the
 HarmonyOS display is larger than the local Windows MSTSC window.
 
-## Current decision
+## Historical decision
 
 - Do not rely on a custom Windows launcher script.
 - Users can open the MSTSC UI directly and connect to `127.0.0.1:13390` after

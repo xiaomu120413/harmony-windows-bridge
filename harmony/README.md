@@ -19,7 +19,7 @@ desktop client.
 
 Enabled delivery capabilities include:
 
-- RDP/TLS/NLA, TOFU/Strict certificate policy and app-local storage paths.
+- RDP/TLS/NLA and app-local storage paths. Native supports TOFU/Strict; the current app UI pins TOFU and has no policy selector.
 - `cliprdr` text clipboard with Pasteboard permission requested on demand.
 - `disp` display-control resize support.
 - `geometry` dynamic virtual channel registration. The current HAP does not
@@ -76,7 +76,7 @@ From the repository root, rebuild FreeRDP after changing the submodule or native
 FreeRDP-facing code:
 
 ```powershell
-wsl.exe bash -lc "cd /mnt/c/path/to/demo-prelaunch && export OHOS_NDK_HOME=/opt/ohos/sdk-6.1.0.830/command-line-tools/sdk/default/openharmony/native && ./harmony/scripts/wsl/build-freerdp-ohos.sh"
+wsl.exe bash -lc "cd /mnt/c/path/to/your-checkout && export OHOS_NDK_HOME=/opt/ohos/sdk-6.1.0.830/command-line-tools/sdk/default/openharmony/native && ./harmony/scripts/wsl/build-freerdp-ohos.sh"
 ```
 
 Sync the runtime libraries into the HAP project:

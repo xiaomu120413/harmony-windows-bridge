@@ -1,5 +1,22 @@
 # MuHub HarmonyOS 单包平板适配架构、修改清单与验收方案
 
+## 当前实现导航（2026-09-05 核对）
+
+本文保留早期单 HAP 设计和按日期积累的验收台账。下文的 entry 路径、libentry.so、ArkTS XComponentController 和单包方案若与本节不同，属于迁移前记录；不能直接照旧表执行。后续当前包结构以多设备方案为准。
+
+| 项目 | 当前实现 |
+| --- | --- |
+| 共享页面和客户端代码 | `harmony/app/common/src/main/ets/` |
+| 客户端 Native 入口 | `rdp/NativeRdpGateway.ets` 唯一导入 `librdpclient.so`；共享桥不导出 xrdp 控制 |
+| 会话承载 | `components/session/RdpSessionPage.ets` 通过 NodeContent/ContentSlot 挂载 Native XComponent |
+| XComponent 创建与生命周期 | `harmony/app/common/src/main/cpp/surface/xcomponent_native_host.cpp`；不再要求 ArkTS 创建 XComponentController |
+| 被控端 | 2in1 Entry 的 `libxrdpcontrol.so` 启动独立 HNP 进程；tablet 不包含被控端 |
+| 当前可执行检查 | `tools/run_tablet_arkts_tests.ps1`、`tools/run_tablet_native_tests.ps1`、`tools/verify_xrdp_process_control.ps1`、`tools/verify_multidevice_app.ps1` |
+
+第 14 节是早期目标门禁，其中 `tools/check_tablet_architecture.ps1` 尚未在仓库实现；不能将规划中的命令当作已存在工具。当前 ArkTS 检查还存在已记录的资源换行差异阻断，源码检查与真机验收状态须分别记录。
+
+相关说明：[多设备打包方案](harmonyos-multidevice-hnp-packaging-plan.md)、[验证基线](freerdp-ohos-validation-baseline.md)。
+
 > **2026-08-06 架构决策更新：** 本文关于“单 HAP、单 Entry、不使用 HSP/HNP”的发布约束已被
 > [多设备 HNP 分包架构、修改清单与验收方案](harmonyos-multidevice-hnp-packaging-plan.md)替代。
 > 原因是产品已确认 2in1 的 XRDP 需要 HNP 独立进程，同时 tablet 产品拒绝安装 HNP，且 PC

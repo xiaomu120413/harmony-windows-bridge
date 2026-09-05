@@ -1,5 +1,7 @@
 # 桌面设置页交互规格（当前能力版）
 
+> 本文描述 HarmonyOS 应用的桌面布局，不是已删除的 Web Demo。页面路径已按 common HSP 更新；分阶段实施记录保留，后文较新的日期记录优先于早期布局描述。
+
 本文档对应 `docs/settings-desktop-current-capability.svg`，只覆盖当前代码里已经具备或已经有回调入口的能力，不新增日志导出、更新中心、高级诊断、安全策略等未实现功能。
 
 ## 0. 当前代码功能对应关系
@@ -10,13 +12,13 @@
 
 | 设计模块 | 当前文件 | 当前职责 | 改造方式 |
 | --- | --- | --- | --- |
-| 主页设置入口 | `harmony/app/entry/src/main/ets/pages/Index.ets` | 展示连接页、设置按钮、维护全局状态 | 只调整设置按钮视觉和打开设置前的刷新逻辑 |
-| 设置容器 / 导航 | `harmony/app/entry/src/main/ets/components/SettingsPage.ets` | 当前用 `pageName` 在三个设置页之间切换 | 桌面版改成左侧导航 + 右侧内容，继续复用 `pageName` |
-| 基础设置 | `harmony/app/entry/src/main/ets/components/settings/BasicSettingsPage.ets` | 外观模式、本机网络 IP | 桌面版只重排布局，不改能力 |
-| 远控设置 | `harmony/app/entry/src/main/ets/components/settings/RemoteControlSettingsPage.ets` | xrdp、录屏权限、注入权限、验证码、远程文件目录 | 桌面版使用五个功能面板 |
-| 项目帮助 | `harmony/app/entry/src/main/ets/components/settings/ProjectHelpPage.ets` | 关于项目、使用说明、排查说明 | 桌面版改成分组知识区 |
-| 公共 UI | `harmony/app/entry/src/main/ets/components/settings/SettingsUi.ets` | Header、ListItem、Card、颜色、阴影 | 增加桌面行、状态 chip、状态面板组件 |
-| 文案常量 | `harmony/app/entry/src/main/ets/components/settings/SettingsConstants.ets` | 当前设置页所有中文文案 | 继续复用，缺少的状态短文案再补 |
+| 主页设置入口 | `harmony/app/common/src/main/ets/pages/Index.ets` | 展示连接页、设置按钮、维护全局状态 | 只调整设置按钮视觉和打开设置前的刷新逻辑 |
+| 设置容器 / 导航 | `harmony/app/common/src/main/ets/components/SettingsPage.ets` | 当前用 `pageName` 在三个设置页之间切换 | 桌面版改成左侧导航 + 右侧内容，继续复用 `pageName` |
+| 基础设置 | `harmony/app/common/src/main/ets/components/settings/BasicSettingsPage.ets` | 外观模式、本机网络 IP | 桌面版只重排布局，不改能力 |
+| 远控设置 | `harmony/app/common/src/main/ets/components/settings/RemoteControlSettingsPage.ets` | xrdp、录屏权限、注入权限、验证码、远程文件目录 | 桌面版使用五个功能面板 |
+| 项目帮助 | `harmony/app/common/src/main/ets/components/settings/ProjectHelpPage.ets` | 关于项目、使用说明、排查说明 | 桌面版改成分组知识区 |
+| 公共 UI | `harmony/app/common/src/main/ets/components/settings/SettingsUi.ets` | Header、ListItem、Card、颜色、阴影 | 增加桌面行、状态 chip、状态面板组件 |
+| 文案常量 | `harmony/app/common/src/main/ets/components/settings/SettingsConstants.ets` | 当前设置页所有中文文案 | 继续复用，缺少的状态短文案再补 |
 
 ### 当前全局状态对应
 
