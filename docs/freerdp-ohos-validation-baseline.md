@@ -195,4 +195,4 @@ T00 只建立验收基线，不改变业务逻辑。完成判定：
 
 ### DOC-AUDIT-20260905-001 最新复核
 
-2026-09-05：Native与xrdp进程策略检查通过；统一8个资源文件纯换行差异后ArkTS测试通过（无Git内容差异）。build_hap.bat app 完整构建、签名及包校验通过，App Pack 39,890,794 bytes，SHA-256 c0f7fbdae23d8cea28afa09c53217f59efaa5be6217782270fb875e0806cf72d。新包未安装到设备，端到端与市场验收仍待执行。外链/截图/技术声明的逐项状态见 [复核报告](audit/2026-09-05-document-verification.md)。
+2026-09-05：Native与xrdp进程策略检查通过；统一8个资源文件纯换行差异后ArkTS测试通过（无Git内容差异）。build_hap.bat app 完整构建、签名及包校验通过，App Pack 39,890,794 bytes，SHA-256 c0f7fbdae23d8cea28afa09c53217f59efaa5be6217782270fb875e0806cf72d。本轮自动复核未安装新包；用户随后确认真机远程会话整体验收通过（CHG-20260905-002），未指定对应包哈希。市场验收仍待执行。外链/截图/技术声明的逐项状态见 [复核报告](audit/2026-09-05-document-verification.md)。
