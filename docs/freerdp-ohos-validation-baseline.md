@@ -1,6 +1,6 @@
 # FreeRDP OHOS Validation Baseline
 
-日期：2026-05-26
+当前操作说明核对：2026-09-05；历史验收记录保留原日期。
 
 本文档是当前 FreeRDP OHOS 构建和真机回归基线。后续每个下沉或可接入化任务完成后，都应基于这里的命令和真机清单做最小回归，并在任务说明中写明未覆盖项。
 
@@ -8,20 +8,22 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 主仓库分支 | `codex/prelaunch-main` |
-| 主仓库基线提交 | `b449ff223262c7605dc183bbb78cf48ac1a2b113` |
+| 主仓库分支 | `main` |
+| 主仓库基线提交 | 验收时记录 `git rev-parse HEAD` 与工作区差异，避免将不同构建混为同一基线 |
 | FreeRDP 子模块路径 | `harmony/third_party/FreeRDP` |
-| FreeRDP 子模块提交 | `d00af99d5d6abddc9e6daf46a738a18ee656e949` |
-| FreeRDP 标识 | `3.26.0-135-gd00af99d5` |
+| FreeRDP 子模块提交 | `0c242c6e2e989e4d0a2cbb183585b7167ff557fd` |
+| FreeRDP 标识 | `3.26.0-171-g0c242c6e2` |
 | 运行库输出目录 | `harmony/out/ohos-arm64/runtime-libs` |
-| HAP 运行库目录 | `harmony/app/entry/libs/arm64-v8a` |
-| HAP 目标产物 | `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap` |
+| HAP 运行库目录 | `harmony/app/common/libs/arm64-v8a` |
+| 2in1 Entry 目标产物 | `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap` |
+
+子模块标识为 2026-09-05 源码快照，不代表当前安装包使用该版本；每次验收必须重新记录主仓库及两个子模块 SHA。
 
 基线命令：
 
 ```powershell
 git rev-parse HEAD
-git submodule status harmony/third_party/FreeRDP
+git submodule status
 git -C harmony/third_party/FreeRDP rev-parse HEAD
 ```
 
@@ -31,7 +33,7 @@ git -C harmony/third_party/FreeRDP rev-parse HEAD
 
 ```powershell
 git status --short --branch
-git submodule status harmony/third_party/FreeRDP
+git submodule status
 ```
 
 期望：
@@ -64,7 +66,7 @@ harmony/scripts/wsl/build-freerdp-ohos.sh
 
 - `harmony/out/ohos-arm64/sysroot` 包含 FreeRDP/WinPR 头文件和库。
 - `harmony/out/ohos-arm64/runtime-libs` 包含 HAP 运行所需 `.so`。
-- `harmony/out/ohos-arm64/probe/libfreerdp_ohos_probe.so` 存在。
+- probe 属于开发验证产物，不进入交付包；包校验会拒绝 probe 文件。
 
 ## Runtime 同步检查
 
@@ -76,11 +78,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harmony\scripts\windows\sy
 
 输出期望：
 
-- `harmony/app/entry/libs/arm64-v8a` 中至少包含：
+- `harmony/app/common/libs/arm64-v8a` 中至少包含：
   - `libfreerdp-client3.so`
   - `libfreerdp3.so`
   - `libwinpr3.so`
-  - `libfreerdp_ohos_probe.so`
   - OpenSSL、zlib、cJSON、uriparser、OpenH264、FFmpeg 运行库
 - `ossl-modules/legacy.so` 在源目录存在时被同步。
 - 同步失败必须阻断后续 HAP 构建，不能用旧运行库继续验收。
@@ -90,20 +91,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\harmony\scripts\windows\sy
 本地兜底命令：
 
 ```powershell
-.\harmony\app\build_hap.bat
+.\harmony\app\build_hap.bat app
 ```
 
-常规开发可使用 HarmonyOS MCP 构建：
-
-```text
-build_app projectPath=harmony/app
-```
+单设备构建可显式使用 `build_hap.bat tablet` 或 `build_hap.bat 2in1`；完整交付以 App Pack 及包校验结果为准。
 
 输出期望：
 
-- 产物为 `entry-default-signed.hap`。
+- 产物包括 `app-default-signed.app`、`common-default-signed.hsp` 与两个设备 Entry HAP；完整路径见根 README。
 - 构建日志中没有回退到 mock FreeRDP runtime 的提示。
-- HAP 中包含当前同步的 `libentry.so` 和 FreeRDP runtime `.so`。
+- `common.hsp` 包含 `librdpclient.so` 和 FreeRDP runtime；2in1 Entry 独占 `libxrdpcontrol.so` 和 xrdp HNP；tablet 不携带被控端。
 
 ### release ArkTS 跨模块 ABI 检查
 
@@ -128,15 +125,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_a
 
 ### 自动签名材料检查
 
-当前 `harmony/app/build-profile.json5` 使用 DevEco/Hvigor 加密后的 `storePassword` 和 `keyPassword`。Hvigor 在执行 `SignHap` 前会通过 `DecipherUtil` 读取 `tools/hapsigner/material` 中的本地解密材料；该目录缺失或内容不完整时，构建会在密码解密阶段报 `ENOENT ... tools/hapsigner/material`，这不表示 P12、证书、profile、key alias 或包名错误。
+当前 `harmony/app/build-profile.json5` 使用 `tools/app/muhub.p12`、`muhub_debug.cer`、`muhub_debugDebug.p7b` 和 `muhub` alias。配置含本机绝对路径，换机器后需核对路径，不能照搬旧工作目录。
 
-构建前应确认以下受版本管理的材料均存在：
+打包与 HNP 重签脚本通过 `signing-passwords.ps1` 解析密码：独立的 store/key 参数或对应环境变量优先，然后使用通用签名密码；缺项才从 build-profile 中的加密值及 `tools/app/material` 读取。具体优先级以该脚本为准。
 
-- `tools/hapsigner/material/ac/salt`
-- `tools/hapsigner/material/ce/work`
-- `tools/hapsigner/material/fd/0/part0`
-- `tools/hapsigner/material/fd/1/part1`
-- `tools/hapsigner/material/fd/2/part2`
+本地自动解密依赖 `material/ac`、`material/ce` 和 `material/fd/*` 的完整配套文件，以及 DevEco Node；不要打印明文密码。旧 `tools/hapsigner` 属于历史 OpenHarmony 签名方案，不是当前打包脚本默认目录。
 
 自动签名验收要求：
 
@@ -148,9 +141,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_a
    `xrdp_0.1.0` 等版本号。`/data/service/hnp` 属于公共 HNP 挂载点；也不得硬编码宿主机用户号和
    bundle 物理安装目录。
 
-`SIGN-A-01` 验证记录（2026-08-04）：
+`SIGN-A-01` 历史验证记录（2026-08-04，旧 tools/hapsigner 签名方案，不代表当前材料已复验）：
 
-- 恢复上述5个解密材料后，`hvigorw --no-daemon assembleHap --mode module -p product=default -p module=entry@default` 完成 `SignHap`，结果为 `BUILD SUCCESSFUL`。
+- 恢复当时 tools/hapsigner/material 的5个解密材料后，`hvigorw --no-daemon assembleHap --mode module -p product=default -p module=entry@default` 完成 `SignHap`，结果为 `BUILD SUCCESSFUL`。
 - 使用 `tools/hapsigner` 下的 OpenHarmony P12、证书、debug profile 和 `openharmony application release` alias 对注入 xrdp HNP 后的 HAP 重签成功；最终产物为 `harmony/app/entry/build/default/outputs/default/entry-default-signed.hap`，大小 `41782896` 字节。
 - 设备 `3QC0124C11000711` 执行 `hdc install -r` 返回 `install bundle successfully`，系统验签及 HNP 解包通过。
 
@@ -175,7 +168,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify_multidevice_a
 15. 验证手写笔：轻压、重压、X/Y 倾斜、橡皮、抬笔、取消、失焦和断连；笔输入不得同时触发 finger Tap/Pan，RDPEI 不可用时只回退一次基础指针。
 16. 验证多显示器：外接屏连接/移除、主屏和负坐标拓扑、不同方向；Windows 显示数量与拓扑同步，组合桌面各屏四角均可点击，回到单屏后 surface resize 恢复。
 
-## 本轮 T00 判定
+## 历史 T00 判定（初始基线任务）
 
 T00 只建立验收基线，不改变业务逻辑。完成判定：
 
@@ -185,11 +178,16 @@ T00 只建立验收基线，不改变业务逻辑。完成判定：
 
 ## 实施台账
 
-当前应用使用 API 26 compile/target SDK，并保持 API 22 compatible SDK。发布前除既有单 HAP、
+当前应用使用 API 26 compile/target SDK，并保持 API 22 compatible SDK。发布前除设备 HAP/HSP、
 签名和设备矩阵外，还需验证 `CONTROL_DEVICE` 未授权、设置页授权、授权后重启保持，以及
 旧 injection dialog fallback；详见 `TAB-E-02`。本地调试 profile 已同步该受限权限 ACL，
 否则真机安装会返回 9568289；商店包必须使用 AGC 审核通过的正式 profile。
 
 | Change ID | 状态 | 修改范围 | 验收 ID | 验收条件 |
 | --- | --- | --- | --- | --- |
-| `SIGN-D-01` | `Verified` | 已恢复 `tools/hapsigner/material/**` 中5个已跟踪的自动签名解密材料；未修改业务代码、证书、P12、profile 或包名 | `SIGN-A-01` | `SignHap`、HNP 重签及真机覆盖安装均通过；日志不再出现 `DecipherUtil` 读取 `material` 失败 |
+| `SIGN-D-01` | 历史 Verified（旧签名方案） | 已恢复 `tools/hapsigner/material/**` 中5个已跟踪的自动签名解密材料；未修改业务代码、证书、P12、profile 或包名 | `SIGN-A-01` | `SignHap`、HNP 重签及真机覆盖安装均通过；日志不再出现 `DecipherUtil` 读取 `material` 失败 |
+
+
+### 2026-09-05 构建范围收敛（SCOPE-20260905-001）
+
+移除临时 CPU-only 录屏编译选项和强制 GDI 分支，构建恢复既有 GPU 渲染及正常 GDI fallback。桌面 Web/Node Demo 与独立文件传输设计已删除，HarmonyOS RDP 下载目录重定向保留。Native 回归及 diff 检查通过；本次未重建 HAP 或重新验证真机图形协商。详细记录见 project-scope-and-session-controls.md。

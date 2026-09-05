@@ -1,14 +1,16 @@
 # 木枢远程桌面第三方开源与构建来源清单
 
+> 本页列出 FreeRDP 客户端运行库。2in1 的 xrdp HNP 应另外核对其打包内容和第三方材料；完整交付不能仅以 common/libs 清单判断。probe 不进入发布包。
+
 更新日期：2026-05-23
 
-本文档用于鸿蒙上架/商用交付前的第三方开源材料准备。发布包中的动态库以 `harmony/app/entry/libs/arm64-v8a` 为准，构建来源以 `harmony/scripts/wsl/build-freerdp-ohos.sh` 和 `harmony/out/ohos-arm64/manifest.txt` 为准。
+本文档用于鸿蒙上架/商用交付前的第三方开源材料准备。发布包中的动态库以 `harmony/app/common/libs/arm64-v8a` 为准，构建来源以 `harmony/scripts/wsl/build-freerdp-ohos.sh` 和 `harmony/out/ohos-arm64/manifest.txt` 为准。
 
 ## 发布包内第三方组件
 
 | 组件 | 版本/提交 | 许可证 | 发布包文件 | 来源与构建 |
 | --- | --- | --- | --- | --- |
-| FreeRDP / WinPR | 当前源码树 `harmony/third_party/FreeRDP`，以主仓库 submodule 指针和 `harmony/out/ohos-arm64/manifest.txt` 为准 | Apache-2.0 | `libfreerdp3.so`, `libfreerdp-client3.so`, `libwinpr3.so`, `libfreerdp_ohos_probe.so` | 本仓库子模块源码，脚本 `harmony/scripts/wsl/build-freerdp-ohos.sh` 交叉编译 |
+| FreeRDP / WinPR | 当前源码树 `harmony/third_party/FreeRDP`，以主仓库 submodule 指针和 `harmony/out/ohos-arm64/manifest.txt` 为准 | Apache-2.0 | `libfreerdp3.so`, `libfreerdp-client3.so`, `libwinpr3.so` | 本仓库子模块源码，脚本 `harmony/scripts/wsl/build-freerdp-ohos.sh` 交叉编译 |
 | OpenSSL | 3.3.2 | Apache-2.0 | `libssl.so.3`, `libcrypto.so.3`, `ossl-modules/legacy.so` | 脚本从 OpenSSL 官方 source tarball 或 GitHub release 下载并交叉编译 |
 | FFmpeg | 6.1.1 | 当前脚本未开启 `--enable-gpl` / `--enable-nonfree`，按 LGPL 组件交付；最终以 `ffmpeg-configure.log` 输出为准 | `libavcodec.so.60`, `libavdevice.so.60`, `libavfilter.so.9`, `libavformat.so.60`, `libavutil.so.58`, `libswresample.so.4`, `libswscale.so.7` | 脚本从 `ffmpeg.org/releases/ffmpeg-6.1.1.tar.xz` 下载；配置为 shared、no programs、no docs、no debug、enable zlib |
 | OpenH264 | 2.4.1 | BSD-2-Clause | `libopenh264.so.7` | 脚本从 Cisco OpenH264 GitHub tag `v2.4.1` 下载并交叉编译 |
@@ -36,7 +38,7 @@
 ## 验收点
 
 - `harmony/out/ohos-arm64/manifest.txt` 中 `with_smartcard=OFF`、`with_pcsc=OFF`、`with_smartcard_pcsc=OFF`，发布包中不存在 `smartcard`/`tsmf` 相关动态库。
-- `harmony/app/entry/libs/arm64-v8a` 中每个第三方 `.so` 都能在上表找到组件、版本、许可证和来源。
+- `harmony/app/common/libs/arm64-v8a` 中每个第三方 `.so` 都能在上表找到组件、版本、许可证和来源。
 - FFmpeg 构建日志中不存在 `--enable-gpl`、`--enable-nonfree`，并保留 `ffmpeg-configure.log` 供审核。
 - NOTICE、license 文本、源码来源说明随最终交付包一起归档。
 - 法务/合规对 FFmpeg LGPL 动态链接、OpenH264 专利/分发、OpenSSL 加密合规完成签字确认。

@@ -1,8 +1,12 @@
 # FreeRDP OHOS Feature Matrix
 
-更新时间：2026-08-05
+文档核对：2026-09-05；各项真机结果以对应验收日期和证据为准。
 
-## 结论
+## 当前边界
+
+当前源码默认保留 RDPGFX/H.264/GPU 路径与正常 GDI fallback。临时录屏编译模式已移除；此处不代表清理后的 HAP 已重新构建或真机验收。基础连接、多显示器、手写笔和升级分发仍应按下表逐项验收。
+
+## 构建与功能记录
 
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
@@ -31,7 +35,7 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 - `rdpsnd/audin` 已通过 OHAudio 后端和真机回归覆盖音频焦点、路由、采集权限、缓冲生命周期等核心场景；发布前保留抽样复测。
 - `location` 已接 OHOS LocationKit native API；ETS/HAP 层只负责定位权限申请，不负责采样和 RDP PDU 语义。
 
-所以当前状态是“首版交付需要的协议、OHOS 运行时后端和真机覆盖项已经进包并完成回归记录”。smartcard source/channel/PCSC 和 TSMF 不进入首版包。
+协议可编译、平台后端已接入和真机验收通过是不同状态；不得将下表的待验项目视为已交付验证。smartcard source/channel/PCSC 和 TSMF 不进入首版包。
 
 ## 编译矩阵
 
@@ -83,25 +87,17 @@ FreeRDP 的 channel 大多是协议层 C 代码，编译时只需要 C/C++ 编�
 | `rdpgfx-h264` 到 `rdpgfx`/`gdi` | 保留 | 图形协商、codec、surface 或 compositor 路径失败 | 只在图形失败时重试下一档 | 密码、证书、TCP 失败不能触发图形 fallback |
 | AVC444 GPU compositor 到 FreeRDP native GDI | 保留 | 单条 AVC444 command 不可消费或 Surface 不可用 | 该 command 交回 native GDI/RGB 输出 | 不允许 GPU/GDI 双写、旧帧或黑屏 |
 | `disp` resize 失败到固定分辨率 | 保留 | 服务端不支持 display-control 或 caps 未就绪 | 保持当前桌面尺寸并记录原因 | 日志说明未发送、待重试或服务端不支持 |
-
-`disp` 是客户端主导的 RDP 会话布局协议：本地窗口、方向或本地显示拓扑变化会请求
-Windows 调整虚拟桌面。Windows 主机物理显示器的分辨率/缩放变化不属于该通道的
-上报范围；需要此能力时必须另行设计 Windows 侧代理或自定义虚拟通道。
 | Pasteboard 权限拒绝到剪贴板操作失败 | 保留 | 用户拒绝或权限请求超时 | 本次剪贴板读写失败，会话继续 | 不崩溃，不在连接开始弹权限 |
 | 麦克风权限拒绝到 `audin` open 失败 | 保留 | 用户拒绝或权限请求超时 | 采集通道失败，会话和播放继续 | 日志说明拒绝；不影响基础 RDP |
 | 地理位置权限拒绝到 location sample 失败 | 保留 | 用户拒绝、定位服务关闭或权限请求超时 | 本次 location sample 不发送，会话继续 | 日志说明拒绝或采样失败；不影响基础 RDP |
 | OHAudio 播放失败到无声会话 | 暂保留 | 播放后端初始化或写入失败 | 会话继续，记录 rdpsnd/OHAudio diagnostics | 不因播放失败断开桌面 |
 | Download drive 准备失败到不注册 drive | 保留 | 下载控件授权失败、目录获取/创建失败或系统不支持 | 不请求 `drive` channel，基础 RDP 会话继续 | 日志说明失败原因；不回退到任意目录或全盘映射 |
 | 打印作业提交失败 | 保留 | PrintKit 初始化、查询、连接或 `StartPrintJob` 失败 | 当前打印作业失败，会话继续 | 日志说明失败阶段；不影响基础 RDP |
-
-## CPU-only 录屏构建
-
-| Change ID | 状态 | 目标与边界 | 文件级修改 | 验收 ID |
-| --- | --- | --- | --- | --- |
-| `CPU-RECORD-001` | `Implemented` | 提供仅用于录屏/性能对照的 Native 编译开关。开启时连接固定使用 `gdi`，关闭 RDPGFX/H.264、OH_AVCodec 和 AVC420/AVC444 GPU compositor；RGBA 最终呈现直接走 NativeWindow CPU painter，不初始化 EGL/GLES。单屏仍复用现有完整 monitor layout 与 `disp` 状态机，不改变商用默认能力定义。 | `harmony/app/common/build-profile.json5`、`harmony/app/common/src/main/cpp/CMakeLists.txt`、`napi/napi_exports.cpp`、`surface/surface_bridge.cpp` | `AC-CPU-ONLY`：源码编译开关同时约束协议图形模式和最终呈现路径；Native 编译通过；真机日志不得出现 AVC GPU compositor/GLES renderer 初始化，连接与单屏 resize 正常。 |
-
-实现/验证证据（2026-09-03）：当前 App profile 以 `-DRDP_BRIDGE_CPU_ONLY=ON` 开启录屏构建；CMake 配置输出 `RDP bridge CPU-only recording mode enabled`。直接执行生成目录的 Ninja `rdpclient` target，51 个 Native 编译/链接步骤通过；`tools/run_tablet_native_tests.ps1` 与 `tools/run_tablet_arkts_tests.ps1` 通过。将 Node 20.18.0 放到 Hvigor 的 `PATH` 前部后，`build_hap.bat 2in1` 和 `build_hap.bat app` 均成功，2in1 HAP 为 5,390,543 bytes；设备 `3QC0124C11000711` 按 `common-default-signed.hsp`、`entry-default-signed.hap` 顺序安装成功，`com.muhub.desktop` 1.0.2 冷启动 PID 9845。尚未建立真实 RDP 会话核对 CPU-only 日志与录屏表现，因此状态保持 `Implemented`。
 | FUSE/CUPS/smartcard/TSMF fallback | 不保留 | 依赖缺失、服务未闭环或 deprecated | 从交付构建裁剪或标为后续专项 | 包内不出现对应 addin/runtime 路径 |
+
+`disp` 是客户端主导的 RDP 会话布局协议：本地窗口、方向或本地显示拓扑变化会请求
+Windows 调整虚拟桌面。Windows 主机物理显示器的分辨率/缩放变化不属于该通道的
+上报范围；需要此能力时必须另行设计 Windows 侧代理或自定义虚拟通道。
 
 ## 验收基线
 

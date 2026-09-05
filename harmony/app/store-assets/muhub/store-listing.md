@@ -1,5 +1,7 @@
 # MuHub Store Listing
 
+> 发布文案草稿，尚未按最终交付包重新验收。2in1 支持被控端，tablet 仅支持客户端；图片等内容协同应按具体方向和实际验收结果确认，不能将此文案当作能力矩阵。上架前还需完成升级与市场分发验证。
+
 ## 简体中文
 
 应用名称：木枢
@@ -16,8 +18,8 @@ Bundle Name：com.muhub.desktop
 
 主要能力：
 
-1. Windows 远程控制 HarmonyOS 设备
-支持使用 Windows 自带远程桌面连接工具访问 HarmonyOS 设备画面，完成鼠标、键盘、滚轮等基础操作。
+1. Windows 远程控制 HarmonyOS 2in1 设备
+支持使用 Windows 自带远程桌面连接工具访问 HarmonyOS 2in1 设备画面，完成鼠标、键盘、滚轮等基础操作。
 
 2. HarmonyOS 连接 Windows 桌面
 支持从 HarmonyOS 设备发起远程桌面连接，查看并操作 Windows 桌面。
@@ -53,11 +55,11 @@ Description:
 
 MuHub is an interconnectivity tool for HarmonyOS and Windows. It helps users access remote desktops, control devices with keyboard and mouse, and move common content such as text and images across devices on a trusted local network.
 
-MuHub supports Windows Remote Desktop access to a HarmonyOS device and HarmonyOS-side remote desktop access to Windows. It is designed for local office workflows, development debugging, device demonstrations, and daily cross-device collaboration.
+MuHub supports Windows Remote Desktop access to a HarmonyOS 2in1 device and HarmonyOS-side remote desktop access to Windows. It is designed for local office workflows, development debugging, device demonstrations, and daily cross-device collaboration.
 
 Key capabilities:
 
-1. Remote control from Windows to HarmonyOS with the built-in Windows Remote Desktop client.
+1. Remote control from Windows to HarmonyOS 2in1 with the built-in Windows Remote Desktop client.
 2. Remote desktop access from HarmonyOS to Windows.
 3. Keyboard, mouse, wheel, clipboard, image, and content collaboration features.
 4. Local-network oriented connection flow with user-controlled permissions.

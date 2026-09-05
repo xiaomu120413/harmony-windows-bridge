@@ -1,5 +1,7 @@
 # Settings remote-control feedback QA
 
+> Historical visual QA for the 2026-08-07 build. Screenshot paths and pass results describe that local run; they are not a verification of the current working tree. Some artifacts are local/ignored and may not exist in a fresh clone.
+
 ## Source visual truth
 
 - Selected direction: `C:\Users\mu\Desktop\code\demo\artifacts\design-reference\settings-controlled-service-v2\selected-option-2.png`.

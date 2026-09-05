@@ -1,5 +1,7 @@
 # 桌面设置页实施验收清单
 
+> 本文描述 HarmonyOS 应用的桌面布局，不是已删除的 Web Demo。页面路径已按 common HSP 更新；分阶段实施记录保留，后文较新的日期记录优先于早期布局描述。
+
 本文档用于实施 `docs/settings-desktop-current-capability.svg` 和 `docs/settings-desktop-current-interactions.md` 对应的当前能力版桌面设置页。目标是明确每个文件的修改点、验收点和风险点，避免开发过程中引入当前没有的能力。
 
 ## 1. 实施范围
@@ -29,7 +31,7 @@
 
 ## 2. 文件修改点
 
-### `harmony/app/entry/src/main/ets/pages/Index.ets`
+### `harmony/app/common/src/main/ets/pages/Index.ets`
 
 修改点：
 
@@ -62,7 +64,7 @@
 - 设置按钮缩小后触控/点击区域不足。按钮建议不小于 `40vp x 40vp`。
 - 状态点颜色和深色模式对比度不足。
 
-### `harmony/app/entry/src/main/ets/components/SettingsPage.ets`
+### `harmony/app/common/src/main/ets/components/SettingsPage.ets`
 
 修改点：
 
@@ -105,7 +107,7 @@
 - `appearanceMode` 更新后概览页没有同步。
 - 左侧导航长文案在小窗口溢出。
 
-### `harmony/app/entry/src/main/ets/components/settings/SettingsUi.ets`
+### `harmony/app/common/src/main/ets/components/settings/SettingsUi.ets`
 
 修改点：
 
@@ -137,7 +139,7 @@
 - 现有 `SettingsListItem` hover 上移过大，桌面端可能显得不稳。
 - 深色模式下浅色状态 chip 对比不够。
 
-### `harmony/app/entry/src/main/ets/components/settings/RemoteControlSettingsPage.ets`
+### `harmony/app/common/src/main/ets/components/settings/RemoteControlSettingsPage.ets`
 
 修改点：
 
@@ -178,7 +180,7 @@
 - `xrdpServerStatusText()` 当前有乱码风险或拼接文案不规范，需要检查最终中文显示。
 - 门禁开启但验证码尚未初始化时，应调用现有 `ensureRemoteAccessCode()` 链路，不要在 UI 层另造验证码。
 
-### `harmony/app/entry/src/main/ets/components/settings/BasicSettingsPage.ets`
+### `harmony/app/common/src/main/ets/components/settings/BasicSettingsPage.ets`
 
 修改点：
 
@@ -211,7 +213,7 @@
 - IP 地址过长时溢出。
 - 多 IP 地址列表在横向面板内高度不足。
 
-### `harmony/app/entry/src/main/ets/components/settings/ProjectHelpPage.ets`
+### `harmony/app/common/src/main/ets/components/settings/ProjectHelpPage.ets`
 
 修改点：
 
@@ -238,7 +240,7 @@
 - 帮助正文较长，桌面分栏后可能截断过度。
 - 链接在窄窗口中可能换行影响布局。
 
-### `harmony/app/entry/src/main/ets/components/settings/SettingsConstants.ets`
+### `harmony/app/common/src/main/ets/components/settings/SettingsConstants.ets`
 
 修改点：
 

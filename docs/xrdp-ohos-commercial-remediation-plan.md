@@ -1,5 +1,7 @@
 # xrdp OHOS 商用分支整体整改文档
 
+> 历史阶段方案：早期内嵌 xrdp、dummy backend、目录与文件行数描述不代表当前实现。当前 2in1 使用 libxrdpcontrol 启动独立 HNP 子进程，tablet 无被控端；现行包模型和验收状态见 [多设备打包方案](harmonyos-multidevice-hnp-packaging-plan.md)。后续带日期的记录仅代表对应阶段验证。
+
 日期：2026-05-21
 
 本文基于近期对 xrdp OHOS 适配代码、运行日志、目录边界、app native 与

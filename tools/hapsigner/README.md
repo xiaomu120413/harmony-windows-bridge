@@ -1,21 +1,7 @@
-# HAP signing material
+# Legacy OpenHarmony signing material
 
-This directory keeps the signing material consumed by the HarmonyOS project build.
+This directory retains the earlier OpenHarmony signing profile and its historical debug material. It is not the current application signing default.
 
-Signing is configured in `harmony/app/build-profile.json5` and should run through the HarmonyOS MCP `build_app` flow. Do not use a standalone signing script.
+Current builds use `tools/app` as configured in `harmony/app/build-profile.json5`. Build through `harmony/app/build_hap.bat`; this flow includes HNP repacking and signing when required. See the [current signing baseline](../../docs/freerdp-ohos-validation-baseline.md).
 
-Required files:
-
-- `OpenHarmony.p12`
-- `OpenHarmonyApplication.pem`
-- `OpenHarmonyProfileDebug.pem`
-- `UnsgnedDebugProfileTemplate.json`
-- `ohos_provision_debug.p7b`
-- `material/`
-
-Generated HAPs and verification output remain local under `output/` and are ignored by git.
-
-When a restricted permission changes, update both ACL arrays in
-`UnsgnedDebugProfileTemplate.json`, regenerate `ohos_provision_debug.p7b` with the bundled
-HarmonyOS `hap-sign-tool.jar`, and then rebuild through the normal project build flow. The local
-debug ACL is only for device validation and does not replace AGC review or a production profile.
+The files here are retained for historical reproducibility. Do not substitute them for the current application's certificate/profile or infer current ACL approval from them. Generated output under `output/` remains ignored by Git.

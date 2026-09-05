@@ -9,19 +9,19 @@ Windows mstsc
   -> Windows 本机 127.0.0.1:13390
   -> hdc fport
   -> HarmonyOS 设备 127.0.0.1:3390 / 0.0.0.0:3390
-  -> HAP 内嵌 xrdp server
+  -> 2in1 Entry 启动的独立 xrdp HNP 子进程
   -> xrdp OHOS backend
 ```
 
-当前建议先用这条 HDC 转发链路验证能力。这样不依赖 HarmonyOS 设备和 Windows 是否处在同一可直连网段，也避免设备侧端口暴露到局域网。
+当前建议先用这条 HDC 转发链路验证能力。这样不依赖 HarmonyOS 设备和 Windows 是否处在同一可直连网段，但 HDC 转发不会自动改变 xrdp 的监听地址，局域网可达性仍取决于设备监听配置和网络。
 
 ## 前置条件
 
 - Windows 上可以执行 `hdc`，并且能看到 HarmonyOS 设备。
-- HAP 已安装并启动。
-- HAP 启动后会拉起内嵌 xrdp server，设备侧监听端口为 `3390`。
+- 2in1 设备已安装 common HSP 和对应 Entry HAP；tablet 不支持此被控端路径。
+- 2in1 应用启动后会尝试拉起独立 xrdp HNP 子进程，设备侧监听端口为 `3390`。
 - 当前连接阶段至少需要 `ohos.permission.INTERNET`，用于监听 TCP 端口并接受 RDP 连接。
-- 如果后续启用真实屏幕采集，还需要屏幕录制授权能力；这和 TCP 转发本身是两件事。
+- 真实屏幕采集需要屏幕录制授权，输入注入需要对应系统权限；这和 TCP 转发本身是两件事。
 
 ## Windows 侧操作
 

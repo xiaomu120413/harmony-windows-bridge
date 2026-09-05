@@ -45,8 +45,7 @@ the FreeRDP client path:
 - the public `xrdp_ohos.h` ABI may expose versioned, bounded data/event
   callbacks, but must not expose xrdp internal channel identifiers or parser
   state;
-- `harmony/app/entry/src/main/cpp/xrdp` owns dynamic symbol loading, callback
-  registration and product diagnostics; it must not parse MS-RDPECAM or other
+- `harmony/app/entry/src/main/cpp/xrdp` owns HNP path/config preparation, child-process startup/stop and product diagnostics; it must not parse MS-RDPECAM or other
   RDP channel PDUs;
 - ArkTS/N-API may expose counters and product controls, but protocol samples
   must stay in native modules unless a separately designed bounded transport is
@@ -58,7 +57,7 @@ a thin UI, permission or handle relay.
 
 ## Target Build Layout
 
-The native target should evolve toward this shape:
+The following is a historical decomposition sketch, not the current CMake target. The current client target is `rdpclient` in `common/src/main/cpp/CMakeLists.txt`; `xrdpcontrol` is built separately by the 2in1 Entry:
 
 ```cmake
 add_library(entry SHARED
