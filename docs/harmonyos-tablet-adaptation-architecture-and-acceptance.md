@@ -384,6 +384,10 @@ UI 层和服务层都要保护。只隐藏入口不能防止冷启动自动调�
 - 应用 layered icon 的 PNG 不因平板布局重做。
 - 只有会话工具栏缺少键盘、退出或缩放图标时才新增 SVG。
 
+图标清晰度修复（CHG-20260905-004，DesignReady）：用户质量报告标记原始3120×1955截图中 `[90,285]-[123,318]` 的设置概览 Image，锯齿值95.98，门槛90。对应 `SettingsDesktopNavItem` 的17vp图标及 `settings_overview.svg`。现有SVG使用 `fill=none` / `stroke=currentColor`，页面使用 `fillColor`；本次将概览资源转换为无stroke的单色填充轮廓，使用明确的内外路径和更宽的线条，避免填充与描边叠加。保留48×48 viewBox、17vp图像、32vp底色容器、48vp点击区及主题着色。文件范围为 common/entry/entry_tablet 三份 `settings_overview.svg`，不修改应用桌面icon和其他功能图标。验收：SVG解析与三份资源一致性、ArkTS检查、Release正式签名构建和ABC门禁；原工具锯齿评分及真机视觉需复测，不预先标为通过。
+
+实施回写（CHG-20260905-004，Implemented / package verified）：上述三份SVG已统一改为填充轮廓，48×48画布内线宽由3改为4，使用evenodd内孔与圆角外轮廓；无ArkTS逻辑和尺寸修改。XML解析、三模块哈希一致性、ArkTS检查通过，本地SVG预览已查看。Release clean/assembleApp、正式签名及 `arktsCommonAbi=passed`；三个模块 `debug=false`，源模块与App的提取profile均与正式材料一致。最新App为20,011,454 bytes，SHA-256 `331586f0a3c5357e54eda374dd7f857673249073b595de3b2a6ad7ac031802b5`。主输出目录仅留最终App，其余产物可恢复移至本机 `tmp/icon-release-intermediates`。原检测工具及真机视觉尚未复测，不声明锯齿评分已低于90。
+
 ### 8.3 三套缩放不能混用
 
 | 缩放 | 单位/来源 | 负责层 |
