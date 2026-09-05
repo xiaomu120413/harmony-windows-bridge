@@ -1,0 +1,299 @@
+[
+  {
+    "url": "https://developer.huawei.com/consumer/cn/design",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1725"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/design",
+    "title": "设计-HarmonyOS鸿蒙设计规范和指南-华为开发者联盟",
+    "body_bytes": 242131,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "HarmonyOS 设计",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/design-guides/hmi-focus-0000001748650376",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1724"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/design-guides/hmi-focus-0000001748650376",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "焦点导航",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/design-guides/ux-guidelines-overview-0000001760867048",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1723"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/design-guides/ux-guidelines-overview-0000001760867048",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "应用 UX 体验标准概述",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/doccenter-architecture/device-compatible",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1722"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/doccenter-architecture/device-compatible",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "设备兼容",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/application-configuration-file-overview-stage",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1727"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/application-configuration-file-overview-stage",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "应用配置文件概述",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V13/arkts-layout-development-grid-layout-V13",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1721"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V13/arkts-layout-development-grid-layout-V13",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "栅格布局 (GridRow/GridCol)",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-develop-apply-immersive-effects",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1726"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-develop-apply-immersive-effects",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "开发应用沉浸式效果",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-navigation-navigation",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1719"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-navigation-navigation",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "组件导航(Navigation)",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-navigation-split-mode",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1720"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/arkts-navigation-split-mode",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "Navigation分栏开发",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/restricted-permissions#ohospermissioncontrol_device",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1803"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/restricted-permissions",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": true,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "受限开放权限 / CONTROL_DEVICE",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h#oh_input_queryauthorizedstatus",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1805"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": true,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "oh_input_manager.h / OH_Input_QueryAuthorizedStatus",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h#oh_input_requestinjection",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1804"
+    ],
+    "http_status": 200,
+    "final_url": "https://developer.huawei.com/consumer/cn/doc/harmonyos-references/capi-oh-input-manager-h",
+    "title": "文档中心",
+    "body_bytes": 1796,
+    "status": "http-reachable",
+    "anchor_verified": true,
+    "content_check": "browser-rendered heading/topic verified; HTTP shell alone was insufficient",
+    "verified_heading": "oh_input_manager.h / OH_Input_RequestInjection",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitcode.com/openharmony/startup_appspawn/tree/master/service/hnp",
+    "references": [
+      "docs/harmonyos-multidevice-hnp-packaging-plan.md:76"
+    ],
+    "http_status": 200,
+    "final_url": "https://gitcode.com/openharmony/startup_appspawn/blob/master/service/hnp?_fb=tree",
+    "title": "startup_appspawn&#x2F;service&#x2F;hnp-代码预览-startup_appspawn:基于OpenHarmony的应用进程孵化组件项目 - AtomGit",
+    "body_bytes": 79868,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "original page reports missing path; official replacement explains HAP distribution and fork/exec",
+    "replacement": "https://raw.githubusercontent.com/openharmony/startup_appspawn/master/service/hnp/README_zh.md",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitee.com/harmonyos_samples/ResponsiveLayout/blob/master/README.en.md",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1717"
+    ],
+    "http_status": 405,
+    "final_url": "",
+    "title": "",
+    "body_bytes": 0,
+    "status": "http-error",
+    "anchor_verified": false,
+    "content_check": "web reader exposed official sample README; direct HTTP 405 is access restriction",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitee.com/harmonyos_samples/ndk-xcomponent/blob/master/README.md",
+    "references": [
+      "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md:1718"
+    ],
+    "http_status": 405,
+    "final_url": "",
+    "title": "",
+    "body_bytes": 0,
+    "status": "http-error",
+    "anchor_verified": false,
+    "content_check": "web reader exposed official sample README; direct HTTP 405 is access restriction",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitee.com/openharmony/docs/blob/1ee51a8860968009e3d3e6f9261a8036d84b2d8e/en/application-dev/quick-start/shared-guide.md",
+    "references": [
+      "docs/harmonyos-multidevice-hnp-packaging-plan.md:74"
+    ],
+    "http_status": 405,
+    "final_url": "",
+    "title": "",
+    "body_bytes": 0,
+    "status": "http-error",
+    "anchor_verified": false,
+    "content_check": "replacement official OpenHarmony document read; supports associated package/process statement",
+    "replacement": "https://raw.githubusercontent.com/openharmony/docs/master/en/application-dev/quick-start/in-app-hsp.md",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitee.com/openharmony/docs/blob/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/hap-package.md?skip_mobile=true",
+    "references": [
+      "docs/harmonyos-multidevice-hnp-packaging-plan.md:72"
+    ],
+    "http_status": 405,
+    "final_url": "",
+    "title": "",
+    "body_bytes": 0,
+    "status": "http-error",
+    "anchor_verified": false,
+    "content_check": "replacement official OpenHarmony document read; supports associated package/process statement",
+    "replacement": "https://raw.githubusercontent.com/openharmony/docs/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/hap-package.md",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitee.com/openharmony/docs/blob/e99082d84adcc46cde561d79b04fbf2fad68a723/en/application-dev/quick-start/multi-hap-principles.md",
+    "references": [
+      "docs/harmonyos-multidevice-hnp-packaging-plan.md:75"
+    ],
+    "http_status": 405,
+    "final_url": "",
+    "title": "",
+    "body_bytes": 0,
+    "status": "http-error",
+    "anchor_verified": false,
+    "content_check": "replacement official OpenHarmony document read; supports associated package/process statement",
+    "replacement": "https://raw.githubusercontent.com/openharmony/docs/e99082d84adcc46cde561d79b04fbf2fad68a723/en/application-dev/quick-start/multi-hap-principles.md",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://gitee.com/openharmony/docs/blob/ecf01f0dd5c6fc9797d60a61b288f00bb68f24de/en/application-dev/quick-start/application-package-structure-stage.md?skip_mobile=true",
+    "references": [
+      "docs/harmonyos-multidevice-hnp-packaging-plan.md:73"
+    ],
+    "http_status": 405,
+    "final_url": "",
+    "title": "",
+    "body_bytes": 0,
+    "status": "http-error",
+    "anchor_verified": false,
+    "content_check": "replacement official OpenHarmony document read; supports associated package/process statement",
+    "replacement": "https://raw.githubusercontent.com/openharmony/docs/ecf01f0dd5c6fc9797d60a61b288f00bb68f24de/en/application-dev/quick-start/application-package-structure-stage.md",
+    "checked_on": "2026-09-05"
+  },
+  {
+    "url": "https://github.com/xiaomu120413/harmony-windows-bridge",
+    "references": [
+      "README.md:5"
+    ],
+    "http_status": 200,
+    "final_url": "https://github.com/xiaomu120413/harmony-windows-bridge",
+    "title": "GitHub - xiaomu120413/harmony-windows-bridge · GitHub",
+    "body_bytes": 299107,
+    "status": "http-reachable",
+    "anchor_verified": false,
+    "content_check": "repository landing page reachable; no product/runtime claim inferred",
+    "checked_on": "2026-09-05"
+  }
+]

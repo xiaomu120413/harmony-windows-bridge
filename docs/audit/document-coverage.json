@@ -1,0 +1,188 @@
+[
+  {
+    "document": "README.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "agent.md",
+    "status": "instruction-reference",
+    "review_scope": "工作规则；非产品能力声明",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "status": "historical-evidence",
+    "review_scope": "历史记录与图片可用性；没有重新执行当时测试",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "design-qa.md",
+    "status": "historical-evidence",
+    "review_scope": "历史记录与图片可用性；没有重新执行当时测试",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/CHANGELOG.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/README.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/archive/avc444-gpu-compositor-retrospective.md",
+    "status": "historical-evidence",
+    "review_scope": "历史记录与图片可用性；没有重新执行当时测试",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/archive/ohos-device-validation-2026-05-15.md",
+    "status": "historical-evidence",
+    "review_scope": "历史记录与图片可用性；没有重新执行当时测试",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/archive/rdp-white-frame-case-study.md",
+    "status": "historical-evidence",
+    "review_scope": "历史记录与图片可用性；没有重新执行当时测试",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/freerdp-ohos-feature-matrix.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/freerdp-ohos-pen-and-multimon-design.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/freerdp-ohos-sdk-quickstart.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/freerdp-ohos-validation-baseline.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/hardware_codec_notes.md",
+    "status": "concept-reference",
+    "review_scope": "格式定义与源码示意；不将说明当作位精确算法或诊断结论",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "status": "mixed-current-and-history",
+    "review_scope": "当前路径、实现边界、外部依据和历史台账；具体待验项见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "status": "mixed-current-and-history",
+    "review_scope": "当前路径、实现边界、外部依据和历史台账；具体待验项见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/ohos-native-cpp-module-guidelines.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/project-scope-and-session-controls.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/release-third-party-notices.md",
+    "status": "release-draft",
+    "review_scope": "设备边界和组件清单；发布/法律履约不是本轮通过项",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/repository-notes.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/settings-desktop-current-interactions.md",
+    "status": "mixed-current-and-history",
+    "review_scope": "当前路径、实现边界、外部依据和历史台账；具体待验项见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/settings-desktop-implementation-checklist.md",
+    "status": "mixed-current-and-history",
+    "review_scope": "当前路径、实现边界、外部依据和历史台账；具体待验项见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/windows-rdp-environment-setup.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/xrdp-mstsc-smart-sizing.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/xrdp-ohos-commercial-remediation-plan.md",
+    "status": "historical-plan",
+    "review_scope": "已标记历史方案；现行入口与旧阶段区分",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/xrdp-ohos-mstsc-penetration-plan.md",
+    "status": "historical-plan",
+    "review_scope": "已标记历史方案；现行入口与旧阶段区分",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "docs/xrdp-windows-hdc-forwarding.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "harmony/README.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "harmony/app/common/src/main/cpp/README.md",
+    "status": "current-static-review",
+    "review_scope": "现行入口、源码接口/配置、构建与测试结果；端到端边界见复核报告",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "harmony/app/store-assets/muhub/store-listing.md",
+    "status": "release-draft",
+    "review_scope": "设备边界和组件清单；发布/法律履约不是本轮通过项",
+    "runtime_fully_verified": false
+  },
+  {
+    "document": "tools/hapsigner/README.md",
+    "status": "historical-plan",
+    "review_scope": "已标记历史方案；现行入口与旧阶段区分",
+    "runtime_fully_verified": false
+  }
+]

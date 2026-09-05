@@ -4,6 +4,8 @@
 
 ---
 
+> 核对边界（2026-09-05）：NV12/NV21、PCM 类型对照本机 FFmpeg libavutil 头文件；AVC444 组合过程对照 FreeRDP primitives 与应用 compositor。2×2 示例、色彩异常描述是概念说明，不是位精确协议算法或故障定论；真实 buffer 必须按 stride/offset 处理，不能用紧密排列公式直接寻址。
+
 ## 1. 总体理解：硬件编解码在处理什么
 
 硬件编解码通常分成两条线：
@@ -230,7 +232,7 @@ NV12 的布局是：
 
 ```text
 Y plane:  单独一块，完整分辨率
-UV plane: U/V 交错存放，分辨率是 Y 的一半
+UV plane: U/V 交错存放；色度采样点宽、高各为 Y 的一半，8-bit 紧密排列时 UV 字节总量是 Y 的一半
 ```
 
 也叫：

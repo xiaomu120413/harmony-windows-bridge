@@ -3,7 +3,7 @@
 状态：`Implemented`
 
 设计版本：`PEN-MON-D1`
-适用范围：单 HAP、Native XComponent、FreeRDP OHOS client port
+适用范围：common HSP 客户端、Native XComponent、FreeRDP OHOS client port；两个 Entry 共享此实现。源码与构建已复核，外接屏和 Windows Ink 动作级验收仍未在本轮执行。
 
 ## 1. 目标与边界
 

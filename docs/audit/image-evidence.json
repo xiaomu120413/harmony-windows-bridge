@@ -1,0 +1,432 @@
+[
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 45,
+    "reference": "muhub-home-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-home-expanded.jpeg",
+    "tracked": false,
+    "sha256": "e89e23f5a51470b17807c17465ef7bfd38bf9734e17c9fd778bb62ceca341db9",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 46,
+    "reference": "muhub-settings-real.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-settings-real.jpeg",
+    "tracked": false,
+    "sha256": "9498ab4fb6a9a4e13cc29311b33a72d734fdb290627c8b89388a778b110104bc",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 47,
+    "reference": "muhub-ime-open.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-ime-open.jpeg",
+    "tracked": false,
+    "sha256": "73f9ba0da841a96700c434907a5edf06809b4310346d9e20db04cd8e71e12890",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 48,
+    "reference": "muhub-d04-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-d04-expanded.jpeg",
+    "tracked": false,
+    "sha256": "60979a7d4c809b82e70bec4a428553e88869420e2ac1e40a0efc1eede893b7b4",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 49,
+    "reference": "muhub-d05-settings-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-d05-settings-expanded.jpeg",
+    "tracked": false,
+    "sha256": "778e01187389a349846e43d93c04c0148bc2651f50564df44037d2a5750987c3",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 50,
+    "reference": "muhub-d05-basic-compact.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-d05-basic-compact.jpeg",
+    "tracked": false,
+    "sha256": "1717fa1b52682cdcd861f406dcc79f97d0f25dd01904173d17d7dce2d682a86d",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 51,
+    "reference": "muhub-d05-remote-compact-scrolled.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-d05-remote-compact-scrolled.jpeg",
+    "tracked": false,
+    "sha256": "6c320a44ad7f6050cd1af63732135ee5e7f143434a5f9cb6dcb098fb8ecfff8a",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 52,
+    "reference": "muhub-c01-home-compact.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-c01-home-compact.jpeg",
+    "tracked": false,
+    "sha256": "626eae5d49ed4d2ce9847b6a23daf3932c96cf08b75a0fd24a5e659b4bd35eea",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "artifacts/tablet-acceptance/2026-08-04/result.md",
+    "line": 53,
+    "reference": "muhub-c01-settings-compact.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-c01-settings-compact.jpeg",
+    "tracked": false,
+    "sha256": "a9a84bca0e602deed80a61ef1021372b69172fe96641982a41ee1cd2c7ef8f19",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 7,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-reference\\settings-controlled-service-v2\\selected-option-2.png",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-reference\\settings-controlled-service-v2\\selected-option-2.png",
+    "tracked": false,
+    "sha256": "fc772b93afe8cb212ef97f03743eeed3630068061b1487ec00eef11f0596ef37",
+    "dimensions": "1487x1058"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 8,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\29-qa-source-app-normalized.png",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\29-qa-source-app-normalized.png",
+    "tracked": false,
+    "sha256": "17c05b794e7fb738d5e18a43a0a04327a63259663400e3cf49657f349cc25d7c",
+    "dimensions": "1404x920"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 13,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\31-feedback-overview-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\31-feedback-overview-expanded.jpeg",
+    "tracked": false,
+    "sha256": "2078b83b20f5c95f1c2046ce0b1ddf884d88bdf503f0bea0c9ab32111072dda3",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 14,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\32-feedback-remote-top-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\32-feedback-remote-top-expanded.jpeg",
+    "tracked": false,
+    "sha256": "2ae5cd09e469800f19726fc6acf2d95e6f0e20cf3941a43d875b5ecf010203c7",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 15,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\33-feedback-remote-bottom-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\33-feedback-remote-bottom-expanded.jpeg",
+    "tracked": false,
+    "sha256": "d8c5e744052a815104eb311396a68da64697fce80cbe374efddf5d03cc630261",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 16,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\34-feedback-help-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\34-feedback-help-expanded.jpeg",
+    "tracked": false,
+    "sha256": "7730b18bceddf020b74649166dc1a011a308c452bfdc8c90312456abfaedc0c6",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 17,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\36-feedback-help-compact-final.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\36-feedback-help-compact-final.jpeg",
+    "tracked": false,
+    "sha256": "cc8b094b2bc1faffc6405e76b4617d665d852cd7720e974457021c3e5aa3fce3",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "design-qa.md",
+    "line": 18,
+    "reference": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\37-qa-feedback-implementation-normalized.png",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-07-controlled-service-help\\37-qa-feedback-implementation-normalized.png",
+    "tracked": false,
+    "sha256": "931982e55cd2a4121896072925a08afb07009d6f7986f2898daf2f2c94d1f82f",
+    "dimensions": "1404x920"
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "line": 559,
+    "reference": "artifacts/multidevice-hnp/2026-08-06/muhub-tablet-packaging-probe.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\multidevice-hnp\\2026-08-06\\muhub-tablet-packaging-probe.jpeg",
+    "tracked": false,
+    "sha256": "90d2a92a2541200c8e9ebc4f91ce5564f8a6a4d7aaec1503056dc66dcb72ad21",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "line": 575,
+    "reference": "artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-pc-thin-foreground.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\multidevice-hnp\\2026-08-06\\muhub-mdp01-pc-thin-foreground.jpeg",
+    "tracked": false,
+    "sha256": "bcf6883b0f96ab06b3f35e06d9241b9ffb663d37a5883ecb8b41b24f55c2d5aa",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "line": 582,
+    "reference": "artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-tablet-real-ui.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\multidevice-hnp\\2026-08-06\\muhub-mdp01-tablet-real-ui.jpeg",
+    "tracked": false,
+    "sha256": "fd7606b342a3ddb997bee1d85579e3c061f759236e4c7f09e447e5ca771d3714",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "line": 583,
+    "reference": "artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-tablet-real-ui-fullscreen.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\multidevice-hnp\\2026-08-06\\muhub-mdp01-tablet-real-ui-fullscreen.jpeg",
+    "tracked": false,
+    "sha256": "56b7054713cb761d108fec07621d947d865ba5b38436174c125090994271a5d5",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "line": 584,
+    "reference": "artifacts/multidevice-hnp/2026-08-06/muhub-mdp01-tablet-settings.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\multidevice-hnp\\2026-08-06\\muhub-mdp01-tablet-settings.jpeg",
+    "tracked": false,
+    "sha256": "cbdb8f0be7c62acd3b1c9f16d044f5dd159f1e09a0f95550a3e33e8889dc55f0",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-multidevice-hnp-packaging-plan.md",
+    "line": 602,
+    "reference": "artifacts/multidevice-hnp/2026-08-06/muhub-mdp03-tablet.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\multidevice-hnp\\2026-08-06\\muhub-mdp03-tablet.jpeg",
+    "tracked": false,
+    "sha256": "90c3ab1a0a8af3ed1f7c8276d25b32f93eed67e031d49145de29f62d4c8eb2a4",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 799,
+    "reference": "artifacts/tablet-acceptance/2026-08-04/muhub-d04-expanded.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-d04-expanded.jpeg",
+    "tracked": false,
+    "sha256": "60979a7d4c809b82e70bec4a428553e88869420e2ac1e40a0efc1eede893b7b4",
+    "dimensions": "3120x2080"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 858,
+    "reference": "%TEMP%/muhub-d07-home.jpeg",
+    "status": "missing",
+    "resolved": "",
+    "tracked": false,
+    "sha256": "",
+    "dimensions": "",
+    "recovery_candidates": []
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 885,
+    "reference": "artifacts/design-audit/2026-08-05-copy-address-layout/03-recheck.png",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\03-recheck.png",
+    "tracked": false,
+    "sha256": "baccad1e79c475485d0e611cdfe0d82f017abb7a0b8b8e7e96709a9731fd6abf",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 885,
+    "reference": "02-actions-before.png",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\02-actions-before.png",
+    "tracked": false,
+    "sha256": "08cce232534bb5ef0d0fb5364bbd37fb6c661bf165eabb30862f440318765d54",
+    "dimensions": "2880x1920",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\02-actions-before.png"
+    ],
+    "corrected_reference": "artifacts/design-audit/2026-08-05-copy-address-layout/02-actions-before.png"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 895,
+    "reference": "artifacts/design-audit/2026-08-05-copy-address-layout/06-actions-after.png",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\06-actions-after.png",
+    "tracked": false,
+    "sha256": "9e26f9a2af36cfe07a3f5a8cdcc5e1143736857a01fea6b74eb9e5872c259505",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 895,
+    "reference": "07-maximized-after.png",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\07-maximized-after.png",
+    "tracked": false,
+    "sha256": "748b3d83a4bb884e9d8b14fe8e10df7e52f5536b9cf11a127f5e621c170cdee7",
+    "dimensions": "2880x1920",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\07-maximized-after.png"
+    ],
+    "corrected_reference": "artifacts/design-audit/2026-08-05-copy-address-layout/07-maximized-after.png"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 895,
+    "reference": "08-restored-after.png",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\08-restored-after.png",
+    "tracked": false,
+    "sha256": "06df4e8554bdfc933856076b20f850e47c72745b98c011f496bf8b7a209972f6",
+    "dimensions": "2880x1920",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\design-audit\\2026-08-05-copy-address-layout\\08-restored-after.png"
+    ],
+    "corrected_reference": "artifacts/design-audit/2026-08-05-copy-address-layout/08-restored-after.png"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 915,
+    "reference": "muhub-c01-home-compact.jpeg",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-c01-home-compact.jpeg",
+    "tracked": false,
+    "sha256": "626eae5d49ed4d2ce9847b6a23daf3932c96cf08b75a0fd24a5e659b4bd35eea",
+    "dimensions": "3120x2080",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-c01-home-compact.jpeg"
+    ],
+    "corrected_reference": "artifacts/tablet-acceptance/2026-08-04/muhub-c01-home-compact.jpeg"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 915,
+    "reference": "muhub-c01-settings-compact.jpeg",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-c01-settings-compact.jpeg",
+    "tracked": false,
+    "sha256": "a9a84bca0e602deed80a61ef1021372b69172fe96641982a41ee1cd2c7ef8f19",
+    "dimensions": "3120x2080",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-c01-settings-compact.jpeg"
+    ],
+    "corrected_reference": "artifacts/tablet-acceptance/2026-08-04/muhub-c01-settings-compact.jpeg"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 1016,
+    "reference": "%TEMP%/muhub-a03-home.jpeg",
+    "status": "missing",
+    "resolved": "",
+    "tracked": false,
+    "sha256": "",
+    "dimensions": "",
+    "recovery_candidates": []
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 1100,
+    "reference": "artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-before-done.jpeg",
+    "status": "image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-native-ime-before-done.jpeg",
+    "tracked": true,
+    "sha256": "ea21fb33ea4f23a5ddace76408c35e180480d6bb1c6dc2a8baca7bf7287c1351",
+    "dimensions": "2880x1920"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 1100,
+    "reference": "muhub-native-ime-after-done.jpeg",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-native-ime-after-done.jpeg",
+    "tracked": true,
+    "sha256": "75b8c21a58a5ee1b9cc52786873d91ee716dc96192a86854036004c40fc944ac",
+    "dimensions": "2880x1920",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-native-ime-after-done.jpeg"
+    ],
+    "corrected_reference": "artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-after-done.jpeg"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 1100,
+    "reference": "muhub-native-ime-after-touch.jpeg",
+    "status": "recovered-image-decodes",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-native-ime-after-touch.jpeg",
+    "tracked": true,
+    "sha256": "3d27656ec48c7c32da9b9e0ead05dacd23c1abc8b3a8bfb8f1539894058fec7c",
+    "dimensions": "2880x1920",
+    "recovery_candidates": [
+      "C:\\Users\\mu\\Desktop\\code\\demo\\artifacts\\tablet-acceptance\\2026-08-04\\muhub-native-ime-after-touch.jpeg"
+    ],
+    "corrected_reference": "artifacts/tablet-acceptance/2026-08-04/muhub-native-ime-after-touch.jpeg"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 1707,
+    "reference": "settings-desktop-current-capability.svg",
+    "status": "svg-parsed",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\docs\\settings-desktop-current-capability.svg",
+    "tracked": true,
+    "sha256": "95428dc708cac37ed47353d1831c4f885d2b8c188f35abb32c7b0ea750145b01",
+    "dimensions": "0 0 1800 1460"
+  },
+  {
+    "document": "docs/harmonyos-tablet-adaptation-architecture-and-acceptance.md",
+    "line": 1708,
+    "reference": "home-settings-desktop-design-v3.svg",
+    "status": "svg-parsed",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\docs\\home-settings-desktop-design-v3.svg",
+    "tracked": true,
+    "sha256": "ba64bc8f31d32c27d3ee599d2874a775229aeb2a04ff88831d0b2c46b176610f",
+    "dimensions": "0 0 1800 1320"
+  },
+  {
+    "document": "docs/settings-desktop-current-interactions.md",
+    "line": 5,
+    "reference": "docs/settings-desktop-current-capability.svg",
+    "status": "svg-parsed",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\docs\\settings-desktop-current-capability.svg",
+    "tracked": true,
+    "sha256": "95428dc708cac37ed47353d1831c4f885d2b8c188f35abb32c7b0ea750145b01",
+    "dimensions": "0 0 1800 1460"
+  },
+  {
+    "document": "docs/settings-desktop-implementation-checklist.md",
+    "line": 5,
+    "reference": "docs/settings-desktop-current-capability.svg",
+    "status": "svg-parsed",
+    "resolved": "C:\\Users\\mu\\Desktop\\code\\demo\\docs\\settings-desktop-current-capability.svg",
+    "tracked": true,
+    "sha256": "95428dc708cac37ed47353d1831c4f885d2b8c188f35abb32c7b0ea750145b01",
+    "dimensions": "0 0 1800 1460"
+  }
+]

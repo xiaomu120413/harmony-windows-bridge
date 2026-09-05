@@ -191,3 +191,8 @@ T00 只建立验收基线，不改变业务逻辑。完成判定：
 ### 2026-09-05 构建范围收敛（SCOPE-20260905-001）
 
 移除临时 CPU-only 录屏编译选项和强制 GDI 分支，构建恢复既有 GPU 渲染及正常 GDI fallback。桌面 Web/Node Demo 与独立文件传输设计已删除，HarmonyOS RDP 下载目录重定向保留。Native 回归及 diff 检查通过；本次未重建 HAP 或重新验证真机图形协商。详细记录见 project-scope-and-session-controls.md。
+
+
+### DOC-AUDIT-20260905-001 最新复核
+
+2026-09-05：Native与xrdp进程策略检查通过；统一8个资源文件纯换行差异后ArkTS测试通过（无Git内容差异）。build_hap.bat app 完整构建、签名及包校验通过，App Pack 39,890,794 bytes，SHA-256 c0f7fbdae23d8cea28afa09c53217f59efaa5be6217782270fb875e0806cf72d。新包未安装到设备，端到端与市场验收仍待执行。外链/截图/技术声明的逐项状态见 [复核报告](audit/2026-09-05-document-verification.md)。

@@ -1,54 +1,29 @@
-# xrdp MSTSC sizing notes
+# xrdp MSTSC 显示尺寸说明
 
-> Historical sizing notes for Windows MSTSC controlling HarmonyOS. The desktop cap below must be checked against the selected xrdp build; it is not a verified current default. This is separate from the planned local zoom toolbar in the HarmonyOS FreeRDP client. See [current scope](project-scope-and-session-controls.md).
+源码核对：2026-09-05。本文描述 Windows MSTSC 控制 HarmonyOS 2in1，不是鸿蒙客户端尚未实现的缩放工具栏。
 
-This document is only for the xrdp server path. It covers the case where the
-HarmonyOS display is larger than the local Windows MSTSC window.
+## 当前默认值
 
-## Historical decision
+`harmony/third_party/xrdp/ohos/ohos_private.h` 和应用侧 `xrdp_ini_builder.cpp` 的最大桌面宽高均为 **0**，表示不施加该项固定尺寸上限。旧文档所写的默认 `1920×1280` 已不适用。
 
-- Do not rely on a custom Windows launcher script.
-- Users can open the MSTSC UI directly and connect to `127.0.0.1:13390` after
-  `hdc fport` is ready.
-- The xrdp OHOS backend defaults to a server-side desktop limit of
-  `1920x1280`.
-- The backend keeps the HarmonyOS display aspect ratio when it caps the RDP
-  desktop size.
-- MSTSC smart sizing can still be enabled manually in a saved `.rdp` file, but
-  it is not required for the default path.
-- Keep dynamic resolution disabled by default for now. Dynamic resolution can
-  be evaluated later, but it asks the server to resize the desktop when the
-  local MSTSC window changes and may restart the capture path.
+`ohos_desktop_size.c` 保留请求桌面尺寸（显式设置正数上限时先限制），再按本机显示比例计算内容目标矩形并居中。因此桌面尺寸、内容矩形和物理显示尺寸不能混为一谈。
 
-## Start MSTSC
-
-Forward the local Windows port to the HarmonyOS xrdp port:
+## 连接
 
 ```powershell
 hdc fport tcp:13390 tcp:3390
-```
-
-Then start MSTSC from the UI and connect to:
-
-```text
-127.0.0.1:13390
-```
-
-Command-line startup is also fine:
-
-```powershell
 mstsc /v:127.0.0.1:13390
 ```
 
-To request a smaller initial RDP desktop explicitly:
+若希望客户端请求特定初始大小，可使用：
 
 ```powershell
 mstsc /v:127.0.0.1:13390 /w:1920 /h:1280
 ```
 
-## Server config
+这里的 1920×1280 是用户指定的示例，不是服务端默认值。
 
-The OHOS backend reads these values from the xrdp config:
+## 可选服务端限制
 
 ```ini
 [OHOS]
@@ -56,22 +31,4 @@ max_desktop_width=1920
 max_desktop_height=1280
 ```
 
-If MSTSC requests a larger desktop, the backend caps it to the configured
-maximum while preserving the device aspect ratio.
-
-## Expected server logs
-
-For the default path, device logs should show the xrdp desktop and capture size
-as `1920x1280`, while input mapping can still report the real HarmonyOS display
-size, for example `target=3120x2080`.
-
-Typical lines:
-
-```text
-xrdp.ohos.resize ... requested=1920x1280 target=1920x1280 display=3120x2080 max=1920x1280 limited_by_max=0
-xrdp.ohos.input ... desktop=1920x1280
-xrdp screen capture frame queued: ... size=1920x1280 target=1920x1280
-```
-
-When a user connects directly from the MSTSC UI with a larger requested
-desktop, the resize log should include `limited_by_max=1`.
+这段是显式限制的配置示例。最终结果需结合请求尺寸、实际配置和 `ohos_desktop_size.c` 的显示比例计算验证。本轮没有重新建立 MSTSC 会话，不能宣称某个桌面/采集尺寸已经真机通过。Windows 客户端本地缩放和协议动态分辨率是两种机制；改变窗口不必然意味着服务端分辨率随之改变。

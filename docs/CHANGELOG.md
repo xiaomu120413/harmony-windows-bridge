@@ -27,6 +27,7 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
 | --- | --- | --- | --- | --- |
+| DOC-AUDIT-20260905-001 | docs: verify references and technical evidence | 文档/证据/构建 | 核对20个原始外链、40处图片引用；替换5个外部来源，补全7处图片路径，标注2张临时图缺失；修正xrdp尺寸上限、SDK权限和多设备范围。 | Native/进程策略/ArkTS（本地换行统一后）及完整App构建、签名和包ABI门禁通过；产物哈希与端到端缺口见docs/audit复核报告。 |
 | DOC-CLEAN-20260905-001 | 本地文档整理 | 文档/现行基线 | 修正签名与运行库路径、证书入口、独立 HNP 进程说明和旧页面路径；重新整理索引并标记历史方案。 | 补充扫描31份仓库Markdown，83个本地链接目标存在；补齐打包状态、平板架构、旧签名及商店草稿说明；diff检查通过，未新增构建或真机验收。 |
 | SCOPE-20260905-001 | 本地清理 | 产品范围/构建 | 删除桌面 Web/Node Demo、独立 FTP/SFTP 设计和 CPU-only 录屏模式；保留 HarmonyOS RDP、xrdp 与正常图形 fallback。 | Native 回归、diff 检查通过；未重建 HAP；工具栏缩放另行设计，尚未实现。 |
 | `CHG-20260905-001` | `fix(ohos): restore packaging and recording changes` | 打包、签名、Native 录屏配置及设计归档 | 恢复原 stash 全部内容：App Pack 文件名、签名材料与密码解析、跨模块导出校验、CPU-only 录屏构建和独立文件传输客户端设计。 | Native 测试、PowerShell/Node 语法检查及 diff 检查通过；ArkTS 门禁因现有资源 CRLF/LF 差异失败；未重新构建或真机验收。详见多设备打包设计的本次归档记录，关联 MDP-04A、CPU-RECORD-001、FT-ARCH-001。 |
