@@ -675,6 +675,17 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
   真机全新安装和 `1000001 -> 1000002` 覆盖安装尚未执行，因此状态为 package verified，非
   `Verified`。
 
+### 12.6 Release 正式签名测试包重建（2026-09-05）
+
+- Change ID：CHG-20260905-003；状态：Implemented / package verified。
+- 本次为本地交付操作：临时将 `harmony/app/build-profile.json5` 的证书/profile 切换到现有 `muhub_release.cer` / `muhub_releaseRelease.p7b`，执行 clean 与 release assembleApp；结束后恢复原配置。
+- HNP 重封和 App Pack 重签均显式使用相同 Release 材料，保留 xrdp HNP 功能；不修改业务代码和包身份。
+- 验收：签名验证、三个模块实际 ABC 公共导入/导出检查通过；检查包内 release profile 与非 debug 构建标志。验证成功后清理本次输出目录中的旧 Debug 包、HNP 重复包、未签名包和打包临时目录，仅交付最终 `app-default-signed.app`。清理限于仓库内生成目录，不删除签名材料和源代码。
+- 真机启动回归由用户使用新包进行，不把包检查记为真机启动通过。
+- 执行结果：clean + release assembleApp、HNP 正式重签、App Pack 正式重签与 `verify_multidevice_app.ps1` 均通过，`arktsCommonAbi=passed`。三个模块 `debug=false`；App Pack 与三个源模块的签名均验证通过，提取的 profile 与 `muhub_releaseRelease.p7b` 哈希一致，内容 `type=release`。App Pack 内模块由打包工具处理，不以嵌套包可单独验签作为门禁。
+- 最终 App Pack：20,010,801 bytes；SHA-256 `d1fb89ed242bf85b07aac32b174dbd7b0e0d952c21888343e272342e6ccc69cc`。本次临时签名配置已原样恢复；日常 `build_hap.bat app` 仍是 Debug 默认入口，不能把本次操作理解为默认脚本已改成 Release。
+- 清理结果：自动审批策略阻止删除命令；改用可恢复移动，将 App 输出目录的重复包、未签名包、打包输入、符号和验证目录移至本机忽略目录 `tmp/release-build-intermediates`。主输出目录只保留 `app-default-signed.app`；不宣称中间文件已物理删除。
+
 ## 13. 升级、回滚和发布策略
 
 ### 13.1 升级

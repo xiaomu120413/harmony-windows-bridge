@@ -27,6 +27,8 @@ git submodule status
 git -C harmony/third_party/FreeRDP rev-parse HEAD
 ```
 
+最新交付包（CHG-20260905-003）：2026-09-05 已完成 Release 干净构建及正式签名，最终 `harmony/app/build/outputs/default/app-default-signed.app` 为20,010,801 bytes，SHA-256 `d1fb89ed242bf85b07aac32b174dbd7b0e0d952c21888343e272342e6ccc69cc`。三个模块 `debug=false`，签名/profile 和公共 ABC 门禁通过；此前15:41的 Debug 包已被替换。Release 新包启动待用户测试。操作及输出清理记录见多设备打包方案12.6节。
+
 ## 构建前检查
 
 从仓库根目录执行：
