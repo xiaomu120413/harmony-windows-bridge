@@ -1,6 +1,6 @@
 # MuHub HarmonyOS 多设备 HNP 分包架构、修改清单与验收方案
 
-> 当前状态（2026-09-05 核对）：多设备拆分及独立 HNP 进程已实现；旧 tablet 覆盖升级和市场分发仍未闭环，不能视为发布 Verified。
+> 当前状态（2026-09-07 用户确认）：上次交付的分包方式已完成用户真机测试，结果通过（User Verified）；当前 HAP/HSP/HNP 分包方式作为后续维护基线。历史专项记录保留各自验证范围。
 > 文档版本：1.0
 > 审阅日期：2026-08-06
 > 适用工程：`harmony/app`
@@ -10,6 +10,13 @@
 > 外部依据已于 2026-09-05 复查：访问受限的固定版本文档改用同提交官方 GitHub 原文；旧 HSP 文档改用现行 in-app HSP 页面，HNP 链接改为官方开发指南。原地址与核验方式保留在 [审计清单](audit/external-links.json)。
 
 ## 1. 初始方案与当前状态
+
+### 2026-09-07 分包方式验收确认
+
+- Change ID：CHG-20260907-001；状态：**User Verified（用户真机测试通过）**。
+- 用户确认：“已经测试了，上次的分包方式没问题哈，帮我标记下”。对应本任务上次交付的 Release 正式签名分包方式：一个 App Pack、common HSP、2in1/tablet Entry HAP，2in1 内含 xrdp HNP。分包方式不再列为整体待验项。
+- 上次交付记录为 CHG-20260905-006，App Pack SHA-256 `c1228dd54b15b501794d6e11b99b0c29a4a84916924ca9c20b3e3b2b4fdff497`；此处用于关联交付记录，用户未另行提供设备日志或包哈希。
+- 本次更新验收状态，不改代码、不重新构建。历史旧 tablet 迁移和应用市场分发的专项矩阵不由此笼统确认推导为逐项通过。
 
 当前工程验证结构采用 **一个 bundle、一个 App Pack、两个按设备隔离的 Entry HAP、一个应用内 HSP**：
 
@@ -722,7 +729,7 @@ MDP-DIST-01 至 04 仍须使用真实应用市场内部测试验证。
 | MDP-02 | Implemented / tablet verified | 权限和能力物理隔离 | 两个 manifest、能力注入、签名 profile | tablet 包与设备权限通过；2in1 权限回归待设备在线补验 |
 | MDP-03 | Implemented / package verified | HNP 独立 XRDP 进程 | xrdp bridge、CMake、HNP 脚本 | 编译、进程策略和包门禁通过；2in1 独立 PID/连接/清理待补验 |
 | MDP-03A | Implemented / 2in1 runtime verified | 修正私有 HNP 沙箱运行路径 | xrdp runtime loader、进程策略门禁、验证基线 | 从 `/data/app/bin/xrdp` 动态解析当前版本根目录；2in1 独立 PID/3390/强停清理通过；tablet 物理隔离不变；MSTSC/显式停止/异常/卸载待验 |
-| MDP-04 | Implemented / release blocked | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 三模式与本地门禁通过；覆盖升级 P0 和应用市场真实分发未通过 |
+| MDP-04 | User Verified（分包方式） | 构建、包门禁和分发收口 | 构建脚本、验证脚本、README/基线 | 2026-09-07 用户确认上次分包方式测试通过；旧 tablet 迁移及市场分发专项保留原记录，详见CHG-20260907-001 |
 | MDP-04A | Implemented / package verified | 修复 release Entry 与 `common.hsp` 公共导出名不一致导致的启动 JsCrash | Entry 混淆规则、App Pack 门禁、发布验证记录 | 禁止 Entry export obfuscation；release 构建、签名、包结构及实际 ABC 导入/导出门禁通过；2in1 全新安装和 `1000001 -> 1000002` 覆盖安装启动待真机验证 |
 
 状态定义：

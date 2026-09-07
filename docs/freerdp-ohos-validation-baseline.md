@@ -35,6 +35,8 @@ git -C harmony/third_party/FreeRDP rev-parse HEAD
 
 当前风格统一包（CHG-20260905-006）：概览更换为与侧栏其他图标一致的圆角描边面板后，Release正式签名构建、模块debug=false、签名/profile和ABC检查通过；最终路径不变，20,010,822 bytes，SHA-256 `c1228dd54b15b501794d6e11b99b0c29a4a84916924ca9c20b3e3b2b4fdff497`，替换005包。图标评分待同工具复测。
 
+分包验收确认（CHG-20260907-001）：2026-09-07 用户确认上次交付的分包方式已经测试、没有问题，状态更新为 **User Verified（用户真机测试通过）**。当前 App Pack + common HSP + 两个设备 Entry HAP + 2in1 xrdp HNP 结构作为后续维护基线；关联上次交付CHG-20260905-006。本次仅登记用户验收，无新增构建或自动真机测试。
+
 ## 构建前检查
 
 从仓库根目录执行：
