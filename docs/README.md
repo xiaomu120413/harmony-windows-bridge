@@ -18,7 +18,7 @@
 ## 当前范围、架构与能力
 
 - [项目范围与会话工具栏](project-scope-and-session-controls.md)：已完成的范围清理；会话缩放已完成首轮调研，尚未实现。
-- [会话缩放与悬浮功能球调研](session-zoom-floating-controls-research.md)：鸿蒙连接Windows方向的本地缩放、输入隔离、DPI分界及建议实施顺序。
+- [会话分辨率与工具栏调研](session-zoom-floating-controls-research.md)：鸿蒙连接Windows方向；最新建议优先顶部工具栏、远端分辨率切换和生效反馈，本地缩放留作后续。
 - [FreeRDP 功能矩阵](freerdp-ohos-feature-matrix.md)：已接入能力、默认策略、fallback 与待验收项目。
 - [多设备与 HNP 打包方案](harmonyos-multidevice-hnp-packaging-plan.md)：common HSP、设备 Entry 和独立 xrdp 进程；旧 tablet 升级和市场分发仍有阻断项。
 - [平板/2in1 适配设计与验收](harmonyos-tablet-adaptation-architecture-and-acceptance.md)：布局、输入、IME、XComponent 的阶段设计与证据；早期单 HAP 约束由多设备方案替代。
