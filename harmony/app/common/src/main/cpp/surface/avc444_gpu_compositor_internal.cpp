@@ -1,6 +1,7 @@
 #include "surface/avc444_gpu_compositor_internal.h"
 
 #include "common/string_utils.h"
+#include "session/session_display_settings.h"
 #include "freerdp/freerdp_runtime.h"
 #include "surface/native_rgba_copy.h"
 
@@ -1449,6 +1450,7 @@ public:
 
     bool Present(std::vector<std::string>& logs, bool logSuccess)
     {
+        const auto displayGeneration = DisplaySettings().Generation();
         const std::string modePrefix = "AVC444 GPU ";
         if (!hasLuma_ || !hasChroma_) {
             logs.push_back(modePrefix + "present skipped: luma=" +
@@ -1523,6 +1525,7 @@ public:
             return false;
         }
         eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        DisplaySettings().Presented(displayGeneration, surfaceWidth_, surfaceHeight_);
         const uint32_t leftBar = viewport.x;
         const uint32_t topBar = viewport.y;
         const uint32_t rightBar = targetWidth_ - viewport.x - viewport.width;

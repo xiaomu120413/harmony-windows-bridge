@@ -1,7 +1,23 @@
 # 鸿蒙客户端分辨率、缩放与会话工具栏调研
 
 日期：2026-09-07；Change ID：CHG-20260907-002；关联：SESSION-ZOOM-001。
-状态：ResearchComplete / Proposed，尚未实现。源码基线：`3b174ae`。
+状态：顶部工具栏首版Implemented，Native/ArkTS检查通过，真机交互待验收；后续任意缩放方案仍为Proposed。原调研源码基线：`3b174ae`。
+
+## 2026-09-10 实施基线（CHG-20260910-001，Implemented）
+
+用户授权审核合理后实施。首版采用顶部收起把手、hover/点击展开、固定/关闭、预设选择和应用，显示实际尺寸/调整状态；本地任意倍率、1:1及平移后置，不展示未实现入口。刷新仅请求现有缓存画面重绘，失败如实反馈。单屏允许固定，进入多屏重置跟随策略并禁用手动选择。新连接重置跟随，窗口/旋转在固定模式不发自动resize。
+
+新增Native `session/session_display_settings.h/.cpp`管理模式、请求代次、目标/已呈现尺寸、状态和8秒超时。状态锁与协议派发锁分离，自动/手动请求通过同一串行派发边界核对最新策略，取消旧coalescer请求并拒绝固定模式下的自动请求。新增`napi/display_settings_exports.h/.cpp`，导出getDisplaySettings、setDisplayResolution(mode,width,height)、refreshDisplay；仅参数转换和转发。native_bridge_context注入会话/Surface/重绘依赖及生命周期挂钩。四条最终输出路径成功swap/flush后发布带代次的呈现记录；Sent不算Applied。过渡期间释放旧输入并屏蔽新的指针/笔事件，允许释放事件。
+
+ArkTS新增`components/session/SessionToolbar.ets`，RdpSessionPage局部叠放，`pages/Index.ets`传入主题；Gateway/Controller有类型转发，Native声明与混淆白名单同步。面板打开时250ms轮询，收起停止；hover250ms展开、离开800ms收起，操作/应用中保持展开，支持固定。Surface布局不变；Flex换行、至少48vp热区，不使用全屏透明拦截区。Surface销毁时使呈现记录和待确认代次失效，保留当前分辨率策略；测试可注入较短超时验证恢复。
+
+文件范围：上述新增模块及`session/rdp_session_core.cpp`、`napi/native_bridge_context.*`、`napi/napi_exports.cpp`、`surface/{surface_bridge.cpp,avc420_gpu_compositor_internal.cpp,avc444_gpu_compositor_internal.cpp}`、CMake、Native声明、混淆规则、Gateway/Controller、RdpSessionPage、Native策略测试及测试入口。验收A：代次/超时/固定抑制/重置/多屏测试；B：Native/ArkTS检查；C：Release正式签名和ABC门禁；D：真实Windows分辨率切换、输入和hover/触屏验收。A-C通过后标Implemented/package verified；D未执行则明确保留。
+
+实施边界补充：组件保持纯展示，通过Index → RdpSessionPage → SessionToolbar注入查询、应用、重绘、释放输入回调；组件本地定义结构类型，不直接引用Native网关。该约束由既有ArkTS架构门禁验证。
+
+实施回写：以上模块、接口与UI已完成。RGBA成功呈现反馈统一接在native_bridge_context的RenderSurfaceRgbaFrame，未修改surface_bridge.cpp；两条AVC合成路径各自反馈成功swap。首版预设按上述固定顺序排列，不做服务端支持列表枚举或自动比例排序；保留当前DPI，实际尺寸单独显示。收起按钮负责触屏关闭，不增加点击外部的透明拦截区。Native策略测试覆盖未连接/非法参数、等待与呈现、尺寸不匹配、旧代次、Deferred、Unchanged、失败、不支持、Surface失效、固定/多屏/重连重置及超时解除输入阻塞；固定策略在派发处检查，真实窗口变化竞争仍需D验收。
+
+已执行：`powershell -NoProfile -ExecutionPolicy Bypass -File tools/run_tablet_native_tests.ps1`与`tools/run_tablet_arkts_tests.ps1`均通过，日志为本地忽略目录`tmp/toolbar-native.log`、`tmp/toolbar-arkts.log`。首轮修正Select字体API及组件Native依赖后复跑通过。Release产物及签名证据见validation-baseline的CHG-20260910-001。D未执行：鸿蒙连接Windows，逐个预设应用、固定后改变窗口/旋转、连续应用、切回跟随、四角点击、hover/触屏与失败超时提示；不得将原分包或旧远程会话验收当成本次UI验收。
 
 ## 当前推荐修订：顶部工具栏优先（CHG-20260907-003）
 

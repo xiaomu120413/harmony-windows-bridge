@@ -8,6 +8,8 @@
 
 ## 构建与功能记录
 
+2026-09-10（CHG-20260910-001）：应用层增加顶部会话工具栏，支持单屏跟随窗口/固定分辨率、实际呈现尺寸、调整状态和缓存重绘请求；复用既有disp接口，FreeRDP公共ABI不变。Native状态测试及ArkTS架构/策略检查通过；本轮工具栏、分辨率切换和输入映射尚未真机验收。AVC当前输出所有权不允许GDI重绘时，如实提示不可重绘，不强制切换codec。详见[实施记录](session-zoom-floating-controls-research.md)。
+
 当前 HarmonyOS 交付 profile 已经能完整交叉编译并打包：
 
 - 基础 RDP、TLS/NLA、WinPR、OpenSSL、zlib、cJSON。

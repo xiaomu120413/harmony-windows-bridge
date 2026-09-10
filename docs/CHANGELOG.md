@@ -23,6 +23,12 @@ Git 历史仍是提交内容和文件差异的最终事实来源；设计目标�
 | --- | --- | --- | --- | --- |
 | `CHG-YYYYMMDD-NNN` | `type(scope): subject` | 功能/模块 | 用一两句话说明行为变化、兼容性和主要影响范围 | 测试命令、结果或专项文档/证据链接；未执行要明示 |
 
+## 2026-09-10
+
+| Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |
+| --- | --- | --- | --- | --- |
+| `CHG-20260910-001` | `feat(session): add resolution toolbar with presentation confirmation` | 鸿蒙客户端/Native/会话UI | 顶部hover或点击工具栏，单屏固定/跟随分辨率、实际呈现状态、超时输入恢复及缓存重绘；沿用正式签名与既有分包 | Native/ArkTS检查、Release构建、分包ABC及正式签名校验通过；本次真机未执行；[实施记录](session-zoom-floating-controls-research.md)、[产物基线](freerdp-ohos-validation-baseline.md) |
+
 ## 2026-09-07
 
 | Change ID | 提交 | 类型/范围 | 改了什么 | 验证/关联 |

@@ -60,4 +60,16 @@ configPath
 modulePath
 logPath
 activeMstscSession
+getDisplaySettings
+setDisplayResolution
+refreshDisplay
+connected
+multimon
+pending
+mode
+status
+requestedWidth
+requestedHeight
+actualWidth
+actualHeight
 logs

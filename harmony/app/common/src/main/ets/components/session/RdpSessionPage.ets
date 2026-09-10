@@ -1,7 +1,14 @@
 import { KeyboardAvoidMode, NodeContent } from '@kit.ArkUI'
+import { SessionToolbar, SessionDisplayState, SessionDisplayResult,
+  emptySessionDisplayState, unavailableDisplayResult } from './SessionToolbar'
 
 @Component
 export struct RdpSessionPage {
+  getDisplayState: () => SessionDisplayState = emptySessionDisplayState
+  setResolution: (mode: string, width: number, height: number) => SessionDisplayResult = unavailableDisplayResult
+  refreshDisplay: () => SessionDisplayResult = unavailableDisplayResult
+  releaseInput: () => void = () => {}
+  @Prop isDark: boolean = false
   private surfaceContent: NodeContent = new NodeContent()
   @Prop noticeTitle: string = ''
   @Prop noticeSubtitle: string = ''
@@ -70,6 +77,8 @@ export struct RdpSessionPage {
       if (this.noticeTitle.length > 0) {
         this.buildSessionNotice()
       }
+      SessionToolbar({ isDark: this.isDark, getDisplayState: this.getDisplayState,
+        setResolution: this.setResolution, refreshDisplay: this.refreshDisplay, releaseInput: this.releaseInput })
     }
     .width('100%')
     .height('100%')

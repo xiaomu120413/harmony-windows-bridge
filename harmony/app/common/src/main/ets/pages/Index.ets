@@ -831,18 +831,17 @@ export struct MuHubApp {
     Column() {
       if (this.showSession) {
         RdpSessionPage({
+          getDisplayState: RdpClientController.getDisplaySettings,
+          setResolution: RdpClientController.setDisplayResolution,
+          refreshDisplay: RdpClientController.refreshDisplay,
+          releaseInput: () => { this.rdpClientController.releaseAllInput() },
+          isDark: this.isAppDark(),
           noticeTitle: this.sessionNoticeTitle,
           noticeSubtitle: this.sessionNoticeSubtitle,
           remoteLoginWaiting: this.remoteLoginWaiting,
           onAttachContent: (content: NodeContent): boolean => this.rdpSurfaceContentHost.attach(content),
-          onDetachContent: (): void => {
-            this.rdpSurfaceContentHost.detach()
-          },
-          onSurfaceLoad: (): void => {
-            this.deferUiUpdate(() => {
-              this.focusRemoteSurface()
-            })
-          }
+          onDetachContent: (): void => { this.rdpSurfaceContentHost.detach() },
+          onSurfaceLoad: (): void => { this.deferUiUpdate(() => { this.focusRemoteSurface() }) }
         })
       } else if (this.showSettings) {
         SettingsPage({

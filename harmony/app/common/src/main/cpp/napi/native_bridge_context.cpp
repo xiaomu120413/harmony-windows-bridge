@@ -34,6 +34,7 @@ RdpDisplayRequestCoalescer g_resizeRequestCoalescer;
 RdpDisplayLayoutMonitor g_displayLayoutMonitor;
 RemoteImeClient g_remoteIme;
 std::atomic_bool g_multimonActive {false};
+std::recursive_mutex g_displayDispatchMutex;
 
 void EmitNativeLog(const std::string& line)
 {
@@ -42,7 +43,10 @@ void EmitNativeLog(const std::string& line)
 
 SurfacePaintResult RenderSurfaceRgbaFrame(const RgbaFrame& frame)
 {
-    return g_surface.RenderRgbaFrame(frame);
+    const auto generation = DisplaySettings().Generation();
+    auto result = g_surface.RenderRgbaFrame(frame);
+    if (result.ok) { DisplaySettings().Presented(generation, frame.width, frame.height); }
+    return result;
 }
 
 bool QueueSurfaceRgbaFrame(const RgbaFrame& frame, std::string& message, bool forceRender)
@@ -108,9 +112,12 @@ DisplayResizeResult RequestRemoteDesktopResize(const DisplayResizeRequest& reque
     return g_session.RequestDynamicDesktopResizeEx(request);
 }
 
-void ApplyRemoteDesktopResize(const DisplayResizeRequest& request)
+void ApplyRemoteDesktopResizeLocked(const DisplayResizeRequest& request)
 {
+    const auto generation = DisplaySettings().Begin(request.width, request.height);
+    ReleaseAllXComponentInput("displayResize");
     const DisplayResizeResult resizeResult = RequestRemoteDesktopResize(request);
+    DisplaySettings().Result(generation, resizeResult);
     if (resizeResult.status == DisplayResizeStatus::Sent) {
         g_resizeCoordinator.ApplyResult(resizeResult, request.reason);
         DropPendingRenderFrame(request.reason);
@@ -203,6 +210,8 @@ void UpdateDesiredSingleMonitorLayout(const DisplayResizeRequest& request)
 
 void ScheduleCurrentSurfaceResize(const std::string& reason)
 {
+    std::lock_guard<std::recursive_mutex> dispatch(g_displayDispatchMutex);
+    if (DisplaySettings().IsFixed()) { return; }
     if (g_multimonActive.load()) {
         return;
     }
@@ -218,6 +227,8 @@ void ScheduleCurrentSurfaceResize(const std::string& reason)
 
 void FlushCurrentSurfaceResize(const std::string& reason)
 {
+    std::lock_guard<std::recursive_mutex> dispatch(g_displayDispatchMutex);
+    if (DisplaySettings().IsFixed() || g_multimonActive.load()) { return; }
     const DisplayResizeRequest request = CurrentSurfaceResizeRequest(reason);
     if (request.width > 0 && request.height > 0) {
         if (!g_session.IsConnected()) {
@@ -244,11 +255,20 @@ void ConfigureRdpSessionCallbacks()
 {
     g_session.SetCallbacks({
         [](const std::string& state) {
+            if (state == "Resolving" || state == "Failed") {
+                DisplaySettings().Reset(false);
+                g_resizeRequestCoalescer.Cancel();
+            }
             if (state == "Disconnected") {
+                DisplaySettings().Reset(false);
+                g_resizeRequestCoalescer.Cancel();
                 ReleaseAllXComponentInput("disconnected");
                 g_resizeCoordinator.Reset("session disconnected");
                 std::string imeMessage;
                 (void)g_remoteIme.Close(imeMessage);
+            }
+            if (state == "Connected" || state == "RemoteLoginWaiting" || state == "RemoteDesktopReady") {
+                DisplaySettings().SetConnected(true);
             }
             g_events.state.Emit(state);
         },
@@ -304,6 +324,7 @@ void OnXComponentSurfaceDestroyed(OH_NativeXComponent* component, void* window)
     std::string imeMessage;
     (void)g_remoteIme.Close(imeMessage);
     g_surface.OnSurfaceDestroyed(component, window);
+    DisplaySettings().InvalidatePresentation();
     g_resizeRequestCoalescer.Cancel();
     g_resizeCoordinator.Reset("surface destroyed");
     UpdateRdpgfxSurfaceTargetIfReady("surface destroyed");
@@ -371,9 +392,41 @@ bool BindImeHostWindow(uint32_t windowId, std::string& message)
     return true;
 }
 
+bool SetSessionDisplayResolution(bool fixed, uint32_t width, uint32_t height, std::string& message)
+{
+    std::lock_guard<std::recursive_mutex> dispatch(g_displayDispatchMutex);
+    if (!g_session.IsConnected() || g_multimonActive.load()) {
+        message = "当前会话不可调整单屏分辨率";
+        return false;
+    }
+    auto request = CurrentSurfaceResizeRequest("toolbar_resolution");
+    if (!request.width || !request.height || !DisplaySettings().Select(fixed, width, height)) {
+        message = "分辨率或显示区域无效";
+        return false;
+    }
+    g_resizeRequestCoalescer.Cancel();
+    if (fixed) { request.width = width; request.height = height; }
+    ApplyRemoteDesktopResizeLocked(request);
+    const auto state = DisplaySettings().Snapshot();
+    message = state.status;
+    return state.status != "Failed" && state.status != "Unsupported";
+}
+
+bool RefreshSessionDisplay(std::string& message)
+{
+    if (!g_session.IsConnected()) { message = "会话未连接"; return false; }
+    return g_session.RequestCurrentFrameRender("toolbar_repaint", message);
+}
+
 void InitializeNativeBridgeContext()
 {
-    g_resizeRequestCoalescer.SetCallback(ApplyRemoteDesktopResize);
+    g_resizeRequestCoalescer.SetCallback([](const DisplayResizeRequest& queued) {
+        std::lock_guard<std::recursive_mutex> dispatch(g_displayDispatchMutex);
+        if (DisplaySettings().IsFixed() || g_multimonActive.load() || !g_session.IsConnected()) { return; }
+        // An already dequeued request may be stale: resolve the current Surface under the dispatch lock.
+        const auto request = CurrentSurfaceResizeRequest(queued.reason);
+        if (request.width && request.height) { ApplyRemoteDesktopResizeLocked(request); }
+    });
     ConfigureRdpgfxPipelineCallbacks();
     ConfigureRdpSessionCallbacks();
     ConfigureXComponentInputBridge(&g_session, &g_remoteIme, EmitNativeLog);
@@ -381,7 +434,9 @@ void InitializeNativeBridgeContext()
     if (!g_displayLayoutMonitor.Start(
         [](uint32_t orientation, const std::vector<FREERDP_OHOS_MONITOR_LAYOUT>& layout,
             const std::string& source) {
+            std::lock_guard<std::recursive_mutex> dispatch(g_displayDispatchMutex);
             const bool multimon = layout.size() > 1;
+            DisplaySettings().SetMultimon(multimon);
             const bool wasMultimon = g_multimonActive.exchange(multimon);
             const bool orientationChanged = g_session.DisplayOrientation() != orientation;
             if (multimon) {

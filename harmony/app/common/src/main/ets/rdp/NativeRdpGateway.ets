@@ -18,6 +18,18 @@ export interface NativeCommandResult {
   message: string
 }
 
+export interface NativeDisplaySettings {
+  connected: boolean
+  multimon: boolean
+  pending: boolean
+  mode: string
+  status: string
+  requestedWidth: number
+  requestedHeight: number
+  actualWidth: number
+  actualHeight: number
+}
+
 export type NativePermissionType = 'microphone' | 'camera' | 'clipboard' | 'location'
 
 export interface NativePermissionRequest {
@@ -32,6 +44,17 @@ export interface NativePermissionResult {
 }
 
 export class NativeRdpGateway {
+  static getDisplaySettings(): NativeDisplaySettings {
+    return rdpNative.getDisplaySettings()
+  }
+
+  static setDisplayResolution(mode: string, width: number, height: number): NativeCommandResult {
+    return rdpNative.setDisplayResolution(mode, width, height)
+  }
+
+  static refreshDisplay(): NativeCommandResult {
+    return rdpNative.refreshDisplay()
+  }
   static connect(params: NativeConnectParams): NativeCommandResult {
     return rdpNative.connect(params)
   }
