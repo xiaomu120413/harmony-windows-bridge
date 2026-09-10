@@ -1,6 +1,7 @@
 import {
   NativeCommandResult,
   NativeConnectParams,
+  NativeDisplaySettings,
   NativeRdpGateway
 } from './NativeRdpGateway'
 
@@ -10,6 +11,17 @@ export interface RdpClientCallbacks {
 }
 
 export class RdpClientController {
+  static getDisplaySettings(): NativeDisplaySettings {
+    return NativeRdpGateway.getDisplaySettings()
+  }
+
+  static setDisplayResolution(mode: string, width: number, height: number): NativeCommandResult {
+    return NativeRdpGateway.setDisplayResolution(mode, width, height)
+  }
+
+  static refreshDisplay(): NativeCommandResult {
+    return NativeRdpGateway.refreshDisplay()
+  }
   private callbacksRegistered: boolean = false
   private connected: boolean = false
 

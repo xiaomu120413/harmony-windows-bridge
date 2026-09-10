@@ -26,6 +26,7 @@ $touchTestBinary = '/tmp/muhub-xcomponent-touch-policy-test'
 $geometryTestSource = "$cppRoot/tests/remote_content_geometry_test.cpp"
 $geometryPolicySource = "$cppRoot/surface/remote_content_geometry.cpp"
 $geometryTestBinary = '/tmp/muhub-remote-content-geometry-test'
+$displayTestBinary = '/tmp/muhub-session-display-settings-test'
 
 $napiExportsSource = Join-Path $repoRoot 'harmony/app/common/src/main/cpp/napi/napi_exports.cpp'
 $napiExportsText = Get-Content -Raw -Encoding utf8 $napiExportsSource
@@ -118,7 +119,8 @@ foreach ($forbidden in @('XComponent({', 'XComponentController', 'TapGesture', '
   }
 }
 
-$command = "set -e; trap 'rm -f $resizeTestBinary $coalescerTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary' EXIT; " +
+$command = "set -e; trap 'rm -f $resizeTestBinary $coalescerTestBinary $pointerTestBinary $touchTestBinary $geometryTestBinary $displayTestBinary' EXIT; " +
+  "g++ -std=c++17 -pthread -I'$cppRoot' '$cppRoot/tests/session_display_settings_test.cpp' '$cppRoot/session/session_display_settings.cpp' -o '$displayTestBinary'; '$displayTestBinary'; " +
   "g++ -std=c++17 -pthread " +
   "-I'$cppRoot' -I'$freeRdpRoot' -I'$freeRdpInclude' " +
   "'$resizeTestSource' '$coordinatorSource' -o '$resizeTestBinary'; '$resizeTestBinary'; " +

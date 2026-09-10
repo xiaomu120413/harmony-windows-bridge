@@ -1,6 +1,7 @@
 ﻿#include "session/rdp_session_core.h"
 
 #include "channels/rdpgfx_pipeline.h"
+#include "session/session_display_settings.h"
 #include "common/bridge_log.h"
 #include "common/net_utils.h"
 #include "common/string_utils.h"
@@ -219,6 +220,10 @@ struct RdpSession::Impl {
 
     bool SendLocalPointer(const LocalPointerEvent& pointer, std::string& message)
     {
+        if (pointer.action != LocalPointerAction::ButtonUp && DisplaySettings().BlocksPointer()) {
+            message = "display transition: pointer held";
+            return false;
+        }
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;
@@ -233,6 +238,11 @@ struct RdpSession::Impl {
 
     bool SendLocalPen(const LocalPenEvent& pen, std::string& message)
     {
+        if (pen.action != LocalPenAction::Up && pen.action != LocalPenAction::Cancel &&
+            DisplaySettings().BlocksPointer()) {
+            message = "display transition: pen held";
+            return false;
+        }
         if (!connected.load()) {
             message = "no active FreeRDP session";
             return false;

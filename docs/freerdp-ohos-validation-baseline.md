@@ -6,6 +6,16 @@
 
 ## 基线标识
 
+### 2026-09-10 顶部显示工具栏包（CHG-20260910-001）
+
+状态：Implemented；Native/ArkTS与Release包检查Verified；本次UI真机验收待执行。保留2026-09-07用户已验证的common HSP、2in1/tablet Entry与HNP分包方式。FreeRDP子模块`0c242c6e2`、xrdp子模块`8d3facf3`未修改。
+
+- 执行Hvigor `clean`、`assembleApp -p product=default -p buildMode=release`，成功；随后执行`repack-hap-with-hnp.ps1`与`package-multidevice-app.ps1`，显式指定`muhub_release.cer`和`muhub_releaseRelease.p7b`。构建时临时切换签名配置并在finally恢复，不改变仓库默认配置。
+- `tools/verify_multidevice_app.ps1`通过，common/entry/entry_tablet分包与`arktsCommonAbi=passed`。`hap-sign-tool.jar verify-app`验证最终APP及源HAP/HSP均成功；提取profile与正式profile哈希一致、类型release；包内三个module.json均`debug=false`。
+- 最终产物：`harmony/app/build/outputs/default/app-default-signed.app`，20,022,607 bytes，SHA-256 `63644dd2bf22f7f4f029ad37195c02d6f19203ff096cc7f1f3d4efa2b900a8ae`。该目录只保留最终APP，中间产物归档到忽略目录`tmp/toolbar-release-intermediates`。
+- Native及ArkTS检查均通过；本地日志`tmp/toolbar-native.log`、`tmp/toolbar-arkts.log`、`tmp/toolbar-release.log`、`tmp/toolbar-signature.log`。历史构建封装进程返回1，但日志内Hvigor构建与重打包/结构检查成功；独立正式签名校验返回0，未把封装退出码当成验证依据。
+- 本轮没有安装到真机；Windows连接中切换预设、窗口/旋转不覆盖固定设置、返回跟随、输入四角对齐、hover/触屏和超时恢复仍需验收。旧会话验收不代替本轮新功能验收，详见[专项实施记录](session-zoom-floating-controls-research.md)。
+
 | 项目 | 当前值 |
 | --- | --- |
 | 主仓库分支 | `main` |

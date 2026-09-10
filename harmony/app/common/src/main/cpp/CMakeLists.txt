@@ -101,6 +101,8 @@ add_library(rdpclient SHARED
     common/net_utils.cpp
     napi/napi_event_sink.cpp
     napi/napi_exports.cpp
+    napi/display_settings_exports.cpp
+    session/session_display_settings.cpp
     napi/napi_utils.cpp
     napi/permission_request_bridge.cpp
     session/rdp_session_core.cpp

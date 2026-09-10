@@ -1,4 +1,5 @@
 #include "napi/napi_exports.h"
+#include "napi/display_settings_exports.h"
 
 #include "napi/native_api.h"
 #include "napi/native_bridge_context.h"
@@ -287,5 +288,6 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     InitializeNativeBridgeContext();
+    RegisterDisplaySettingsExports(env, exports);
     return exports;
 }

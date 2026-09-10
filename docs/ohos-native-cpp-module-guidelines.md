@@ -1,5 +1,7 @@
 # OHOS Native C++ Module Guidelines
 
+CHG-20260910-001 (Implemented; native/ArkTS checks verified, device acceptance pending): session/session_display_settings owns display preference and presentation-confirmation state; napi/display_settings_exports only converts typed UI requests. native_bridge_context wires dependencies and serializes display dispatch, renderers publish successful presentations, session input observes the transition gate. No new library or FreeRDP public ABI change. ArkTS components receive callbacks from Index through RdpSessionPage. See the session toolbar research implementation baseline for files, test evidence and acceptance A-D.
+
 This document defines the module boundaries for the HarmonyOS native RDP bridge.
 New native code should be added to the owning module, not to the bootstrap or
 N-API entry files.
