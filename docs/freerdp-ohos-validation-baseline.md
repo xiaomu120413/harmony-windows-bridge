@@ -6,6 +6,14 @@
 
 ## 基线标识
 
+### 2026-09-10 设备调试安装（CHG-20260910-002，包Verified，安装受阻）
+
+用户明确要求改用debug证书打包HAP。上一轮正式包安装未成功：设备直接安装APP返回9568448，正式签名HAP/HSP返回9568322（不受信任来源）。本轮使用现有`harmony/app/build_hap.bat`的2in1目标与默认`muhub_debug.cer` / `muhub_debugDebug.p7b`，保留公共HSP及Entry内HNP；不改变业务代码或签名默认配置。验收：构建通过、HAP/HSP签名profile为debug且匹配既有profile，联合`hdc install -r`成功；不卸载或清除原应用数据。安装成功不等于新工具栏远程会话验收通过。
+
+实际结果：首次构建遇到系统Node与Hvigor不兼容，改用DevEco自带Node并clean后，`build_hap.bat 2in1`与`assembleHsp --mode module -p product=default -p buildMode=debug -p module=common@default`通过。两份包独立verify-app成功，提取profile与现有debug profile一致、类型debug，module.json均debug=true，Entry内xrdp.hnp存在。交付目录`harmony/app/build/outputs/default`只放最终`entry-default-signed.hap`和`common-default-signed.hsp`；本轮不生成或直接安装APP。
+
+HAP SHA-256：`6435babc27800ff116316166e0c57dd4edf93b840766e79990d1a6ded256fa74`；HSP SHA-256：`9b47e7af23b778959f7641c2abee824089251a8e6291e869828a7453a45da3df`。设备`3QC0124C11000711`联合覆盖安装返回`9568286: install provision type not same`，未安装成功，未卸载旧应用或清除数据。需用户确认卸载旧版后再继续；设备会话验收仍待执行。本地证据：`tmp/toolbar-debug-build.log`、`tmp/toolbar-debug-hsp.log`、`tmp/toolbar-debug-signature.log`、`tmp/toolbar-debug-install.log`。
+
 ### 2026-09-10 顶部显示工具栏包（CHG-20260910-001）
 
 状态：Implemented；Native/ArkTS与Release包检查Verified；本次UI真机验收待执行。保留2026-09-07用户已验证的common HSP、2in1/tablet Entry与HNP分包方式。FreeRDP子模块`0c242c6e2`、xrdp子模块`8d3facf3`未修改。
