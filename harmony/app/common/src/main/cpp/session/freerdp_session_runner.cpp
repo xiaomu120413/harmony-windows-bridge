@@ -449,6 +449,7 @@ RdpSessionRunResult RunFreerdpSession(const ConnectParams& params, uint64_t diag
         session, &prepared.options, &sessionCallbacks, detail.data(), detail.size());
     result.connected = adapter.connected;
     result.message = detail[0] == '\0' ? SafeCString(api.ohosSessionGetDiagnostics(session)) : detail.data();
+    sessionCallbacks.userData = nullptr;
     api.ohosSessionFree(session);
 
     if (!running.load()) {

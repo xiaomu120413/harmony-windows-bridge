@@ -57,8 +57,12 @@ export class RdpClientController {
   }
 
   connect(params: NativeConnectParams): NativeCommandResult {
-    const result = NativeRdpGateway.connect(params)
-    this.connected = result.ok && RdpClientController.isConnectedState(result.state)
+    return NativeRdpGateway.connect(params)
+  }
+
+  disconnect(): NativeCommandResult {
+    const result = NativeRdpGateway.disconnect()
+    this.connected = false
     return result
   }
 

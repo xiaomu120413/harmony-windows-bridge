@@ -160,6 +160,9 @@ if ($LASTEXITCODE -ne 0) {
 $passwords = Resolve-HvigorSigningPasswords -RepoRoot $repoRoot -SigningRoot $SigningRoot `
   -SigningPassword $SigningPassword -StorePassword $StorePassword -KeyPassword $KeyPassword
 
+# hap-sign-tool sign-app 的 -keyPwd/-keystorePwd 仅接受命令行明文（华为工具限制，不支持 stdin/file/env）。
+# 密码已经 Resolve-HvigorSigningPasswords 从 env/参数/加密配置解析，不写入脚本或仓库配置；
+# 运行时命令行可见仅限本机同权进程，生产签名应在受控单机执行。
 $signOutput = & $JavaPath -jar $HapSignToolJar sign-app `
   -mode localSign `
   -keyAlias $KeyAlias `

@@ -111,10 +111,19 @@ add_library(rdpclient SHARED
     session/rdp_display_resize_coordinator.cpp
     session/rdp_display_layout_monitor.cpp
     session/rdp_session_input.cpp
+    surface/avc_gpu_common.cpp
     surface/avc420_gpu_compositor.cpp
-    surface/avc420_gpu_compositor_internal.cpp
+    surface/avc420_gpu_compositor_utils.cpp
+    surface/avc420_hardware_decoder.cpp
+    surface/avc420_native_buffer_renderer.cpp
+    surface/avc420_gpu_compositor_state.cpp
+    surface/avc420_gpu_compositor_impl.cpp
     surface/avc444_gpu_compositor.cpp
-    surface/avc444_gpu_compositor_internal.cpp
+    surface/avc444_gpu_compositor_utils.cpp
+    surface/avc444_hardware_decoder.cpp
+    surface/avc444_gpu_renderer.cpp
+    surface/avc444_gpu_readback.cpp
+    surface/avc444_gpu_compositor_state.cpp
     surface/latest_frame_renderer.cpp
     surface/native_rgba_copy.cpp
     surface/native_window_rgba_painter.cpp

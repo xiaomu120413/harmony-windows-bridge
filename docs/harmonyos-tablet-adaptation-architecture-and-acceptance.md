@@ -441,6 +441,25 @@ Stack
 
 showSession 必须是 Index 最外层分支。Home/Settings 的 Compact/Expanded 分支只在非会话状态下存在。当前产品不提供应用内返回、断开按钮或浮动会话工具栏：用户点击系统窗口 `X` 退出应用并结束会话，远端主动断开时回到首页。该决策不要求新增 `disconnect` N-API；若未来支持沉浸式全屏或隐藏系统标题栏，必须先新增可达的应用内退出路径并单独验收，不能沿用本决策。
 
+> 决策更新（2026-09-14，TAB-A-07）：补充非阻塞 `disconnect` N-API 通道。离开会话页（`RdpSessionPage.aboutToDisappear`）和应用退出（`MuHubApp.aboutToDisappear`）时主动调用 `RequestDisconnect` 断开 RDP 会话；`onPageHide`（切后台）不调用，避免误断后台会话。该通道复用 native 已有的 `RdpSession::RequestDisconnect()`（非阻塞：`running=false` + `input.Clear()` + `channels.RequestDisconnect()` → `abortConnectContext`），不新增 native 会话内核逻辑。应用内仍不提供显式「断开」按钮，但会话页退出即断连，不再依赖进程退出。详见 9.1.1 与 TAB-A-07。
+
+### 9.1.1 连接控制状态机与单一状态来源
+
+连接状态转移：
+
+~~~text
+Idle -> Resolving -> Negotiating -> Authenticating
+  -> (RemoteLoginWaiting | RemoteDesktopReady) -> Connected
+  -> Disconnected | Failed
+~~~
+
+单一状态来源门禁：
+
+- `RdpClientController.connected` 是应用层唯一连接状态来源，**仅由 `onState`/`onError` 回调与 `disconnect()`/`beginConnect()` 驱动**：`onState` 置 `isConnectedState(state)`、`onError` 置 `false`、`disconnect()` 置 `false`、`beginConnect()` 置 `false`（重置）。
+- `connect()` 的同步返回 `NativeCommandResult` 仅作命令执行结果反馈（`ok`/`state`/`message`），**不得写入 `connected`**。native 同步返回的 `state` 恒为 `Resolving`，旧代码据此同步置 `connected` 实际永远为 `false`，是冗余且误导性的死代码，由 TAB-A-07 删除。
+- `disconnect()` 调用 native `RequestDisconnect()`（非阻塞），立即置 `connected=false`；worker 线程异步退出后经 `onState('Disconnected')` 回调完成状态闭环，UI 不阻塞等待 worker join。
+- 多控制器并存时不得各自维护连接状态副本，必须经 `RdpClientController.isConnected()` 读取。
+
 ### 9.2 resize 状态机
 
 ~~~text
@@ -555,8 +574,8 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 
 | 优先级 | 文件 | 修改点 | 文件完成条件 |
 |---|---|---|---|
-| P0，新文件 | harmony/app/entry/src/main/ets/rdp/NativeRdpGateway.ets | 成为 libentry.so 唯一 import 点；薄封装 connect/callback/输入/XComponent/IME/XRDP/diagnostics；当前产品决策不导出主动 disconnect | components 和 controllers 不直接 import libentry.so |
-| P0，新文件 | harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 负责连接、Native 状态/错误回调注册和输入释放，通过回调通知 Index；系统窗口关闭依赖进程退出清理，不虚构 disconnect | 不 import UI；同一会话只注册一次回调 |
+| P0，新文件 | harmony/app/entry/src/main/ets/rdp/NativeRdpGateway.ets | 成为 libentry.so 唯一 import 点；薄封装 connect/disconnect/callback/输入/XComponent/IME/XRDP/diagnostics；导出非阻塞 disconnect 转发 `RequestDisconnect()`（见 TAB-A-07）；状态机编排归 RdpSessionStateCoordinator（见 TAB-A-09） | components 和 controllers 不直接 import libentry.so |
+| P0，新文件 | harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 负责连接、disconnect、Native 状态/错误回调注册和输入释放，通过回调通知 Index；`connect()` 同步返回仅作命令结果，`connected` 状态单一来源由 `onState`/`onError` 驱动（见 TAB-A-07 9.1.1）；状态机编排归 RdpSessionStateCoordinator（见 TAB-A-09） | 不 import UI；同一会话只注册一次回调 |
 | P0 | harmony/app/entry/src/main/ets/rdp/XrdpServerController.ets | 接收 capability；unsupported 时 start/diagnostics 返回 unavailable，不进入 gateway | D-01 采用推荐值时，tablet native mock 调用数为 0 |
 | P0 | harmony/app/entry/src/main/ets/pages/Index.ets | 保留页面协调、表单和路由状态；移出 Native 调用细节；能力保护所有 XRDP 回调 | 不再包含 resize/输入算法；目标控制在 500 行左右 |
 
@@ -592,8 +611,8 @@ GDI、AVC420、AVC444 每次成功 present 后都发布实际 viewport。远端�
 |---|---|---|---|
 | P0，新文件 | harmony/app/entry/src/main/ets/components/session/RdpSessionPage.ets | 从 Index 移出会话 Builder；接收已有 Controller；固定 Stack + XComponent + overlay；会话期间设置并在退出时恢复 `KeyboardAvoidMode.NONE`，不创建 TextInput 或 IME 按钮 | 切布局/字体/键盘显示状态不重建 Controller、session 或 Surface |
 | P0 | harmony/app/entry/src/main/ets/pages/Index.ets | XComponentController 只在这里创建一次；showSession 保持最外层分支 | 静态只有一个创建点，运行时 controllerInstanceId 保持不变 |
-| P0 | harmony/app/entry/src/main/ets/pages/Index.ets、harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 会话开始及 display change 时用 display.getDefaultDisplaySync() 读取 rotation 和本地 densityDPI，形成 P0 DisplayProfile，经 Controller 转发；display.on/off('change') 成对 | 旋转后 profile generation 更新，页面消失后无残留监听 |
-| P1 | harmony/app/entry/src/main/ets/pages/Index.ets、harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | DisplayProfile 再加入经校验的 xDPI/yDPI 和远端 scale 策略 | 不与 P0 旋转提交混合；无效值有明确 fallback |
+| P0 | harmony/app/entry/src/main/ets/pages/Index.ets、harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | 会话开始及 display change 时用 display.getDefaultDisplaySync() 读取 rotation 和本地 densityDPI，形成 P0 DisplayProfile，经 Controller 转发；display.on/off('change') 成对；状态机编排归 RdpSessionStateCoordinator（见 TAB-A-09） | 旋转后 profile generation 更新，页面消失后无残留监听 |
+| P1 | harmony/app/entry/src/main/ets/pages/Index.ets、harmony/app/entry/src/main/ets/rdp/RdpClientController.ets | DisplayProfile 再加入经校验的 xDPI/yDPI 和远端 scale 策略；状态机编排归 RdpSessionStateCoordinator（见 TAB-A-09） | 不与 P0 旋转提交混合；无效值有明确 fallback |
 | P0 | harmony/app/entry/src/main/cpp/input/xcomponent_input_registration.cpp | 显式 `SetNeedSoftKeyboard(false)`，由 XComponent focus/blur 唯一驱动 `RemoteImeClient`；MakeNativePointer 默认不允许 clamp | 获焦自动显示、失焦自动隐藏且无第二输入链；down/click/hover 不夹到边缘 |
 | P0 | harmony/app/entry/src/main/cpp/napi/napi_exports.cpp、harmony/app/entry/src/main/cpp/napi/napi_exports.h、harmony/app/entry/src/main/cpp/types/libentry/Index.d.ts | 增加 sendCommittedText、sendPlatformKey、surface orientation/input density、RDP diagnostics 薄接口；P1 才加 xDPI/yDPI/scale | 参数校验后转发，不承载算法 |
 | P0 | harmony/app/entry/src/main/cpp/input/xcomponent_mouse.cpp、harmony/app/entry/src/main/cpp/input/xcomponent_touch_gesture.cpp | down/click/hover 的 allowClamp=false；仅已开始拖动的 move/up 可有限 clamp；原始 px 阈值改为 density 相关 | 不同密度手感一致；黑边不误触远端边缘 |
@@ -1312,6 +1331,63 @@ Planned/DesignReady -> DecisionPending / Blocked -> DesignReady
 | 实际代码文件 | 本文；`ets/rdp/RdpConnectionValidator.ets`、`WindowsConnectionProfileCoordinator.ets`、`RdpPermissionRequestCoordinator.ets`、`RemoteControlCoordinator.ets`、`RdpSurfaceContentHost.ets`、`components/home/HomeConnectionValidation.ets`、`ets/pages/Index.ets`、`src/test/RdpConnectionValidator.test.ets`、`src/test/List.test.ets`、`tools/run_tablet_arkts_tests.ps1` |
 | 设计偏差及原因 | Index从1256行降至899行（减少357行，约28%），没有强行压到旧文档约500行目标。剩余主体是40余个响应式字段、连接配置表单状态应用、路由/生命周期、会话提示文案和Home/Settings参数装配；继续压缩需引入可观察ViewModel并改写大量UI绑定，超出“职责拆分且行为不变”的合理边界。新增文件最大为RemoteControlCoordinator 260行，均低于300行协调器预算；其余职责文件20～113行。 |
 | 测试命令/结果/证据 | 2026-08-05：新增5项连接校验单测，与原断点/能力测试一起通过；`tools/run_tablet_arkts_tests.ps1`退出码0并强制Index不超过950行、无Store/XRDP Controller/权限type/校验正则/Gateway细节；`tools/run_tablet_native_tests.ps1`退出码0；`git diff --check`通过；`harmony/app/build_hap.bat debug`完整Native/ArkTS/打包/签名成功，signed HAP 35,592,754 bytes；平板`5JB0223804000371`覆盖安装和EntryAbility启动成功，PID 34716。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-A-07：主动 disconnect 通道与连接状态单一来源
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-07 |
+| 设计版本/章节 | v2.2；第 9.1、9.1.1、10.3、10.6、11、14.4 节 |
+| 问题 | 页面销毁/离开会话页时无法主动断开 RDP 连接（H1）。Native 已实现 `RdpSession::RequestDisconnect()`（`rdp_session_core.cpp:193`，非阻塞：`running=false` + `input.Clear()` + `ClearRdpDesktopSize()` + `channels.RequestDisconnect()`→`abortConnectContext`）和 `Disconnect()`（同步 join），但 NAPI 导出表（`napi_exports.cpp:274`）未暴露 disconnect，`NativeRdpGateway`/`RdpClientController` 无对应方法，ArkTS 销毁路径只调 `releaseAllInput`，连接只能等 native 被动 `onState('Disconnected')` 或进程退出。同时 `RdpClientController.connect()`（`:61`）同步写入 `connected`，与 `onState`/`onError` 异步回调形成双状态源（H2）；native 同步返回 `state` 恒为 `Resolving`，该写入永远为 `false`，是冗余且误导性的死代码。 |
+| 设计决策 | 新增非阻塞 `disconnect` NAPI 通道，仅注册转发到 `RdpSession::RequestDisconnect()`（不调 `Disconnect()` 同步 `worker.join()`，避免阻塞 JS 线程）。`NativeRdpGateway` 与 `RdpClientController` 各增加 `disconnect()`。`RdpSessionPage.aboutToDisappear` 和 `MuHubApp.aboutToDisappear` 调用 `disconnect()` 主动断连；`onPageHide`（切后台）不调，避免误断后台会话。删除 `RdpClientController.connect()` 的同步 `connected` 写入，使 `connected` 仅由 `onState`/`onError`/`disconnect()`/`beginConnect()` 驱动（单一状态源，见 9.1.1）。 |
+| 状态与生命周期 | 离开会话页 → `disconnect()` → `RequestDisconnect()`（`running=false` + `abortConnectContext`）→ worker 异步退出 → `onState('Disconnected')` 回调闭环。切后台（`onPageHide`）不断连。重连时 native `Connect()` 内部先 `Disconnect()` 排空旧 worker，自带保护。 |
+| 计划代码文件 | 本文；修改 `cpp/napi/napi_exports.cpp`、`cpp/types/librdpclient/Index.d.ts`、`ets/rdp/NativeRdpGateway.ets`、`ets/rdp/RdpClientController.ets`、`ets/pages/Index.ets`、`ets/components/session/RdpSessionPage.ets`。 |
+| 兼容与回退 | 不新增 native 会话内核逻辑（复用已有 `RequestDisconnect()`）；NAPI 导出表新增一项可移除回退；`connect()` 同步写入删除可恢复。无 FreeRDP/xrdp ABI、manifest、资源或公共 UI 契约变化。 |
+| 验收ID | AC-XC：Surface/Controller/session 生命周期——离开会话页 hilog 确认 `Disconnected` + worker 线程退出；AC-ARCH：NAPI `disconnect` 入口仅注册转发无业务逻辑，导出可达 ArkTS；AC-REGRESSION：快速重连旧会话清理、凭据错误状态显示一致（无同步 false→异步 true 抖动）、切后台会话不断。对应 `freerdp-ohos-validation-baseline.md` 真机最小回归第 2 项（断开状态）+ 第 14 项（快速连接/断开）。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（Native/ArkTS 改动完成，Debug HAP 构建签名通过；真机断连/重连/切后台回归后升 Verified） |
+| 实际代码文件 | 本文；`cpp/napi/napi_exports.cpp`、`cpp/types/librdpclient/Index.d.ts`、`ets/rdp/NativeRdpGateway.ets`、`ets/rdp/RdpClientController.ets`、`ets/pages/Index.ets`、`ets/components/session/RdpSessionPage.ets` |
+| 设计偏差及原因 | 无；`disconnect` 通道仅转发已有 `RequestDisconnect()`，未新增 native 会话内核逻辑；`connect()` 同步写入删除后 `connected` 由 `onState`/`onError` 单一驱动，行为与 9.1.1 一致。 |
+| 测试命令/结果/证据 | 2026-09-14：`build_app`（harmonyos-dev-mcp，debug/hap/default）18.15s，`sign_status=signed`，`error_count=0`，产物 `entry/build/default/outputs/default/entry-default-signed.hap`。真机断连/重连/切后台回归未执行。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-A-08：GPU compositor 巨石文件拆分与公共工具抽取
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-08 |
+| 设计版本/章节 | v2.2；第 10.7、11、14.4 节；[gpu-compositor-split-design.md](gpu-compositor-split-design.md) |
+| 问题 | `avc420_gpu_compositor_internal.cpp`（2684 行）与 `avc444_gpu_compositor_internal.cpp`（2771 行）严重超过 `ohos-native-cpp-module-guidelines.md` 1000 行硬上限；两文件大量逐字重复（常量/TimingBucket/ScopedTiming/NowMicros/H264 解析/NativeBufferFormatName/CompileShader/LinkProgram，M11）。 |
+| 设计决策 | 抽 `avc_gpu_common.h/.cpp` 收逐字重复工具（`rdp_bridge` 命名空间）；avc420_internal 拆 5 文件（utils/decoder/renderer/state/impl）、avc444_internal 拆 5 文件（utils/decoder/renderer/readback/state），每文件 <1000 行；新建 `avc4{20,44}_gpu_compositor_internal_types.h` 暴露跨文件类型（类声明 only，方法 out-of-line）。**不抽 Decoder/Renderer/State 类基类**（平面映射 vs EGLImage、双流 LC vs 单流+GDI 背景、mapped-plane 多纹理 vs OES 单纹理差异大，无真机验证下风险过高）。渲染逻辑逐字保留（inline→out-of-line 语义等价）。 |
+| 状态与生命周期 | OHOS SDK 类型前向声明（OH_AVCodec/OH_AVBuffer/OH_NativeBuffer）放全局 namespace（非 rdp_bridge，否则与 SDK 函数签名不匹配）；avc444 renderer 955 行临界，SampleFramebuffer/PixelText 抽到 readback.cpp 保 <1000。公共 ABI、回调结构、`SharedAvc*GpuCompositor()` 单例、`render_output_owner` 切换均不变。 |
+| 计划代码文件 | 本文 + `gpu-compositor-split-design.md`；新增 `avc_gpu_common.h/.cpp`、`avc420_gpu_compositor_internal_types.h` + 5 .cpp、`avc444_gpu_compositor_internal_types.h` + 5 .cpp；修改 `CMakeLists.txt`；原两 `_internal.cpp` 改注释壳。 |
+| 兼容与回退 | 无公共 ABI/回调/单例/render_output_owner 变化；每阶段独立可 git 回退；inline→out-of-line 不改运行时行为。 |
+| 验收ID | AC-ARCH：每文件 <1000 行；avc420/avc444 各 internal 拆分后文件职责清晰；公共工具无重复定义（`avc_gpu_common` 唯一定义，avc444 复用 avc420 的 `NativeBufferFormatName`）。AC-RESIZE/AC-XC：真机 AVC420/AVC444 硬解渲染 + GDI fallback + 旋转/分屏不变。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented（阶段1/2/3 完成，构建验证通过；真机 AVC420/AVC444 渲染回归后升 Verified） |
+| 实际代码文件 | 本文 + `gpu-compositor-split-design.md`；`surface/avc_gpu_common.{h,cpp}`、`avc420_gpu_compositor_internal_types.h` + `avc420_gpu_compositor_utils.cpp`(160)/`avc420_hardware_decoder.cpp`(334)/`avc420_native_buffer_renderer.cpp`(858)/`avc420_gpu_compositor_state.cpp`(981)/`avc420_gpu_compositor_impl.cpp`(78)、`avc444_gpu_compositor_internal_types.h`(298) + `avc444_gpu_compositor_utils.cpp`(287)/`avc444_hardware_decoder.cpp`(465)/`avc444_gpu_renderer.cpp`(955)/`avc444_gpu_readback.cpp`(92)/`avc444_gpu_compositor_state.cpp`(692)、`CMakeLists.txt` |
+| 设计偏差及原因 | 阶段3 `NativeBufferFormatName` duplicate symbol——已抽到 `avc420_gpu_compositor_utils.cpp`（rdp_bridge 定义，含 RGB 是 avc444 超集），从 avc444 utils 移除声明复用 avc420 定义，avc444 仅传 YUV 格式行为等价。avc444 renderer 抽 SampleFramebuffer 到 readback.cpp 保 <1000（设计已预案）。无其他偏差。 |
+| 测试命令/结果/证据 | 2026-09-15：`build_app`（harmonyos-dev-mcp，debug/hap/default）阶段1 8.23s、阶段2 6s、阶段3 6.02s，均 `sign_status=signed` `error_count=0`；每文件 <1000 行静态确认；真机 AVC420/AVC444 渲染回归未执行。 |
+| 关联提交 | 待实现后回写 |
+
+#### TAB-A-09：会话状态机协调器提取与测试解锁（H3）
+
+| 字段 | 内容 |
+|---|---|
+| Change ID | TAB-A-09 |
+| 设计版本/章节 | v2.3；第 5.1、5.2、9.1、9.1.1、10.3、10.6、11、14.4 节；[session-state-coordinator-design.md](session-state-coordinator-design.md) |
+| 问题 | `Index.ets`（950 行）内联 `onState`/`onError` 决策树（489-551）、`connectNative`/`startNativeConnect`（696-777）与会话通知/反馈文案逻辑，无法在纯 TS 单元测试中覆盖连接/会话状态转移（H3）。`RemoteControlCoordinator` 已验证"构造注入+snapshot+onChange"范式可测，但会话状态机仍耦合 ArkUI `@State`。 |
+| 设计决策 | 新建 `RdpSessionStateCoordinator.ets`（~220-280 行），逐字搬移 `onState`/`onError`/`startNativeConnect` 决策树到 `handleState`/`handleError`/`handleConnectResult`/`connect` public 方法，产出写内部态+`publish()`（经 `onChange` 回调由 Index `applySessionStateSnapshot` 落地 `@State`），不调 ArkUI API。注入依赖：`rdpClientController`/`messages:SessionStateMessages`/`appFilesDir`/`onPersistProfile`/`onChange`/`releaseInput`。边沿触发（sessionVisible 上升沿→focusRemoteSurface，下降沿+isConnected→releaseActiveInput）移到 Index `applySessionStateSnapshot`。Index 净减约 140 行。 |
+| 状态与生命周期 | `RdpClientController.connected` 单一状态源不变（TAB-A-07 9.1.1）；协调器只读 `rdpClientController.isConnected()` 不写。`callbacksRegistered` 幂等移入协调器。`pendingConnectionProfileSave`/`lastConnectionErrorMessage` 移入协调器内部态。`@State` 字段名全部保留（build 绑定不变）。 |
+| 计划代码文件 | 本文 + `session-state-coordinator-design.md`；新增 `ets/rdp/RdpSessionStateCoordinator.ets`、`test/RdpSessionStateCoordinator.test.ets`；修改 `ets/pages/Index.ets`、`test/List.test.ets`。 |
+| 兼容与回退 | 状态机语义逐字保留（只搬移位置）；无公共 ABI/回调/Native 变化；独立可 git 回退。`connect` 不再回写 trimmed host/port/username 到 `@State`（可接受微调，见设计文档）。 |
+| 验收ID | AC-ARCH：Index 净减约 140 行；onState/onError 决策树不在 Index 内联；协调器不调 ArkUI API 不直接写 @State。AC-TEST：7+ native 状态转移、首连 SUCCESS+persistProfile、Failed CREDENTIALS+清 pending、Disconnected/Idle+pending NO_SESSION、onError danger+sessionVisible=false、connect 校验失败/成功、handleConnectResult ok/!ok。 |
+| 设计状态 | DesignReady |
+| 实现状态 | Implemented |
+| 实际代码文件 | 本文 + `session-state-coordinator-design.md`；`rdp/RdpSessionStateCoordinator.ets`、`rdp/RdpClientController.ets`（未改）、`pages/Index.ets`、`test/RdpSessionStateCoordinator.test.ets`、`test/List.test.ets` |
+| 设计偏差及原因 | 无（决策树逐字搬移，边沿触发语义一致）。 |
+| 测试命令/结果/证据 | 2026-09-16：`hvigorw assembleHap --mode module -p product=default` BUILD SUCCESSFUL 8.3s 0 error signed（entry+entry_tablet）；`hvigorw test --mode module -p product=default -p module=common@default` BUILD SUCCESSFUL 6.1s 46 用例全通过 0 失败 0 错误（30 现有+16 新增）；真机 connect→connected→disconnect + connect→failed 冒烟未执行。 |
 | 关联提交 | 待实现后回写 |
 
 父级台账不能代替每次代码变更登记。开始具体实现前，在本文追加子项（例如 `TAB-B-01`），至少填写：

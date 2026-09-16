@@ -6,7 +6,9 @@ set "HVIGORW_CMD="
 set "IDE_HOME="
 set "JAVA_BIN_DIR="
 set "BUILD_TARGET=%~1"
+set "BUILD_MODE=%~2"
 if not defined BUILD_TARGET set "BUILD_TARGET=app"
+if not defined BUILD_MODE set "BUILD_MODE=debug"
 
 if /i not "%BUILD_TARGET%"=="app" if /i not "%BUILD_TARGET%"=="tablet" if /i not "%BUILD_TARGET%"=="2in1" (
   echo Unknown build target: %BUILD_TARGET%. Expected app, tablet, or 2in1.
@@ -63,11 +65,11 @@ if /i not "%BUILD_TARGET%"=="tablet" (
 )
 
 if /i "%BUILD_TARGET%"=="app" (
-  call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleApp -p product=default -p buildMode=debug
+  call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleApp -p product=default -p buildMode=%BUILD_MODE%
 ) else if /i "%BUILD_TARGET%"=="tablet" (
-  call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleHap --mode module -p product=default -p buildMode=debug -p module=entry_tablet@default
+  call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleHap --mode module -p product=default -p buildMode=%BUILD_MODE% -p module=entry_tablet@default
 ) else (
-  call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleHap --mode module -p product=default -p buildMode=debug -p module=entry@default
+  call "%HVIGORW_CMD%" --no-daemon --no-parallel assembleHap --mode module -p product=default -p buildMode=%BUILD_MODE% -p module=entry@default
 )
 if errorlevel 1 (
   echo hvigor %BUILD_TARGET% build failed with exit code %ERRORLEVEL%.

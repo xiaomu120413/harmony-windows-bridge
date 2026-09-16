@@ -397,6 +397,8 @@ BOOL HarmonyDesktopResize(rdpContext* context)
     const uint32_t deviceScaleFactor = api.settingsGetUint32(
         context->settings, FreeRDP_DeviceScaleFactor);
     const bool sizeChanged = RdpDesktopWidth() != width || RdpDesktopHeight() != height;
+    // 生存期契约：必须先 StopGdiRenderPipeline() join 渲染 worker，再 gdiResize
+    // 重写 primary_buffer；否则 latest_frame_renderer worker 仍持 primary_buffer 裸指针即 UAF。
     StopGdiRenderPipeline();
     if (width == 0 || height == 0 || !api.gdiResize(context->gdi, width, height)) {
         if (!IsAvc420SurfaceOutputEnabled()) {
@@ -467,6 +469,8 @@ BOOL HarmonyPostConnect(freerdp* instance)
 void HarmonyPostDisconnect(freerdp* instance)
 {
     ResetRemotePointerTextDetector();
+    // 生存期契约：必须先 StopGdiRenderPipeline() join 渲染 worker，再 gdiFree
+    // 释放 primary_buffer；否则 latest_frame_renderer worker 仍持 primary_buffer 裸指针即 UAF。
     StopGdiRenderPipeline();
     if (instance == nullptr || instance->context == nullptr || instance->context->gdi == nullptr) {
         ClearRdpDesktopSize();
