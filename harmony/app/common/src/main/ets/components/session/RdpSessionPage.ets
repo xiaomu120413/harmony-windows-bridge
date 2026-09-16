@@ -18,8 +18,6 @@ export struct RdpSessionPage {
   onAttachContent: (content: NodeContent) => boolean = (_content: NodeContent): boolean => false
   onDetachContent: () => void = (): void => {
   }
-  onDisconnect: () => void = (): void => {
-  }
   private previousKeyboardAvoidMode: KeyboardAvoidMode = KeyboardAvoidMode.OFFSET
 
   aboutToAppear(): void {
@@ -29,7 +27,6 @@ export struct RdpSessionPage {
   }
 
   aboutToDisappear(): void {
-    this.onDisconnect()
     this.onDetachContent()
     this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode)
   }

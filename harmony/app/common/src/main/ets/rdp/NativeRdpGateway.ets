@@ -59,10 +59,6 @@ export class NativeRdpGateway {
     return rdpNative.connect(params)
   }
 
-  static disconnect(): NativeCommandResult {
-    return rdpNative.disconnect()
-  }
-
   static bindImeHostWindow(windowId: number): NativeCommandResult {
     return rdpNative.bindImeHostWindow(windowId)
   }

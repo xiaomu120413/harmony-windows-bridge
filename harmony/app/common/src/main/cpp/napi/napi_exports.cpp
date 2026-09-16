@@ -86,17 +86,6 @@ napi_value Connect(napi_env env, napi_callback_info info)
     return result;
 }
 
-napi_value Disconnect(napi_env env, napi_callback_info info)
-{
-    (void)info;
-    (void)BridgeSession().RequestDisconnect();
-    napi_value result = MakeObject(env);
-    SetBool(env, result, "ok", true);
-    SetString(env, result, "state", "Disconnecting");
-    SetString(env, result, "message", "");
-    return result;
-}
-
 napi_value ReleaseAllInput(napi_env env, napi_callback_info info)
 {
     (void)info;
@@ -284,7 +273,6 @@ napi_value RegisterRdpNativeExports(napi_env env, napi_value exports)
 {
     napi_property_descriptor desc[] = {
         {"connect", nullptr, Connect, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"disconnect", nullptr, Disconnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"bindImeHostWindow", nullptr, BindImeHostWindow, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"attachXComponentContent", nullptr, AttachXComponentContent, nullptr, nullptr, nullptr,
             napi_default, nullptr},

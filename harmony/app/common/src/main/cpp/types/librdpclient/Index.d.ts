@@ -47,7 +47,6 @@ declare const rdpNative: {
   setDisplayResolution(mode: string, width: number, height: number): NativeCommandResult;
   refreshDisplay(): NativeCommandResult;
   connect(params: NativeConnectParams): NativeCommandResult;
-  disconnect(): NativeCommandResult;
   bindImeHostWindow(windowId: number): NativeCommandResult;
   attachXComponentContent(nodeContent: NodeContent): NativeCommandResult;
   detachXComponentContent(): NativeCommandResult;

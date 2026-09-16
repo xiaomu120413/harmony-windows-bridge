@@ -3,7 +3,6 @@
 #include <cerrno>
 #include <csignal>
 #include <cstring>
-#include <vector>
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -142,34 +141,6 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         return result;
     }
 
-    // fork 前构造独立 envp，避免子进程调用 setenv（违反 POSIX async-signal-safety），
-    // 同时避免父进程 environ 被临时改写（尤其 LD_LIBRARY_PATH）。
-    std::vector<std::string> envStorage;
-    for (char** e = environ; *e != nullptr; ++e) {
-        envStorage.emplace_back(*e);
-    }
-    auto overrideEnv = [&envStorage](const std::string& key, const std::string& value) {
-        const std::string prefix = key + "=";
-        for (auto& entry : envStorage) {
-            if (entry.compare(0, prefix.size(), prefix) == 0) {
-                entry = prefix + value;
-                return;
-            }
-        }
-        envStorage.push_back(prefix + value);
-    };
-    overrideEnv("XRDP_CFG_PATH", paths.runtimeRoot + "/config");
-    overrideEnv("XRDP_SHARE_PATH", paths.sharePath);
-    overrideEnv("XRDP_MODULE_PATH", paths.modulePath);
-    overrideEnv("XRDP_PID_PATH", paths.pidPath);
-    overrideEnv("XRDP_LOG_PATH", paths.logPath);
-    overrideEnv("LD_LIBRARY_PATH", paths.modulePath);
-    std::vector<char*> envp;
-    for (auto& s : envStorage) {
-        envp.push_back(s.data());
-    }
-    envp.push_back(nullptr);
-
     const pid_t pid = fork();
     if (pid < 0) {
         result.state = "Failed";
@@ -181,6 +152,12 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
         if (getppid() == 1) {
             _exit(125);
         }
+        (void)setenv("XRDP_CFG_PATH", (paths.runtimeRoot + "/config").c_str(), 1);
+        (void)setenv("XRDP_SHARE_PATH", paths.sharePath.c_str(), 1);
+        (void)setenv("XRDP_MODULE_PATH", paths.modulePath.c_str(), 1);
+        (void)setenv("XRDP_PID_PATH", paths.pidPath.c_str(), 1);
+        (void)setenv("XRDP_LOG_PATH", paths.logPath.c_str(), 1);
+        (void)setenv("LD_LIBRARY_PATH", paths.modulePath.c_str(), 1);
         std::string port = std::to_string(kDefaultPort);
         char* const argv[] = {
             const_cast<char*>(paths.executablePath.c_str()),
@@ -191,7 +168,7 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
             port.data(),
             nullptr
         };
-        execve(paths.executablePath.c_str(), argv, envp.data());
+        execve(paths.executablePath.c_str(), argv, environ);
         _exit(126);
     }
 
@@ -200,8 +177,6 @@ XrdpServerCommandResult StartXrdpServer(const XrdpServerParams& params)
     state.paths = paths;
     state.lastMessage = "xrdp HNP process started pid=" + std::to_string(pid);
     LogInfo(state.lastMessage);
-    // 持锁 usleep 150ms 为启动健康检查让步，阻塞并发 GetXrdpServerDiagnostics/StopXrdpServer 最多 150ms；
-    // 非正确性缺陷，仅响应性，保留以避免启动期 waitpid 竞态。
     (void)usleep(150000);
     result = SnapshotLocked(state);
     if (!result.ok) {

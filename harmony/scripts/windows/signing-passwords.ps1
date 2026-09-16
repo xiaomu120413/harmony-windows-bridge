@@ -3,10 +3,9 @@ function Resolve-HvigorSigningPasswords {
     [string]$RepoRoot,
     [string]$SigningRoot,
     [string]$SigningPassword,
-  [string]$StorePassword,
-  [string]$KeyPassword,
-  [string]$NodePath = ''
-)
+    [string]$StorePassword,
+    [string]$KeyPassword
+  )
 
   if ([string]::IsNullOrWhiteSpace($StorePassword)) {
     $StorePassword = $env:HAP_STORE_PASSWORD
@@ -30,14 +29,7 @@ function Resolve-HvigorSigningPasswords {
     if (-not $storeMatch.Success -or -not $keyMatch.Success) {
       throw 'Unable to locate encrypted signing passwords in build-profile.json5'
     }
-    $nodePath = $NodePath
-    if ([string]::IsNullOrWhiteSpace($nodePath)) {
-      $nodePath = 'C:\Program Files\Huawei\DevEco Studio\tools\node\node.exe'
-    }
-    if (-not (Test-Path -LiteralPath $nodePath)) {
-      $found = Get-Command node -ErrorAction SilentlyContinue
-      if ($found) { $nodePath = $found.Source }
-    }
+    $nodePath = 'C:\Program Files\Huawei\DevEco Studio\tools\node\node.exe'
     $decryptScript = Join-Path $PSScriptRoot 'decrypt-hvigor-password.js'
     $signingPath = (Resolve-Path (Join-Path $RepoRoot $SigningRoot)).Path
     if ([string]::IsNullOrWhiteSpace($StorePassword)) {

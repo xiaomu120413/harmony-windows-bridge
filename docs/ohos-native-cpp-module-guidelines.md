@@ -263,39 +263,6 @@ in progress. New code should still follow the target ownership rules below.
   - store protocol counters.
 - If a new exported method needs more than argument parsing and result creation,
   add the implementation to the owning module first.
-- The `disconnect` export (TAB-A-07) is wiring-only: it forwards to
-  `RdpSession::RequestDisconnect()` and builds a result object. Session teardown,
-  worker exit and `abortConnectContext` stay in `rdp_session_core` /
-  `rdp_session_channels`; the N-API wrapper does not join the worker thread or
-  inspect FreeRDP state.
-
-## Render Frame Lifetime Contract
-
-- `LatestFrameRenderer::Enqueue` stores the inbound `RgbaFrame.data` pointer
-  without copying; the render worker paints from that pointer asynchronously.
-- Callers that free or resize the backing buffer (notably FreeRDP
-  `gdi->primary_buffer`) **must** call `StopGdiRenderPipeline()` — which joins
-  the render worker — before `gdiFree` / `gdiResize`. `HarmonyPostDisconnect`
-  and `HarmonyDesktopResize` already follow this stop-then-free order.
-- Any new path that releases or rewrites `primary_buffer` must preserve the
-  same ordering; skipping `Stop` is a use-after-free.
-
-### AVC420 surface target race
-
-- `SurfaceBridge::DecoderSurface()` returns a raw `OHNativeWindow*` snapshot
-  that escapes `SurfaceBridge::mutex_`; the AVC420 worker uses it outside the
-  lock (Ensure/PresentComposite).
-- `OnSurfaceDestroyed` already calls
-  `UpdateAvc420SurfaceOutputIfActive("surface destroyed")` →
-  `PauseOutputForTargetUnavailable`, which parks the worker in `TargetPaused`
-  and triggers `OnSurfaceTargetChanged`/detach. This is an **asynchronous** park
-  on the UI thread; the worker observes it on its next loop iteration.
-- A residual race remains if the worker has already taken a snapshot and is
-  inside `Ensure`/`PresentComposite` when the surface is destroyed. Fully
-  closing it requires the worker to hold a reference on the native window for
-  the duration of use (or a shared lock); this is tracked as a follow-up and
-  needs HarmonyOS `OHNativeWindow` refcount API investigation plus on-device
-  AVC420 validation. Do not weaken the existing pause-on-destroy path.
 
 ## Adding New Native Features
 

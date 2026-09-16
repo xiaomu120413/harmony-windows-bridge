@@ -15,9 +15,6 @@ tools/hapsigner/output/
 tools/hapsigner/stage-*/
 tools/hapsigner/*.bat
 
-# Signing decryption material (team-private, see docs/signing-material-removal-plan.md)
-tools/app/material/
-
 # HarmonyOS local build output
 .hvigor/
 harmony/app/.hvigor/
